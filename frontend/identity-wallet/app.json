@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "identity-wallet",
+    "slug": "identity-wallet",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "plugins": [
+      "./app.plugin.js"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.quid.identitywallet"
+    },
+    "android": {
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "app.quid.identitywallet"
+    }
+  }
+}

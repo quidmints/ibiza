@@ -1,0 +1,23 @@
+# deps
+node_modules/
+**/node_modules/
+
+# foundry
+**/out/
+**/cache/
+**/broadcast/**/dry-run/
+
+# RN / expo / node
+.expo/
+**/.expo/
+dist/
+*.log
+npm-debug.*
+yarn-error.*
+
+# os / editor
+.DS_Store
+*.swp
+.env
+.env.*
+!.env.example

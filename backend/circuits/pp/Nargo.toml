@@ -1,0 +1,16 @@
+[package]
+name = "pp"
+type = "lib"
+authors = [""]
+
+# Privacy Pool gadgets, ported from PP's Circom to Noir for the unified Honk stack.
+# Hashing is circomlib-Poseidon via noir-lang/poseidon (the SAME hash rarime uses on-chain via
+# poseidon-solidity, and the wallet uses via @iden3/js-crypto) - one audited hash across the fusion.
+#
+# CONFIRMED toolchain (2026-07-01, dev machine): nargo 1.0.0-beta.1 (noirup --version 1.0.0-beta.1,
+# matches rarime's pinned README) + bb.js 0.82.2 (WASM; bb.js resolved this from `bbup` reading the
+# installed nargo version - do NOT hardcode rarime's stale README pin of bb 0.66.0, which predates a
+# fixed critical UltraHonk soundness vulnerability). `nargo test` passes both gadgets' differential
+# tests against real on-chain poseidon-solidity / lean-imt.sol vectors - see PP-NOIR-FUSION.md.
+[dependencies]
+poseidon = { tag = "v0.1.0", git = "https://github.com/noir-lang/poseidon" }

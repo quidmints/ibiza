@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@rarimo/rarime-rn-sdk": ["../src/index"],
+      "@rarimo/rarime-rn-sdk/*": ["../src/*"]
+    }
+  }
+}

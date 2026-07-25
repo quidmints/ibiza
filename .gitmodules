@@ -1,0 +1,3 @@
+[submodule "backend/contracts/lib/SPV"]
+	path = backend/contracts/lib/SPV
+	url = https://github.com/quidmints/SPV.git

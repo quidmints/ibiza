@@ -1,6 +1,8 @@
-import {sha1} from '@noble/hashes/sha1';
-import {sha224, sha256} from '@noble/hashes/sha256';
-import {sha384, sha512} from '@noble/hashes/sha512';
+// @noble/hashes v2 consolidated sha1 into './legacy' (deprecated but still exported for compat)
+// and sha224/256/384/512 into a single './sha2' module - the old per-algorithm subpaths
+// ('./sha1', './sha256', './sha512') no longer exist.
+import {sha1} from '@noble/hashes/legacy.js';
+import {sha224, sha256, sha384, sha512} from '@noble/hashes/sha2.js';
 
 const ID_SHA_1 = '1.3.14.3.2.26';
 const SHA_1_WITH_RSA_ENCRYPTION = '1.2.840.113549.1.1.5';

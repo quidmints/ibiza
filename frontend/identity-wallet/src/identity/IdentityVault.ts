@@ -12,13 +12,21 @@
 // The holder secret is NOT independent randomness — it is derived from the same enclave RootSeed
 // that derives the PP note master keys (rarime↔PP fusion: one seed recovers identity + funds).
 //
-// WHAT IS REAL HERE: holder-key lifecycle, the document set + status management, and driving the
-// forked Rarime SDK for key derivation / passport status / registration.
-// WHAT NEEDS THE OTHER TWO FORKS (flagged TODO, not faked):
-//   - register-additional / renew / revoke ON-CHAIN must call OUR HolderRegistration
-//     (registerDocumentViaNoir / renewDocumentViaNoir / revokeDocumentViaSigner) at OUR deployed
-//     HolderStateKeeper — NOT upstream RegistrationSimple (whose addBond forbids a 2nd doc per key).
-//   - the "is this document CURRENT" query proof needs the forked Groth16/Noir circuit.
+// WHAT IS REAL HERE: holder-key lifecycle, the document set + status management, and
+// add/renew/revoke DO call OUR HolderRegistration (registerDocumentViaNoir/renewDocumentViaNoir/
+// revokeDocumentViaSigner) at OUR deployed HolderStateKeeper, not upstream RegistrationSimple —
+// via Rarime.generateRegistrationMaterial (on-device Noir proof + the SAME backend
+// SOD-verification call upstream's own registerIdentity uses, since HolderRegistration reuses
+// RegistrationSimple's signer set and signed-data format) + Rarime.submitViaRelayer (the same
+// generic registration-relayer endpoint, pointed at OUR contract instead of upstream's).
+// revokeDocument's signature is a required caller input, not auto-obtained (see its own docstring
+// — no backend endpoint for revocation signing exists yet).
+//
+// STILL NOT DONE: the "is this document CURRENT" query proof needs the forked query_identity
+// Noir circuit to actually be wired to this holder-tree's leaf convention (dgCommit/seq/
+// timestamp) — it isn't yet (tracked in backend/circuits/PP-NOIR-FUSION.md). The on-chain state
+// (this file drives) is correct and tested; the circuit-side consumption of it is the remaining
+// gap, not this file.
 
 import { JsonRpcProvider } from "ethers";
 import { Rarime, RarimeConfiguration } from "../sdk/Rarime";
@@ -32,6 +40,9 @@ import {
   holderStateKeeper,
   getHolderDocuments,
   getDocumentBond,
+  encodeRegisterDocument,
+  encodeRenewDocument,
+  encodeRevokeDocument,
   DocStatus,
   DOC_TYPE,
 } from "../sdk/holder/HolderContracts";
@@ -49,6 +60,18 @@ export interface StoredDocument {
   status: LeafStatus;
   /** id returned by the registration relayer, if any. */
   registrationId?: string;
+  /** The PassportStruct fields cached at registration time. Required to revoke a LOST/STOLEN
+   *  document later, when the physical passport is no longer available to re-derive them from —
+   *  revocation needs the full struct to reconstruct the signed-data for signature verification,
+   *  and "lost/stolen" is the primary revocation use case, so this cannot depend on having the
+   *  original document again. */
+  passportStruct?: {
+    dgCommit: bigint;
+    dg1Hash: string;
+    publicKey: string;
+    passportHash: string;
+    verifier: string;
+  };
 }
 
 /** Persistence the host app provides for the document set (e.g. async-storage). The holder secret
@@ -164,14 +187,28 @@ export class IdentityVault {
 
   /**
    * Add (register) a NEW document under the holder key. Repeatable with different passports →
-   * multi-citizenship. This is the per-document registration; once OUR HolderStateKeeper is the
-   * target it no longer hits upstream's one-doc-per-identity wall.
+   * multi-citizenship. Calls OUR HolderRegistration.registerDocumentViaNoir at OUR deployed
+   * HolderStateKeeper — NOT upstream RegistrationSimple (whose addBond forbids a 2nd doc per
+   * key). Proof generation + the backend signer signature reuse Rarime.generateRegistrationMaterial
+   * (the exact same on-device Noir prover + SOD-verification backend call upstream's own
+   * registerIdentity uses — HolderRegistration deliberately reuses RegistrationSimple's signer
+   * set and signed-data format, so this material is valid here too, verified field-for-field
+   * against buildLiteRegisterCalldata).
    */
   async addDocument(
     passport: RarimePassport,
     docType: DocumentType,
     opts: { country?: string; notAfter?: number } = {},
   ): Promise<StoredDocument> {
+    // Check for a duplicate BEFORE any network/relayer call — documentKey is a pure local
+    // derivation from the passport's own DG1 data, so this costs nothing and fails fast instead
+    // of paying for an on-chain registration attempt that we then discard locally.
+    const documentKey = toPaddedHex32(passport.getPassportKey());
+    const docs = await this.store.getDocuments();
+    if (docs.some((d) => d.documentKey === documentKey)) {
+      throw new Error("IdentityVault: document already in this vault");
+    }
+
     const rarime = await this.rarime();
 
     const status = await rarime.getDocumentStatus(passport);
@@ -179,35 +216,43 @@ export class IdentityVault {
       throw new Error("IdentityVault: document is bound to a different holder key");
     }
 
-    // TODO(fork #3 wiring): point registration at OUR HolderRegistration.registerDocumentViaNoir
-    // (docType + holderRoot) on OUR deployed HolderStateKeeper, not upstream RegistrationSimple.
-    // Until then this drives the upstream lite-registration path (single-doc on upstream chain).
-    let registrationId: string | undefined;
-    if (status === DocumentStatus.NotRegistered) {
-      registrationId = String(await rarime.registerIdentity(passport));
-    }
+    const root = await this.holderRoot();
+    const material = await rarime.generateRegistrationMaterial(passport);
+
+    const calldata = encodeRegisterDocument({
+      holderRoot: "0x" + root.profileKey,
+      passport: material.passport,
+      docType: docTypeToHash(docType),
+      notAfter: BigInt(opts.notAfter ?? 0),
+      signature: material.signature,
+      zkPoints: material.zkPoints,
+    });
+    const registrationId = await rarime.submitViaRelayer(
+      calldata,
+      this.config.contractsConfiguration.holderRegistrationAddress,
+    );
 
     const doc: StoredDocument = {
-      documentKey: toPaddedHex32(passport.getPassportKey()),
+      documentKey,
       docType,
       country: opts.country,
       notAfter: opts.notAfter,
       registeredAt: nowSeconds(),
       status: LeafStatus.Current,
       registrationId,
+      passportStruct: material.passport,
     };
 
-    const docs = await this.store.getDocuments();
-    if (docs.some((d) => d.documentKey === doc.documentKey)) {
-      throw new Error("IdentityVault: document already in this vault");
-    }
     await this.store.setDocuments([...docs, doc]);
     return doc;
   }
 
   /**
-   * Renew: register `newPassport` and supersede the old document under the SAME holder key.
-   * Identity continuity is preserved (holder root unchanged) — pseudonyms/state carry over.
+   * Renew: supersede `oldDocumentKey` and bind `newPassport` under the SAME holder key, via
+   * HolderRegistration.renewDocumentViaNoir — atomic supersede-old + bind-new on-chain, with the
+   * new document's Noir proof (binding its DG1 to `holderRoot`) serving as the link proof that
+   * both documents belong to one holder. Identity continuity is preserved (holder root
+   * unchanged) — pseudonyms/state carry over.
    */
   async renewDocument(
     oldDocumentKey: string,
@@ -218,11 +263,39 @@ export class IdentityVault {
     const docs = await this.store.getDocuments();
     const old = docs.find((d) => d.documentKey === oldDocumentKey);
     if (!old) throw new Error("IdentityVault: old document not found");
+    if (old.status !== LeafStatus.Current) {
+      throw new Error(`IdentityVault: old document is not current (status: ${old.status}) — cannot renew`);
+    }
 
-    // TODO(fork #2 + #3): on-chain this is HolderRegistration.renewDocumentViaNoir(oldKey, newPassport,
-    // holderRoot) — atomic supersede-old + bind-new + link proof. The query circuit must then treat
-    // the old leaf as non-current. Here we register the new doc and mark the old superseded locally.
-    const fresh = await this.addDocument(newPassport, docType, opts);
+    const rarime = await this.rarime();
+    const root = await this.holderRoot();
+    const material = await rarime.generateRegistrationMaterial(newPassport);
+
+    const calldata = encodeRenewDocument({
+      oldDocumentKey,
+      holderRoot: "0x" + root.profileKey,
+      newPassport: material.passport,
+      newDocType: docTypeToHash(docType),
+      newNotAfter: BigInt(opts.notAfter ?? 0),
+      signature: material.signature,
+      zkPoints: material.zkPoints,
+    });
+    const registrationId = await rarime.submitViaRelayer(
+      calldata,
+      this.config.contractsConfiguration.holderRegistrationAddress,
+    );
+
+    const fresh: StoredDocument = {
+      documentKey: toPaddedHex32(newPassport.getPassportKey()),
+      docType,
+      country: opts.country,
+      notAfter: opts.notAfter,
+      registeredAt: nowSeconds(),
+      status: LeafStatus.Current,
+      registrationId,
+      passportStruct: material.passport,
+    };
+    await this.store.setDocuments([...docs, fresh]);
 
     const updated = (await this.store.getDocuments()).map((d) =>
       d.documentKey === oldDocumentKey ? { ...d, status: LeafStatus.Superseded } : d,
@@ -231,17 +304,70 @@ export class IdentityVault {
     return fresh;
   }
 
-  /** Revoke a document (lost/stolen/compromised). On-chain: HolderRegistration.revokeDocumentViaSigner. */
-  async revokeDocument(documentKey: string): Promise<void> {
-    // TODO(fork #2 + #3): on-chain revoke marks the SMT leaf REVOKED; the query circuit must reject it.
-    const updated = (await this.store.getDocuments()).map((d) =>
+  /**
+   * Revoke a document (lost/stolen/compromised) via HolderRegistration.revokeDocumentViaSigner.
+   * Needs no Noir proof (unlike register/renew) — only a backend signer signature over the
+   * document being revoked. IMPORTANT: this signature is over a REVOKE-specific message
+   * (HolderRegistration._buildRevokeSignedData), NOT the same signed-data format
+   * register/renew use — deliberately domain-separated (fixed 2026-07-24) so a deterministic
+   * signer doesn't produce a byte-identical signature for both, which the contract's anti-replay
+   * check would then reject as already-consumed at registration time. Whoever implements the
+   * backend revocation-signing endpoint must sign
+   * keccak256("HolderRegistration revoke prefix", registrationContractAddress, passportHash,
+   * dgCommit, publicKey, verifier), not the register/renew signed-data format.
+   * `signature` is a REQUIRED caller-supplied input: no backend endpoint for producing a
+   * revocation signature exists in this SDK yet (revocation wasn't part of upstream's flow at
+   * all), so this cannot silently obtain one the way addDocument/renewDocument do — a dedicated
+   * revocation-signing endpoint is separate, unstarted backend work.
+   *
+   * Requires the document to have been registered via THIS vault (so `passportStruct` was cached
+   * at registration time) — a document only known via documentsOnChain()/syncFromChain() cannot
+   * be revoked through this method, since the full PassportStruct isn't recoverable from chain
+   * state alone and revocation must not depend on still having the original (possibly lost/
+   * stolen) physical document.
+   */
+  async revokeDocument(documentKey: string, signature: string): Promise<void> {
+    const docs = await this.store.getDocuments();
+    const doc = docs.find((d) => d.documentKey === documentKey);
+    if (!doc) throw new Error("IdentityVault: document not found");
+    if (!doc.passportStruct) {
+      throw new Error(
+        "IdentityVault: document has no cached passport struct (not registered via this vault) — cannot revoke",
+      );
+    }
+
+    const rarime = await this.rarime();
+    const calldata = encodeRevokeDocument({ passport: doc.passportStruct, signature });
+    await rarime.submitViaRelayer(calldata, this.config.contractsConfiguration.holderRegistrationAddress);
+
+    const updated = docs.map((d) =>
       d.documentKey === documentKey ? { ...d, status: LeafStatus.Revoked } : d,
     );
     await this.store.setDocuments(updated);
   }
 }
 
-/** Reverse the on-chain docType hash (keccak of the name) back to the DocumentType enum. */
+/** Forward: DocumentType enum -> on-chain docType hash (keccak of the name). Symmetric with
+ *  docTypeFromHash below. */
+function docTypeToHash(docType: DocumentType): string {
+  switch (docType) {
+    case DocumentType.Passport:
+      return DOC_TYPE.PASSPORT;
+    case DocumentType.NationalId:
+      return DOC_TYPE.NATIONAL_ID;
+    case DocumentType.Mdl:
+      return DOC_TYPE.MDL;
+    case DocumentType.EudiPid:
+      return DOC_TYPE.EUDI_PID;
+    case DocumentType.NotarialTitle:
+      return DOC_TYPE.NOTARIAL_TITLE;
+  }
+}
+
+/** Reverse the on-chain docType hash (keccak of the name) back to the DocumentType enum.
+ *  Throws on an unrecognized hash rather than defaulting to Passport — silently mislabeling an
+ *  unknown on-chain doc type (e.g. a NotarialTitle) as a Passport would corrupt citizenship
+ *  counting and any trust decision keyed off docType, which is worse than a loud failure. */
 function docTypeFromHash(hash: string): DocumentType {
   const h = hash.toLowerCase();
   if (h === DOC_TYPE.PASSPORT.toLowerCase()) return DocumentType.Passport;
@@ -249,7 +375,7 @@ function docTypeFromHash(hash: string): DocumentType {
   if (h === DOC_TYPE.MDL.toLowerCase()) return DocumentType.Mdl;
   if (h === DOC_TYPE.EUDI_PID.toLowerCase()) return DocumentType.EudiPid;
   if (h === DOC_TYPE.NOTARIAL_TITLE.toLowerCase()) return DocumentType.NotarialTitle;
-  return DocumentType.Passport; // unknown docType hash → default
+  throw new Error(`IdentityVault: unrecognized on-chain docType hash: ${hash}`);
 }
 
 /** Map the on-chain DocStatus to the wallet's LeafStatus. */

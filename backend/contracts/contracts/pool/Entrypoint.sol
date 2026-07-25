@@ -18,7 +18,9 @@ https://defi.sucks/
 
 import {AccessControlUpgradeable} from '@oz-upgradeable/access/AccessControlUpgradeable.sol';
 import {UUPSUpgradeable} from '@oz-upgradeable/proxy/utils/UUPSUpgradeable.sol';
-import {ReentrancyGuardUpgradeable} from '@oz-upgradeable/utils/ReentrancyGuardUpgradeable.sol';
+// OZ 5.6.1 dropped ReentrancyGuardUpgradeable: the transient-storage (EIP-1153) variant carries no
+// persistent state, so there's no upgradeable-vs-plain distinction left to make - use the plain one.
+import {ReentrancyGuardTransient} from '@oz/utils/ReentrancyGuardTransient.sol';
 import {SafeERC20} from '@oz/token/ERC20/utils/SafeERC20.sol';
 
 import {IERC20} from '@oz/interfaces/IERC20.sol';
@@ -34,7 +36,7 @@ import {IEvidenceRegistry} from '@rarimo/evidence-registry/interfaces/IEvidenceR
  * @title Entrypoint
  * @notice Serves as the main entrypoint for a series of ASP-operated Privacy Pools
  */
-contract Entrypoint is AccessControlUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable, IEntrypoint {
+contract Entrypoint is AccessControlUpgradeable, UUPSUpgradeable, ReentrancyGuardTransient, IEntrypoint {
   using SafeERC20 for IERC20;
   using ProofLib for ProofLib.WithdrawProof;
 
@@ -86,8 +88,8 @@ contract Entrypoint is AccessControlUpgradeable, UUPSUpgradeable, ReentrancyGuar
     EVIDENCE_REGISTRY = IEvidenceRegistry(_evidenceRegistry);
 
     // Initialize upgradeable contracts
-    __UUPSUpgradeable_init();
-    __ReentrancyGuard_init();
+    // UUPSUpgradeable has no storage/init step in OZ 5.6.1 (it's a thin, stateless wrapper);
+    // ReentrancyGuardTransient is likewise stateless (EIP-1153 transient storage).
     __AccessControl_init();
 
     // Initialize roles

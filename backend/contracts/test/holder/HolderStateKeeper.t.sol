@@ -4,6 +4,18 @@ pragma solidity ^0.8.21;
 import {Test} from "forge-std/Test.sol";
 
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+
+/// OZ 5.6.1 hardened ERC1967Proxy to revert on empty init data (front-run/MITM protection for
+/// real deployments). This suite deploys-then-initializes in two separate calls (matching
+/// StateKeeper/PoseidonSMT's own __xxx_init(...) external initializer pattern) — safe in a
+/// single-threaded test, so this test-only proxy opts back into that behavior.
+contract UnsafeTestProxy is ERC1967Proxy {
+    constructor(address impl) ERC1967Proxy(impl, "") {}
+
+    function _unsafeAllowUninitialized() internal pure override returns (bool) {
+        return true;
+    }
+}
 import {SparseMerkleTree} from "@solarity/solidity-lib/libs/data-structures/SparseMerkleTree.sol";
 
 import {HolderStateKeeper} from "../../contracts/holder/HolderStateKeeper.sol";
@@ -65,7 +77,7 @@ contract HolderStateKeeperTest is Test {
     }
 
     function _proxy(address impl) internal returns (address) {
-        return address(new ERC1967Proxy(impl, ""));
+        return address(new UnsafeTestProxy(impl));
     }
 
     function _leafIndex(bytes32 documentKey, bytes32 holderRoot) internal pure returns (bytes32) {
@@ -205,8 +217,18 @@ contract HolderStateKeeperTest is Test {
         vm.prank(REG);
         sk.revokeDocument(DOC_A);
         SparseMerkleTree.Proof memory p2 = smt.getProof(_leafIndex(DOC_A, HOLDER));
-        bytes32 revokedMarker = bytes32(PoseidonUnit1L.poseidon([uint256(keccak256("REVOKED"))]));
-        assertEq(p2.value, revokedMarker, "revoked leaf == Poseidon1(REVOKED) marker");
+        // Field-reduced (StateKeeper.SNARK_SCALAR_FIELD): keccak256("REVOKED") is > the BN254
+        // scalar field order (confirmed: ~5.1x F), so the contract reduces it before hashing -
+        // this expected value must match, or a Noir query circuit's own Poseidon(REVOKED as
+        // Field) (always implicitly reduced - a Noir Field literal can't represent an
+        // out-of-field value) would silently disagree with an unreduced marker here.
+        bytes32 revokedMarker = bytes32(
+            PoseidonUnit1L.poseidon([
+                uint256(keccak256("REVOKED")) %
+                    21888242871839275222246405745257275088548364400416034343698204186575808495617
+            ])
+        );
+        assertEq(p2.value, revokedMarker, "revoked leaf == Poseidon1(REVOKED mod F) marker");
         assertTrue(p2.value != expected, "marker can't match circuit reconstruction");
     }
 }

@@ -22,6 +22,17 @@ contract StateKeeper is Initializable, AMultiOwnable, UUPSUpgradeable {
     bytes32 public constant REVOKED = keccak256("REVOKED");
     bytes32 public constant USED = keccak256("USED");
 
+    // Same BN254/BabyJubJub scalar field as Constants.SNARK_SCALAR_FIELD (pool side) and
+    // EvidenceRegistry.BABY_JUB_JUB_PRIME_FIELD (identity side) - duplicated locally rather than
+    // imported cross-module, matching how this codebase already keeps this constant local to each
+    // library that needs it. REVOKED/USED are raw keccak256 outputs (> this field ~88% of the
+    // time), so they must be reduced before being fed into Poseidon below - Poseidon's field
+    // arithmetic silently disagrees with an off-chain/Noir-side Poseidon(x mod F) otherwise (a
+    // Noir Field literal is always pre-reduced; there's no way to represent an out-of-field value
+    // in it), which would break the query circuit's planned sentinel reconstruction.
+    uint256 internal constant SNARK_SCALAR_FIELD =
+        21888242871839275222246405745257275088548364400416034343698204186575808495617;
+
     enum MethodId {
         None,
         ChangeICAOMasterTreeRoot,
@@ -107,6 +118,10 @@ contract StateKeeper is Initializable, AMultiOwnable, UUPSUpgradeable {
         require(
             expirationTimestamp_ + 5 * 365 days > block.timestamp,
             "StateKeeper: certificate is expired"
+        );
+        require(
+            expirationTimestamp_ <= type(uint64).max,
+            "StateKeeper: expiration timestamp overflows uint64"
         );
 
         _certificateInfos[certificateKey_].expirationTimestamp = uint64(expirationTimestamp_);
@@ -208,7 +223,7 @@ contract StateKeeper is Initializable, AMultiOwnable, UUPSUpgradeable {
         _identityInfo.activePassport = REVOKED;
 
         uint256 index_ = PoseidonUnit2L.poseidon([uint256(passportKey_), uint256(identityKey_)]);
-        uint256 value_ = PoseidonUnit1L.poseidon([uint256(REVOKED)]);
+        uint256 value_ = PoseidonUnit1L.poseidon([uint256(REVOKED) % SNARK_SCALAR_FIELD]);
 
         registrationSmt.update(bytes32(index_), bytes32(value_));
 

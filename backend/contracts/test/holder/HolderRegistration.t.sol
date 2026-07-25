@@ -1,0 +1,280 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.21;
+
+import {Test} from "forge-std/Test.sol";
+
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+
+/// OZ 5.6.1 hardened ERC1967Proxy to revert on empty init data (front-run/MITM protection for
+/// real deployments). This suite deploys-then-initializes in two separate calls (matching
+/// StateKeeper/PoseidonSMT/RegistrationSimple's own __xxx_init(...) external initializer
+/// pattern) — safe in a single-threaded test, so this test-only proxy opts back into that
+/// behavior.
+contract UnsafeTestProxy is ERC1967Proxy {
+    constructor(address impl) ERC1967Proxy(impl, "") {}
+
+    function _unsafeAllowUninitialized() internal pure override returns (bool) {
+        return true;
+    }
+}
+
+import {HolderRegistration} from "../../contracts/holder/HolderRegistration.sol";
+import {HolderStateKeeper} from "../../contracts/holder/HolderStateKeeper.sol";
+import {HolderStateKeeperMock} from "../../contracts/mock/holder/HolderStateKeeperMock.sol";
+import {PoseidonSMTMock} from "../../contracts/mock/state/PoseidonSMTMock.sol";
+import {NoirVerifierMock} from "../../contracts/mock/verifiers/NoirVerifierMock.sol";
+import {RegistrationSimple} from "../../contracts/registration/RegistrationSimple.sol";
+
+/// HolderRegistration's real entry points (registerDocumentViaNoir / renewDocumentViaNoir /
+/// revokeDocumentViaSigner) - previously zero coverage. HolderStateKeeper.t.sol exercises
+/// HolderStateKeeper directly (bypassing signature/proof verification entirely, with the state
+/// keeper's registration gate opened to a plain EOA); this file drives the SAME state keeper
+/// through the real registration contract, so the signature-recovery, replay-protection, and
+/// Noir-proof-gating logic actually gets exercised, not just the state-transition logic.
+contract HolderRegistrationTest is Test {
+    bytes32 internal constant ICAO = 0x2c50ce3aa92bc3dd0351a89970b02630415547ea83c487befbc8b1795ea90c45;
+    uint256 internal constant TREE = 80;
+
+    address internal OWNER = address(0xA11CE);
+
+    uint256 internal SIGNER_PK = 0xBEEF01;
+    address internal SIGNER;
+
+    uint256 internal OTHER_PK = 0xBEEF02; // a real key, but NOT registered as a signer
+    address internal OTHER;
+
+    HolderRegistration internal reg;
+    HolderStateKeeperMock internal sk;
+    NoirVerifierMock internal verifier;
+
+    function setUp() public {
+        SIGNER = vm.addr(SIGNER_PK);
+        OTHER = vm.addr(OTHER_PK);
+
+        PoseidonSMTMock smt = PoseidonSMTMock(_proxy(address(new PoseidonSMTMock())));
+        PoseidonSMTMock certs = PoseidonSMTMock(_proxy(address(new PoseidonSMTMock())));
+        sk = HolderStateKeeperMock(_proxy(address(new HolderStateKeeperMock())));
+
+        TestEvidenceRegistry evidenceRegistry = new TestEvidenceRegistry();
+        smt.__PoseidonSMT_init(address(sk), address(evidenceRegistry), TREE);
+        certs.__PoseidonSMT_init(address(sk), address(evidenceRegistry), TREE);
+        sk.__StateKeeper_init(OWNER, address(smt), address(certs), ICAO);
+
+        reg = HolderRegistration(_proxy(address(new HolderRegistration())));
+        address[] memory signers = new address[](1);
+        signers[0] = SIGNER;
+        reg.__RegistrationSimple_init(address(sk), signers);
+
+        string[] memory keys = new string[](1);
+        keys[0] = "holder-reg";
+        address[] memory vals = new address[](1);
+        vals[0] = address(reg);
+        sk.mockAddRegistrations(keys, vals);
+
+        verifier = new NoirVerifierMock();
+    }
+
+    function _proxy(address impl) internal returns (address) {
+        return address(new UnsafeTestProxy(impl));
+    }
+
+    function _passport(
+        uint256 dgCommit,
+        bytes32 dg1Hash,
+        bytes32 publicKey,
+        bytes32 passportHash
+    ) internal view returns (RegistrationSimple.Passport memory) {
+        return
+            RegistrationSimple.Passport({
+                dgCommit: dgCommit,
+                dg1Hash: dg1Hash,
+                publicKey: publicKey,
+                passportHash: passportHash,
+                verifier: address(verifier)
+            });
+    }
+
+    function _signedData(RegistrationSimple.Passport memory p) internal view returns (bytes32) {
+        return
+            keccak256(
+                abi.encodePacked(
+                    reg.REGISTRATION_SIMPLE_PREFIX(),
+                    address(reg),
+                    p.passportHash,
+                    p.dgCommit,
+                    p.publicKey,
+                    p.verifier
+                )
+            );
+    }
+
+    function _sign(uint256 pk, RegistrationSimple.Passport memory p) internal view returns (bytes memory) {
+        bytes32 digest = MessageHashUtils.toEthSignedMessageHash(_signedData(p));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, digest);
+        return abi.encodePacked(r, s, v);
+    }
+
+    // Revocation's domain-separated message (HolderRegistration._buildRevokeSignedData) - MUST
+    // differ from _signedData's registration message, or a deterministic signer would produce the
+    // same signature for both, which useSignature's anti-replay check would then reject as
+    // already-used (see HolderRegistration.revokeDocumentViaSigner's own doc comment).
+    function _revokeSignedData(RegistrationSimple.Passport memory p) internal view returns (bytes32) {
+        return
+            keccak256(
+                abi.encodePacked(
+                    "HolderRegistration revoke prefix",
+                    address(reg),
+                    p.passportHash,
+                    p.dgCommit,
+                    p.publicKey,
+                    p.verifier
+                )
+            );
+    }
+
+    function _signRevoke(uint256 pk, RegistrationSimple.Passport memory p) internal view returns (bytes memory) {
+        bytes32 digest = MessageHashUtils.toEthSignedMessageHash(_revokeSignedData(p));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, digest);
+        return abi.encodePacked(r, s, v);
+    }
+
+    // ── registerDocumentViaNoir ────────────────────────────────────────────────────────────
+
+    function test_registerDocumentViaNoir_succeeds() public {
+        RegistrationSimple.Passport memory p = _passport(111, bytes32(uint256(1)), bytes32(uint256(0xA0A0)), bytes32(0));
+        bytes memory sig = _sign(SIGNER_PK, p);
+
+        reg.registerDocumentViaNoir(uint256(uint160(address(0xF00D))), p, sk.DOC_PASSPORT(), 0, sig, "");
+
+        HolderStateKeeper.DocumentBond memory bond = sk.getDocument(p.publicKey);
+        assertEq(bond.holderRoot, bytes32(uint256(uint160(address(0xF00D)))));
+        assertEq(bond.docType, sk.DOC_PASSPORT());
+        assertEq(uint8(bond.status), 1); // Current
+    }
+
+    function test_registerDocumentViaNoir_revertsOnZeroHolderRoot() public {
+        RegistrationSimple.Passport memory p = _passport(111, bytes32(uint256(1)), bytes32(uint256(0xA0A0)), bytes32(0));
+        bytes memory sig = _sign(SIGNER_PK, p);
+        // sk.DOC_PASSPORT() is itself an external call - reading it inline as an argument below
+        // would consume the single-shot vm.expectRevert before registerDocumentViaNoir executes.
+        bytes32 docPassport = sk.DOC_PASSPORT();
+
+        vm.expectRevert("HolderRegistration: holder can not be zero");
+        reg.registerDocumentViaNoir(0, p, docPassport, 0, sig, "");
+    }
+
+    function test_registerDocumentViaNoir_revertsOnWrongSigner() public {
+        RegistrationSimple.Passport memory p = _passport(111, bytes32(uint256(1)), bytes32(uint256(0xA0A0)), bytes32(0));
+        bytes memory sig = _sign(OTHER_PK, p); // OTHER is not a registered signer
+        bytes32 docPassport = sk.DOC_PASSPORT();
+
+        vm.expectRevert("HolderRegistration: caller is not a signer");
+        reg.registerDocumentViaNoir(1, p, docPassport, 0, sig, "");
+    }
+
+    function test_registerDocumentViaNoir_revertsOnReplayedSignature() public {
+        RegistrationSimple.Passport memory p1 = _passport(111, bytes32(uint256(1)), bytes32(uint256(0xA0A0)), bytes32(0));
+        bytes memory sig = _sign(SIGNER_PK, p1);
+        bytes32 docPassport = sk.DOC_PASSPORT();
+        reg.registerDocumentViaNoir(1, p1, docPassport, 0, sig, "");
+
+        // Same exact (passport, signature) replayed for a second registration attempt.
+        RegistrationSimple.Passport memory p2 = _passport(222, bytes32(uint256(2)), bytes32(uint256(0xB0B0)), bytes32(0));
+        vm.expectRevert("StateKeeper: signature used");
+        reg.registerDocumentViaNoir(1, p1, docPassport, 0, sig, "");
+        // sanity: a genuinely different passport+signature still works fine afterwards
+        reg.registerDocumentViaNoir(1, p2, docPassport, 0, _sign(SIGNER_PK, p2), "");
+    }
+
+    function test_registerDocumentViaNoir_revertsOnInvalidZkProof() public {
+        verifier.setShouldVerify(false);
+        RegistrationSimple.Passport memory p = _passport(111, bytes32(uint256(1)), bytes32(uint256(0xA0A0)), bytes32(0));
+        bytes memory sig = _sign(SIGNER_PK, p);
+        bytes32 docPassport = sk.DOC_PASSPORT();
+
+        vm.expectRevert("RegistrationSimple: invalid noir zk proof");
+        reg.registerDocumentViaNoir(1, p, docPassport, 0, sig, "");
+    }
+
+    function test_multiCitizenship_twoDocumentsOneHolder() public {
+        uint256 holderRoot = uint256(uint160(address(0xF00D)));
+        RegistrationSimple.Passport memory p1 = _passport(111, bytes32(uint256(1)), bytes32(uint256(0xA0A0)), bytes32(0));
+        RegistrationSimple.Passport memory p2 = _passport(222, bytes32(uint256(2)), bytes32(uint256(0xB0B0)), bytes32(0));
+
+        reg.registerDocumentViaNoir(holderRoot, p1, sk.DOC_PASSPORT(), 0, _sign(SIGNER_PK, p1), "");
+        reg.registerDocumentViaNoir(holderRoot, p2, sk.DOC_NATIONAL_ID(), 0, _sign(SIGNER_PK, p2), "");
+
+        assertEq(sk.getActiveDocumentCount(bytes32(holderRoot)), 2);
+    }
+
+    // ── renewDocumentViaNoir ────────────────────────────────────────────────────────────────
+
+    function test_renewDocumentViaNoir_succeeds() public {
+        uint256 holderRoot = uint256(uint160(address(0xF00D)));
+        RegistrationSimple.Passport memory oldP = _passport(111, bytes32(uint256(1)), bytes32(uint256(0xA0A0)), bytes32(0));
+        reg.registerDocumentViaNoir(holderRoot, oldP, sk.DOC_PASSPORT(), 0, _sign(SIGNER_PK, oldP), "");
+
+        RegistrationSimple.Passport memory newP = _passport(222, bytes32(uint256(2)), bytes32(uint256(0xC0C0)), bytes32(0));
+        reg.renewDocumentViaNoir(oldP.publicKey, holderRoot, newP, sk.DOC_PASSPORT(), 0, _sign(SIGNER_PK, newP), "");
+
+        assertEq(uint8(sk.getDocument(oldP.publicKey).status), 2); // Superseded
+        HolderStateKeeper.DocumentBond memory freshBond = sk.getDocument(newP.publicKey);
+        assertEq(uint8(freshBond.status), 1); // Current
+        assertEq(freshBond.holderRoot, bytes32(holderRoot), "continuity: same holder root");
+    }
+
+    function test_renewDocumentViaNoir_revertsOnZeroHolderRoot() public {
+        bytes32 docPassport = sk.DOC_PASSPORT();
+        RegistrationSimple.Passport memory oldP = _passport(111, bytes32(uint256(1)), bytes32(uint256(0xA0A0)), bytes32(0));
+        reg.registerDocumentViaNoir(1, oldP, docPassport, 0, _sign(SIGNER_PK, oldP), "");
+
+        RegistrationSimple.Passport memory newP = _passport(222, bytes32(uint256(2)), bytes32(uint256(0xC0C0)), bytes32(0));
+        // _sign() itself calls reg.REGISTRATION_SIMPLE_PREFIX() internally - another external
+        // call that would consume the single-shot expectRevert if evaluated inline as an argument.
+        bytes memory newSig = _sign(SIGNER_PK, newP);
+        vm.expectRevert("HolderRegistration: holder can not be zero");
+        reg.renewDocumentViaNoir(oldP.publicKey, 0, newP, docPassport, 0, newSig, "");
+    }
+
+    // ── revokeDocumentViaSigner ─────────────────────────────────────────────────────────────
+
+    function test_revokeDocumentViaSigner_succeeds() public {
+        uint256 holderRoot = uint256(uint160(address(0xF00D)));
+        RegistrationSimple.Passport memory p = _passport(111, bytes32(uint256(1)), bytes32(uint256(0xA0A0)), bytes32(0));
+        reg.registerDocumentViaNoir(holderRoot, p, sk.DOC_PASSPORT(), 0, _sign(SIGNER_PK, p), "");
+
+        // revokeDocumentViaSigner needs no ZK proof - just a signer signature over the
+        // REVOKE-domain-separated message (_revokeSignedData), distinct from registration's, so
+        // this doesn't collide with the signature already consumed at registration time.
+        bytes memory revokeSig = _signRevoke(SIGNER_PK, p);
+        reg.revokeDocumentViaSigner(p, revokeSig);
+
+        assertEq(uint8(sk.getDocument(p.publicKey).status), 3); // Revoked
+        assertEq(sk.getActiveDocumentCount(bytes32(holderRoot)), 0);
+    }
+
+    function test_revokeDocumentViaSigner_revertsOnWrongSigner() public {
+        uint256 holderRoot = uint256(uint160(address(0xF00D)));
+        RegistrationSimple.Passport memory p = _passport(111, bytes32(uint256(1)), bytes32(uint256(0xA0A0)), bytes32(0));
+        reg.registerDocumentViaNoir(holderRoot, p, sk.DOC_PASSPORT(), 0, _sign(SIGNER_PK, p), "");
+
+        vm.expectRevert("HolderRegistration: caller is not a signer");
+        reg.revokeDocumentViaSigner(p, _signRevoke(OTHER_PK, p));
+    }
+}
+
+/// Minimal, real evidence registry (same pattern as HolderStateKeeper.t.sol's) - keccak-isolated
+/// per-(sender,key) dedup, sidesteps the real Poseidon-isolated registry's Forge auto-linker
+/// issue. Contracts UNDER TEST are unmodified.
+contract TestEvidenceRegistry {
+    mapping(bytes32 => bytes32) public statements;
+
+    error KeyAlreadyExists(bytes32 key);
+
+    function addStatement(bytes32 key_, bytes32 value_) external {
+        bytes32 isolated = keccak256(abi.encodePacked(msg.sender, key_));
+        if (statements[isolated] != bytes32(0)) revert KeyAlreadyExists(key_);
+        statements[isolated] = value_;
+    }
+}

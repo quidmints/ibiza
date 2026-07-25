@@ -5,7 +5,7 @@ pragma solidity ^0.8.21;
  * @notice Cartesian Merkle Tree Module
  *
  * A magnificent ZK-friendly data structure based on a Binary Search Tree + Heap + Merkle Tree. Short names: CMT, Treaple.
- * Possesses deterministic and idemponent properties. Can be used as a substitute for a Sparse Merkle Tree (SMT).
+ * Possesses deterministic and idempotent properties. Can be used as a substitute for a Sparse Merkle Tree (SMT).
  *
  * Gas usage for adding and removing 1,000 elements to a CMT with the keccak256 and poseidon hash functions is detailed below:
  *
@@ -31,6 +31,8 @@ pragma solidity ^0.8.21;
  * uintTreaple.getRoot();
  *
  * CartesianMerkleTree.Proof memory proof = uintTreaple.getProof(100, 0);
+ *
+ * uintTreaple.verifyProof(proof);
  *
  * uintTreaple.getNodeByKey(100);
  *
@@ -140,6 +142,21 @@ library CartesianMerkleTree {
         uint32 desiredProofSize_
     ) internal view returns (Proof memory) {
         return _proof(treaple._treaple, bytes32(key_), desiredProofSize_);
+    }
+
+    /**
+     * @notice The function to verify the proof for inclusion or exclusion of a node in the CMT.
+     * Complexity is O(log(n)), where n is the max depth of the treaple.
+     *
+     * @param treaple self.
+     * @param proof_ The CMT proof struct.
+     * @return True if the proof is valid, false otherwise.
+     */
+    function verifyProof(
+        UintCMT storage treaple,
+        Proof memory proof_
+    ) internal view returns (bool) {
+        return _verifyProof(treaple._treaple, proof_);
     }
 
     /**
@@ -307,6 +324,36 @@ library CartesianMerkleTree {
     }
 
     /**
+     * @notice The function to verify the proof for inclusion or exclusion of a node in the CMT.
+     * Complexity is O(log(n)), where n is the max depth of the treaple.
+     *
+     * @param treaple self.
+     * @param proof_ The CMT proof struct.
+     * @return True if the proof is valid, false otherwise.
+     */
+    function verifyProof(
+        Bytes32CMT storage treaple,
+        Proof memory proof_
+    ) internal view returns (bool) {
+        return _verifyProof(treaple._treaple, proof_);
+    }
+
+    /**
+     * @notice The function to process the proof for inclusion or exclusion of a node in the CMT.
+     * Complexity is O(log(n)), where n is the max depth of the treaple.
+     *
+     * @param hash3_ The hash function that accepts three arguments.
+     * @param proof_ The CMT proof struct.
+     * @return The calculated root hash from the proof.
+     */
+    function processProof(
+        function(bytes32, bytes32, bytes32) view returns (bytes32) hash3_,
+        Proof memory proof_
+    ) internal view returns (bytes32) {
+        return _processProof(hash3_, proof_);
+    }
+
+    /**
      * @notice The function to get the root of the Cartesian Merkle Tree.
      * Complexity is O(1).
      *
@@ -468,6 +515,21 @@ library CartesianMerkleTree {
         uint32 desiredProofSize_
     ) internal view returns (Proof memory) {
         return _proof(treaple._treaple, _fromAddressToBytes32(key_), desiredProofSize_);
+    }
+
+    /**
+     * @notice The function to verify the proof for inclusion or exclusion of a node in the CMT.
+     * Complexity is O(log(n)), where n is the max depth of the treaple.
+     *
+     * @param treaple self.
+     * @param proof_ The CMT proof struct.
+     * @return True if the proof is valid, false otherwise.
+     */
+    function verifyProof(
+        AddressCMT storage treaple,
+        Proof memory proof_
+    ) internal view returns (bool) {
+        return _verifyProof(treaple._treaple, proof_);
     }
 
     /**
@@ -718,7 +780,7 @@ library CartesianMerkleTree {
                     ? rootNode.childRight
                     : rootNode.childLeft;
 
-                treaple.deletedNodesCount++;
+                ++treaple.deletedNodesCount;
                 delete treaple.nodes[nodeIdToRemove_];
             } else if (leftRootChildNode.priority < rightRootChildNode.priority) {
                 rootNodeId_ = _leftRotate(treaple, rootNodeId_);
@@ -871,6 +933,82 @@ library CartesianMerkleTree {
         return proof_;
     }
 
+    function _verifyProof(CMT storage treaple, Proof memory proof_) private view returns (bool) {
+        // invalid exclusion proof
+        if (
+            !proof_.existence &&
+            (proof_.nonExistenceKey == ZERO_HASH || proof_.nonExistenceKey == proof_.key)
+        ) {
+            return false;
+        }
+
+        if (proof_.siblingsLength < 2 || proof_.siblings.length < 2) {
+            return false;
+        }
+
+        function(bytes32, bytes32, bytes32) view returns (bytes32) hash3_ = treaple
+            .isCustomHasherSet
+            ? treaple.hash3
+            : _hash3;
+
+        return _processProof(hash3_, proof_) == proof_.root;
+    }
+
+    function _processProof(
+        function(bytes32, bytes32, bytes32) view returns (bytes32) hash3_,
+        Proof memory proof_
+    ) private view returns (bytes32) {
+        bool directionBit_ = _extractDirectionBit(proof_.directionBits, 0);
+
+        bytes32 leftHash_ = proof_.siblings[proof_.siblingsLength - 2];
+        bytes32 rightHash_ = proof_.siblings[proof_.siblingsLength - 1];
+
+        if (!proof_.existence) {
+            if (proof_.key < proof_.nonExistenceKey && leftHash_ != ZERO_HASH) {
+                return ZERO_HASH;
+            } else if (proof_.key > proof_.nonExistenceKey && rightHash_ != ZERO_HASH) {
+                return ZERO_HASH;
+            }
+        }
+
+        if (directionBit_) {
+            (leftHash_, rightHash_) = (rightHash_, leftHash_);
+        }
+
+        bytes32 computedHash_ = hash3_(
+            proof_.existence ? proof_.key : proof_.nonExistenceKey,
+            leftHash_,
+            rightHash_
+        );
+
+        for (uint256 i = 2; i < proof_.siblingsLength; i += 2) {
+            bytes32 parentKey_ = proof_.siblings[proof_.siblingsLength - i - 2];
+
+            if (!proof_.existence) {
+                if (
+                    proof_.key == parentKey_ ||
+                    (proof_.key < parentKey_ && proof_.nonExistenceKey >= parentKey_) ||
+                    (proof_.key > parentKey_ && proof_.nonExistenceKey <= parentKey_)
+                ) {
+                    return ZERO_HASH;
+                }
+            }
+
+            directionBit_ = _extractDirectionBit(proof_.directionBits, i);
+
+            leftHash_ = computedHash_;
+            rightHash_ = proof_.siblings[proof_.siblingsLength - i - 1];
+
+            if (directionBit_) {
+                (leftHash_, rightHash_) = (rightHash_, leftHash_);
+            }
+
+            computedHash_ = hash3_(parentKey_, leftHash_, rightHash_);
+        }
+
+        return computedHash_;
+    }
+
     function _newNode(CMT storage treaple, bytes32 key_) private returns (uint256) {
         uint64 nodeId_ = ++treaple.nodesCount;
 
@@ -912,6 +1050,17 @@ library CartesianMerkleTree {
         }
 
         return directionBits_;
+    }
+
+    /**
+     * @dev Extracts the direction bit from the direction mask.
+     * @return True if the node is on the right side of the parent, false if it's on the left.
+     */
+    function _extractDirectionBit(
+        uint256 directionBits_,
+        uint256 currentSiblingsIndex_
+    ) private pure returns (bool) {
+        return (directionBits_ & (1 << (currentSiblingsIndex_ / 2))) != 0;
     }
 
     function _hashNodes(CMT storage treaple, uint256 nodeId_) private view returns (bytes32) {

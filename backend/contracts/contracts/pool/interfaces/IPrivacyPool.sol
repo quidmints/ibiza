@@ -93,6 +93,11 @@ interface IPrivacyPool is IState {
   error InvalidDepositValue();
 
   /**
+   * @notice Thrown when a precommitment hash is not a valid BN254/SNARK scalar field element
+   */
+  error InvalidPrecommitmentHash();
+
+  /**
    * @notice Thrown when providing an invalid scope for this pool
    */
   error ScopeMismatch();

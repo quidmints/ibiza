@@ -2,3 +2,5 @@
 // One audited hash (circomlib-Poseidon via noir-lang/poseidon) shared with rarime + the wallet.
 pub mod commitment;
 pub mod lean_imt;
+pub mod identity_asp;
+pub mod title_holder;

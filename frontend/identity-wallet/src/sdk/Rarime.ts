@@ -39,6 +39,10 @@ export interface RarimeContractsConfiguration {
   stateKeeperAddress: string;
   registerSimpleContractAddress: string;
   poseidonSmtAddress: string;
+  /** OUR HolderRegistration contract — the holder-tree registration entrypoint
+   *  (registerDocumentViaNoir/renewDocumentViaNoir/revokeDocumentViaSigner), distinct from
+   *  upstream's registerSimpleContractAddress (whose addBond forbids a 2nd document per key). */
+  holderRegistrationAddress: string;
 }
 
 export interface RarimeConfiguration {
@@ -151,6 +155,76 @@ export class Rarime {
     const liteRegisterResponseParsed = await liteRegisterResponse.json();
 
     return liteRegisterResponseParsed.data.id;
+  }
+
+  /**
+   * Generate the Noir register proof + get the backend signer's signature over it, WITHOUT
+   * submitting to upstream's RegistrationSimple. Reuses the exact same on-device proof
+   * generation and SOD-verification backend call as registerIdentity — HolderRegistration
+   * deliberately reuses RegistrationSimple's signer set + signed-data format (see its own
+   * docstring), so this material is valid for OUR registerDocumentViaNoir/renewDocumentViaNoir
+   * too, not just upstream's registerSimpleViaNoir. Field mapping verified directly against
+   * buildLiteRegisterCalldata below: dgCommit/dg1Hash come from the proof's own public signals,
+   * publicKey/verifier/signature come from the backend's SOD-verification response.
+   */
+  public async generateRegistrationMaterial(passport: RarimePassport): Promise<{
+    passport: {
+      dgCommit: bigint;
+      dg1Hash: string;
+      publicKey: string;
+      passportHash: string;
+      verifier: string;
+    };
+    signature: string;
+    zkPoints: string;
+  }> {
+    const hashAlgoOID = passport.extractDGHashAlgo();
+    const hashAlgo = HashAlgorithm.fromOID(hashAlgoOID);
+    const hashLength = hashAlgo.getByteLength();
+
+    const proof = await this.generateLiteRegisterProof(hashLength, passport);
+    const verifySodResponse = await this.verifySodRequest(passport, proof);
+    const verifySodResponseParsed = await verifySodResponse.json();
+
+    return {
+      passport: {
+        dgCommit: BigInt("0x" + proof.pub_signals[0]),
+        dg1Hash: "0x" + proof.pub_signals[1],
+        publicKey: verifySodResponseParsed.data.attributes.public_key,
+        passportHash: toPaddedHex32(passport.getPassportHash()),
+        verifier: verifySodResponseParsed.data.attributes.verifier,
+      },
+      signature: verifySodResponseParsed.data.attributes.signature,
+      zkPoints: "0x" + proof.proof,
+    };
+  }
+
+  /**
+   * Submit arbitrary calldata to an arbitrary destination via the SAME registration-relayer
+   * endpoint sendRegisterLiteTransaction uses — that endpoint is already generic (destination is
+   * a request body field, not hardcoded), so this generalizes it instead of duplicating the HTTP
+   * call. Used to submit to OUR HolderRegistration contract instead of upstream's
+   * RegistrationSimple.
+   */
+  public async submitViaRelayer(txCallData: string, destination: string): Promise<string> {
+    const response = await fetch(
+      this.config.apiConfiguration.rarimeApiUrl +
+        "/integrations/registration-relayer/v1/register",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: { tx_data: txCallData, no_send: false, destination },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`HTTP error ${response.status}`);
+    }
+
+    const parsed = await response.json();
+    return parsed.data.id;
   }
 
   public async getSMTProof(

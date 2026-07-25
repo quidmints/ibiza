@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {IEntrypoint} from 'interfaces/IEntrypoint.sol';
 
 import {IVerifier} from 'interfaces/IVerifier.sol';
+import {INoirVerifier} from '../../interfaces/verifiers/INoirVerifier.sol';
 
 /**
  * @title IState
@@ -97,10 +98,12 @@ interface IState {
   function ENTRYPOINT() external view returns (IEntrypoint _entrypoint);
 
   /**
-   * @notice Returns the configured Verifier contract for withdrawals
+   * @notice Returns the configured Noir/Honk verifier contract for withdrawals - identity-based
+   * ASP withdrawals (withdraw_identity circuit) are Noir-proved, not Groth16 (RAGEQUIT_VERIFIER
+   * stays Groth16/IVerifier - ragequit has no ASP-membership check to port).
    * @return _verifier The Verifier contract
    */
-  function WITHDRAWAL_VERIFIER() external view returns (IVerifier _verifier);
+  function WITHDRAWAL_VERIFIER() external view returns (INoirVerifier _verifier);
 
   /**
    * @notice Returns the configured Verifier contract for ragequits

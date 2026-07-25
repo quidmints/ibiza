@@ -92,13 +92,23 @@ contract HolderRegistration is RegistrationSimple {
     /**
      * @notice Revoke a document the holder controls. Gated by a valid backend signer signature
      *         over the document (same trust assumption as registration).
+     *
+     * @dev Signs a REVOKE-specific message (`_buildRevokeSignedData`), deliberately NOT
+     *      `_buildSignedData` (registration's message format). Reusing registration's exact
+     *      message here would mean asking the backend signer to sign the SAME digest twice for
+     *      the same document (once to register, once to revoke) — with a deterministic signer
+     *      (RFC 6979, the common case), that produces byte-identical signature bytes, which
+     *      `stateKeeper.useSignature`'s anti-replay check would then reject as already-used
+     *      (consumed at registration time), making revocation of any normally-registered
+     *      document permanently impossible. Domain-separating the message avoids depending on
+     *      signer randomness for correctness.
      */
     function revokeDocumentViaSigner(
         Passport memory passport_,
         bytes memory signature_
     ) external virtual {
         address signer_ = ECDSA.recover(
-            MessageHashUtils.toEthSignedMessageHash(_buildSignedData(passport_)),
+            MessageHashUtils.toEthSignedMessageHash(_buildRevokeSignedData(passport_)),
             signature_
         );
         require(_isSigner(signer_), "HolderRegistration: caller is not a signer");
@@ -106,6 +116,25 @@ contract HolderRegistration is RegistrationSimple {
         stateKeeper.useSignature(keccak256(signature_));
 
         _holderStateKeeper().revokeDocument(passport_.publicKey);
+    }
+
+    /**
+     * @dev Revocation's signed-data format — same fields as `_buildSignedData`, distinguished by
+     *      a different prefix, so a registration signature and a revocation signature for the
+     *      SAME document are never the same message (see `revokeDocumentViaSigner`'s doc comment).
+     */
+    function _buildRevokeSignedData(Passport memory passport_) internal view returns (bytes32) {
+        return
+            keccak256(
+                abi.encodePacked(
+                    "HolderRegistration revoke prefix",
+                    address(this),
+                    passport_.passportHash,
+                    passport_.dgCommit,
+                    passport_.publicKey,
+                    passport_.verifier
+                )
+            );
     }
 
     /**

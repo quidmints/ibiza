@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts (last updated v5.2.0) (finance/VestingWallet.sol)
+// OpenZeppelin Contracts (last updated v5.6.0) (finance/VestingWallet.sol)
+
 pragma solidity ^0.8.20;
 
 import {IERC20} from "../token/ERC20/IERC20.sol";
@@ -16,7 +17,7 @@ import {Ownable} from "../access/Ownable.sol";
  * Consequently, if the vesting has already started, any amount of tokens sent to this contract will (at least partly)
  * be immediately releasable.
  *
- * By setting the duration to 0, one can configure this contract to behave like an asset timelock that hold tokens for
+ * By setting the duration to 0, one can configure this contract to behave like an asset timelock that holds tokens for
  * a beneficiary until a specified time.
  *
  * NOTE: Since the wallet is {Ownable}, and ownership can be transferred, it is possible to sell unvested tokens.
@@ -106,7 +107,7 @@ contract VestingWallet is Context, Ownable {
     }
 
     /**
-     * @dev Release the native token (ether) that have already vested.
+     * @dev Release the native tokens (ether) that have already vested.
      *
      * Emits a {EtherReleased} event.
      */

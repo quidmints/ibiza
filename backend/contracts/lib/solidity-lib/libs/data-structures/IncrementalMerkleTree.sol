@@ -111,6 +111,27 @@ library IncrementalMerkleTree {
     }
 
     /**
+     * @notice The function to verify a proof of a leaf's existence in the uint256 tree.
+     * Complexity is O(log(n)), where n is the number of elements in the tree.
+     *
+     * @param tree self.
+     * @param siblings_ The siblings of the leaf.
+     * @param directionBits_ The direction bits of the leaf.
+     * @param leaf_ The leaf.
+     * @param root_ The root hash of the tree to verify against.
+     * @return True if the proof is valid, false otherwise.
+     */
+    function verifyProof(
+        UintIMT storage tree,
+        bytes32[] memory siblings_,
+        uint256 directionBits_,
+        bytes32 leaf_,
+        bytes32 root_
+    ) internal view returns (bool) {
+        return _verifyProof(tree._tree, siblings_, directionBits_, leaf_, root_);
+    }
+
+    /**
      * @notice The function to return the height of the uint256 tree. Complexity is O(1).
      * @param tree self.
      * @return The height of the Merkle tree.
@@ -191,6 +212,46 @@ library IncrementalMerkleTree {
     }
 
     /**
+     * @notice The function to verify a proof of a leaf's existence in the bytes32 tree.
+     * Complexity is O(log(n)), where n is the number of elements in the tree.
+     *
+     * @param tree self.
+     * @param siblings_ The siblings of the leaf.
+     * @param directionBits_ The direction bits of the leaf.
+     * @param leaf_ The leaf.
+     * @param root_ The root hash of the tree to verify against.
+     * @return True if the proof is valid, false otherwise.
+     */
+    function verifyProof(
+        Bytes32IMT storage tree,
+        bytes32[] memory siblings_,
+        uint256 directionBits_,
+        bytes32 leaf_,
+        bytes32 root_
+    ) internal view returns (bool) {
+        return _verifyProof(tree._tree, siblings_, directionBits_, leaf_, root_);
+    }
+
+    /**
+     * @notice The function to process the proof for inclusion or exclusion of a leaf in the tree.
+     * Complexity is O(log(n)), where n is the number of elements in the tree.
+     *
+     * @param hash2_ The hash function that accepts two arguments.
+     * @param siblings_ The siblings of the leaf.
+     * @param directionBits_ The direction bits of the leaf.
+     * @param leaf_ The leaf.
+     * @return The calculated root hash from the proof.
+     */
+    function processProof(
+        function(bytes32, bytes32) view returns (bytes32) hash2_,
+        bytes32[] memory siblings_,
+        uint256 directionBits_,
+        bytes32 leaf_
+    ) internal view returns (bytes32) {
+        return _processProof(hash2_, siblings_, directionBits_, leaf_);
+    }
+
+    /**
      * @notice The function to return the height of the bytes32 tree. Complexity is O(1).
      */
     function height(Bytes32IMT storage tree) internal view returns (uint256) {
@@ -264,6 +325,27 @@ library IncrementalMerkleTree {
      */
     function root(AddressIMT storage tree) internal view returns (bytes32) {
         return _root(tree._tree);
+    }
+
+    /**
+     * @notice The function to verify a proof of a leaf's existence in the address tree.
+     * Complexity is O(log(n)), where n is the number of elements in the tree.
+     *
+     * @param tree self.
+     * @param siblings_ The siblings of the leaf.
+     * @param directionBits_ The direction bits of the leaf.
+     * @param leaf_ The leaf.
+     * @param root_ The root hash of the tree to verify against.
+     * @return True if the proof is valid, false otherwise.
+     */
+    function verifyProof(
+        AddressIMT storage tree,
+        bytes32[] memory siblings_,
+        uint256 directionBits_,
+        bytes32 leaf_,
+        bytes32 root_
+    ) internal view returns (bool) {
+        return _verifyProof(tree._tree, siblings_, directionBits_, leaf_, root_);
     }
 
     /**
@@ -399,6 +481,39 @@ library IncrementalMerkleTree {
         }
 
         return root_;
+    }
+
+    function _verifyProof(
+        IMT storage tree,
+        bytes32[] memory siblings_,
+        uint256 directionBits,
+        bytes32 leaf_,
+        bytes32 root_
+    ) private view returns (bool) {
+        function(bytes32, bytes32) view returns (bytes32) hash2_ = tree.isCustomHasherSet
+            ? tree.hash2
+            : _hash2;
+
+        return _processProof(hash2_, siblings_, directionBits, leaf_) == root_;
+    }
+
+    function _processProof(
+        function(bytes32, bytes32) view returns (bytes32) hash2_,
+        bytes32[] memory siblings_,
+        uint256 directionBits,
+        bytes32 leaf_
+    ) private view returns (bytes32) {
+        bytes32 computedHash_ = leaf_;
+
+        for (uint256 i = 0; i < siblings_.length; ++i) {
+            if ((directionBits >> i) & 1 != 0) {
+                computedHash_ = hash2_(siblings_[i], computedHash_);
+            } else {
+                computedHash_ = hash2_(computedHash_, siblings_[i]);
+            }
+        }
+
+        return computedHash_;
     }
 
     function _height(IMT storage tree) private view returns (uint256) {

@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import {Directory, File, Paths} from 'expo-file-system';
 import {default as NoirModule} from './src/NoirModule';
 
 export type NoirZKProof = {
@@ -7,7 +7,11 @@ export type NoirZKProof = {
 };
 
 export class NoirCircuitParams {
-    public static readonly TrustedSetupFileName = `${FileSystem.documentDirectory}/noir/ultraPlonkTrustedSetup.dat`;
+    // expo-file-system 57's File/Directory API replaced the old string-path
+    // (documentDirectory/getInfoAsync/createDownloadResumable) API entirely - `exists`/`create`
+    // are synchronous properties/methods on File/Directory instances, not async calls.
+    static readonly NoirDir = new Directory(Paths.document, 'noir');
+    static readonly TrustedSetupFile = new File(NoirCircuitParams.NoirDir, 'ultraPlonkTrustedSetup.dat');
 
     constructor(
         public name: string,
@@ -27,49 +31,28 @@ export class NoirCircuitParams {
     }
 
     static async getTrustedSetupUri() {
-        const fileInfo = await FileSystem.getInfoAsync(
-            NoirCircuitParams.TrustedSetupFileName,
-        );
-
-        if (!fileInfo.exists) {
+        if (!NoirCircuitParams.TrustedSetupFile.exists) {
             return null;
         }
 
-        return fileInfo.uri;
+        return NoirCircuitParams.TrustedSetupFile.uri;
     }
 
     static async downloadTrustedSetup(opts?: {
-        onDownloadingProgress?: (p: FileSystem.DownloadProgressData) => void;
+        onDownloadingProgress?: (p: {bytesWritten: number; totalBytes: number}) => void;
     }) {
-        const dir = `${FileSystem.documentDirectory}noir`;
-
-        // Ensure that the folder exists
-        const dirInfo = await FileSystem.getInfoAsync(dir);
-        if (!dirInfo.exists) {
-            await FileSystem.makeDirectoryAsync(dir, {intermediates: true});
+        if (!NoirCircuitParams.NoirDir.exists) {
+            NoirCircuitParams.NoirDir.create({intermediates: true});
         }
 
-        // Preparing path
-        const fileUri = `${dir}/ultraPlonkTrustedSetup.dat`;
         const url =
             'https://storage.googleapis.com/rarimo-store/trusted-setups/ultraPlonkTrustedSetup.dat';
 
-        // Continue downloading
-        const downloadResumable = FileSystem.createDownloadResumable(
-            url,
-            fileUri,
-            {},
-            (progress) => {
-                // DEBUG DOWNLOADING
-                // console.log(
-                //   `Progress: ${((progress.totalBytesWritten / progress.totalBytesExpectedToWrite) * 100).toFixed(1)}%`,
-                // )
-                opts?.onDownloadingProgress?.(progress);
-            },
-        );
-
         if (!(await NoirCircuitParams.getTrustedSetupUri())) {
-            await downloadResumable.downloadAsync();
+            const task = File.createDownloadTask(url, NoirCircuitParams.TrustedSetupFile, {
+                onProgress: opts?.onDownloadingProgress,
+            });
+            await task.downloadAsync();
         }
 
         const uri = await NoirCircuitParams.getTrustedSetupUri();
@@ -100,36 +83,27 @@ export class NoirCircuitParams {
         })
     }
 
-    static async getByteCodeUri(filename: string) {
-        const fileInfo = await FileSystem.getInfoAsync(filename);
-
-        if (!fileInfo.exists) {
+    static async getByteCodeUri(file: File) {
+        if (!file.exists) {
             return null;
         }
 
-        return fileInfo.uri;
+        return file.uri;
     }
 
     async downloadByteCode(opts?: {
-        onDownloadingProgress?: (
-            downloadProgress: FileSystem.DownloadProgressData,
-        ) => void;
+        onDownloadingProgress?: (p: {bytesWritten: number; totalBytes: number}) => void;
     }): Promise<string> {
-        const fileName = `${FileSystem.documentDirectory}/noir/${this.name}-bytecode.json`;
-        const downloadResumable = FileSystem.createDownloadResumable(
-            this.byteCodeUri,
-            fileName,
-            {},
-            (downloadProgress) => {
-                opts?.onDownloadingProgress?.(downloadProgress);
-            },
-        );
+        const file = new File(NoirCircuitParams.NoirDir, `${this.name}-bytecode.json`);
 
-        if (!(await NoirCircuitParams.getByteCodeUri(fileName))) {
-            await downloadResumable.downloadAsync();
+        if (!(await NoirCircuitParams.getByteCodeUri(file))) {
+            const task = File.createDownloadTask(this.byteCodeUri, file, {
+                onProgress: opts?.onDownloadingProgress,
+            });
+            await task.downloadAsync();
         }
 
-        const uri = await NoirCircuitParams.getByteCodeUri(fileName);
+        const uri = await NoirCircuitParams.getByteCodeUri(file);
 
         if (!uri) {
             throw new Error(
@@ -137,7 +111,7 @@ export class NoirCircuitParams {
             );
         }
 
-        const byteCode = await FileSystem.readAsStringAsync(uri);
+        const byteCode = await file.text();
 
         if (!byteCode) {
             throw new Error(`Failed to read bytecode for noir circuit ${this.name}`);

@@ -22,6 +22,7 @@ import {InternalLeanIMT, LeanIMTData} from 'lean-imt/InternalLeanIMT.sol';
 import {IEntrypoint} from 'interfaces/IEntrypoint.sol';
 import {IState} from 'interfaces/IState.sol';
 import {IVerifier} from 'interfaces/IVerifier.sol';
+import {INoirVerifier} from '../interfaces/verifiers/INoirVerifier.sol';
 
 /**
  * @title State
@@ -43,7 +44,7 @@ abstract contract State is IState {
   /// @inheritdoc IState
   IEntrypoint public immutable ENTRYPOINT;
   /// @inheritdoc IState
-  IVerifier public immutable WITHDRAWAL_VERIFIER;
+  INoirVerifier public immutable WITHDRAWAL_VERIFIER;
   /// @inheritdoc IState
   IVerifier public immutable RAGEQUIT_VERIFIER;
 
@@ -89,7 +90,7 @@ abstract contract State is IState {
     SCOPE = uint256(keccak256(abi.encodePacked(address(this), block.chainid, _asset))) % Constants.SNARK_SCALAR_FIELD;
 
     ENTRYPOINT = IEntrypoint(_entrypoint);
-    WITHDRAWAL_VERIFIER = IVerifier(_withdrawalVerifier);
+    WITHDRAWAL_VERIFIER = INoirVerifier(_withdrawalVerifier);
     RAGEQUIT_VERIFIER = IVerifier(_ragequitVerifier);
   }
 

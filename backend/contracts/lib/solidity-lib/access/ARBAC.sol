@@ -6,7 +6,6 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {IRBAC} from "../interfaces/access/IRBAC.sol";
 
 import {TypeCaster} from "../libs/utils/TypeCaster.sol";
-import {SetHelper} from "../libs/arrays/SetHelper.sol";
 import {DynamicSet} from "../libs/data-structures/DynamicSet.sol";
 
 /**
@@ -32,7 +31,6 @@ import {DynamicSet} from "../libs/data-structures/DynamicSet.sol";
  */
 abstract contract ARBAC is IRBAC, Initializable {
     using DynamicSet for DynamicSet.StringSet;
-    using SetHelper for DynamicSet.StringSet;
     using TypeCaster for string;
 
     struct ARBACStorage {
@@ -112,7 +110,7 @@ abstract contract ARBAC is IRBAC, Initializable {
         ResourceWithPermissions[] memory permissionsToAdd_,
         bool allowed_
     ) public virtual override onlyPermission(RBAC_RESOURCE, CREATE_PERMISSION) {
-        for (uint256 i = 0; i < permissionsToAdd_.length; i++) {
+        for (uint256 i = 0; i < permissionsToAdd_.length; ++i) {
             _addPermissionsToRole(
                 role_,
                 permissionsToAdd_[i].resource,
@@ -133,7 +131,7 @@ abstract contract ARBAC is IRBAC, Initializable {
         ResourceWithPermissions[] memory permissionsToRemove_,
         bool allowed_
     ) public virtual override onlyPermission(RBAC_RESOURCE, DELETE_PERMISSION) {
-        for (uint256 i = 0; i < permissionsToRemove_.length; i++) {
+        for (uint256 i = 0; i < permissionsToRemove_.length; ++i) {
             _removePermissionsFromRole(
                 role_,
                 permissionsToRemove_[i].resource,
@@ -186,12 +184,12 @@ abstract contract ARBAC is IRBAC, Initializable {
         allowed_ = new ResourceWithPermissions[](_allowedResources.length());
         disallowed_ = new ResourceWithPermissions[](_disallowedResources.length());
 
-        for (uint256 i = 0; i < allowed_.length; i++) {
+        for (uint256 i = 0; i < allowed_.length; ++i) {
             allowed_[i].resource = _allowedResources.at(i);
             allowed_[i].permissions = _allowedPermissions[allowed_[i].resource].values();
         }
 
-        for (uint256 i = 0; i < disallowed_.length; i++) {
+        for (uint256 i = 0; i < disallowed_.length; ++i) {
             disallowed_[i].resource = _disallowedResources.at(i);
             disallowed_[i].permissions = _disallowedPermissions[disallowed_[i].resource].values();
         }
@@ -215,7 +213,7 @@ abstract contract ARBAC is IRBAC, Initializable {
     ) public view virtual override returns (bool isAllowed_) {
         string[] memory roles_ = getUserRoles(who_);
 
-        for (uint256 i = 0; i < roles_.length; i++) {
+        for (uint256 i = 0; i < roles_.length; ++i) {
             string memory role_ = roles_[i];
 
             if (_isDisallowed(role_, resource_, permission_)) {
@@ -234,7 +232,9 @@ abstract contract ARBAC is IRBAC, Initializable {
     function _grantRoles(address to_, string[] memory rolesToGrant_) internal {
         ARBACStorage storage $ = _getARBACStorage();
 
-        $.userRoles[to_].add(rolesToGrant_);
+        for (uint256 i = 0; i < rolesToGrant_.length; ++i) {
+            $.userRoles[to_].add(rolesToGrant_[i]);
+        }
 
         emit GrantedRoles(to_, rolesToGrant_);
     }
@@ -247,7 +247,9 @@ abstract contract ARBAC is IRBAC, Initializable {
     function _revokeRoles(address from_, string[] memory rolesToRevoke_) internal {
         ARBACStorage storage $ = _getARBACStorage();
 
-        $.userRoles[from_].remove(rolesToRevoke_);
+        for (uint256 i = 0; i < rolesToRevoke_.length; ++i) {
+            $.userRoles[from_].remove(rolesToRevoke_[i]);
+        }
 
         emit RevokedRoles(from_, rolesToRevoke_);
     }
@@ -272,7 +274,10 @@ abstract contract ARBAC is IRBAC, Initializable {
             resourceToAdd_
         ];
 
-        _permissions.add(permissionsToAdd_);
+        for (uint256 i = 0; i < permissionsToAdd_.length; ++i) {
+            _permissions.add(permissionsToAdd_[i]);
+        }
+
         _resources.add(resourceToAdd_);
 
         emit AddedPermissions(role_, resourceToAdd_, permissionsToAdd_, allowed_);
@@ -298,7 +303,9 @@ abstract contract ARBAC is IRBAC, Initializable {
             resourceToRemove_
         ];
 
-        _permissions.remove(permissionsToRemove_);
+        for (uint256 i = 0; i < permissionsToRemove_.length; ++i) {
+            _permissions.remove(permissionsToRemove_[i]);
+        }
 
         if (_permissions.length() == 0) {
             _resources.remove(resourceToRemove_);

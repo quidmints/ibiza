@@ -12,6 +12,7 @@ const CONFIG: IdentityVaultConfig = {
     stateKeeperAddress: "0x0000000000000000000000000000000000000000",
     registerSimpleContractAddress: "0x0000000000000000000000000000000000000000",
     poseidonSmtAddress: "0x0000000000000000000000000000000000000000",
+    holderRegistrationAddress: "0x0000000000000000000000000000000000000000",
   },
   apiConfiguration: {
     jsonRpcEvmUrl: "https://rpc.example/holder-tree",

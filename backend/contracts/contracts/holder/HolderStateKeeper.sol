@@ -164,7 +164,10 @@ contract HolderStateKeeper is StateKeeper {
         bytes32 oldIndex_ = bytes32(
             PoseidonUnit2L.poseidon([uint256(oldDocumentKey_), uint256(holderRoot_)])
         );
-        registrationSmt.update(oldIndex_, bytes32(PoseidonUnit1L.poseidon([uint256(SUPERSEDED)])));
+        registrationSmt.update(
+            oldIndex_,
+            bytes32(PoseidonUnit1L.poseidon([uint256(SUPERSEDED) % SNARK_SCALAR_FIELD]))
+        );
 
         // Add the renewed document under the same holder root, next sequence.
         _bindDocument(newDocumentKey_, holderRoot_, newDocType_, newDgCommit_, newNotAfter_, old_.seq + 1);
@@ -189,7 +192,10 @@ contract HolderStateKeeper is StateKeeper {
         bytes32 index_ = bytes32(
             PoseidonUnit2L.poseidon([uint256(documentKey_), uint256(doc_.holderRoot)])
         );
-        registrationSmt.update(index_, bytes32(PoseidonUnit1L.poseidon([uint256(REVOKED)])));
+        registrationSmt.update(
+            index_,
+            bytes32(PoseidonUnit1L.poseidon([uint256(REVOKED) % SNARK_SCALAR_FIELD]))
+        );
 
         emit DocumentRevoked(doc_.holderRoot, documentKey_);
     }

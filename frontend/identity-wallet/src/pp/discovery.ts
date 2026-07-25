@@ -77,8 +77,17 @@ export async function discoverNotes(
     candidates.set(precommitment(note).toString(), { index: i, note });
   }
 
-  // 2. Recover deposit notes by precommitment match.
-  const deposits = (await pool.queryFilter(pool.filters.Deposited(), fromBlock, toBlock)) as EventLog[];
+  // 2. Recover deposit notes by precommitment match. Sort by on-chain order: queryFilter's result
+  // order is not part of the JSON-RPC spec (eth_getLogs) and isn't guaranteed ascending by every
+  // provider. Deposit order doesn't affect correctness here (matched by precommitment, independent
+  // of iteration order) but withdrawals below chain a per-label index off processing order, so we
+  // sort everything defensively and consistently.
+  const byChainOrder = (a: EventLog, b: EventLog) =>
+    a.blockNumber - b.blockNumber || a.transactionIndex - b.transactionIndex || a.index - b.index;
+
+  const deposits = ((await pool.queryFilter(pool.filters.Deposited(), fromBlock, toBlock)) as EventLog[]).sort(
+    byChainOrder,
+  );
   const notes: RecoveredNote[] = [];
   const headByLabel = new Map<string, RecoveredNote>(); // latest unspent note per label
   for (const ev of deposits) {
@@ -101,7 +110,12 @@ export async function discoverNotes(
   }
 
   // 3. Apply withdrawals: mark the spent note and chain its change note (our index convention).
-  const withdrawals = (await pool.queryFilter(pool.filters.Withdrawn(), fromBlock, toBlock)) as EventLog[];
+  // Order here is load-bearing (see byChainOrder above) — wIndexByLabel assigns derivation index k
+  // to the k-th withdrawal actually processed, which must match on-chain order or the recovered
+  // change note's nullifier/secret silently desyncs from the real on-chain spend.
+  const withdrawals = ((await pool.queryFilter(pool.filters.Withdrawn(), fromBlock, toBlock)) as EventLog[]).sort(
+    byChainOrder,
+  );
   const wIndexByLabel = new Map<string, number>();
   for (const ev of withdrawals) {
     const spentNullifier = ev.args._spentNullifier as bigint;

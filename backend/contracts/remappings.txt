@@ -9,3 +9,4 @@ poseidon-solidity/=lib/poseidon-solidity/
 poseidon/=lib/poseidon-solidity/
 lean-imt/=lib/lean-imt/
 interfaces/=contracts/pool/interfaces/
+solady/=lib/solady/

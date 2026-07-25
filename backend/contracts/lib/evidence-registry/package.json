@@ -1,6 +1,6 @@
 {
   "name": "@rarimo/evidence-registry",
-  "version": "0.1.1",
+  "version": "0.3.0",
   "license": "CC0-1.0",
   "author": "Rarilabs",
   "description": "",
@@ -11,9 +11,13 @@
     "zkp"
   ],
   "files": [
-    "**/*.sol",
-    "!mocks/**/*",
-    "!verifiers/**/*"
+    "README.md",
+    "LICENSE",
+    "circuits/**/*.circom",
+    "!circuits/main/**/*",
+    "contracts/**/*.sol",
+    "!contracts/mocks/**/*",
+    "!contracts/verifiers/**/*"
   ],
   "scripts": {
     "prepare": "husky",
@@ -38,6 +42,7 @@
     "@openzeppelin/contracts": "5.1.0",
     "@openzeppelin/contracts-upgradeable": "5.1.0",
     "@solarity/solidity-lib": "2.7.10",
+    "circomlib": "2.0.5",
     "circomlibjs": "0.1.7"
   },
   "devDependencies": {
@@ -46,16 +51,15 @@
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.7",
     "@nomicfoundation/hardhat-ethers": "^3.0.6",
     "@nomicfoundation/hardhat-network-helpers": "^1.0.11",
-    "@solarity/chai-zkit": "^0.2.5",
-    "@solarity/hardhat-migrate": "^2.1.10",
-    "@solarity/hardhat-zkit": "^0.4.14",
+    "@solarity/chai-zkit": "^0.3.3",
+    "@solarity/hardhat-migrate": "^2.1.11",
+    "@solarity/hardhat-zkit": "^0.5.16",
     "@typechain/ethers-v6": "^0.5.1",
     "@typechain/hardhat": "^9.1.0",
     "@types/chai": "^4.3.16",
     "@types/mocha": "^10.0.9",
     "@types/node": "^22.8.6",
     "chai": "^4.5.0",
-    "circomlib": "^2.0.5",
     "dotenv": "^16.4.5",
     "ethers": "^6.13.4",
     "hardhat": "^2.22.15",

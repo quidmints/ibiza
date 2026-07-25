@@ -36,6 +36,10 @@ contract MockEvidenceRegistry is IEvidenceRegistry {
   function getRootTimestamp(bytes32) external view returns (uint256) {
     return block.timestamp;
   }
+
+  function getIsolatedKey(address source, bytes32 key) external pure returns (bytes32) {
+    return keccak256(abi.encodePacked(source, key));
+  }
 }
 
 contract EntrypointAspTest is Test {

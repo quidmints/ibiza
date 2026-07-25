@@ -8,7 +8,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeab
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
-import {SetHelper} from "@solarity/solidity-lib/libs/arrays/SetHelper.sol";
+import {SetHelper} from "../libraries/SetHelper.sol";
 import {Groth16VerifierHelper} from "@solarity/solidity-lib/libs/zkp/Groth16VerifierHelper.sol";
 
 import {INoirVerifier} from "../interfaces/verifiers/INoirVerifier.sol";

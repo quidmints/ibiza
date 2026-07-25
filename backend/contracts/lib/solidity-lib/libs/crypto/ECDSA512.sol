@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.21;
 
-// Separate imports due to IntelliJ Solidity plugin issues
-import {call512, uint512} from "../bn/U512.sol";
-import {U512} from "../bn/U512.sol";
-
+import {call512, uint512, U512} from "../bn/U512.sol";
 import {MemoryUtils} from "../utils/MemoryUtils.sol";
 
 /**
@@ -201,11 +198,11 @@ library ECDSA512 {
 
                     bit += 3;
                 } else if (bit == 513) {
+                    (x_, y_) = _twiceAffine(call_, p_, two_, three_, a_, x_, y_);
+                    (x_, y_) = _twiceAffine(call_, p_, two_, three_, a_, x_, y_);
+
                     mask1_ = _getWord(scalar1_, 0) & 0x03;
                     mask2_ = _getWord(scalar2_, 0) & 0x03;
-
-                    (x_, y_) = _twiceAffine(call_, p_, two_, three_, a_, x_, y_);
-                    (x_, y_) = _twiceAffine(call_, p_, two_, three_, a_, x_, y_);
 
                     bit += 2;
                 } else {

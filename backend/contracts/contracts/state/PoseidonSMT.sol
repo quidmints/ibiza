@@ -52,6 +52,7 @@ contract PoseidonSMT is Initializable, UUPSUpgradeable {
         address evidenceRegistry_,
         uint256 treeHeight_
     ) external initializer {
+        require(treeHeight_ <= type(uint32).max, "PoseidonSMT: tree height overflows uint32");
         _bytes32Tree.initialize(uint32(treeHeight_));
         _bytes32Tree.setHashers(_hash2, _hash3);
 

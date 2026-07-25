@@ -103,6 +103,56 @@ export function encodeRegisterDocument(args: {
   ]);
 }
 
+/** Build renewDocumentViaNoir calldata (for relayer submission to HolderRegistration). */
+export function encodeRenewDocument(args: {
+  oldDocumentKey: string; // bytes32
+  holderRoot: string; // 0x… (== profileKey)
+  newPassport: PassportStruct;
+  newDocType: string; // bytes32
+  newNotAfter: bigint;
+  signature: string; // backend signer sig over the signed-data (new passport)
+  zkPoints: string; // serialized Noir register proof (new passport, bound to holderRoot)
+}): string {
+  const iface = new Interface(HOLDER_REGISTRATION_ABI as unknown as string[]);
+  return iface.encodeFunctionData("renewDocumentViaNoir", [
+    args.oldDocumentKey,
+    BigInt(args.holderRoot),
+    [
+      args.newPassport.dgCommit,
+      args.newPassport.dg1Hash,
+      args.newPassport.publicKey,
+      args.newPassport.passportHash,
+      args.newPassport.verifier,
+    ],
+    args.newDocType,
+    args.newNotAfter,
+    args.signature,
+    args.zkPoints,
+  ]);
+}
+
+/** Build revokeDocumentViaSigner calldata (for relayer submission to HolderRegistration).
+ *  Unlike register/renew, this needs NO Noir proof — only a backend signer signature over the
+ *  document being revoked. No backend endpoint for producing that signature exists in this SDK
+ *  yet (revocation wasn't part of upstream's flow), so `signature` is an explicit caller-supplied
+ *  input, not something this function or IdentityVault can silently obtain. */
+export function encodeRevokeDocument(args: {
+  passport: PassportStruct;
+  signature: string;
+}): string {
+  const iface = new Interface(HOLDER_REGISTRATION_ABI as unknown as string[]);
+  return iface.encodeFunctionData("revokeDocumentViaSigner", [
+    [
+      args.passport.dgCommit,
+      args.passport.dg1Hash,
+      args.passport.publicKey,
+      args.passport.passportHash,
+      args.passport.verifier,
+    ],
+    args.signature,
+  ]);
+}
+
 /** docType bytes32 = keccak256(utf8(name)) — matches HolderStateKeeper.DOC_PASSPORT etc.
  *  (`ethers.id(s)` == keccak256(toUtf8Bytes(s)).) Single source of truth, always in sync. */
 export const DOC_TYPE = {

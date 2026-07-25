@@ -141,6 +141,7 @@ abstract contract AVesting is Initializable {
     error ExponentIsZero();
     error NothingToWithdraw();
     error StartTimeIsZero();
+    error InvalidScheduleId(uint256 scheduleId);
     error ScheduleInvalidPeriodParameter(uint256 durationInPeriods, uint256 secondsInPeriod);
     error ScheduleCliffGreaterThanDuration(uint256 cliffInPeriods, uint256 durationInPeriods);
     error UnauthorizedAccount(address account);
@@ -208,7 +209,7 @@ abstract contract AVesting is Initializable {
         uint256[] memory ids_ = $.beneficiaryIds[beneficiary_].values();
         VestingData[] memory beneficiaryVestings_ = new VestingData[](ids_.length);
 
-        for (uint256 i = 0; i < ids_.length; i++) {
+        for (uint256 i = 0; i < ids_.length; ++i) {
             beneficiaryVestings_[i] = $.vestings[ids_[i]];
         }
 
@@ -319,6 +320,10 @@ abstract contract AVesting is Initializable {
         AVestingStorage storage $ = _getAVestingStorage();
 
         Schedule storage _schedule = $.schedules[vesting_.scheduleId];
+
+        if (_schedule.scheduleData.secondsInPeriod == 0) {
+            revert InvalidScheduleId(vesting_.scheduleId);
+        }
 
         if (
             vesting_.vestingStartTime +
@@ -432,13 +437,17 @@ abstract contract AVesting is Initializable {
             return totalVestingAmount_;
         }
 
-        uint256 elapsedPeriodsPercentage_ = (elapsedPeriods_ * PRECISION) /
-            _baseData.durationInPeriods;
+        uint256 elapsedPeriodsPercentage_ = Math.mulDiv(
+            elapsedPeriods_,
+            PRECISION,
+            _baseData.durationInPeriods
+        );
 
-        vestedAmount_ =
-            (_raiseToPower(elapsedPeriodsPercentage_, _schedule.exponent) *
-                (totalVestingAmount_)) /
-            _raiseToPower(PRECISION, _schedule.exponent);
+        vestedAmount_ = Math.mulDiv(
+            _raiseToPower(elapsedPeriodsPercentage_, _schedule.exponent),
+            totalVestingAmount_,
+            _raiseToPower(PRECISION, _schedule.exponent)
+        );
 
         return vestedAmount_.min(totalVestingAmount_);
     }
@@ -500,10 +509,10 @@ abstract contract AVesting is Initializable {
         result_ = exponent_ & 1 == 0 ? PRECISION : base_;
 
         while ((exponent_ >>= 1) > 0) {
-            base_ = (base_ * base_) / PRECISION;
+            base_ = Math.mulDiv(base_, base_, PRECISION);
 
             if (exponent_ & 1 == 1) {
-                result_ = (result_ * base_) / PRECISION;
+                result_ = Math.mulDiv(result_, base_, PRECISION);
             }
         }
     }

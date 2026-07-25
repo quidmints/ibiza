@@ -7,7 +7,7 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-import {SetHelper} from "@solarity/solidity-lib/libs/arrays/SetHelper.sol";
+import {SetHelper} from "../libraries/SetHelper.sol";
 import {TypeCaster} from "@solarity/solidity-lib/libs/utils/TypeCaster.sol";
 import {AMultiOwnable} from "@solarity/solidity-lib/access/AMultiOwnable.sol";
 

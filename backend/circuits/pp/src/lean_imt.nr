@@ -7,8 +7,8 @@
 // Circom: nodes[i+1] = (nodes[i] - h) * siblingIsEmpty + h.
 //
 // Hashing is circomlib-Poseidon via noir-lang/poseidon - must match the on-chain @zk-kit/lean-imt.sol
-// (which hashes with PoseidonT3 / circomlib). DEV-MACHINE TODO: differential-test this against
-// lean-imt.sol for random (leaf, index, siblings, depth) before trusting it for real value.
+// (which hashes with PoseidonT3 / circomlib). Differential-tested against lean-imt.sol: 46 randomized
+// (leaf, index, siblings, depth) vectors below, all passing (`nargo test`, confirmed 2026-07-26).
 //
 // CONFIRMED on dev machine (nargo 1.0.0-beta.1, poseidon tag v0.1.0): import path is
 // `poseidon::poseidon::bn254`, NOT `poseidon::bn254` (see commitment.nr for detail).

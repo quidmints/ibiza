@@ -7,6 +7,7 @@ import {IEvidenceRegistry} from '@rarimo/evidence-registry/interfaces/IEvidenceR
 
 import {Entrypoint} from '../../contracts/pool/Entrypoint.sol';
 import {IdentityAspRegistry} from '../../contracts/registry/IdentityAspRegistry.sol';
+import {RevocationRegistry} from '../../contracts/registry/RevocationRegistry.sol';
 import {PrivacyPoolSimple} from '../../contracts/pool/implementations/PrivacyPoolSimple.sol';
 import {WithdrawalHonkVerifier} from '../../contracts/pool/verifiers/WithdrawalHonkVerifier.sol';
 import {VerifierMock} from '../../contracts/mock/verifiers/VerifierMock.sol';
@@ -67,6 +68,7 @@ contract MockEvidenceRegistry is IEvidenceRegistry {
 contract WithdrawEndToEndTest is Test {
   Entrypoint internal entrypoint;
   IdentityAspRegistry internal aspRegistry;
+  RevocationRegistry internal revocationRegistry;
   PrivacyPoolSimple internal pool;
   WithdrawalHonkVerifier internal withdrawalVerifier;
   MockEvidenceRegistry internal registry;
@@ -93,10 +95,10 @@ contract WithdrawEndToEndTest is Test {
    * verify a Merkle path it never actually walks.
    */
   uint256[4] internal PRECOMMITMENTS = [
-    14894516687091200428867646999555195857366192177471111112487282030615629365635,
-    13199981910239328870624154981781513659107854765074935359406948407461300864920,
-    12882994012526257397249270087775781613032447103540512961946622769062666449753,
-    10318167675095160449581079747579328628800989145060822024614324067031914075854
+    14532176820071183191910939975615247127154011830269690416648964044653403022228,
+    3365986579115248599382117794041612453533846249664417834676141899261165947410,
+    7806741418763995791372551619618961616298409422840660822951385994126218673299,
+    2931722169941254107911418990580283382461358409943807287832325373879439927530
   ];
 
   /// Ours is index 1 - deliberately not first or last, so its inclusion path has siblings on both
@@ -111,18 +113,20 @@ contract WithdrawEndToEndTest is Test {
 
   /// Computed OFF-CHAIN by the wallet - see test_WalletMirrorsMatchTheChain.
   uint256 internal constant WALLET_STATE_ROOT =
-    16821439025066267276348068301416927716355643931045125335219004834544672089857;
+    442245141663737106664083203515763524737232404594727485994307149172745896933;
   uint256 internal constant WALLET_ASP_ROOT =
     13499987760479541807145949197691077146081665672725695371757070291942633612052;
 
   // ── the proved withdrawal (test/fixtures/withdraw_e2e.proof) ────────────────────────────────
   uint256 internal constant WITHDRAWN = 0.3 ether;
   uint256 internal constant E2E_NEW_COMMITMENT =
-    1237296196900923841159970544797035268653241631024055794471141723617698506354;
+    2230043761081266912857408604216380966523575443703029933921406311509913275264;
   uint256 internal constant E2E_NULLIFIER_HASH =
-    19270481334125549904345247761028963384752785010606808297865858680963613098534;
+    15539785998683851078763905299770817193117567773532894655594243887923184612813;
+  /// Empty revocation registry - see setUp.
+  uint256 internal constant E2E_REVOCATION_ROOT = 0;
   uint256 internal constant E2E_CONTEXT =
-    19740679237850356548516882207291664877369069337852394327550049754510873474913;
+    19873353585827271554130256788435252351917362313320817604861132620215117300314;
 
   function setUp() public {
     registry = new MockEvidenceRegistry();
@@ -135,9 +139,20 @@ contract WithdrawEndToEndTest is Test {
     // direct reference to it - the upgradeable Entrypoint is no longer in the ASP trust path.
     aspRegistry = new IdentityAspRegistry(postman, address(registry));
 
+    // A REAL revocation registry with nobody revoked - root 0. The fixture proves non-inclusion
+    // against that empty root, which pp/src/smt.nr::test_exclusion_against_the_empty_tree pins as
+    // provable for every key. Without this the pool could never bootstrap: no withdrawal would be
+    // possible until somebody had been revoked.
+    bytes32[] memory preds = new bytes32[](1);
+    preds[0] = keccak256('predicate.document.not-current');
+    address[] memory attesters = new address[](1);
+    attesters[0] = postman;
+    revocationRegistry = new RevocationRegistry(preds, attesters, 20, 1 hours);
+
     withdrawalVerifier = new WithdrawalHonkVerifier();
     pool = new PrivacyPoolSimple(
-      address(entrypoint), address(withdrawalVerifier), address(new VerifierMock()), address(aspRegistry)
+      address(entrypoint), address(withdrawalVerifier), address(new VerifierMock()),
+      address(aspRegistry), address(revocationRegistry)
     );
 
     // Four real deposits through the real pool, so the state tree has genuine depth.
@@ -234,7 +249,8 @@ contract WithdrawEndToEndTest is Test {
       uint256(2), // state_tree_depth
       WALLET_ASP_ROOT,
       uint256(2), // asp_tree_depth
-      E2E_CONTEXT
+      E2E_CONTEXT,
+      E2E_REVOCATION_ROOT
     ];
   }
 
@@ -348,5 +364,48 @@ contract WithdrawEndToEndTest is Test {
         address(aspRegistry).staticcall(abi.encodeWithSelector(bytes4(keccak256(bytes(forbidden[i])))));
       assertFalse(ok, string.concat('the ASP gate answers a governance selector: ', forbidden[i]));
     }
+  }
+
+  /*
+   * REVOCATION ACTUALLY BITES. The proof commits to revocation_root = 0 (the empty registry), and
+   * PrivacyPool checks that root with isValidRoot. Once a revocation lands, the empty root is
+   * superseded - and after MAX_ROOT_AGE it stops being accepted, so this exact proof dies.
+   *
+   * That is the whole point of sec. 2.5 and the reason RevocationRegistry does NOT honour every
+   * historical root: if it did, this proof would keep working forever and revocation would be
+   * decorative.
+   */
+  function test_RevocationEventuallyInvalidatesAnOldProof() public {
+    IPrivacyPool.Withdrawal memory w = IPrivacyPool.Withdrawal({processooor: recipient, data: ''});
+
+    // Someone unrelated is revoked, superseding the empty root.
+    vm.prank(postman);
+    revocationRegistry.revoke(bytes32(uint256(0xDEAD)), keccak256('predicate.document.not-current'));
+
+    // Inside the grace window the in-flight proof still works - deliberate, so an unrelated
+    // revocation cannot be used to kill everyone's pending withdrawals.
+    assertTrue(revocationRegistry.isValidRoot(bytes32(0)), 'grace window closed immediately');
+
+    vm.warp(block.timestamp + 1 hours + 1);
+
+    assertFalse(revocationRegistry.isValidRoot(bytes32(0)), 'superseded root never expired');
+    vm.prank(recipient);
+    vm.expectRevert();
+    pool.withdraw(w, _e2eProof());
+  }
+
+  /// @notice ...and the CURRENT root still works after that same delay, so expiry is not a
+  /// liveness failure. Rebuild the witness against the new root and the withdrawal proceeds.
+  function test_CurrentRevocationRootSurvivesTheSameDelay() public {
+    vm.prank(postman);
+    revocationRegistry.revoke(bytes32(uint256(0xDEAD)), keccak256('predicate.document.not-current'));
+    bytes32 current = revocationRegistry.root();
+
+    vm.warp(block.timestamp + 3650 days);
+
+    assertTrue(
+      revocationRegistry.isValidRoot(current),
+      'the CURRENT root expired - inaction would block withdrawals'
+    );
   }
 }

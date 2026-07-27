@@ -30,10 +30,11 @@ library ProofLib {
    *        - [5] ASPRoot: Current root of the IDENTITY-based Association Set tree
    *        - [6] ASPTreeDepth: Current depth of the ASP tree
    *        - [7] context: Context value for the withdrawal operation
+   *        - [8] revocationRoot: Root of the RevocationRegistry the proof shows NON-membership of
    */
   struct WithdrawProof {
     bytes proof;
-    uint256[8] pubSignals;
+    uint256[9] pubSignals;
   }
 
   /**
@@ -45,8 +46,8 @@ library ProofLib {
    * @return _publicInputs The public signals as a dynamic bytes32 array, in the same order
    */
   function publicInputsBytes32(WithdrawProof memory _p) internal pure returns (bytes32[] memory _publicInputs) {
-    _publicInputs = new bytes32[](8);
-    for (uint256 _i = 0; _i < 8; ++_i) {
+    _publicInputs = new bytes32[](9);
+    for (uint256 _i = 0; _i < 9; ++_i) {
       _publicInputs[_i] = bytes32(_p.pubSignals[_i]);
     }
   }
@@ -121,6 +122,13 @@ library ProofLib {
    */
   function context(WithdrawProof memory _p) internal pure returns (uint256) {
     return _p.pubSignals[7];
+  }
+
+  /// @notice Root of the revocation registry this proof asserts the withdrawer is ABSENT from.
+  /// @dev PrivacyPool checks it with RevocationRegistry.isValidRoot, so a stale or invented root is
+  ///      rejected on-chain - the circuit alone cannot know which roots the registry really had.
+  function revocationRoot(WithdrawProof memory _p) internal pure returns (uint256) {
+    return _p.pubSignals[8];
   }
 
   /*///////////////////////////////////////////////////////////////

@@ -31,8 +31,12 @@ contract PrivacyPoolSimple is PrivacyPool, IPrivacyPoolSimple {
     address _entrypoint,
     address _withdrawalVerifier,
     address _ragequitVerifier,
-    address _aspRegistry
-  ) PrivacyPool(_entrypoint, _withdrawalVerifier, _ragequitVerifier, Constants.NATIVE_ASSET, _aspRegistry) {}
+    address _aspRegistry,
+    address _revocationRegistry
+  ) PrivacyPool(
+    _entrypoint, _withdrawalVerifier, _ragequitVerifier, Constants.NATIVE_ASSET, _aspRegistry,
+    _revocationRegistry
+  ) {}
 
   /**
    * @notice Handle receiving native asset asset

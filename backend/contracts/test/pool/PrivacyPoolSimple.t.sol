@@ -30,6 +30,12 @@ contract MockEntrypoint {
     known[root_] = true;
   }
 
+  /// Also stands in for the revocation registry: the pool asks isValidRoot before accepting a
+  /// proof, and these tests are about pool mechanics rather than revocation policy.
+  function isValidRoot(bytes32) external pure returns (bool) {
+    return true;
+  }
+
   function isKnownAspRoot(uint256 root_) external view returns (bool) {
     if (root_ == 0) return false;
     return known[root_];
@@ -56,7 +62,8 @@ contract PrivacyPoolSimpleTest is Test {
     withdrawalVerifier = new NoirVerifierMock();
     ragequitVerifier = new VerifierMock();
     pool = new PrivacyPoolSimple(
-      address(entrypoint), address(withdrawalVerifier), address(ragequitVerifier), address(entrypoint)
+      address(entrypoint), address(withdrawalVerifier), address(ragequitVerifier),
+      address(entrypoint), address(entrypoint)
     );
 
     vm.deal(address(entrypoint), 0); // deposits are relayed as msg.value from the caller, not the entrypoint's own balance
@@ -80,7 +87,7 @@ contract PrivacyPoolSimpleTest is Test {
   }
 
   function _emptyWithdrawProof() internal pure returns (ProofLib.WithdrawProof memory p) {
-    p.pubSignals = [uint256(0), 0, 0, 0, 0, 0, 0, 0];
+    p.pubSignals = [uint256(0), 0, 0, 0, 0, 0, 0, 0, 0];
   }
 
   function _emptyRagequitProof() internal pure returns (ProofLib.RagequitProof memory p) {
@@ -286,7 +293,8 @@ contract PrivacyPoolSimpleTest is Test {
     FailingVerifierMock rejecting = new FailingVerifierMock();
     PrivacyPoolSimple rejectingPool =
       new PrivacyPoolSimple(
-        address(entrypoint), address(withdrawalVerifier), address(rejecting), address(entrypoint)
+        address(entrypoint), address(withdrawalVerifier), address(rejecting),
+        address(entrypoint), address(entrypoint)
       );
 
     uint256 value = 1 ether;

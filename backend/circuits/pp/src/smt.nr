@@ -393,3 +393,28 @@ fn test_exclusion_rejects_wrong_old_leaf() {
         "exclusion accepted with a WRONG old_value",
     );
 }
+
+/*
+ * THE EMPTY-TREE CASE, which every withdrawal fixture depends on and which is easy to assume.
+ *
+ * A freshly deployed RevocationRegistry has revoked nobody, so its root is 0 and EVERY identity
+ * must be able to prove non-inclusion against it with an all-zero witness. If this did not hold,
+ * no withdrawal could be proven until somebody was revoked - an absurd bootstrapping requirement
+ * that would only surface at deploy time.
+ */
+#[test]
+fn test_exclusion_against_the_empty_tree() {
+    assert(
+        smt_verifier_full::<20>(0, 12345, 0, 0, 0, 1, 1, [0; 20]) == 1,
+        "non-inclusion against an EMPTY revocation tree was rejected",
+    );
+}
+
+/// The same, for an unrelated key - absence from an empty tree cannot depend on which key is asked.
+#[test]
+fn test_exclusion_against_empty_tree_any_key() {
+    assert(
+        smt_verifier_full::<20>(0, 99999999, 0, 0, 0, 1, 1, [0; 20]) == 1,
+        "non-inclusion against an EMPTY tree failed for a different key",
+    );
+}

@@ -143,7 +143,7 @@ CONTRACTS_DIR="${CIRCUITS_DIR}/../contracts/contracts"
 
 # circuit_dir : destination .sol : generated contract name : number of public inputs
 TARGETS=(
-  "withdraw_identity:${CONTRACTS_DIR}/pool/verifiers/WithdrawalHonkVerifier.sol:WithdrawalHonkVerifier:8"
+  "withdraw_identity:${CONTRACTS_DIR}/pool/verifiers/WithdrawalHonkVerifier.sol:WithdrawalHonkVerifier:9"
   "title_holder:${CONTRACTS_DIR}/title/TitleHolderHonkVerifier.sol:TitleHolderHonkVerifier:2"
 )
 

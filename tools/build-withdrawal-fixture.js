@@ -25,7 +25,7 @@
  *     can produce a withdrawal the chain accepts.
  *
  * USAGE (from the repo root):
- *   cd frontend/identity-wallet && npx tsc src/pp/withdrawWitness.ts src/sdk/RarimeUtils.ts \
+ *   cd frontend/identity-wallet && npx tsc src/pp/withdrawWitness.ts \
  *     src/postman/identityAsp.ts --outDir <build> --module commonjs --target es2022 \
  *     --moduleResolution node --esModuleInterop --skipLibCheck
  *   node tools/build-withdrawal-fixture.js --build <build>
@@ -55,7 +55,12 @@ const { masterKeysFromMnemonic, depositSecrets, commitment, nullifierHash } = re
 const { StateTree } = require(path.join(BUILD, 'pp/stateTree.js'));
 const { IdentityAspTree } = require(path.join(BUILD, 'postman/identityAsp.js'));
 const { buildWithdrawalWitness } = require(path.join(BUILD, 'pp/withdrawWitness.js'));
-const { RarimeUtils } = require(path.join(BUILD, 'sdk/RarimeUtils.js'));
+// holderRoot derivation comes from the ASSEMBLER ITSELF (holderRootFromSk), not a local copy and
+// not the SDK. The ASP tree is keyed by this value, so the tree-builder and the circuit must agree
+// exactly; exporting one function is what stops a second implementation drifting. It also keeps
+// this script loadable in plain Node - the SDK is a React Native package whose Noir module pulls in
+// expo, which cannot load outside RN.
+const { holderRootFromSk } = require(path.join(BUILD, 'pp/withdrawWitness.js'));
 
 // Foundry's standard test mnemonic. Nothing here guards value; it must simply be fixed.
 const MNEMONIC = 'test test test test test test test test test test test junk';
@@ -64,7 +69,7 @@ const keys = masterKeysFromMnemonic(MNEMONIC);
 // Pinned to pp/src/identity_asp.nr's published vector. FIXED, never random - these witnesses become
 // committed fixtures, so a random value would make them unreproducible.
 const SK_IDENTITY = 1234n;
-const HOLDER_ROOT = BigInt('0x' + RarimeUtils.getProfileKey(SK_IDENTITY.toString(16).padStart(64, '0')));
+const HOLDER_ROOT = holderRootFromSk(SK_IDENTITY);
 
 const CONTEXT = 42_424_242n;
 const CIRCUIT_DIR = path.join(__dirname, '..', 'backend', 'circuits', 'withdraw_identity');

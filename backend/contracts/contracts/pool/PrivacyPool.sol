@@ -21,6 +21,7 @@ import {PoseidonT4} from 'poseidon/PoseidonT4.sol';
 import {Constants} from './lib/Constants.sol';
 import {ProofLib} from './lib/ProofLib.sol';
 import {IIdentityAspRegistry} from '../interfaces/registry/IIdentityAspRegistry.sol';
+import {IRevocationRegistry} from '../interfaces/registry/IRevocationRegistry.sol';
 
 import {IPrivacyPool} from 'interfaces/IPrivacyPool.sol';
 
@@ -76,6 +77,14 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     // upgradeable by OWNER_ROLE, so an upgraded one could simply lie about which roots are
     // genuine. See TODO.md sec. 2.5a.
     if (!ASP_REGISTRY.isKnownAspRoot(_proof.ASPRoot())) revert IncorrectASPRoot();
+
+    // The proof shows the withdrawer is ABSENT from the revocation registry at this root; the
+    // circuit cannot know which roots the registry genuinely had, so the pool checks that here.
+    // isValidRoot - not "is known" - because a revocation tree proves NON-inclusion: an older root
+    // has FEWER revocations, so honouring one indefinitely would let a revoked identity prove
+    // absence forever. The registry expires superseded roots while keeping the LATEST valid
+    // regardless of age, so attester inaction can never block a withdrawal. See TODO.md sec. 2.5a.
+    if (!REVOCATION_REGISTRY.isValidRoot(bytes32(_proof.revocationRoot()))) revert InvalidRevocationRoot();
     _;
   }
 
@@ -108,15 +117,23 @@ abstract contract PrivacyPool is State, IPrivacyPool {
   ///         upgradeable contract sits between this pool and the membership set it trusts.
   IIdentityAspRegistry public immutable ASP_REGISTRY;
 
+  /// @notice Append-only revocation list. NON-UPGRADEABLE and unowned, like the ASP registry, and
+  ///         referenced directly for the same reason: nothing upgradeable may sit between this pool
+  ///         and a set that can block a withdrawal.
+  IRevocationRegistry public immutable REVOCATION_REGISTRY;
+
   constructor(
     address _entrypoint,
     address _withdrawalVerifier,
     address _ragequitVerifier,
     address _asset,
-    address _aspRegistry
+    address _aspRegistry,
+    address _revocationRegistry
   ) State(_asset, _entrypoint, _withdrawalVerifier, _ragequitVerifier) {
     if (_aspRegistry == address(0)) revert ZeroAspRegistry();
+    if (_revocationRegistry == address(0)) revert ZeroRevocationRegistry();
     ASP_REGISTRY = IIdentityAspRegistry(_aspRegistry);
+    REVOCATION_REGISTRY = IRevocationRegistry(_revocationRegistry);
   }
 
   /*///////////////////////////////////////////////////////////////

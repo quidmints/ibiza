@@ -24,6 +24,15 @@
 use pp::commitment::commitment_hasher;
 use pp::identity_asp::identity_asp_membership;
 use pp::lean_imt::lean_imt_inclusion;
+use pp::smt::smt_verifier_full;
+
+/// SMT depth of the revocation registry. MUST equal RevocationRegistry's constructor `treeHeight_`
+/// and the wallet's REVOCATION_TREE_DEPTH. A mismatch fails every proof with no useful diagnostic.
+global REVOCATION_TREE_DEPTH: u32 = 20;
+
+/// `fnc = 1` selects EXCLUSION in smt_verifier_full. Named because passing 0 here would silently
+/// prove the opposite of what this circuit needs - that the identity IS revoked.
+global SMT_EXCLUSION: u1 = 1;
 
 fn main(
     new_commitment: pub Field,
@@ -34,6 +43,9 @@ fn main(
     asp_root: pub Field,
     asp_tree_depth: pub Field,
     context: pub Field,
+    // Root of the revocation registry this proof asserts non-membership of. PrivacyPool checks it
+    // against RevocationRegistry.isValidRoot, so a stale or invented root is rejected on-chain.
+    revocation_root: pub Field,
     // The existing note being spent.
     value: Field,
     label: Field,
@@ -51,6 +63,13 @@ fn main(
     sk_identity: Field,
     asp_leaf_index: Field,
     asp_siblings: [Field; 32],
+    // Non-inclusion witness for the revocation registry, straight from its own getProof(). The
+    // registry is a @solarity SparseMerkleTree; `revocation_is_old0` is the INVERSE of solarity's
+    // `auxExistence` (see the wallet's src/pp/revocation.ts, where the conversion is done).
+    revocation_old_key: Field,
+    revocation_old_value: Field,
+    revocation_is_old0: u1,
+    revocation_siblings: [Field; REVOCATION_TREE_DEPTH],
 ) {
     // 1. Existing note: reconstruct its commitment + nullifier hash, and prove membership in the
     // PP state tree at `state_root`. `state_tree_depth` is a public signal (contract-selectable,
@@ -83,11 +102,34 @@ fn main(
     // (Poseidon(pubkey(sk_identity)), the SAME value rarime's HolderStateKeeper anchors) is
     // included in the identity ASP tree at `asp_root`. This is the actual upgrade over upstream's
     // per-label membership check - see pp/src/identity_asp.nr for the full rationale.
-    let _membership = identity_asp_membership(
+    let membership = identity_asp_membership(
         sk_identity,
         asp_root,
         asp_leaf_index,
         asp_siblings,
         asp_tree_depth as u32,
     );
+
+    // 5. NOT REVOKED. The withdrawer must show their holder_root is ABSENT from the revocation
+    // registry at `revocation_root`. This is the second half of TODO.md sec. 2.5: admission alone
+    // is no longer sufficient, and revocation is the only thing that can withdraw it.
+    //
+    // The key is `membership.holder_root` - the SAME value just proven to be an ASP member - not a
+    // free input. Letting the prover choose the key would make this vacuous: they would simply
+    // prove non-revocation of an identity that was never revoked and withdraw as someone else.
+    //
+    // smt_verifier_full's own `assert_keys_ok` additionally makes it impossible to claim exclusion
+    // while pointing at the very key being queried, so a revoked identity cannot pass by supplying
+    // itself as the occupying leaf.
+    let not_revoked = smt_verifier_full::<REVOCATION_TREE_DEPTH>(
+        revocation_root,
+        membership.holder_root,
+        0,
+        revocation_old_key,
+        revocation_old_value,
+        revocation_is_old0,
+        SMT_EXCLUSION,
+        revocation_siblings,
+    );
+    assert(not_revoked == 1, "identity is revoked, or the non-inclusion witness is invalid");
 }

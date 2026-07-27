@@ -832,30 +832,34 @@ a contract with **no owner and no upgrade path**. The only governance action rea
 pool is `windDown`, and it is proven NOT to block withdrawals: a wound-down pool still pays out a
 valid proof, so "wind the pool down" cannot trap existing depositors.
 
-**REMAINING — one focused piece of work, now fully de-risked:**
+✅ **`revocation_root` IS WIRED — sec. 2.5 is complete apart from the OFAC feed below.**
+`withdraw_identity` carries a 9th public input and proves NON-INCLUSION of its own
+`membership.holder_root` (not a free input — letting the prover choose the key would make the check
+vacuous). `PrivacyPool` validates the root with `RevocationRegistry.isValidRoot`, holding the
+registry `immutable` and direct, so nothing upgradeable sits between the pool and a set that can
+block a withdrawal. EIP-170 held exactly as measured: **24,491 bytes, 85 spare.**
 
-`revocation_root` as a 9th public input on `withdraw_identity`. Two things that could have
-invalidated the approach were checked first and both came back clean:
-1. **EIP-170:** a 9-input verifier is 24,491 bytes with 85 spare — the same as today's 8-input one.
-   Adding the input is free.
-2. **SMT COMPATIBILITY — the one that mattered.** The exclusion gadget was written against
-   *circomlib*, while `RevocationRegistry` uses `@solarity/solidity-lib`'s `SparseMerkleTree`. They
-   are **byte-compatible**: solarity hashes leaves as `hash3(key, value, 1)` and nodes as
-   `hash2(L, R)`, identical to circomlib's `SMTHash1`/`SMTHash2`, and its `auxKey`/`auxValue` are
-   the same non-inclusion witness as `oldKey`/`oldValue`. Had these differed the circuit could never
-   have verified against the registry's root and the design would have needed rework.
+Proven, not assumed:
+- `test_RevocationEventuallyInvalidatesAnOldProof` — a revocation supersedes the empty root, and
+  after `MAX_ROOT_AGE` the committed proof **stops working**. Revocation actually bites.
+- `test_CurrentRevocationRootSurvivesTheSameDelay` — the CURRENT root still works after ten years,
+  so expiry is not a liveness failure.
+- `test_exclusion_against_the_empty_tree` (pp) — a fresh registry has root 0 and every identity can
+  prove absence against it, so the system can bootstrap. Without this, no withdrawal would be
+  possible until somebody had been revoked.
 
-The ripple, in order: copy `smt.nr` into `pp/` (as `jubjub.nr` was, so PP keeps no dependency on the
-passport library) → circuit gains `revocation_root` + 4 private inputs → `ProofLib.pubSignals`
-`uint256[8]`→`[9]` → `PrivacyPool` gains an immutable `REVOCATION_REGISTRY` and checks
-`isValidRoot` → regenerate the verifier → **a TS SparseMerkleTree mirror in the wallet** (the
-existing mirrors are LeanIMT, a different construction) → `withdrawWitness.ts` builds the
-non-inclusion path → regenerate all THREE fixtures. Deliberately not started half-way: the
-withdrawal path works end-to-end today and a partial landing would break it.
+**OFAC CRE workflow — THE LAST §2.5 ITEM, and it IS code in this repo.** An earlier note called it
+"external infrastructure, not code in this repo"; that was wrong. The workflow is Go compiled to
+`GOOS=wasip1 GOARCH=wasm`, and `backend/cre/notary_registry` is the working template already in the
+tree (§1 builds it). Only *running* it needs a deployed DON.
 
-**OFAC CRE workflow** — external Chainlink infrastructure, not code in this repo. `backend/cre/`
-holds `notary_registry` as the working template; the OFAC feed is a second workflow plus a new
-`registryId` on `RegistrySourceAnchor`, and needs a deployed DON to run against.
+The work: a second CRE workflow that fetches the OFAC SDN list, aggregated with
+`ConsensusIdenticalAggregation` (every DON node fetches independently and must agree byte-for-byte —
+the property that makes it an anchored authority rather than an operator's opinion); a new
+`registryId` on `RegistrySourceAnchor`; and an attester contract that reads the anchor and calls
+`RevocationRegistry.revoke` citing the sanctions predicate. **Deploy the attester as a CONTRACT, not
+an EOA** — the registry's attester is immutable, so a contract is the only way to rotate keys later
+(§2.5a).
 
 ### 2.5a Upgradeability audit + the root-staleness bug (2026-07-27)
 

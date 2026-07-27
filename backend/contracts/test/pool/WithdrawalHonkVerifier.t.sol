@@ -50,17 +50,20 @@ contract WithdrawalHonkVerifierTest is Test {
   INoirVerifier internal verifier;
 
   uint256 internal constant NEW_COMMITMENT =
-    0x293d6fe456f214495aad57522b06eae244a7e962d91ee5303b631e9a1508e425;
+    18653376712734179938763709399463410120694066225799564842943406163517501924389;
   uint256 internal constant EXISTING_NULLIFIER_HASH =
-    0x10a702921ecbe33f9b33b1a2edd252556d5a1abc623a87fcf1daee3953d158f5;
+    7532086780038402662674345296860422071861903663404908958571451852914592667893;
   uint256 internal constant WITHDRAWN_VALUE = 4;
   uint256 internal constant STATE_ROOT =
-    0x099b2caf32e59a2e0cf64fe6376beb17c2aaf359c6b8178b671c32bd6c79756f;
+    4344985332480040079471765000069393836362873940320599351794913073184699413871;
   uint256 internal constant STATE_TREE_DEPTH = 3;
   uint256 internal constant ASP_ROOT =
-    0x035d7de0fa38af5be238bc9a7bd85f8fbe06d2b0e70c785d42bac3d79e846ab4;
+    1522124106446982941850697475682832288439778505078879394740292496036204931764;
   uint256 internal constant ASP_TREE_DEPTH = 2;
   uint256 internal constant CONTEXT = 42_424_242;
+  /// Empty revocation registry: root 0, and an all-zero witness proves absence for every key
+  /// (pp/src/smt.nr::test_exclusion_against_the_empty_tree).
+  uint256 internal constant REVOCATION_ROOT = 0;
 
   function setUp() public {
     verifier = INoirVerifier(address(new WithdrawalHonkVerifier()));
@@ -76,7 +79,8 @@ contract WithdrawalHonkVerifierTest is Test {
       STATE_TREE_DEPTH,
       ASP_ROOT,
       ASP_TREE_DEPTH,
-      CONTEXT
+      CONTEXT,
+      REVOCATION_ROOT
     ];
   }
 
@@ -99,7 +103,8 @@ contract WithdrawalHonkVerifierTest is Test {
       STATE_TREE_DEPTH,
       ASP_ROOT,
       ASP_TREE_DEPTH,
-      CONTEXT
+      CONTEXT,
+      REVOCATION_ROOT
     ];
     assertEq(_p.newCommitmentHash(), NEW_COMMITMENT);
     assertEq(_p.existingNullifierHash(), EXISTING_NULLIFIER_HASH);
@@ -109,6 +114,7 @@ contract WithdrawalHonkVerifierTest is Test {
     assertEq(_p.ASPRoot(), ASP_ROOT);
     assertEq(_p.ASPTreeDepth(), ASP_TREE_DEPTH);
     assertEq(_p.context(), CONTEXT);
+    assertEq(_p.revocationRoot(), REVOCATION_ROOT);
   }
 
   /*
@@ -167,15 +173,15 @@ contract WithdrawalHonkVerifierTest is Test {
    * Regenerate with tools/build-withdrawal-fixture.js - it emits both fixtures' Prover.*.toml.
    */
   uint256 internal constant W_NEW_COMMITMENT =
-    0x2bb08368e1faa84baa5d5f99c6a4835bc75d03dbdbfdc9314e95ffc00092552f;
+    19761324528885713390391631165680038172128702826549789957405969105810862789935;
   uint256 internal constant W_EXISTING_NULLIFIER_HASH =
-    0x0c1f6053164b5cde7f8508564ba00f9e27b25158be14d2e6c82aeade4425a678;
+    5483191249680064704425129569822560397968224872405526965537704682354244953720;
   uint256 internal constant W_WITHDRAWN_VALUE = 0.3 ether;
   uint256 internal constant W_STATE_ROOT =
-    0x1a5bd0daddfd676a0f834c646038b32226d66a2ecc9487f6d68272e1a781b0ff;
+    11922358609946525750179191892257841520060631680150773185653959528175536025855;
   uint256 internal constant W_STATE_TREE_DEPTH = 3;
   uint256 internal constant W_ASP_ROOT =
-    0x035d7de0fa38af5be238bc9a7bd85f8fbe06d2b0e70c785d42bac3d79e846ab4;
+    1522124106446982941850697475682832288439778505078879394740292496036204931764;
   uint256 internal constant W_ASP_TREE_DEPTH = 2;
   uint256 internal constant W_CONTEXT = 42_424_242;
 
@@ -189,7 +195,8 @@ contract WithdrawalHonkVerifierTest is Test {
       W_STATE_TREE_DEPTH,
       W_ASP_ROOT,
       W_ASP_TREE_DEPTH,
-      W_CONTEXT
+      W_CONTEXT,
+      REVOCATION_ROOT
     ];
   }
 

@@ -19,7 +19,6 @@
 //   [2] withdrawn_value         [6] asp_tree_depth
 //   [3] state_root              [7] context
 
-import { Poseidon } from "@iden3/js-crypto";
 import {
   MasterKeys,
   NoteSecrets,
@@ -30,7 +29,8 @@ import {
 import { RecoveredNote } from "./discovery";
 import { StateTree, MAX_TREE_DEPTH, FIELD } from "./stateTree";
 import { IdentityAspTree } from "../postman/identityAsp";
-import { RarimeUtils } from "@rarimo/rarime-rn-sdk";
+import { RevocationWitness, REVOCATION_TREE_DEPTH } from "./revocation";
+import { babyJub, Poseidon } from "@iden3/js-crypto";
 
 /** The circuit range-checks `value`, `withdrawn_value` and `value - withdrawn_value` to 128 bits
  *  (main.nr step 2, via to_le_bits). Exceeding this yields a witness that cannot be proven, so it
@@ -55,6 +55,14 @@ export interface WithdrawWitnessParams {
   withdrawnValue: bigint;
   /** From buildRelayedWithdrawal()/buildSelfWithdrawal() in ./relay. */
   context: bigint;
+  /**
+   * Non-inclusion witness for the revocation registry, from fetchNonRevocationWitness() in
+   * ./revocation. Omit ONLY when the registry has revoked nobody: a freshly deployed registry has
+   * root 0 and an all-zero witness proves absence for every key (pp/src/smt.nr's
+   * test_exclusion_against_the_empty_tree pins that). Passing a hand-built witness here is how a
+   * proof silently becomes unprovable, so prefer the fetch.
+   */
+  revocation?: RevocationWitness;
   /**
    * Which withdrawal this is FOR THIS LABEL, in the wallet's derivation convention.
    *
@@ -90,6 +98,18 @@ export function nextWithdrawalIndex(notes: readonly RecoveredNote[], label: bigi
   return k;
 }
 
+/**
+ * holderRoot for a given identity scalar: Poseidon(babyJub.mulPointEScalar(Base8, sk)).
+ *
+ * Exported because the ASP tree is keyed by this value, so anything BUILDING a tree (the wallet,
+ * the postman tooling, tools/build-withdrawal-fixture.js) needs the identical derivation. Having
+ * one exported function rather than three re-implementations is what keeps them from drifting -
+ * and it is the same value pp/src/holder_root.nr::extract_pk_identity_hash computes in-circuit.
+ */
+export function holderRootFromSk(skIdentity: bigint): bigint {
+  return Poseidon.hash(babyJub.mulPointEScalar(babyJub.Base8, skIdentity));
+}
+
 /** Assemble (and self-check) the withdraw_identity witness. */
 export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawWitness {
   const {
@@ -103,6 +123,23 @@ export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawW
     context,
     withdrawalIndex,
   } = params;
+
+  // Empty-registry default: root 0, "the slot is empty", no siblings. Correct only because the
+  // revocation tree is a sparse trie whose empty root is 0 - see this field's doc comment.
+  const revocation: RevocationWitness = params.revocation ?? {
+    revocationRoot: 0n,
+    oldKey: 0n,
+    oldValue: 0n,
+    isOld0: 1n,
+    siblings: new Array(REVOCATION_TREE_DEPTH).fill(0n),
+  };
+
+  if (revocation.siblings.length !== REVOCATION_TREE_DEPTH) {
+    throw new Error(
+      `buildWithdrawalWitness: revocation witness has ${revocation.siblings.length} siblings, ` +
+        `circuit expects ${REVOCATION_TREE_DEPTH}`,
+    );
+  }
 
   // ── Value conservation, checked before anything expensive ──────────────────────────────────
   if (note.spent) throw new Error("buildWithdrawalWitness: note is already spent");
@@ -120,13 +157,16 @@ export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawW
   }
 
   // ── Identity: derive holderRoot from skIdentity and check it is actually an ASP member ─────
-  // getProfileKey is Poseidon(babyJub.mulPointEScalar(Base8, sk)) — the same derivation as the
-  // circuit's holder_root.nr::extract_pk_identity_hash, which is what makes this cross-check
-  // meaningful rather than decorative. Catching a wrong sk_identity HERE turns an unexplained
-  // proof failure into a named error.
-  const holderRoot = BigInt(
-    "0x" + RarimeUtils.getProfileKey(skIdentity.toString(16).padStart(64, "0")),
-  );
+  // Poseidon(babyJub.mulPointEScalar(Base8, sk)) — the same derivation as the circuit's
+  // holder_root.nr::extract_pk_identity_hash and as RarimeUtils.getProfileKey, which is what makes
+  // this cross-check meaningful rather than decorative. Catching a wrong sk_identity HERE turns an
+  // unexplained proof failure into a named error.
+  //
+  // Computed inline from @iden3/js-crypto (a direct wallet dependency, and the SAME primitive
+  // getProfileKey uses) rather than importing the SDK: this module is pure arithmetic, and pulling
+  // in an RN package would make it unloadable outside React Native - which is exactly what
+  // tools/build-withdrawal-fixture.js needs it to be.
+  const holderRoot = holderRootFromSk(skIdentity);
 
   // ── State-tree membership ───────────────────────────────────────────────────────────────────
   const stateProof = stateTree.proof(stateLeafIndex, MAX_TREE_DEPTH);
@@ -169,6 +209,7 @@ export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawW
     aspTree.root,
     BigInt(aspProof.depth),
     context,
+    revocation.revocationRoot,
   ];
 
   const dec = (v: bigint) => v.toString(10);
@@ -183,6 +224,7 @@ export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawW
     asp_root: dec(aspTree.root),
     asp_tree_depth: dec(BigInt(aspProof.depth)),
     context: dec(context),
+    revocation_root: dec(revocation.revocationRoot),
     // private — existing note
     value: dec(note.value),
     label: dec(note.label),
@@ -197,6 +239,11 @@ export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawW
     sk_identity: dec(skIdentity),
     asp_leaf_index: dec(aspProof.leafIndex),
     asp_siblings: aspProof.siblings.map(dec),
+    // private - revocation non-inclusion
+    revocation_old_key: dec(revocation.oldKey),
+    revocation_old_value: dec(revocation.oldValue),
+    revocation_is_old0: dec(revocation.isOld0),
+    revocation_siblings: revocation.siblings.map(dec),
   };
 
   return { inputs, pubSignals, changeNote, newCommitment };

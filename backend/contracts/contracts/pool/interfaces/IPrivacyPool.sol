@@ -130,6 +130,12 @@ interface IPrivacyPool is IState {
   ///         membership set to check against.
   error ZeroAspRegistry();
 
+  /// @notice Thrown at construction if the revocation registry address is zero.
+  error ZeroRevocationRegistry();
+
+  /// @notice Thrown when the proof's revocation root is not one the registry currently accepts.
+  error InvalidRevocationRoot();
+
   /**
    * @notice Thrown when trying to ragequit while not being the original depositor
    */

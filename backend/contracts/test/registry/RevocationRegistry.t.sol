@@ -23,6 +23,8 @@ contract RevocationRegistryTest is Test {
   bytes32 internal constant HOLDER_A = bytes32(uint256(0x1111));
   bytes32 internal constant HOLDER_B = bytes32(uint256(0x2222));
 
+  uint256 internal constant MAX_AGE = 1 hours;
+
   function setUp() public {
     bytes32[] memory preds = new bytes32[](2);
     preds[0] = P_DOC_INVALID;
@@ -32,7 +34,7 @@ contract RevocationRegistryTest is Test {
     attesters[0] = docAttester;
     attesters[1] = ofacAttester;
 
-    registry = new RevocationRegistry(preds, attesters, 20);
+    registry = new RevocationRegistry(preds, attesters, 20, MAX_AGE);
   }
 
   // ── the closed predicate set ────────────────────────────────────────────────────────────────
@@ -74,8 +76,8 @@ contract RevocationRegistryTest is Test {
     assertTrue(registry.isRevoked(HOLDER_A));
     assertEq(registry.revocationCount(), 1);
     assertTrue(after_ != before, 'root did not change on revocation');
-    assertTrue(registry.isKnownRoot(after_));
-    assertTrue(registry.isKnownRoot(before), 'the pre-revocation root stopped being known');
+    assertTrue(registry.isValidRoot(after_));
+    assertTrue(registry.isValidRoot(before), 'the superseded root lost its grace window immediately');
   }
 
   /// @notice Monotonicity. Re-revoking is rejected rather than silently re-adding, so the tree
@@ -113,21 +115,56 @@ contract RevocationRegistryTest is Test {
     }
   }
 
-  /// @notice Historical roots stay valid, so a proof built a moment before someone else's
-  /// revocation does not spuriously fail. Safe only because the tree is append-only: an old root
-  /// can never un-revoke anyone, it just predates them.
-  function test_HistoricalRootsRemainKnown() public {
-    bytes32 r0 = registry.root();
+  /*
+   * REGRESSION TEST FOR A FATAL DESIGN BUG.
+   *
+   * The first version of this registry marked EVERY root known forever, by analogy with the
+   * append-only ASP tree in Entrypoint. The analogy is inverted: the ASP tree proves INCLUSION, so
+   * an older root merely has fewer members; THIS tree proves NON-INCLUSION, so an older root has
+   * fewer REVOCATIONS. Under the old behaviour a revoked identity could prove absence against the
+   * EMPTY INITIAL ROOT forever, and revocation would have been a complete no-op.
+   */
+  function test_StaleRootStopsBeingValid_SoRevocationCannotBeEvaded() public {
+    bytes32 emptyRoot = registry.root();
+    assertTrue(registry.isValidRoot(emptyRoot), 'the initial root should start valid');
 
     vm.prank(docAttester);
-    bytes32 r1 = registry.revoke(HOLDER_A, P_DOC_INVALID);
+    registry.revoke(HOLDER_A, P_DOC_INVALID);
 
-    vm.prank(ofacAttester);
-    bytes32 r2 = registry.revoke(HOLDER_B, P_SANCTIONED);
+    // Immediately after, the superseded root is still accepted - that grace is deliberate, so an
+    // in-flight proof is not killed by someone else's revocation landing first.
+    assertTrue(registry.isValidRoot(emptyRoot), 'grace window should still accept the old root');
 
-    assertTrue(registry.isKnownRoot(r0) && registry.isKnownRoot(r1) && registry.isKnownRoot(r2));
-    // ...but a root this registry never had must NOT be accepted.
-    assertFalse(registry.isKnownRoot(keccak256('never happened')));
+    vm.warp(block.timestamp + MAX_AGE + 1);
+
+    assertFalse(
+      registry.isValidRoot(emptyRoot),
+      'a pre-revocation root is STILL accepted - revocation is evadable'
+    );
+  }
+
+  /*
+   * NO CENSORSHIP THROUGH INACTION.
+   *
+   * If no attester ever acts again, withdrawals must keep working forever. A naive age check
+   * without the always-valid-latest clause would be fail-CLOSED: the newest root would age out and
+   * every withdrawal would halt, handing an operator a censorship lever by simply doing nothing.
+   */
+  function test_LatestRootNeverExpires_NoCensorshipByInaction() public {
+    vm.prank(docAttester);
+    registry.revoke(HOLDER_A, P_DOC_INVALID);
+    bytes32 current = registry.root();
+
+    vm.warp(block.timestamp + 3650 days); // a decade of total attester silence
+
+    assertTrue(
+      registry.isValidRoot(current),
+      'the current root expired - inaction blocks withdrawals, i.e. censorship'
+    );
+  }
+
+  function test_RootThatNeverExistedIsRejected() public view {
+    assertFalse(registry.isValidRoot(keccak256('never happened')));
   }
 
   /// @notice The leaf value records WHICH rule was cited, so an audit does not have to trust the
@@ -152,7 +189,7 @@ contract RevocationRegistryTest is Test {
     vm.expectRevert(
       abi.encodeWithSelector(RevocationRegistry.DuplicatePredicate.selector, P_DOC_INVALID)
     );
-    new RevocationRegistry(preds, attesters, 20);
+    new RevocationRegistry(preds, attesters, 20, MAX_AGE);
   }
 
   function test_RejectsZeroAttester() public {
@@ -164,11 +201,11 @@ contract RevocationRegistryTest is Test {
     vm.expectRevert(
       abi.encodeWithSelector(RevocationRegistry.AttesterIsZero.selector, P_DOC_INVALID)
     );
-    new RevocationRegistry(preds, attesters, 20);
+    new RevocationRegistry(preds, attesters, 20, MAX_AGE);
   }
 
   function test_RejectsEmptyPredicateSet() public {
     vm.expectRevert(RevocationRegistry.NoPredicates.selector);
-    new RevocationRegistry(new bytes32[](0), new address[](0), 20);
+    new RevocationRegistry(new bytes32[](0), new address[](0), 20, MAX_AGE);
   }
 }

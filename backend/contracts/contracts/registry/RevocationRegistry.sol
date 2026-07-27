@@ -45,12 +45,37 @@ contract RevocationRegistry {
 
   SparseMerkleTree.Bytes32SMT private _tree;
 
-  /// @notice Every root this registry has ever had, so a proof built against a slightly stale root
-  ///         still verifies. Append-only, exactly like the ASP tree in Entrypoint: accepting a
-  ///         historical root is SAFE here for the same structural reason - the tree only grows, so
-  ///         an old root can never re-admit someone who was revoked later. It cannot, and must not,
-  ///         be used to un-revoke.
-  mapping(bytes32 => bool) public isKnownRoot;
+  /**
+   * @notice When each root became current. A root is ACCEPTABLE only while it is the latest root
+   *         or younger than MAX_ROOT_AGE - see `isValidRoot`.
+   *
+   * AN EARLIER VERSION OF THIS ACCEPTED EVERY HISTORICAL ROOT FOREVER, reasoning by analogy with
+   * the append-only ASP tree in Entrypoint. THE ANALOGY IS INVERTED AND THE BUG WAS FATAL:
+   *
+   *   - The ASP tree proves INCLUSION. Append-only means an older root has FEWER members, so
+   *     accepting one can only fail to admit somebody - never wrongly admit. Safe.
+   *   - This tree proves NON-INCLUSION. Append-only means an older root has FEWER REVOCATIONS, so
+   *     accepting one lets a revoked identity prove absence against a root that predates its own
+   *     revocation. With unbounded history, anyone could prove non-revocation against the EMPTY
+   *     INITIAL ROOT forever and revocation would be a complete no-op.
+   *
+   * Same data structure, opposite direction of use. Do not re-derive the old behaviour from the
+   * Entrypoint precedent.
+   */
+  mapping(bytes32 => uint256) public rootCreatedAt;
+
+  /**
+   * @notice How long a superseded root stays acceptable.
+   *
+   * This is the whole fail-open/fail-closed tradeoff (TODO.md sec. 2.5), and it is bounded on both
+   * sides deliberately:
+   *   - Too short, and an in-flight proof is invalidated by an unrelated revocation landing first,
+   *     which hands an attester a censorship lever: revoke anyone, and everyone's pending proofs
+   *     die.
+   *   - Too long, and a revoked identity keeps withdrawing for that long.
+   * Immutable, like everything else here - there is no owner to tune it later.
+   */
+  uint256 public immutable MAX_ROOT_AGE;
 
   mapping(bytes32 => bool) public isRevoked;
 
@@ -65,6 +90,7 @@ contract RevocationRegistry {
   error DuplicatePredicate(bytes32 predicate);
   error NoPredicates();
   error AttesterIsZero(bytes32 predicate);
+  error ZeroMaxRootAge();
 
   /**
    * @param predicates_ the CLOSED set of revocation reasons. Cannot be changed afterwards.
@@ -72,7 +98,15 @@ contract RevocationRegistry {
    * @param treeHeight_ SMT depth. Must match the circuit's compiled depth or non-inclusion proofs
    *                    will not verify.
    */
-  constructor(bytes32[] memory predicates_, address[] memory attesters_, uint32 treeHeight_) {
+  constructor(
+    bytes32[] memory predicates_,
+    address[] memory attesters_,
+    uint32 treeHeight_,
+    uint256 maxRootAge_
+  ) {
+    if (maxRootAge_ == 0) revert ZeroMaxRootAge();
+    MAX_ROOT_AGE = maxRootAge_;
+
     if (predicates_.length == 0) revert NoPredicates();
     require(predicates_.length == attesters_.length, 'RevocationRegistry: length mismatch');
 
@@ -87,7 +121,7 @@ contract RevocationRegistry {
     _tree.initialize(treeHeight_);
     _tree.setHashers(_hash2, _hash3);
 
-    isKnownRoot[_tree.getRoot()] = true; // the empty root is legitimately provable against
+    rootCreatedAt[_tree.getRoot()] = block.timestamp; // the empty root starts out current
   }
 
   /**
@@ -109,7 +143,7 @@ contract RevocationRegistry {
     _tree.add(holderRoot_, predicate_);
 
     root_ = _tree.getRoot();
-    isKnownRoot[root_] = true;
+    rootCreatedAt[root_] = block.timestamp;
     revocationCount++;
 
     emit Revoked(holderRoot_, predicate_, msg.sender, root_);
@@ -117,6 +151,25 @@ contract RevocationRegistry {
 
   function root() external view returns (bytes32) {
     return _tree.getRoot();
+  }
+
+  /**
+   * @notice Is `root_` acceptable to prove non-inclusion against?
+   *
+   * THE LATEST ROOT IS ALWAYS VALID, however old it is. That is what makes inaction harmless: if
+   * no attester ever revokes again, the current root simply stays current and no withdrawal is
+   * ever blocked. A pure age check WITHOUT this clause would be fail-CLOSED - the newest root
+   * would age out and every withdrawal would halt, which is censorship through inaction and
+   * exactly the property sec. 2.5 forbids.
+   *
+   * Superseded roots stay valid for MAX_ROOT_AGE so an in-flight proof is not invalidated by
+   * someone else's revocation landing first.
+   */
+  function isValidRoot(bytes32 root_) public view returns (bool) {
+    uint256 created_ = rootCreatedAt[root_];
+    if (created_ == 0) return false; // never was a root here
+    if (root_ == _tree.getRoot()) return true; // current: always valid, no expiry
+    return block.timestamp <= created_ + MAX_ROOT_AGE;
   }
 
   function getProof(bytes32 holderRoot_) external view returns (SparseMerkleTree.Proof memory) {

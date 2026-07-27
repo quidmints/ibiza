@@ -825,6 +825,57 @@ postman survives but is admit-only.
 censorship lever through inaction), and establishing the negative "there is no other path to
 blocking a withdrawal", which is an invariant over the whole withdrawal path.
 
+### 2.5a Upgradeability audit + the root-staleness bug (2026-07-27)
+
+**A DESIGN BUG WAS FOUND AND FIXED IN `RevocationRegistry` BEFORE IT SHIPPED.** The first version
+marked every root known FOREVER, by analogy with the append-only ASP tree in `Entrypoint`. **The
+analogy is inverted:**
+
+| tree | proves | append-only means an older root has... | accepting old roots |
+|---|---|---|---|
+| ASP | **inclusion** | fewer MEMBERS | safe - can only fail to admit |
+| Revocation | **NON-inclusion** | fewer **REVOCATIONS** | **evades every revocation since** |
+
+Under the old behaviour a revoked identity could prove absence against the **empty initial root**
+forever and revocation would have been a total no-op. Fixed: a root is valid only while it is the
+**latest** or younger than an immutable `MAX_ROOT_AGE`. `test_StaleRootStopsBeingValid_...` is the
+regression test. **Do not re-derive the old behaviour from the Entrypoint precedent.**
+
+**NO CENSORSHIP THROUGH INACTION - DECIDED AND IMPLEMENTED (user, 2026-07-27).** The latest root is
+**always** valid regardless of age. A pure age check would have been fail-CLOSED: the newest root
+would age out, every withdrawal would halt, and an operator could censor by doing nothing.
+`test_LatestRootNeverExpires_NoCensorshipByInaction` warps a decade forward and asserts withdrawals
+still work. The grace window on superseded roots exists so an in-flight proof is not killed by
+someone else's revocation landing first - without it, an attester could censor by revoking an
+unrelated identity to invalidate everyone's pending proofs.
+
+**⚠ `Entrypoint` IS UPGRADEABLE, WHICH WEAKENS §2.13's CENTRAL CLAIM.**
+`_authorizeUpgrade` is `onlyRole(_OWNER_ROLE)`, and `_OWNER_ROLE` also administers `_ASP_POSTMAN`
+and `DEFAULT_ADMIN_ROLE`. §2.13 says the append-only ASP tree means "the postman can no longer drop
+an existing member" — true of the postman, **but the OWNER can upgrade the implementation and
+rewrite the tree wholesale.** So the honest statement is "append-only *unless the owner upgrades*",
+not "append-only by construction". This is inherited from upstream PP, not introduced here.
+**The principled fix is to move the ASP tree into its own non-upgradeable registry**, exactly as
+`RevocationRegistry` is — leaving `Entrypoint` upgradeable for asset config and routing, where
+upgradeability is legitimate. Not done; it is a real refactor and it changes a deployed interface.
+`TitleLedger` and `RegistrySourceAnchor` are also `onlyRole(OWNER_ROLE)`-upgradeable; for those it
+is defensible, since neither claims an immutability property the way the ASP tree does.
+
+**HIDDEN COST OF IMMUTABILITY, and the mitigation that makes it acceptable.** A `RevocationRegistry`
+attester cannot be rotated — there is no owner and no upgrade, so **a compromised attester key can
+revoke arbitrarily forever**. In that one failure mode an immutable registry is WORSE than an
+upgradeable one. **Deploy attesters as CONTRACTS (multisig/threshold), never EOAs**: the registry
+only checks `msg.sender`, so an attester contract can rotate its own keys internally while the
+registry stays immutable. Deploying with EOA attesters is the trap.
+
+**`curve_384.nr` IS BRAINPOOL P384R1, NOT secp384r1 — but it is NOT a live trap.** Checked: nothing
+imports `curve_384::` anywhere; it is orphaned (same class as the deleted `bitcoin.nr` /
+`recursion.nr`). The circuits that really do verify these curves use `sigver::ecdsa`'s
+`verify_secp384r1_ecdsa` (genuine secp384r1 via `big_curve::curves::secp384r1`) and
+`verify_brainpoolp384r1_ecdsa` — separate, correct code paths. `curve_192::ecdsa_ver` and
+`curve_224::ecdsa_ver` ARE live (used by `not_passports_zk_circuits.nr`) and are now
+differential-tested. **Delete or rename `curve_384.nr`** so nobody wires it up expecting secp384r1.
+
 ### 2.6 NFC passport scanning
 
 Not implemented anywhere in the wallet — the README flags it and no NFC code exists in `src/`.

@@ -848,18 +848,29 @@ Proven, not assumed:
   prove absence against it, so the system can bootstrap. Without this, no withdrawal would be
   possible until somebody had been revoked.
 
-**OFAC CRE workflow — THE LAST §2.5 ITEM, and it IS code in this repo.** An earlier note called it
-"external infrastructure, not code in this repo"; that was wrong. The workflow is Go compiled to
-`GOOS=wasip1 GOARCH=wasm`, and `backend/cre/notary_registry` is the working template already in the
-tree (§1 builds it). Only *running* it needs a deployed DON.
+✅ **OFAC CRE workflow — WRITTEN AND COMPILING** (`backend/cre/ofac_sdn/`). Cron-triggered fetch of
+Treasury's SDN export, parsed to a leaf set, keccak Merkle root anchored via
+`RegistrySourceAnchor.publishSnapshot` under `keccak256("OFAC_SDN")`. Deliberately a structural
+sibling of `notary_registry` rather than a second shape. `GOOS=wasip1 GOARCH=wasm go build` passes
+for both.
 
-The work: a second CRE workflow that fetches the OFAC SDN list, aggregated with
-`ConsensusIdenticalAggregation` (every DON node fetches independently and must agree byte-for-byte —
-the property that makes it an anchored authority rather than an operator's opinion); a new
-`registryId` on `RegistrySourceAnchor`; and an attester contract that reads the anchor and calls
-`RevocationRegistry.revoke` citing the sanctions predicate. **Deploy the attester as a CONTRACT, not
-an EOA** — the registry's attester is immutable, so a contract is the only way to rotate keys later
-(§2.5a).
+An earlier note called this "external infrastructure, not code in this repo" — **that was wrong**;
+only *running* it needs a deployed DON.
+
+**⚠ IT ANCHORS THE LIST; IT CANNOT REVOKE ANYONE, AND THAT GAP IS A DESIGN QUESTION, NOT A TODO.**
+The missing step is the link from "person P is on the list" to "holderRoot H belongs to P". That
+mapping does not exist on-chain **by construction** — a holderRoot revealing nothing about its owner
+is the entire point of the identity ASP. Only whoever performed the original identity check holds
+that correspondence, so any mechanism resolving it must answer: **who may learn that holderRoot H is
+person P, and what stops them asserting it falsely?** Left open deliberately rather than papered
+over. Anchoring the list is safe and useful on its own; revoking on it is not, until that is
+answered.
+
+The remaining shape is an attester CONTRACT (never an EOA — §2.5a) holding the sanctions predicate,
+accepting a proof that an identity is in the anchored set. Two other operator items are recorded in
+the workflow header: the exact SDN export URL, and granting `REGISTRY_POSTMAN` to the address
+`WriteReport` resolves to. The XML schema follows Treasury's documented `sdnList`/`sdnEntry` shape
+but is **unverified against a real download** — the same caveat `notary_registry` carries.
 
 ### 2.5a Upgradeability audit + the root-staleness bug (2026-07-27)
 

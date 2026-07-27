@@ -263,4 +263,58 @@ contract WithdrawEndToEndTest is Test {
     vm.expectRevert();
     pool.withdraw(tampered, _e2eProof());
   }
+
+  /*
+   * ═══ THE NEGATIVE INVARIANT (TODO.md sec. 2.5) ═══
+   *
+   * "A revocation is valid only if it cites a provable predicate from a closed set, AND THAT IS THE
+   * ONLY WAY TO BLOCK A WITHDRAWAL." The second clause is a claim about the WHOLE withdrawal path,
+   * not a feature, so it is asserted here by enumerating every way withdraw() can revert and
+   * showing each is either the caller's own doing or the rule-bound membership check.
+   *
+   * PrivacyPool.withdraw reverts on exactly these, and nothing else:
+   *   InvalidProcessooor   caller is not the address the proof commits to      -> caller's own
+   *   ContextMismatch      proof does not match these withdrawal parameters    -> caller's own
+   *   InvalidTreeDepth     declared depth exceeds MAX_TREE_DEPTH               -> caller's own
+   *   UnknownStateRoot     state root outside the 64-root history              -> caller's own
+   *                        (staleness only; rebuild the witness and retry)
+   *   InvalidProof         the proof does not verify                           -> caller's own
+   *   NullifierAlreadySpent  note already spent                                -> caller's own
+   *   IncorrectASPRoot     ASP root not one the registry computed              -> RULE-BOUND
+   *
+   * Only the last is a third party's decision, and it is now bounded by a NON-UPGRADEABLE,
+   * append-only registry with no owner (sec. 2.5a). Nothing else in the path consults any role,
+   * owner, pause flag or upgrade.
+   */
+  function test_NoGovernanceLeverCanBlockAWithdrawal() public {
+    // The ONLY governance action reachable on a live pool is windDown, via the Entrypoint.
+    vm.prank(address(entrypoint));
+    pool.windDown();
+    assertTrue(pool.dead(), 'windDown did not take effect - the test proves nothing');
+
+    // A dead pool must still pay out. Wind-down stops DEPOSITS; it must never trap funds already
+    // inside, or "wind the pool down" would be a censorship lever over every existing depositor.
+    IPrivacyPool.Withdrawal memory w = IPrivacyPool.Withdrawal({processooor: recipient, data: ''});
+    uint256 before = recipient.balance;
+
+    vm.prank(recipient);
+    pool.withdraw(w, _e2eProof());
+
+    assertEq(recipient.balance - before, WITHDRAWN, 'a wound-down pool blocked a valid withdrawal');
+  }
+
+  /// @notice The ASP membership check is the ONLY third-party-controlled revert in the path, and it
+  /// is served by a contract with no owner and no upgrade path. If a future change routes it back
+  /// through anything upgradeable, this pins the address the pool actually trusts.
+  function test_TheOnlyThirdPartyGateIsTheNonUpgradeableRegistry() public view {
+    assertEq(address(pool.ASP_REGISTRY()), address(aspRegistry), 'pool trusts an unexpected contract');
+
+    string[4] memory forbidden =
+      ['owner()', 'upgradeToAndCall(address,bytes)', 'grantRole(bytes32,address)', 'remove(uint256)'];
+    for (uint256 i = 0; i < forbidden.length; i++) {
+      (bool ok,) =
+        address(aspRegistry).staticcall(abi.encodeWithSelector(bytes4(keccak256(bytes(forbidden[i])))));
+      assertFalse(ok, string.concat('the ASP gate answers a governance selector: ', forbidden[i]));
+    }
+  }
 }

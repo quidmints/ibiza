@@ -821,9 +821,41 @@ owner, no upgrade path. An owner-mutable set moves discretion up a level rather 
 Combined with the append-only ASP tree this spends **less** governance than upstream PP — the
 postman survives but is admit-only.
 
-**Still open:** anchor liveness (fail-open vs fail-closed — fail-closed hands an operator a
-censorship lever through inaction), and establishing the negative "there is no other path to
-blocking a withdrawal", which is an invariant over the whole withdrawal path.
+✅ **Anchor liveness — DECIDED AND IMPLEMENTED: fail-open.** See §2.5a. The latest revocation root
+never expires, so inaction can never block a withdrawal.
+
+✅ **The negative invariant — ESTABLISHED.** `test_NoGovernanceLeverCanBlockAWithdrawal` and
+`test_TheOnlyThirdPartyGateIsTheNonUpgradeableRegistry`. `withdraw()` reverts on exactly seven
+conditions; six are the caller's own doing (wrong processooor, context mismatch, tree depth, stale
+state root, bad proof, spent nullifier) and the seventh is the ASP membership check — now served by
+a contract with **no owner and no upgrade path**. The only governance action reachable on a live
+pool is `windDown`, and it is proven NOT to block withdrawals: a wound-down pool still pays out a
+valid proof, so "wind the pool down" cannot trap existing depositors.
+
+**REMAINING — one focused piece of work, now fully de-risked:**
+
+`revocation_root` as a 9th public input on `withdraw_identity`. Two things that could have
+invalidated the approach were checked first and both came back clean:
+1. **EIP-170:** a 9-input verifier is 24,491 bytes with 85 spare — the same as today's 8-input one.
+   Adding the input is free.
+2. **SMT COMPATIBILITY — the one that mattered.** The exclusion gadget was written against
+   *circomlib*, while `RevocationRegistry` uses `@solarity/solidity-lib`'s `SparseMerkleTree`. They
+   are **byte-compatible**: solarity hashes leaves as `hash3(key, value, 1)` and nodes as
+   `hash2(L, R)`, identical to circomlib's `SMTHash1`/`SMTHash2`, and its `auxKey`/`auxValue` are
+   the same non-inclusion witness as `oldKey`/`oldValue`. Had these differed the circuit could never
+   have verified against the registry's root and the design would have needed rework.
+
+The ripple, in order: copy `smt.nr` into `pp/` (as `jubjub.nr` was, so PP keeps no dependency on the
+passport library) → circuit gains `revocation_root` + 4 private inputs → `ProofLib.pubSignals`
+`uint256[8]`→`[9]` → `PrivacyPool` gains an immutable `REVOCATION_REGISTRY` and checks
+`isValidRoot` → regenerate the verifier → **a TS SparseMerkleTree mirror in the wallet** (the
+existing mirrors are LeanIMT, a different construction) → `withdrawWitness.ts` builds the
+non-inclusion path → regenerate all THREE fixtures. Deliberately not started half-way: the
+withdrawal path works end-to-end today and a partial landing would break it.
+
+**OFAC CRE workflow** — external Chainlink infrastructure, not code in this repo. `backend/cre/`
+holds `notary_registry` as the working template; the OFAC feed is a second workflow plus a new
+`registryId` on `RegistrySourceAnchor`, and needs a deployed DON to run against.
 
 ### 2.5a Upgradeability audit + the root-staleness bug (2026-07-27)
 

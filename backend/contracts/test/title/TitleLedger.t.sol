@@ -9,6 +9,7 @@ import {IEvidenceRegistry} from '@rarimo/evidence-registry/interfaces/IEvidenceR
 import {TitleLedger} from '../../contracts/title/TitleLedger.sol';
 import {RegistrySourceAnchor} from '../../contracts/registry/RegistrySourceAnchor.sol';
 import {NoirVerifierMock} from '../../contracts/mock/verifiers/NoirVerifierMock.sol';
+import {TitleHolderHonkVerifier} from '../../contracts/title/TitleHolderHonkVerifier.sol';
 
 /// Same minimal in-test ERC-7812 registry pattern as RegistrySourceAnchor.t.sol / EntrypointAsp.t.sol.
 contract MockEvidenceRegistry is IEvidenceRegistry {
@@ -110,6 +111,14 @@ contract TitleLedgerTest is Test {
     bytes32 digest = MessageHashUtils.toEthSignedMessageHash(messageHash_);
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, digest);
     return abi.encodePacked(r, s, v);
+  }
+
+  /// Replace the mock verifier's BYTECODE with the real one, in place.
+  /// Keeps the existing registry/notary/signature wiring intact - standing up a second ledger just
+  /// to change one immutable would have meant re-plumbing all of it, and the thing under test is
+  /// the verifier, not the setup.
+  function _useRealVerifier() internal {
+    vm.etch(address(titleHolderVerifier), address(new TitleHolderHonkVerifier()).code);
   }
 
   function _mintValidTitle(bytes32 holderCommitment_) internal returns (uint256 titleId_) {
@@ -272,15 +281,59 @@ contract TitleLedgerTest is Test {
 
   // ── transferTitle / verifyHolderProof ──────────────────────────────────────────────────
 
-  function test_verifyHolderProof_trueWhenVerifierAccepts() public {
-    uint256 titleId = _mintValidTitle(keccak256('hc'));
-    assertTrue(ledger.verifyHolderProof(titleId, hex'ab'));
+  /*
+   * THE REAL VERIFIER, NOT THE MOCK.
+   *
+   * These two used to assert only that TitleLedger forwards to whatever verifier it holds - the
+   * mock returns true, so `hex'ab'` "verified". That tests the plumbing and nothing about whether
+   * a genuine holder proof is accepted, which is the claim that matters: a title's holder proof is
+   * what links a title to an identity without revealing it.
+   *
+   * Now a real TitleHolderHonkVerifier and a real proof. The commitment is the circuit's own
+   * expected_commitment for title_id = 1 (= Poseidon(holder_root(sk 1234), 1)), and titleId is 1
+   * because TitleLedger's counter starts there - the public inputs TitleLedger builds
+   * ([holderCommitment, titleId]) must be exactly the ones the circuit bound.
+   */
+  uint256 internal constant TITLE1_COMMITMENT =
+    13133097628895757648741781760678152926284111620646563595865187894813129799232;
+
+  function test_verifyHolderProof_acceptsARealProof() public {
+    uint256 titleId = _mintValidTitle(bytes32(TITLE1_COMMITMENT));
+    assertEq(titleId, 1, 'fixture is bound to title_id = 1');
+    _useRealVerifier();
+
+    assertTrue(
+      ledger.verifyHolderProof(titleId, vm.readFileBinary('test/fixtures/title_holder_id1.proof')),
+      'a genuine holder proof was rejected'
+    );
   }
 
-  function test_verifyHolderProof_falseWhenVerifierRejects() public {
-    uint256 titleId = _mintValidTitle(keccak256('hc'));
-    titleHolderVerifier.setShouldVerify(false);
-    assertFalse(ledger.verifyHolderProof(titleId, hex'ab'));
+  /// @notice The same proof against a DIFFERENT title must fail - otherwise one holder proof would
+  /// unlock every title, which is the whole property `title_id` is a public input for.
+  function test_verifyHolderProof_rejectsAProofBoundToAnotherTitle() public {
+    _mintValidTitle(bytes32(TITLE1_COMMITMENT));
+    uint256 second = _mintValidTitle(bytes32(TITLE1_COMMITMENT));
+    _useRealVerifier();
+
+    // The Honk verifier REVERTS (SumcheckFailed) rather than returning false when the public
+    // inputs do not match the proof - both are correct rejections, so accept either.
+    try ledger.verifyHolderProof(second, vm.readFileBinary('test/fixtures/title_holder_id1.proof'))
+    returns (bool ok) {
+      assertFalse(ok, 'a proof for title 1 was accepted for a different title');
+    } catch {
+      assertTrue(true);
+    }
+  }
+
+  function test_verifyHolderProof_rejectsGarbageAgainstTheRealVerifier() public {
+    uint256 titleId = _mintValidTitle(bytes32(TITLE1_COMMITMENT));
+    _useRealVerifier();
+
+    try ledger.verifyHolderProof(titleId, hex'ab') returns (bool ok) {
+      assertFalse(ok, 'the real verifier accepted 2 bytes of garbage');
+    } catch {
+      assertTrue(true); // reverting on a malformed proof is equally correct
+    }
   }
 
   function test_verifyHolderProof_revertsOnTitleNotFound() public {

@@ -10,7 +10,7 @@ import {IdentityAspRegistry} from '../../contracts/registry/IdentityAspRegistry.
 import {RevocationRegistry} from '../../contracts/registry/RevocationRegistry.sol';
 import {PrivacyPoolSimple} from '../../contracts/pool/implementations/PrivacyPoolSimple.sol';
 import {WithdrawalHonkVerifier} from '../../contracts/pool/verifiers/WithdrawalHonkVerifier.sol';
-import {VerifierMock} from '../../contracts/mock/verifiers/VerifierMock.sol';
+import {RagequitHonkVerifier} from '../../contracts/pool/verifiers/RagequitHonkVerifier.sol';
 import {IPrivacyPool} from '../../contracts/pool/interfaces/IPrivacyPool.sol';
 import {ProofLib} from '../../contracts/pool/lib/ProofLib.sol';
 import {Constants} from '../../contracts/pool/lib/Constants.sol';
@@ -151,7 +151,7 @@ contract WithdrawEndToEndTest is Test {
 
     withdrawalVerifier = new WithdrawalHonkVerifier();
     pool = new PrivacyPoolSimple(
-      address(entrypoint), address(withdrawalVerifier), address(new VerifierMock()),
+      address(entrypoint), address(withdrawalVerifier), address(new RagequitHonkVerifier()),
       address(aspRegistry), address(revocationRegistry)
     );
 
@@ -407,5 +407,75 @@ contract WithdrawEndToEndTest is Test {
       revocationRegistry.isValidRoot(current),
       'the CURRENT root expired - inaction would block withdrawals'
     );
+  }
+
+  /*
+   * ═══ RAGEQUIT, END TO END, WITH NO MOCK ANYWHERE IN THE PATH ═══
+   *
+   * sec. 2.5b restored the ragequit CIRCUIT, and RagequitHonkVerifier.t.sol proves the verifier
+   * accepts a real proof — but that test has no pool in it. The pool's own ragequit path was still
+   * only exercised against NoirVerifierMock, i.e. against a verifier that returns true.
+   *
+   * This closes that: a real proof, the real RagequitHonkVerifier, the real pool, and the real
+   * depositor check. It matters because ragequit is the escape hatch — the exit for someone the ASP
+   * declines to admit — and "the verifier accepts the proof" is not the same claim as "the pool
+   * pays out".
+   *
+   * The note is deposit index 0, deliberately NOT the one the withdrawal spends (index 1), so the
+   * two end-to-end paths cannot mask each other.
+   */
+  uint256 internal constant RQ_COMMITMENT =
+    12917025229888783294206029436526078537230310489065382508244059085069276358626;
+  uint256 internal constant RQ_NULLIFIER_HASH =
+    3572094978166145730760062909166620898739575626294502484653765558404442689039;
+  uint256 internal constant RQ_VALUE = 1 ether;
+  uint256 internal constant RQ_LABEL =
+    616841212373873173522856975102379060024107276534765293132318009474304992750;
+
+  function _ragequitProof() internal view returns (ProofLib.RagequitProof memory _p) {
+    _p.proof = vm.readFileBinary('test/fixtures/ragequit_e2e.proof');
+    _p.pubSignals = [RQ_COMMITMENT, RQ_NULLIFIER_HASH, RQ_VALUE, RQ_LABEL];
+  }
+
+  function test_RagequitWithRealProofThroughTheRealPool() public {
+    uint256 before = depositor.balance;
+
+    // The pool pays the ORIGINAL DEPOSITOR, which is what makes ragequit an unlinkability
+    // sacrifice rather than a theft primitive.
+    vm.prank(depositor);
+    pool.ragequit(_ragequitProof());
+
+    assertEq(depositor.balance - before, RQ_VALUE, 'ragequit did not pay the depositor');
+    assertTrue(pool.nullifierHashes(RQ_NULLIFIER_HASH), 'ragequit did not spend the nullifier');
+  }
+
+  /// @notice Only the original depositor may reclaim. Without this the escape hatch would be a
+  /// way to steal any note whose secrets leaked.
+  function test_RagequitRejectsAnyoneButTheDepositor() public {
+    vm.prank(recipient);
+    vm.expectRevert();
+    pool.ragequit(_ragequitProof());
+  }
+
+  /// @notice The escape hatch must survive wind-down for the same reason withdrawal does - a
+  /// retired pool that traps unadmitted depositors is exactly the censorship lever sec. 2.13 rules
+  /// out, and they have no other exit.
+  function test_RagequitSurvivesWindDown() public {
+    vm.prank(address(entrypoint));
+    pool.windDown();
+
+    uint256 before = depositor.balance;
+    vm.prank(depositor);
+    pool.ragequit(_ragequitProof());
+    assertEq(depositor.balance - before, RQ_VALUE, 'a wound-down pool blocked the escape hatch');
+  }
+
+  function test_RagequitCannotBeReplayed() public {
+    vm.prank(depositor);
+    pool.ragequit(_ragequitProof());
+
+    vm.prank(depositor);
+    vm.expectRevert();
+    pool.ragequit(_ragequitProof());
   }
 }

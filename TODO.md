@@ -485,7 +485,18 @@ Poseidon is the external `noir-lang/poseidon` package, not `std::hash::poseidon`
 proving time on the A16 (§2.4b). Aggregation batches VERIFICATION — each user still proves their own
 withdrawal locally, and that number is unchanged by any N.
 
-### 2.4 Build the aggregator — DECIDED: build our own. **DO NOT START YET.** Comes after §2.1.
+### 2.4 Build the aggregator — DECIDED: build our own. **THE ORIGINAL REASON TO DEFER IS GONE.**
+
+**Why it was deferred:** "comes after §2.1 — until wallet-side witness assembly exists no user can
+withdraw at all, and aggregation optimises a path that does not yet work end to end." **§2.1 landed
+2026-07-27**, the withdrawal works end to end against a real pool, and §2.4pre measured the verifier
+at 24,491 bytes with 85 spare and confirmed ZK survives `--honk_recursion`. So the stated blocker no
+longer holds and nothing technical is in the way.
+
+**It remains deferred only by explicit instruction** (user, 2026-07-27: "we are building our own
+aggregator but dont do this yet"). Worth re-confirming rather than treating as permanent — the
+things that would sensibly precede it are §2.5b (ragequit, which is a correctness hole rather than
+an optimisation) and on-device proving time, which needs the phone.
 
 **Decision (user, 2026-07-27): we build our own aggregator.** Not an AVS (§2.4e — it secures the
 wrong property), not Aligned (§2.4f — same work, plus a dependency on someone else's roadmap).
@@ -947,6 +958,30 @@ imports `curve_384::` anywhere; it is orphaned (same class as the deleted `bitco
 `verify_brainpoolp384r1_ecdsa` — separate, correct code paths. `curve_192::ecdsa_ver` and
 `curve_224::ecdsa_ver` ARE live (used by `not_passports_zk_circuits.nr`) and are now
 differential-tested. **Delete or rename `curve_384.nr`** so nobody wires it up expecting secp384r1.
+
+### 2.5b ⚠ RAGEQUIT IS UNPROVABLE — the escape hatch cannot be exercised (found 2026-07-27)
+
+**`PrivacyPool.ragequit` exists on-chain, `CommitmentVerifier.sol` is deployed alongside it, and
+THERE IS NO CIRCUIT SOURCE FOR IT ANYWHERE IN THIS REPO.** `backend/circuits/` holds `pp`,
+`withdraw_identity`, `title_holder`, `query_identity{,_td1}`, `register_identity{,_light_td1}` — and
+nothing that produces a `RagequitProof`. The verifier is inherited from upstream PP; its circuit was
+not.
+
+**Why this matters more than a missing feature.** Ragequit is the ONLY exit when the ASP declines to
+admit you: it returns the deposit to the original depositor, sacrificing unlinkability to get the
+money back. §2.13's whole argument that admission cannot become a trap rests on it existing. Right
+now a depositor who is never admitted has **no exit at all** — they cannot withdraw (no ASP
+membership) and cannot ragequit (no proof).
+
+It is also a DIFFERENT TOOLCHAIN: `RagequitProof` is Groth16 (`pA`/`pB`/`pC`/`pubSignals[4]`), not
+Honk, so it needs circom + snarkjs rather than nargo + bb — a second proving stack this repo does not
+otherwise have. The wallet correspondingly has no ragequit path; `discovery.ts` only READS
+`Ragequit` events to mark notes spent.
+
+**Options, in order of preference:** port the ragequit circuit to Noir and add a Honk verifier
+(one toolchain, matches everything else, but changes a deployed interface); or vendor upstream PP's
+circom `commitment.circom` and add the snarkjs stack; or drop ragequit and accept that admission is
+final, which contradicts §2.13 and should not be chosen silently.
 
 ### 2.6 NFC passport scanning
 

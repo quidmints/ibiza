@@ -90,6 +90,54 @@ EOF
   exit 1
 fi
 
+# ---------------------------------------------------------------------------------------------
+# bb_checked <expected-artifact> -- <bb args...>
+#
+# EVERY bb call goes through this. bb fails in two ways that a bare invocation does not catch, and
+# both have already cost this project real time:
+#
+#   1. IT EXITS 0 AND WRITES NOTHING. `bb write_solidity_verifier` with a missing -k prints
+#      "Unable to open file: target/vk" and returns 0. `set -e` cannot see that. Only checking that
+#      the artifact exists catches it.
+#   2. IT SIGSEGVS (exit 139) ON A WRONG IN-CIRCUIT VK LENGTH, after already printing
+#      "Scheme is: ultra_honk" - so stdout looks like a normal run. The recursive
+#      `verification_key` parameter is 128 FIELDS, not the 55 fields of the on-disk target/vk.
+#      Passing 55 segfaults with no diagnostic. See TODO.md sec. 2.4pre.
+#
+# Checking the ARTIFACT rather than the exit code is the general defence: it holds for failure
+# modes nobody has classified yet, which is the whole reason the self-checks further down exist.
+bb_checked() {
+  local artifact="$1"; shift
+  [ "$1" = "--" ] && shift
+
+  set +e
+  "$@"
+  local code=$?
+  set -e
+
+  if [ ${code} -eq 139 ]; then
+    echo "ERROR: bb SEGFAULTED (exit 139) on: $*" >&2
+    echo "       If this is a recursive circuit, the in-circuit verification_key is 128 FIELDS," >&2
+    echo "       NOT the 55 fields of the on-disk target/vk. A wrong length segfaults bb with no" >&2
+    echo "       diagnostic. See TODO.md sec. 2.4pre." >&2
+    exit 1
+  fi
+
+  if [ ${code} -ne 0 ]; then
+    echo "ERROR: bb exited ${code} on: $*" >&2
+    exit 1
+  fi
+
+  # The load-bearing check: bb can exit 0 having produced nothing.
+  if [ ! -s "${artifact}" ]; then
+    echo "ERROR: bb reported success but produced no '${artifact}'." >&2
+    echo "       Command: $*" >&2
+    echo "       bb exits 0 on some failures (e.g. a missing -k on write_solidity_verifier)," >&2
+    echo "       so exit status alone is not evidence the artifact was written." >&2
+    exit 1
+  fi
+}
+
 CIRCUITS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONTRACTS_DIR="${CIRCUITS_DIR}/../contracts/contracts"
 
@@ -105,7 +153,7 @@ for target in "${TARGETS[@]}"; do
   pushd "${CIRCUITS_DIR}/${circuit}" >/dev/null
 
   nargo compile
-  bb write_vk --scheme ultra_honk --oracle_hash keccak \
+  bb_checked target/vk -- bb write_vk --scheme ultra_honk --oracle_hash keccak \
     -b "target/${circuit}.json" -o target
   # ZERO KNOWLEDGE IS NON-NEGOTIABLE HERE, and on bb 1.x it is the DEFAULT - so no flag is passed
   # and NOTHING must ever add `--disable_zk`. (On 0.82.2 this needed an explicit `--zk`; an earlier
@@ -117,7 +165,7 @@ for target in "${TARGETS[@]}"; do
   # exactly the unlinkability both circuits exist to provide. ZK costs ~+51% verify gas and +51
   # field elements of proof - that is the price of the property, not overhead to trim. The
   # determinism self-check below is what actually enforces this. See TODO.md sec. 2.17.
-  bb write_solidity_verifier --scheme ultra_honk \
+  bb_checked "${dest}" -- bb write_solidity_verifier --scheme ultra_honk \
     -k target/vk -o "${dest}"
 
   # bb names every generated contract `HonkVerifier`; give each a distinct name so a single Forge
@@ -155,7 +203,7 @@ for target in "${TARGETS[@]}"; do
     # writes a proof against a DIFFERENT key, which its own verifier then rejects with
     # `SumcheckFailed()`. That single missing flag masqueraded as a bb-version incompatibility for a
     # long time. The self-checks below would catch it, but pass it explicitly.
-    bb prove --scheme ultra_honk --oracle_hash keccak \
+    bb_checked target/proof -- bb prove --scheme ultra_honk --oracle_hash keccak \
       -b "target/${circuit}.json" -w target/witness.gz -k target/vk -o target
 
     # ----- SELF-VALIDATION: never emit an artifact we have not checked -----
@@ -180,7 +228,7 @@ for target in "${TARGETS[@]}"; do
     rm -rf target/_zkcheck_a target/_zkcheck_b
     mkdir -p target/_zkcheck_a target/_zkcheck_b
     for _d in a b; do
-      bb prove --scheme ultra_honk --oracle_hash keccak \
+      bb_checked "target/_zkcheck_${_d}/proof" -- bb prove --scheme ultra_honk --oracle_hash keccak \
         -b "target/${circuit}.json" -w target/witness.gz -k target/vk \
         -o "target/_zkcheck_${_d}" >/dev/null 2>&1
     done

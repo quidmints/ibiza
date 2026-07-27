@@ -145,6 +145,7 @@ CONTRACTS_DIR="${CIRCUITS_DIR}/../contracts/contracts"
 TARGETS=(
   "withdraw_identity:${CONTRACTS_DIR}/pool/verifiers/WithdrawalHonkVerifier.sol:WithdrawalHonkVerifier:9"
   "title_holder:${CONTRACTS_DIR}/title/TitleHolderHonkVerifier.sol:TitleHolderHonkVerifier:2"
+  "ragequit:${CONTRACTS_DIR}/pool/verifiers/RagequitHonkVerifier.sol:RagequitHonkVerifier:4"
 )
 
 for target in "${TARGETS[@]}"; do

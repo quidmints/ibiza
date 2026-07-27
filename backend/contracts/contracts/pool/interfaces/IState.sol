@@ -106,10 +106,12 @@ interface IState {
   function WITHDRAWAL_VERIFIER() external view returns (INoirVerifier _verifier);
 
   /**
-   * @notice Returns the configured Verifier contract for ragequits
-   * @return _verifier The Verifier contract
+   * @notice Returns the configured Noir/Honk verifier for ragequits
+   * @dev Honk since 2026-07-27. Upstream shipped a Groth16 CommitmentVerifier with no circuit
+   *      source, so no ragequit proof could be produced at all - see TODO.md sec. 2.5b.
+   * @return _verifier The verifier contract
    */
-  function RAGEQUIT_VERIFIER() external view returns (IVerifier _verifier);
+  function RAGEQUIT_VERIFIER() external view returns (INoirVerifier _verifier);
 
   /**
    * @notice Returns the current root index

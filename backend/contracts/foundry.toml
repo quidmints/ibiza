@@ -28,3 +28,7 @@ optimizer_runs = 1
 [[profile.default.compilation_restrictions]]
 paths = "contracts/title/TitleHolderHonkVerifier.sol"
 optimizer_runs = 1
+
+[[profile.default.compilation_restrictions]]
+paths = "contracts/pool/verifiers/RagequitHonkVerifier.sol"
+optimizer_runs = 1

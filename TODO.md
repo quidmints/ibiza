@@ -959,29 +959,33 @@ imports `curve_384::` anywhere; it is orphaned (same class as the deleted `bitco
 `curve_224::ecdsa_ver` ARE live (used by `not_passports_zk_circuits.nr`) and are now
 differential-tested. **Delete or rename `curve_384.nr`** so nobody wires it up expecting secp384r1.
 
-### 2.5b ⚠ RAGEQUIT IS UNPROVABLE — the escape hatch cannot be exercised (found 2026-07-27)
+### 2.5b ✅ Ragequit ported to Noir — the correctness hole is CLOSED (2026-07-27)
 
-**`PrivacyPool.ragequit` exists on-chain, `CommitmentVerifier.sol` is deployed alongside it, and
-THERE IS NO CIRCUIT SOURCE FOR IT ANYWHERE IN THIS REPO.** `backend/circuits/` holds `pp`,
-`withdraw_identity`, `title_holder`, `query_identity{,_td1}`, `register_identity{,_light_td1}` — and
-nothing that produces a `RagequitProof`. The verifier is inherited from upstream PP; its circuit was
-not.
+**The hole:** `PrivacyPool.ragequit` and a Groth16 `CommitmentVerifier.sol` were both inherited from
+upstream PP, but **no circuit source for it existed anywhere in this repo**. No ragequit proof could
+be produced at all. That was a correctness hole, not a missing feature: ragequit is the ONLY exit
+for a depositor the ASP declines to admit, since withdrawal requires membership — so a rejected
+depositor could neither withdraw nor reclaim, and §2.13's argument that admission cannot become a
+trap rested on an exit that did not exist.
 
-**Why this matters more than a missing feature.** Ragequit is the ONLY exit when the ASP declines to
-admit you: it returns the deposit to the original depositor, sacrificing unlinkability to get the
-money back. §2.13's whole argument that admission cannot become a trap rests on it existing. Right
-now a depositor who is never admitted has **no exit at all** — they cannot withdraw (no ASP
-membership) and cannot ragequit (no proof).
+**Fixed by porting to Noir** (`backend/circuits/ragequit`) rather than vendoring circom + snarkjs,
+so the fusion stays on ONE proving stack. The alternative meant a second toolchain to pin, audit and
+keep working for ~15 lines of constraints. `ProofLib.RagequitProof` is now `bytes proof` +
+`uint256[4] pubSignals`; **the signals and their order are unchanged**, so every accessor reads the
+same slot it did before.
 
-It is also a DIFFERENT TOOLCHAIN: `RagequitProof` is Groth16 (`pA`/`pB`/`pC`/`pubSignals[4]`), not
-Honk, so it needs circom + snarkjs rather than nargo + bb — a second proving stack this repo does not
-otherwise have. The wallet correspondingly has no ragequit path; `discovery.ts` only READS
-`Ragequit` events to mark notes spent.
+The circuit asserts BOTH halves of `commitment_hasher` — commitment AND nullifier hash — and each
+matters for a different attack, tested as such:
+- `test_RejectsInflatedValue` — the pool pays out `pubSignals[2]` directly, so a prover who could
+  raise `value` while keeping a valid commitment would drain it. Value is bound into the commitment.
+- `test_RejectsTamperedNullifierHash` — the pool spends `pubSignals[1]`; unbound, one note could be
+  reclaimed repeatedly under different nullifiers.
 
-**Options, in order of preference:** port the ragequit circuit to Noir and add a Honk verifier
-(one toolchain, matches everything else, but changes a deployed interface); or vendor upstream PP's
-circom `commitment.circom` and add the snarkjs stack; or drop ragequit and accept that admission is
-final, which contradicts §2.13 and should not be chosen silently.
+`RagequitHonkVerifier` is **24,489 bytes, 87 spare** under EIP-170, and needs its own
+`optimizer_runs = 1` entry like the other two.
+
+**Still wallet-side work:** assembling the ragequit witness and calling `ragequit()`. The circuit,
+verifier and contract path all work; `discovery.ts` still only READS `Ragequit` events.
 
 ### 2.6 NFC passport scanning
 

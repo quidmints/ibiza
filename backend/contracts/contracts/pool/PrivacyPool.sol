@@ -206,7 +206,7 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     if (depositors[_label] != msg.sender) revert OnlyOriginalDepositor();
 
     // Verify proof with Groth16 verifier
-    if (!RAGEQUIT_VERIFIER.verifyProof(_proof.pA, _proof.pB, _proof.pC, _proof.pubSignals)) revert InvalidProof();
+    if (!RAGEQUIT_VERIFIER.verify(_proof.proof, _proof.ragequitPublicInputsBytes32())) revert InvalidProof();
 
     // Check commitment exists in state
     if (!_isInState(_proof.commitmentHash())) revert InvalidCommitment();

@@ -49,7 +49,7 @@ contract PrivacyPoolSimpleTest is Test {
   // has no ASP-membership check to port and stays Groth16, matching State.sol's two distinct
   // verifier types.
   NoirVerifierMock internal withdrawalVerifier;
-  VerifierMock internal ragequitVerifier;
+  NoirVerifierMock internal ragequitVerifier;
   PrivacyPoolSimple internal pool;
 
   address internal depositor = address(0xD0D0);
@@ -60,7 +60,7 @@ contract PrivacyPoolSimpleTest is Test {
   function setUp() public {
     entrypoint = new MockEntrypoint();
     withdrawalVerifier = new NoirVerifierMock();
-    ragequitVerifier = new VerifierMock();
+    ragequitVerifier = new NoirVerifierMock();
     pool = new PrivacyPoolSimple(
       address(entrypoint), address(withdrawalVerifier), address(ragequitVerifier),
       address(entrypoint), address(entrypoint)
@@ -90,6 +90,7 @@ contract PrivacyPoolSimpleTest is Test {
     p.pubSignals = [uint256(0), 0, 0, 0, 0, 0, 0, 0, 0];
   }
 
+  /// @dev Honk since the sec. 2.5b port - `proof` is bytes, not pA/pB/pC.
   function _emptyRagequitProof() internal pure returns (ProofLib.RagequitProof memory p) {
     p.pubSignals = [uint256(0), 0, 0, 0];
   }
@@ -290,7 +291,8 @@ contract PrivacyPoolSimpleTest is Test {
   }
 
   function test_ragequit_revertsOnInvalidProof() public {
-    FailingVerifierMock rejecting = new FailingVerifierMock();
+    NoirVerifierMock rejecting = new NoirVerifierMock();
+    rejecting.setShouldVerify(false);
     PrivacyPoolSimple rejectingPool =
       new PrivacyPoolSimple(
         address(entrypoint), address(withdrawalVerifier), address(rejecting),

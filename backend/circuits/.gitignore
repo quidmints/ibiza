@@ -29,3 +29,4 @@ process_passport_*.js
 !withdraw_identity/Prover.wallet.toml
 !withdraw_identity/Prover.e2e.toml
 !title_holder/Prover.toml
+!ragequit/Prover.toml

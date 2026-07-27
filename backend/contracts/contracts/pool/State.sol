@@ -46,7 +46,7 @@ abstract contract State is IState {
   /// @inheritdoc IState
   INoirVerifier public immutable WITHDRAWAL_VERIFIER;
   /// @inheritdoc IState
-  IVerifier public immutable RAGEQUIT_VERIFIER;
+  INoirVerifier public immutable RAGEQUIT_VERIFIER;
 
   /// @inheritdoc IState
   uint256 public nonce;
@@ -91,7 +91,7 @@ abstract contract State is IState {
 
     ENTRYPOINT = IEntrypoint(_entrypoint);
     WITHDRAWAL_VERIFIER = INoirVerifier(_withdrawalVerifier);
-    RAGEQUIT_VERIFIER = IVerifier(_ragequitVerifier);
+    RAGEQUIT_VERIFIER = INoirVerifier(_ragequitVerifier);
   }
 
   /*///////////////////////////////////////////////////////////////

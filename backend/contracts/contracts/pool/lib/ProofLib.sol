@@ -136,7 +136,11 @@ library ProofLib {
   //////////////////////////////////////////////////////////////*/
 
   /**
-   * @notice Struct containing Groth16 proof elements and public signals for ragequit verification
+   * @notice Honk proof + public signals for ragequit verification.
+   * @dev PORTED FROM GROTH16 2026-07-27. Upstream shipped this as Groth16 with a CommitmentVerifier
+   *      but no circuit source, so no proof could be produced at all (TODO.md sec. 2.5b). Rebuilt as
+   *      a Noir circuit so the fusion keeps ONE proving stack; the 4 public signals and their order
+   *      are unchanged, so every accessor below still reads the same slot.
    * @dev The public signals array must match the order of public inputs/outputs in the circuit
    * @param pA First elliptic curve point (π_A) of the Groth16 proof, encoded as two field elements
    * @param pB Second elliptic curve point (π_B) of the Groth16 proof, encoded as 2x2 matrix of field elements
@@ -148,10 +152,22 @@ library ProofLib {
    *        - [3] label: Label of commitment
    */
   struct RagequitProof {
-    uint256[2] pA;
-    uint256[2][2] pB;
-    uint256[2] pC;
+    bytes proof;
     uint256[4] pubSignals;
+  }
+
+  /// @notice Converts ragequit `pubSignals` to the `bytes32[]` INoirVerifier.verify expects.
+  /// @dev Mirrors publicInputsBytes32 for withdrawals - see that function's note on why the
+  ///      conversion lives here rather than at each call site.
+  function ragequitPublicInputsBytes32(RagequitProof memory _p)
+    internal
+    pure
+    returns (bytes32[] memory _publicInputs)
+  {
+    _publicInputs = new bytes32[](4);
+    for (uint256 _i = 0; _i < 4; ++_i) {
+      _publicInputs[_i] = bytes32(_p.pubSignals[_i]);
+    }
   }
 
   /**

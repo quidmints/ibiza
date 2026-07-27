@@ -930,6 +930,58 @@ adopting D means accepting weaker auditability than §2.5 promises until that pr
 the audited hash), epoch length, and how `s` is delivered to the authority at registration
 (encrypted to a published authority key is the obvious route, and wants its own scrutiny).
 
+### 2.13d SCOPED: escrow-bound revocation secret. MEASURED, and the cost lands off the hot path
+
+Closes §2.13c's soundness hole (nothing forced a user to pick an `s` the authority knows, so anyone
+could be permanently unrevokable) WITHOUT an authority interaction that could be refused.
+
+**Mechanism.** The user encrypts `s` to the authority's published BabyJubJub key with HASHED ELGAMAL
+— `C1 = r*G`, `C2 = s + Poseidon(r*PK_A)` — and posts the ciphertext ON-CHAIN with a proof it is
+well-formed and encrypts the `s` they committed to. No approval step exists, so there is nothing to
+withhold. BabyJubJub is already the curve: `pp/src/jubjub.nr` has the 254-bit ladder and point
+addition, and the only new primitive is that ladder generalised to an ARBITRARY base (`priv_to_pub`
+hardcodes G), which is a ten-line change.
+
+**MEASURED with `nargo info`, 1.0.0-beta.13 — not estimated:**
+
+| circuit | ACIR opcodes | note |
+|---|---|---|
+| `withdraw_identity` today | 43,772 | baseline |
+| `register_identity` today | 72,932 | baseline |
+| `register_identity_light_td1` today | 16,180 | baseline |
+| hashed-ElGamal escrow proof | **23,727** | dominated by 2 scalar mults (~11.8k each) |
+| withdrawal add, SEPARATE escrow tree | 7,895 (**+18%**) | the depth-20 inclusion is nearly all of it |
+| withdrawal add, escrow folded into the REGISTERED LEAF | **8** (+0.02%) | ← the shape to build |
+
+**The shape those numbers pick.** Do NOT put the encryption in a registration circuit: it is +33% on
+`register_identity` and **+147%** on the light TD1 path, which would be the worst place to spend it.
+Do NOT give escrow its own tree either — that costs 7,895 opcodes on EVERY withdrawal forever.
+Instead:
+
+1. **Registered-identity leaf becomes `Poseidon(holder_root, Poseidon(s))`.** The withdrawal already
+   proves inclusion of that leaf, so the escrow binding rides along for free.
+2. **Escrow is a SEPARATE, ONE-TIME, PERMISSIONLESS transaction** carrying the 23,727-opcode proof
+   that the posted ciphertext encrypts the `s` committed in that leaf. Both registration circuits
+   stay untouched.
+3. **Withdrawal adds 8 opcodes**: derive `P = Poseidon(s, epoch)`, and swap the blacklist leaf from
+   `holder_root` to `P`. The depth-20 exclusion gadget it runs today is REUSED as-is — this is a
+   leaf-derivation change, not new machinery.
+
+Recurring cost is therefore ~zero and the whole price is paid once, off the hot path.
+
+**REQUIRED GUARD: assert `r != 0`.** With `r = 0` the shared secret degenerates to the identity
+point, so the mask is a public constant and `C2` reveals `s` TO EVERYONE. That would let any
+observer test the published pseudonym list for that user — the exact confidentiality the design
+exists to provide. A degenerate `r` looks like a valid encryption and would pass every other check.
+
+**Residual costs, stated plainly:** the authority can decrypt every `s`, so it can revoke anyone —
+that IS the intended power, and a key compromise grants revocation (denial of service) but NOT
+deanonymisation, since `P` is a private input and never appears on-chain. §2.13c's auditability loss
+is unchanged by any of this.
+
+**Open:** epoch length, and whether the escrow record is required before the FIRST withdrawal or
+before the first deposit.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

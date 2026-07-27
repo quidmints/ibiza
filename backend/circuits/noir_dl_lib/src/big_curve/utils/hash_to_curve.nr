@@ -1,3 +1,4 @@
+use std::ops::Neg;
 use crate::bignum::BigNumTrait;
 
 unconstrained fn hash_to_curve_inner<Fq>(
@@ -9,7 +10,7 @@ unconstrained fn hash_to_curve_inner<Fq>(
 where
     Fq: BigNumTrait + std::ops::Mul + std::ops::Add + std::cmp::Eq,
 {
-    let seedhash = std::hash::poseidon2::Poseidon2::hash([seedbase, seed_counter], 2);
+    let seedhash = poseidon::poseidon2::Poseidon2::hash([seedbase, seed_counter], 2);
     // TODO: assert in field?
     let seedhash: [u8; 32] = seedhash.to_le_bytes();
 
@@ -20,7 +21,7 @@ where
     yy.validate_in_range();
     x.validate_in_field();
     x.validate_in_range();
-    let y = yy.__tonelli_shanks_sqrt();
+    let y = unsafe { yy.__tonelli_shanks_sqrt() };
     let yy_reconstructed = y.unwrap_unchecked() * y.unwrap_unchecked();
     let mut result: (Fq, Fq, Field) = (x, y.unwrap_unchecked(), seed_counter);
     if (((yy_reconstructed == yy) & (y.is_some())) == false) {
@@ -58,7 +59,7 @@ fn poseidon_hash_bytes<let SeedBytes: u32>(seed: [u8; SeedBytes]) -> Field {
             packed += padded_seed[i] as Field;
         }
     }
-    let hashed_seed: Field = std::hash::poseidon2::Poseidon2::hash(packed_seed, SeedBytes / 31 + 1);
+    let hashed_seed: Field = poseidon::poseidon2::Poseidon2::hash(packed_seed, SeedBytes / 31 + 1);
     hashed_seed
 }
 pub fn hash_to_curve<Fq, let SeedBytes: u32>(seed: [u8; SeedBytes], a: Fq, b: Fq) -> (Fq, Fq)
@@ -68,7 +69,7 @@ where
     let (_, y, salt) = unsafe { __hash_to_curve_witgen(seed, a, b) };
     let outer_hash: Field = poseidon_hash_bytes(seed);
 
-    let inner_hash = std::hash::poseidon2::Poseidon2::hash([outer_hash, salt], 2);
+    let inner_hash = poseidon::poseidon2::Poseidon2::hash([outer_hash, salt], 2);
 
     // TODO do we need to assert is in field?; I think we do?
     let inner_hash: [u8; 32] = inner_hash.to_le_bytes();

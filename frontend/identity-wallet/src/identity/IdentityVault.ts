@@ -30,12 +30,12 @@
 
 import { JsonRpcProvider } from "ethers";
 import { Rarime, RarimeConfiguration } from "../sdk/Rarime";
-import { RarimePassport, DocumentStatus } from "../sdk/RarimePassport";
+import { RarimePassport, DocumentStatus } from "@rarimo/rarime-rn-sdk";
 import { HolderRoot, DocumentType, LeafStatus } from "../sdk/HolderTree";
 import { getOrCreateRootMnemonic, deriveSkIdentity, deriveProfileMasterKeys } from "./root";
 import type { MasterKeys } from "../pp/notes";
 import { discoverNotes, DiscoveryResult, DiscoveryOptions } from "../pp/discovery";
-import { toPaddedHex32 } from "../sdk/utils";
+import { toPaddedHex32 } from "@rarimo/rarime-rn-sdk";
 import {
   holderStateKeeper,
   getHolderDocuments,

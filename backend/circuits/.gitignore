@@ -16,3 +16,15 @@ circuits/*
 logs.*
 tmp.txt
 process_passport_*.js
+# ...except the fixture witnesses that committed test proofs are generated from. Without these the
+# proofs in contracts/test/fixtures/ could never be regenerated, only trusted. See TODO.md sec. 2.1.
+#
+# withdraw_identity has TWO, both emitted by tools/build-withdrawal-fixture.js, each backing a
+# different fixture: Prover.baseline.toml -> withdraw_identity.proof (independent hand vector) and
+# Prover.wallet.toml -> withdraw_identity_wallet.proof (the wallet's own derivation). Its plain
+# Prover.toml stays IGNORED because codegen-verifiers.sh now generates it by copying the baseline,
+# and committing a derived file invites the two drifting apart. title_holder still keeps its single
+# Prover.toml as a real source.
+!withdraw_identity/Prover.baseline.toml
+!withdraw_identity/Prover.wallet.toml
+!title_holder/Prover.toml

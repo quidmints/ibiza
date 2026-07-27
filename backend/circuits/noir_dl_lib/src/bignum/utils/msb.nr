@@ -20,7 +20,7 @@ pub unconstrained fn get_msb64(x: u64) -> u32 {
     v |= v >> 8;
     v |= v >> 16;
     v |= v >> 32;
-    MUL_DE_BRUIJN_BIT[(std::wrapping_mul(v, 0x6c04f118e9966f6b)) >> 57]
+    MUL_DE_BRUIJN_BIT[((std::wrapping_mul(v, 0x6c04f118e9966f6b)) >> 57) as u32]
 }
 
 // 1100

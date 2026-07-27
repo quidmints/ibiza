@@ -13,19 +13,24 @@ import {VerifierMock} from '../../contracts/mock/verifiers/VerifierMock.sol';
 import {FailingVerifierMock} from '../../contracts/mock/verifiers/FailingVerifierMock.sol';
 import {NoirVerifierMock} from '../../contracts/mock/verifiers/NoirVerifierMock.sol';
 
-/// Minimal IEntrypoint stand-in: PrivacyPool only ever calls ENTRYPOINT.latestActiveRoot() (the
+/// Minimal IEntrypoint stand-in: PrivacyPool only ever calls ENTRYPOINT.isKnownAspRoot() (the
 /// ASP-gating check in `validWithdrawal`) - deposit/withdraw/ragequit are otherwise pool-internal,
 /// so this settable double is enough to exercise the pool's OWN logic in isolation, same pattern
 /// as HolderStateKeeper.t.sol standing in a plain EOA for "the registration contract".
+///
+/// Note the shape change from the old `latestActiveRoot()` single-root getter: the real Entrypoint
+/// now accepts ANY root its append-only ASP tree has ever produced, so the double is a SET, not a
+/// single value. `Entrypoint`'s own append-only behaviour is tested directly in EntrypointAsp.t.sol.
 contract MockEntrypoint {
-  uint256 public activeRoot;
+  mapping(uint256 => bool) public known;
 
   function setActiveRoot(uint256 root_) external {
-    activeRoot = root_;
+    known[root_] = true;
   }
 
-  function latestActiveRoot() external view returns (uint256) {
-    return activeRoot;
+  function isKnownAspRoot(uint256 root_) external view returns (bool) {
+    if (root_ == 0) return false;
+    return known[root_];
   }
 }
 

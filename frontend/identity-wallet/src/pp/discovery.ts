@@ -24,7 +24,7 @@ import {
 } from "./notes";
 
 const POOL_EVENTS_ABI = [
-  "event Deposited(address indexed _depositor, uint256 _commitment, uint256 _label, uint256 _value, uint256 _precommitmentHash)",
+  "event Deposited(address indexed _depositor, uint256 indexed _precommitmentBucket, uint256 _commitment, uint256 _label, uint256 _value, uint256 _precommitmentHash)",
   "event Withdrawn(address indexed _processooor, uint256 _value, uint256 _spentNullifier, uint256 _newCommitment)",
   "event Ragequit(address indexed _ragequitter, uint256 _commitment, uint256 _label, uint256 _value)",
 ];
@@ -44,11 +44,24 @@ export interface RecoveredNote {
   spent: boolean;
 }
 
+/** MUST match PrivacyPool.PRECOMMITMENT_BUCKETS. A mismatch silently finds nothing. */
+export const PRECOMMITMENT_BUCKETS = 256n;
+
 export interface DiscoveryOptions {
   /** how many deposit indices to scan per scope (HD gap limit) */
   maxIndex?: number;
   fromBlock?: number;
   toBlock?: number | "latest";
+  /**
+   * Fetch EVERY `Deposited` log instead of only the buckets this seed's notes can fall into.
+   *
+   * Bucketed queries are ~PRECOMMITMENT_BUCKETS times cheaper, and the bucket is a coarse value
+   * shared by many unrelated users - but a query still tells the RPC provider which buckets you
+   * care about. Set this when the provider is untrusted and you would rather download everything
+   * than reveal even that much. Correctness is identical either way; only cost and what the
+   * provider observes change.
+   */
+  scanAllBuckets?: boolean;
 }
 
 export interface DiscoveryResult {
@@ -71,10 +84,18 @@ export async function discoverNotes(
   const pool = new Contract(poolAddress, POOL_EVENTS_ABI, provider);
 
   // 1. Candidate deposit precommitments for indices [0, maxIndex).
+  //
+  // Note derivation is DETERMINISTIC from the seed, so the wallet knows every precommitment it
+  // could possibly own before touching the network. That is what makes bucketed lookup possible:
+  // we can compute exactly which `Deposited` topics could contain our notes and ask only for
+  // those, instead of downloading every deposit ever made and filtering locally.
   const candidates = new Map<string, { index: number; note: NoteSecrets }>();
+  const buckets = new Set<bigint>();
   for (let i = 0; i < maxIndex; i++) {
     const note = depositSecrets(masterKeys, scope, BigInt(i));
-    candidates.set(precommitment(note).toString(), { index: i, note });
+    const pc = precommitment(note);
+    candidates.set(pc.toString(), { index: i, note });
+    buckets.add(pc % PRECOMMITMENT_BUCKETS);
   }
 
   // 2. Recover deposit notes by precommitment match. Sort by on-chain order: queryFilter's result
@@ -85,9 +106,15 @@ export async function discoverNotes(
   const byChainOrder = (a: EventLog, b: EventLog) =>
     a.blockNumber - b.blockNumber || a.transactionIndex - b.transactionIndex || a.index - b.index;
 
-  const deposits = ((await pool.queryFilter(pool.filters.Deposited(), fromBlock, toBlock)) as EventLog[]).sort(
-    byChainOrder,
-  );
+  // Query only the buckets our candidates fall into (or everything, if asked). ethers accepts an
+  // array for an indexed topic, which the node ORs - so this is a single eth_getLogs call, not one
+  // per bucket. With 100 candidate indices over 256 buckets we typically touch well under half of
+  // them, and each returned log set is dominated by other users' deposits, which is the point.
+  const depositFilter = opts.scanAllBuckets
+    ? pool.filters.Deposited()
+    : pool.filters.Deposited(null, [...buckets]);
+
+  const deposits = ((await pool.queryFilter(depositFilter, fromBlock, toBlock)) as EventLog[]).sort(byChainOrder);
   const notes: RecoveredNote[] = [];
   const headByLabel = new Map<string, RecoveredNote>(); // latest unspent note per label
   for (const ev of deposits) {

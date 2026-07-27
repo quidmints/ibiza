@@ -1,3 +1,6 @@
+use std::ops::Add;
+use std::ops::Mul;
+use crate::bignum::BigNumTrait;
 use crate::bignum::{BigNum, params::{BigNumParams, BigNumParamsGetter}};
 
 
@@ -68,14 +71,14 @@ pub fn curve_add(in1: [[Field; 2];2], in2: [[Field; 2];2]) -> [[Field; 2]; 2]{
         },
     };
 
-    let lambda = x1
+    let lambda = unsafe { x1
         .__add(x2.__neg())
         .__invmod()
         .__mul(
             y1.add(
                 y2.__neg()
                 )
-            );
+            ) };
 
     // lambda = (y2 - y1) / (x2 - x1) =>
     // lambda * (x2 - x1) - y2 + y1 === 0
@@ -88,16 +91,16 @@ pub fn curve_add(in1: [[Field; 2];2], in2: [[Field; 2];2]) -> [[Field; 2]; 2]{
             [true, false],
         );
 
-    let x3 = lambda
+    let x3 = unsafe { lambda
         .__mul(lambda)
         .__add(
             x1.__neg()
         )
         .__add(
             x2.__neg()
-        );
+        ) };
     
-    let y3 = lambda
+    let y3 = unsafe { lambda
         .__mul(
             x1.__add(
                 x3.__neg()
@@ -105,7 +108,7 @@ pub fn curve_add(in1: [[Field; 2];2], in2: [[Field; 2];2]) -> [[Field; 2]; 2]{
         )
         .__add(
             y1.__neg()
-        );
+        ) };
 
     BigNum::evaluate_quadratic_expression(
         [[lambda]],
@@ -143,7 +146,7 @@ pub fn curve_double(in1: [[Field; 2];2]) -> [[Field; 2]; 2]{
         },
     };
 
-    let lambda = BigNum::one()
+    let lambda = unsafe { BigNum::one()
         .__add(
             BigNum::one().__add(BigNum::one())
         )
@@ -154,7 +157,7 @@ pub fn curve_double(in1: [[Field; 2];2]) -> [[Field; 2]; 2]{
         .__mul(
             y1.__add(y1)
                 .__invmod()
-        );
+        ) };
 
     // -lambda * 2y + 3*x*x + a = 0
     BigNum::evaluate_quadratic_expression(
@@ -166,19 +169,19 @@ pub fn curve_double(in1: [[Field; 2];2]) -> [[Field; 2]; 2]{
         [false],
     );
 
-    let x3 = lambda
+    let x3 = unsafe { lambda
         .__mul(lambda)
         .__add(
             x1.__add(x1).__neg()
-        );
+        ) };
     
-    let y3 = lambda
+    let y3 = unsafe { lambda
         .__mul(
             x1.__add(x3.__neg())
         )
         .__add(
             y1.__neg()
-        );
+        ) };
 
     BigNum::evaluate_quadratic_expression(
         [[lambda]],
@@ -293,7 +296,7 @@ pub fn ecdsa_ver(sig: [[Field; 2]; 2], pk: [[Field; 2]; 2], hashed: [u8; 28]) {
         limbs: sig[1]
     };
 
-    let s_inv = s.__invmod();
+    let s_inv = unsafe { s.__invmod() };
     assert(s_inv.mul(s) == BigNum::one(), "");
 
     let hs = s_inv.mul(h);

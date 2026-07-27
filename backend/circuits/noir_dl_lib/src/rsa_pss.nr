@@ -55,7 +55,7 @@ pub fn verify_rsa_pss<let N_BITS: u32, let N: u32, let HASH_SIZE: u32, let SALT_
     }
     let mut hash_result: [u8; HASH_SIZE] = [0; HASH_SIZE];
     if (HASH_SIZE == 32){
-        let hash_result_256: [u8; 32] = std::sha256::digest::<(HASH_SIZE + SALT_SIZE) + 8>(m_dash);
+        let hash_result_256: [u8; 32] = sha256::digest::<(HASH_SIZE + SALT_SIZE) + 8>(m_dash);
         for j in 0..32{
             hash_result[j] = hash_result_256[j];
         }
@@ -67,7 +67,7 @@ pub fn verify_rsa_pss<let N_BITS: u32, let N: u32, let HASH_SIZE: u32, let SALT_
         }
     }
     if (HASH_SIZE == 64){
-        let hash_result_512: [u8; 64] = std::sha512::digest::<(HASH_SIZE + SALT_SIZE) + 8>(m_dash);
+        let hash_result_512: [u8; 64] = crate::sha512::digest::<(HASH_SIZE + SALT_SIZE) + 8>(m_dash);
         for j in 0..64{
             hash_result[j] = hash_result_512[j];
         }
@@ -87,7 +87,7 @@ fn mgf1<let HASH_SIZE: u32, let MASK_LEN: u32>(seed: [u8; HASH_SIZE]) -> [u8; MA
         preimage[HASH_SIZE + 3] = i as u8;
         let mut hash_result: [u8; HASH_SIZE] = [0; HASH_SIZE];
         if (HASH_SIZE == 32){
-            let hash_result_256: [u8; 32] = std::sha256::digest::<HASH_SIZE + 4>(preimage);
+            let hash_result_256: [u8; 32] = sha256::digest::<HASH_SIZE + 4>(preimage);
             for j in 0..32{
                 hash_result[j] = hash_result_256[j];
             }
@@ -99,7 +99,7 @@ fn mgf1<let HASH_SIZE: u32, let MASK_LEN: u32>(seed: [u8; HASH_SIZE]) -> [u8; MA
             }
         }
         if (HASH_SIZE == 64){
-            let hash_result_512: [u8; 64] = std::sha512::digest::<HASH_SIZE + 4>(preimage);
+            let hash_result_512: [u8; 64] = crate::sha512::digest::<HASH_SIZE + 4>(preimage);
             for j in 0..64{
                 hash_result[j] = hash_result_512[j];
             }

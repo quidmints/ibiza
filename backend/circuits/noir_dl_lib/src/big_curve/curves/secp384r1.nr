@@ -1,3 +1,4 @@
+use crate::big_curve::scalar_field::ScalarFieldTrait;
 use crate::bignum::BigNum;
 use crate::bignum::fields::secp384r1Fq::Secp384r1_Fq_Params;
 use crate::bignum::fields::secp384r1Fr::Secp384r1_Fr_Params;

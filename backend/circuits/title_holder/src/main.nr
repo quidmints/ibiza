@@ -2,10 +2,12 @@
 // the gadget itself and the full rationale (why the public commitment is title-specific, not the
 // raw holder_root).
 //
-// NOT YET nargo-compiled/tested (standing constraint this session - see withdraw_identity/src/
-// main.nr for the pattern this repo follows once approval is given: compile, `nargo test`,
-// differential-check before trusting for real value). pp::title_holder's own gadget test already
-// cross-checked the underlying Poseidon derivation against @iden3/js-crypto independently.
+// COMPILED, PROVED AND VERIFIED ON-CHAIN (2026-07-26). This header previously read "NOT YET
+// nargo-compiled/tested"; that is no longer true. `nargo compile` is clean (circuit size 11,788)
+// and a real `bb` proof over pp::title_holder's own published test vector verifies against the
+// generated Solidity verifier - see backend/contracts/test/title/TitleHolderHonkVerifier.t.sol
+// and TODO.md sec. 2.12. The gadget test had already cross-checked the underlying Poseidon derivation
+// against the wallet's iden3 js-crypto primitives independently.
 //
 // PUBLIC I/O ordering pinned to TitleLedger.sol's _verifyHolderProof:
 //   [0] expected_commitment  (TitleLedger.holderCommitment(titleId) - the on-chain stored value)

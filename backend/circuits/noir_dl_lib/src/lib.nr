@@ -5,6 +5,7 @@ pub mod rsa;
 pub mod sha1;
 pub mod sha224;
 pub mod sha384;
+pub mod sha512;
 pub mod rsa_pss;
 pub mod jubjub;
 pub mod smt;

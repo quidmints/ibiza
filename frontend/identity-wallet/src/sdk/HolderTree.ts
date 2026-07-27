@@ -21,8 +21,8 @@
 // forked contract surface are marked NEEDS-FORKED-SUBSTRATE.
 
 import { Poseidon } from "@iden3/js-crypto";
-import { RarimeUtils } from "./RarimeUtils";
-import { toPaddedHex32 } from "./utils";
+import { RarimeUtils } from "@rarimo/rarime-rn-sdk";
+import { toPaddedHex32 } from "@rarimo/rarime-rn-sdk";
 
 /** The kinds of document that can hang under one holder root. The tree/leaf model is document-
  *  type-agnostic (a leaf is just docType + attrCommit + validity + status) — adding a type here
@@ -94,26 +94,3 @@ export class HolderRoot {
     return toPaddedHex32(Poseidon.hash([documentKey, BigInt("0x" + this.profileKey)]));
   }
 }
-
-// ── Operations that require the forked contracts/circuits (§7.5) ───────────────────────────
-//
-// These intentionally throw until the forked substrate is wired. They define the SDK contract
-// the companion/vault drive; the bodies are a deliberate TODO, not silently faked.
-
-export interface HolderTreeOps {
-  /** Enumerate all document leaves under a holder root. NEEDS-FORKED-SUBSTRATE: requires a
-   *  contract method to list leaves by holder root (flat rarime has no such call). */
-  listDocuments(root: HolderRoot): Promise<DocumentLeaf[]>;
-
-  /** Renew: add `newLeaf` and supersede `oldLeafIndex` under the same root, atomically, with a
-   *  link proof binding both to the holder root. NEEDS-FORKED-SUBSTRATE (circuit + contract). */
-  renewDocument(
-    root: HolderRoot,
-    oldLeafIndex: string,
-    newDocumentKey: bigint,
-    newDocType: DocumentType
-  ): Promise<DocumentLeaf>;
-}
-
-export const UNIMPLEMENTED_HOLDER_TREE =
-  "Holder-tree op needs the forked Rarimo contracts/circuits (SCOPE.md §7.5/§7.8) — not yet wired.";

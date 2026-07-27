@@ -55,10 +55,42 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     // Check the state root is known
     if (!_isKnownRoot(_proof.stateRoot())) revert UnknownStateRoot();
 
-    // Check the ASP root is the latest one that has cleared the activation/challenge window
-    if (_proof.ASPRoot() != ENTRYPOINT.latestActiveRoot()) revert IncorrectASPRoot();
+    // Check the ASP root is one the Entrypoint has ever computed.
+    //
+    // This deliberately accepts ANY historical root, where upstream required equality with the
+    // single latest active one. That equality check was the mechanism by which an ASP operator
+    // could retroactively kill an existing member's private exit: publish a root omitting them and,
+    // once it activated, their withdrawal proof matched nothing - forcing `ragequit`, which pays
+    // out to the original depositor and destroys the unlinkability the deposit bought. See
+    // TODO.md sec. 2.13.
+    //
+    // Accepting historical roots is safe ONLY because `Entrypoint` now maintains the ASP tree
+    // on-chain and append-only, so a historical root's membership set is a strict subset of the
+    // current one. It would NOT have been safe under the old design, where a root was an arbitrary
+    // operator-supplied snapshot: honouring old roots there would have re-admitted everyone ever
+    // removed and made removal a global no-op. The same reasoning already justifies `_isKnownRoot`
+    // accepting 64 historical state roots on the line above.
+    if (!ENTRYPOINT.isKnownAspRoot(_proof.ASPRoot())) revert IncorrectASPRoot();
     _;
   }
+
+  /**
+   * @notice Number of buckets `_precommitmentHash` is folded into for the indexed `Deposited`
+   *         topic. Purely a DISCOVERY aid - it lets a recovering wallet fetch only the logs that
+   *         could contain its own notes instead of every deposit ever made.
+   * @dev This is a PRIVACY/SPEED DIAL, and the trade must be understood before changing it.
+   *      Indexing `_precommitmentHash` itself would be the fastest option and the wrong one: a
+   *      wallet querying its exact precommitments tells its RPC provider precisely which notes are
+   *      its own, reintroducing off-chain the linkage the pool removes on-chain. Bucketing means a
+   *      query returns roughly `totalDeposits / PRECOMMITMENT_BUCKETS` notes belonging to many
+   *      unrelated users, so the provider learns only a coarse bucket.
+   *      MORE buckets  = faster sync, SMALLER crowd to hide in.
+   *      FEWER buckets = slower sync, LARGER crowd.
+   *      256 keeps sync ~256x cheaper than a full scan while each query still covers a broad slice.
+   *      Nothing new is revealed ON-CHAIN either way: the bucket is derived from
+   *      `_precommitmentHash`, which the same log already publishes in the clear.
+   */
+  uint256 public constant PRECOMMITMENT_BUCKETS = 256;
 
   /**
    * @notice Initializes the contract state addresses
@@ -110,7 +142,9 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     // Pull funds from caller
     _pull(msg.sender, _value);
 
-    emit Deposited(_depositor, _commitment, _label, _value, _precommitmentHash);
+    emit Deposited(
+      _depositor, _precommitmentHash % PRECOMMITMENT_BUCKETS, _commitment, _label, _value, _precommitmentHash
+    );
   }
 
   /// @inheritdoc IPrivacyPool

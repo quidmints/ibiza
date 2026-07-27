@@ -437,7 +437,7 @@ fn lshift8(item: u32, shifts: u8) -> u32 {
         if shifts >= 4 {
             0
         } else {
-            item << (8 * shifts)
+            item << ((8 * shifts) as u32)
         }
     } else {
         // We can do a for loop up to INT_SIZE or an if-else.
@@ -461,7 +461,7 @@ fn lshift8(item: u32, shifts: u8) -> u32 {
 // otherwise divides by 256.
 fn rshift8(item: u32, shifts: u8) -> u32 {
     if is_unconstrained() {
-        item >> (8 * shifts)
+        item >> ((8 * shifts) as u32)
     } else {
         // Division wouldn't work on `Field`.
         if shifts == 0 {

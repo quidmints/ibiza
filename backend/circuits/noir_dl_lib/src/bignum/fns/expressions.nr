@@ -1,3 +1,4 @@
+use crate::bignum::bignum::BigNumTrait;
 use crate::bignum::utils::split_bits;
 
 use crate::bignum::fns::{

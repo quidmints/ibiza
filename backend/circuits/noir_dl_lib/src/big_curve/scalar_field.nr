@@ -19,10 +19,35 @@ pub struct ScalarField<let N: u32> {
     pub(crate) skew: bool,
 }
 
+
+/// Little-endian base-16 (nibble) decomposition of a Field.
+///
+/// `Field::to_le_radix` became private after nargo beta.1; `to_le_bytes` is the public
+/// replacement, so nibbles are derived from bytes. A little-endian radix-16 array of length N
+/// corresponds to the low ceil(N/2) little-endian bytes, with
+///   nibble[2i]     = byte[i] & 0x0f   (low)
+///   nibble[2i + 1] = byte[i] >> 4     (high)
+///
+/// Used only from `unconstrained` hint generators, whose output is constrained by the callers - a
+/// wrong decomposition therefore fails loudly rather than silently producing a bad scalar.
+unconstrained fn field_to_le_nibbles<let N: u32, let HALF: u32>(x: Field) -> [u8; N] {
+    let bytes: [u8; HALF] = x.to_le_bytes();
+    let mut out: [u8; N] = [0; N];
+    for i in 0..HALF {
+        if 2 * i < N {
+            out[2 * i] = bytes[i] & 0x0f;
+        }
+        if 2 * i + 1 < N {
+            out[2 * i + 1] = bytes[i] >> 4;
+        }
+    }
+    out
+}
+
 // 1, 2, 3, 4
 unconstrained fn get_wnaf_slices<let N: u32>(x: Field) -> ([u8; N], bool) {
     let mut result: [u8; N] = [0; N];
-    let mut nibbles = x.to_le_radix::<N>(16);
+    let mut nibbles: [u8; N] = field_to_le_nibbles::<N, (N + 1) / 2>(x);
 
     let skew: bool = nibbles[0] & 1 == 0;
     nibbles[0] = nibbles[0] as u8 + (skew as u8);
@@ -47,7 +72,7 @@ where
     let mut nibbles: [[u8; 30]; (N / 30) + 1] = [[0; 30]; (N / 30) + 1];
     let x: [Field] = x.get_limbs_slice();
     for i in 0..x.len() {
-        nibbles[i] = x[i].to_le_radix::<30>(16);
+        nibbles[i] = field_to_le_nibbles::<30, 15>(x[i]);
     }
 
     let skew: bool = nibbles[0][0] & 1 == 0;
@@ -229,7 +254,7 @@ impl<let N: u32> ScalarFieldTrait for ScalarField<N> {
             let mut last_nibbles = (last_bits / 4) + (last_bits % 4 != 0) as u64;
             for _ in 0..last_nibbles {
                 acc = acc * 16;
-                acc = acc + (self.base4_slices[count] as Field) * 2 - 15;
+                acc = acc + (self.base4_slices[count as u32] as Field) * 2 - 15;
                 count = count + 1;
             }
             result.set_limb(result.num_limbs() - 1, acc);
@@ -238,7 +263,7 @@ impl<let N: u32> ScalarFieldTrait for ScalarField<N> {
             let mut acc: Field = 0;
             for _ in 0..30 {
                 acc = acc * 16;
-                acc = acc + (self.base4_slices[count] as Field) * 2 - 15;
+                acc = acc + (self.base4_slices[count as u32] as Field) * 2 - 15;
                 count = count + 1;
             }
             if acc.lt(0x1000000000000000000000000000000) == false {
@@ -258,7 +283,7 @@ impl<let N: u32> ScalarFieldTrait for ScalarField<N> {
         Self { base4_slices: [0; N], skew: false }
     }
     fn get(self, idx: u64) -> u8 {
-        self.base4_slices[idx]
+        self.base4_slices[idx as u32]
     }
 }
 

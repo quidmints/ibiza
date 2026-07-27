@@ -1,3 +1,4 @@
+use crate::big_curve::BigCurveTrait;
 use crate::bignum::BigNumTrait;
 use crate::bignum::bignum::BigNum;
 use crate::big_curve::CurveParamsTrait;
@@ -86,8 +87,8 @@ where
     {
         let mut genz = gen.z;
         genz = genz.__invmod();
-        let zz = genz.__mul(genz);
-        let zzz = zz.__mul(genz);
+        let zz = unsafe { genz.__mul(genz) };
+        let zzz = unsafe { zz.__mul(genz) };
 
         offset_generator_initial[0] = gen.x.__mul(zz);
         offset_generator_initial[1] = gen.y.__mul(zzz);
@@ -100,8 +101,8 @@ where
     {
         let mut genz = gen.z;
         genz = genz.__invmod();
-        let zz = genz.__mul(genz);
-        let zzz = zz.__mul(genz);
+        let zz = unsafe { genz.__mul(genz) };
+        let zzz = unsafe { zz.__mul(genz) };
 
         offset_generator_final[0] = gen.x.__mul(zz);
         offset_generator_final[1] = gen.y.__mul(zzz);

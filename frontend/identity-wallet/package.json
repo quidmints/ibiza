@@ -11,11 +11,9 @@
     "start": "npx expo start --clear"
   },
   "dependencies": {
-    "@rarimo/rarime-rn-sdk": "github:quidmints/rarime-rn-sdk#main",
     "@distributedlab/tools": "^1.0.0-rc.17",
     "@iden3/js-crypto": "1.3.3",
     "@li0ard/tsemrtd": "^0.3.4",
-    "@zk-kit/lean-imt": "2.2.5",
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.2.0",
     "@peculiar/asn1-cms": "^2.8.0",
@@ -24,6 +22,8 @@
     "@peculiar/asn1-schema": "^2.8.0",
     "@peculiar/asn1-x509": "^2.8.0",
     "@peculiar/x509": "^2.0.0",
+    "@rarimo/rarime-rn-sdk": "github:quidmints/rarime-rn-sdk#main",
+    "@zk-kit/lean-imt": "2.2.5",
     "asn1js": "^3.0.10",
     "axios": "^1.18.1",
     "ethers": "^6.17.0",

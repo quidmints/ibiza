@@ -281,7 +281,9 @@ impl<let N: u32, let MOD_BITS: u32> RuntimeBigNumTrait<N, MOD_BITS> for RuntimeB
     unconstrained fn __batch_invert_slice<let M: u32>(x: [Self]) -> [Self] {
         let params = x[0].params;
         assert(params.has_multiplicative_inverse);
-        let all_limbs = unsafe {
+        // beta.13 cannot infer the target size of `as_array()` here; annotate it. Limbs are
+        // `[Field; N]` (see the struct) and there is one per input element, so `[[Field; N]; M]`.
+        let all_limbs: [[Field; N]; M] = unsafe {
             let inv_slice =
                 __batch_invert_slice::<_, MOD_BITS>(params, x.map(|bn| Self::get_limbs(bn)));
             inv_slice.as_array()

@@ -31,19 +31,34 @@ import {ProofLib} from './lib/ProofLib.sol';
 import {IEntrypoint} from 'interfaces/IEntrypoint.sol';
 import {IPrivacyPool} from 'interfaces/IPrivacyPool.sol';
 import {IEvidenceRegistry} from '@rarimo/evidence-registry/interfaces/IEvidenceRegistry.sol';
+import {InternalLeanIMT, LeanIMTData} from 'lean-imt/InternalLeanIMT.sol';
+import {EIP712Upgradeable} from '@oz-upgradeable/utils/cryptography/EIP712Upgradeable.sol';
+import {ECDSA} from '@oz/utils/cryptography/ECDSA.sol';
 
 /**
  * @title Entrypoint
  * @notice Serves as the main entrypoint for a series of ASP-operated Privacy Pools
  */
-contract Entrypoint is AccessControlUpgradeable, UUPSUpgradeable, ReentrancyGuardTransient, IEntrypoint {
+contract Entrypoint is
+  AccessControlUpgradeable,
+  UUPSUpgradeable,
+  EIP712Upgradeable,
+  ReentrancyGuardTransient,
+  IEntrypoint
+{
   using SafeERC20 for IERC20;
   using ProofLib for ProofLib.WithdrawProof;
+  using InternalLeanIMT for LeanIMTData;
 
   /// @dev 0xb19546dff01e856fb3f010c267a7b1c60363cf8a4664e21cc89c26224620214e
   bytes32 internal constant _OWNER_ROLE = keccak256('OWNER_ROLE');
   /// @dev 0xfc84ade01695dae2ade01aa4226dc40bdceaf9d5dbd3bf8630b1dd5af195bbc5
   bytes32 internal constant _ASP_POSTMAN = keccak256('ASP_POSTMAN');
+
+  /// @notice EIP-712 typehash for an off-chain admission authorization (see
+  ///         `admitIdentityWithAuthorization`).
+  bytes32 internal constant _ADMIT_TYPEHASH =
+    keccak256('AdmitIdentity(uint256 holderRoot,uint256 deadline)');
 
   /// @inheritdoc IEntrypoint
   mapping(uint256 _scope => IPrivacyPool _pool) public scopeToPool;
@@ -51,19 +66,51 @@ contract Entrypoint is AccessControlUpgradeable, UUPSUpgradeable, ReentrancyGuar
   /// @inheritdoc IEntrypoint
   mapping(IERC20 _asset => AssetConfig _config) public assetConfig;
 
-  /// @inheritdoc IEntrypoint
-  AssociationSetData[] public associationSets;
+  /*
+   * THE ASP TREE IS MAINTAINED HERE, ON-CHAIN, AND IS APPEND-ONLY BY CONSTRUCTION.
+   *
+   * Upstream (and this fork until 2026-07-26) stored an array of postman-pushed roots computed
+   * entirely off-chain. Nothing forced root N+1's leaf set to be a superset of root N's, so the
+   * postman could drop any member simply by publishing a tree without them - and because a
+   * withdrawal had to match the single latest active root, that removal took effect within the
+   * activation delay and killed the member's private exit permanently (their only fallback,
+   * `ragequit`, pays out to the original depositor and destroys the unlinkability the deposit
+   * bought). See TODO.md sec. 2.13 for the full analysis of that lever.
+   *
+   * Maintaining the tree here instead removes the capability rather than bounding it: the contract
+   * computes every root itself from the insertion sequence, so there is no root a postman can
+   * author. YOU CANNOT BE REMOVED FROM AN INSERT-ONLY TREE. The postman role survives but is
+   * reduced to admit-only, which is strictly less authority than upstream PP granted it.
+   *
+   * Removal has NOT been abolished - it is relocated to a separate, predicate-bound revocation
+   * channel (TODO.md sec. 2.14) so that provable dissociation is preserved. Deleting removal
+   * outright would have nullified the ASP's entire purpose, since taint is normally discovered
+   * only after a deposit has already been made.
+   *
+   * Cost, measured not estimated (test/pool/AspTreeGasProbe.t.sol): admission is one O(log n)
+   * insert - ~69k gas at size 1, ~328k at 1,024, ~397k at 4,096, growing ~23k per depth level. For
+   * scale, a single withdrawal `verify()` is ~1.78M gas, and because this fork keys ASP membership
+   * by IDENTITY rather than by deposit label, one admission covers every future deposit and
+   * withdrawal that identity makes.
+   */
+  LeanIMTData internal _aspTree;
+
+  /// @notice Every ASP root this contract has ever computed, mapped to the timestamp it was
+  ///         created at. Historical roots stay valid forever: the tree is append-only, so an old
+  ///         root's membership set is a strict subset of the current one and honouring it grants
+  ///         nothing the current root would not. This is the same reasoning that makes `State`'s
+  ///         64-root window safe for the commitment tree. `0` means "never seen".
+  mapping(uint256 _root => uint256 _createdAt) public aspRootCreatedAt;
+
+  /// @notice Guards against inserting the same identity twice, which would waste gas and put a
+  ///         duplicate leaf in the tree for no benefit.
+  mapping(uint256 _holderRoot => bool _admitted) public aspAdmitted;
 
   /// @inheritdoc IEntrypoint
   mapping(uint256 _precommitment => bool _used) public usedPrecommitments;
 
   /// @inheritdoc IEntrypoint
   IEvidenceRegistry public EVIDENCE_REGISTRY;
-
-  /// @notice Challenge window an ASP root must age before withdrawals will accept it. A freshly
-  ///         pushed root is "pending" until it clears this delay, giving watchers time to detect a
-  ///         malicious/equivocating postman (every root is publicly anchored in ERC-7812 on push).
-  uint256 public constant ROOT_ACTIVATION_DELAY = 1 hours;
 
   /*///////////////////////////////////////////////////////////////
                           INITIALIZATION
@@ -91,6 +138,10 @@ contract Entrypoint is AccessControlUpgradeable, UUPSUpgradeable, ReentrancyGuar
     // UUPSUpgradeable has no storage/init step in OZ 5.6.1 (it's a thin, stateless wrapper);
     // ReentrancyGuardTransient is likewise stateless (EIP-1153 transient storage).
     __AccessControl_init();
+    // Domain separator for `admitIdentityWithAuthorization`'s off-chain postman signatures. Binds
+    // each authorization to THIS contract and chain, so a signature cannot be replayed onto another
+    // deployment of the same code.
+    __EIP712_init('QuidPrivacyPoolEntrypoint', '1');
 
     // Initialize roles
     _setRoleAdmin(DEFAULT_ADMIN_ROLE, _OWNER_ROLE);
@@ -106,22 +157,69 @@ contract Entrypoint is AccessControlUpgradeable, UUPSUpgradeable, ReentrancyGuar
   //////////////////////////////////////////////////////////////*/
 
   /// @inheritdoc IEntrypoint
-  function updateRoot(uint256 _root, string memory _ipfsCID) external onlyRole(_ASP_POSTMAN) returns (uint256 _index) {
-    // Check provided values are non-zero
-    if (_root == 0) revert EmptyRoot();
-    uint256 _cidLength = bytes(_ipfsCID).length;
-    if (_cidLength < 32 || _cidLength > 64) revert InvalidIPFSCIDLength();
+  /// @dev DELIBERATELY THE ONLY WAY THE ASP ROOT CAN EVER CHANGE. `updateRoot(root, ipfsCID)` -
+  ///      which let the postman publish an arbitrary off-chain-computed root - was REMOVED, not
+  ///      deprecated. Leaving it in place would have kept the removal channel wide open and made
+  ///      the append-only property here worthless, since a postman could simply publish a tree
+  ///      omitting whoever they liked and bypass this function entirely.
+  function admitIdentity(uint256 _holderRoot) external onlyRole(_ASP_POSTMAN) returns (uint256 _root) {
+    _root = _admitIdentity(_holderRoot);
+  }
 
-    // Push new association set and update index
-    associationSets.push(AssociationSetData(_root, _ipfsCID, block.timestamp));
-    _index = associationSets.length - 1;
+  /**
+   * @notice Admit an identity using an OFF-CHAIN postman signature, submitted by anyone.
+   *
+   * Folds admission into a transaction the user is already sending (their first deposit), instead
+   * of requiring a separate postman-sent transaction. Same authority - only the postman can
+   * authorize an admission - but the postman no longer needs to run a transaction-sending service
+   * or hold ETH, and the user saves a whole transaction's base cost and latency.
+   *
+   * Why this does NOT widen the postman's power: `_admitIdentity` can only ever INSERT. There is no
+   * removal path to authorize, so a leaked or misused signature can at worst admit an identity that
+   * the postman already decided to admit. See TODO.md sec. 2.13 for why insert-only is the point.
+   *
+   * @dev Replay protection is `aspAdmitted[_holderRoot]`, which already reverts a second admission
+   *      of the same identity - so no separate nonce is needed. `_deadline` bounds how long a
+   *      signature stays usable if the postman changes its mind before it is redeemed.
+   * @param _holderRoot The identity's holder root
+   * @param _deadline Unix timestamp after which the authorization is void
+   * @param _signature Postman's EIP-712 signature over (holderRoot, deadline)
+   * @return _root The ASP root after insertion
+   */
+  function admitIdentityWithAuthorization(
+    uint256 _holderRoot,
+    uint256 _deadline,
+    bytes calldata _signature
+  ) external returns (uint256 _root) {
+    if (block.timestamp > _deadline) revert AuthorizationExpired();
+
+    bytes32 _digest = _hashTypedDataV4(keccak256(abi.encode(_ADMIT_TYPEHASH, _holderRoot, _deadline)));
+    address _signer = ECDSA.recover(_digest, _signature);
+    if (!hasRole(_ASP_POSTMAN, _signer)) revert InvalidAuthorization();
+
+    _root = _admitIdentity(_holderRoot);
+  }
+
+  /// @dev Shared admission logic. The ONLY writer of the ASP tree.
+  function _admitIdentity(uint256 _holderRoot) internal returns (uint256 _root) {
+    // LeanIMT reserves 0 as "empty sibling"; a zero leaf would corrupt inclusion proofs.
+    if (_holderRoot == 0) revert EmptyRoot();
+    if (_holderRoot >= Constants.SNARK_SCALAR_FIELD) revert LeafOutOfField();
+    if (aspAdmitted[_holderRoot]) revert AlreadyAdmitted();
+
+    aspAdmitted[_holderRoot] = true;
+    _root = _aspTree._insert(_holderRoot);
+
+    uint256 _index = _aspTree.size - 1;
+    aspRootCreatedAt[_root] = block.timestamp;
 
     // Anchor the root in the ERC-7812 evidence registry: tamper-evident, independently
-    // timestamped (getRootTimestamp), auditable in the same registry as identity roots.
+    // timestamped, auditable in the same registry as identity roots. Unchanged from the previous
+    // design - the anchoring was never the weak part.
     bytes32 _statementKey = _aspStatementKey(_index);
     EVIDENCE_REGISTRY.addStatement(_statementKey, bytes32(_root));
 
-    emit RootUpdated(_root, _ipfsCID, block.timestamp);
+    emit IdentityAdmitted(_holderRoot, _root, _index);
     emit RootAnchored(_root, _index, _statementKey);
   }
 
@@ -299,32 +397,43 @@ contract Entrypoint is AccessControlUpgradeable, UUPSUpgradeable, ReentrancyGuar
 
   /// @inheritdoc IEntrypoint
   function latestRoot() external view returns (uint256 _root) {
-    if (associationSets.length == 0) revert NoRootsAvailable();
-    _root = associationSets[associationSets.length - 1].root;
+    if (_aspTree.size == 0) revert NoRootsAvailable();
+    _root = _aspTree._root();
   }
 
   /// @inheritdoc IEntrypoint
-  function latestActiveRoot() external view returns (uint256 _root) {
-    uint256 _length = associationSets.length;
-    if (_length == 0) revert NoRootsAvailable();
-    // Newest root that has aged past the challenge window (older roots stay valid during it).
-    for (uint256 _i = _length; _i > 0; --_i) {
-      AssociationSetData storage _set = associationSets[_i - 1];
-      if (_set.timestamp + ROOT_ACTIVATION_DELAY <= block.timestamp) return _set.root;
-    }
-    revert NoActiveRoot();
+  /// @dev Replaces the old `latestActiveRoot()` equality check. Any root this contract has ever
+  ///      computed is accepted, forever - safe ONLY because the tree is append-only, which is now
+  ///      enforced by construction rather than assumed of an off-chain operator. An old root's
+  ///      membership set is a strict subset of the current one, so accepting it grants nothing the
+  ///      current root would not.
+  ///
+  ///      There is deliberately no activation delay here. Upstream's existed so watchers could
+  ///      spot "a malicious/equivocating postman" pushing a fabricated root - a threat that no
+  ///      longer exists, because no postman can author a root at all. Keeping the delay would only
+  ///      have forced a newly admitted identity to wait an hour before their own inclusion proof
+  ///      worked, buying nothing: there was never any mechanism to act on the warning it gave.
+  function isKnownAspRoot(uint256 _root) external view returns (bool) {
+    if (_root == 0) return false;
+    return aspRootCreatedAt[_root] != 0;
+  }
+
+  /// @notice Current size (leaf count) and depth of the ASP tree, for wallets building inclusion
+  ///         proofs against it.
+  function aspTreeSize() external view returns (uint256) {
+    return _aspTree.size;
+  }
+
+  /// @notice Current depth of the ASP tree - the `asp_tree_depth` public signal a withdrawal proof
+  ///         must carry.
+  function aspTreeDepth() external view returns (uint256) {
+    return _aspTree.depth;
   }
 
   /// @notice Deterministic, field-reduced ERC-7812 statement key for the ASP root at `_index`.
   function _aspStatementKey(uint256 _index) internal view returns (bytes32) {
     return
       bytes32(uint256(keccak256(abi.encodePacked('PP_ASP_ROOT', address(this), _index))) % Constants.SNARK_SCALAR_FIELD);
-  }
-
-  /// @inheritdoc IEntrypoint
-  function rootByIndex(uint256 _index) external view returns (uint256 _root) {
-    if (_index >= associationSets.length) revert InvalidIndex();
-    _root = associationSets[_index].root;
   }
 
   /*///////////////////////////////////////////////////////////////

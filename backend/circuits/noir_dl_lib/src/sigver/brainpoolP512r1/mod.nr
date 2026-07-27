@@ -1,2 +1,2 @@
-mod params;
-mod curve;
+pub mod params;
+pub mod curve;

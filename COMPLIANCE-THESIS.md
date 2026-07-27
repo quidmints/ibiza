@@ -95,7 +95,7 @@ customer, not a graduated customer-facing KYC ladder.
 
 | Layer | What it proves | Status |
 |---|---|---|
-| **rarime** | The transacting identity holds a valid, unrevoked government-issued document, and satisfies arbitrary disclosed/undisclosed predicates over it (age, nationality, validity window) — without revealing the underlying identity to any counterparty. | Circuits compile clean under the target toolchain (nargo 1.0.0-beta.1); full proving with real passport data not yet exercised (see Open Items). |
+| **rarime** | The transacting identity holds a valid, unrevoked government-issued document, and satisfies arbitrary disclosed/undisclosed predicates over it (age, nationality, validity window) — without revealing the underlying identity to any counterparty. | Circuits compile clean under the pinned toolchain (nargo 1.0.0-beta.13 + bb 1.2.0); full proving with real passport data not yet exercised (see Open Items). |
 | **PP (Privacy Pools fork)** | The spent funds trace to a deposit that passed the Association Set Provider's screening (today: address-level chain-analysis heuristics, 0xbow's existing, live mechanism) — without revealing which deposit. | Live mechanism, forked and folded into this stack, compiling and testing green (49/49 Forge tests as of this session). |
 | **Identity-level sanctions exclusion (new, unbuilt)** | The transacting *identity* — not just the deposit address — is not on a sanctions list, proven as a zero-knowledge non-membership proof against a Merkle-committed list, entirely client-side. | Designed, not built. This is the layer that closes the gap between "address wasn't flagged" (existing) and "person isn't sanctioned" (new). See below. |
 

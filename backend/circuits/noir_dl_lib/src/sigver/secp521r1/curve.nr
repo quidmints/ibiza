@@ -2,7 +2,7 @@ use crate::bignum::BigNum;
 use super::params::Secp521r1_Fq_Params;
 use crate::big_curve::CurveParamsTrait;
 
-global SECP521r1_SCALAR_SLICES: u32 = 131;
+pub global SECP521r1_SCALAR_SLICES: u32 = 131;
 pub struct Secp521r1_Params {}
 impl CurveParamsTrait<BigNum<5, 521, Secp521r1_Fq_Params>> for Secp521r1_Params {
     fn a() -> BigNum<5, 521, Secp521r1_Fq_Params> {

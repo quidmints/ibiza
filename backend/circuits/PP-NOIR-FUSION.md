@@ -63,8 +63,12 @@ because that's what the source actually is (an XML/zip bulk export, not a real-t
 
 - **`backend/contracts/contracts/registry/RegistrySourceAnchor.sol`** (new) — anchors a
   `registryId`-keyed root into the SAME `IEvidenceRegistry` rarime/PP already use, mirroring
-  `Entrypoint.updateRoot`/`latestActiveRoot` deliberately (proven pattern: 1-hour activation delay
-  against front-run/equivocation, write-once-per-index). `onReport(bytes,bytes)` decodes a CRE
+  the `updateRoot`/`latestActiveRoot` pattern `Entrypoint` used AT THE TIME deliberately (1-hour
+  activation delay against front-run/equivocation, write-once-per-index). Note that `Entrypoint`
+  itself has since abandoned that pattern for an on-chain append-only tree with no activation delay
+  (TODO.md sec. 2A Phase 1b); `RegistrySourceAnchor` legitimately keeps it, because it anchors a
+  genuinely external snapshot it cannot recompute, which is the case the delay was designed for.
+  `onReport(bytes,bytes)` decodes a CRE
   report payload and dispatches to `publishSnapshot` — gated by `REGISTRY_POSTMAN`
   (`AccessControl`), not yet wired to Chainlink's actual `KeystoneForwarder`/`IReceiver` trust
   model (flagged explicitly in the contract's own doc comment — confirm the exact Forwarder
@@ -146,6 +150,21 @@ is flagged, not silently bumped. Full breakdown in the session log; summary:
   instead of the upstream npm package) - the prerequisite for adding Honk-proving support without
   editing an unforked third-party dependency in place. The actual Honk-proving native code
   (Kotlin/Swift) is not written yet - separate next step.
+
+> **CLI RENAME NOTE (2026-07-26) — every P0 finding below still holds; only command spellings
+> changed.** `bb 0.82.2` moved the commands this section names (`prove_ultra_keccak_honk`,
+> `write_vk_ultra_keccak_honk`, `contract_ultra_honk`) under `bb OLD_API`. Current spellings are
+> `bb prove --scheme ultra_honk --oracle_hash keccak`, `bb write_vk --scheme ultra_honk
+> --oracle_hash keccak`, and `bb write_solidity_verifier --scheme ultra_honk`. **Finding 5 below —
+> that the keccak transcript is MANDATORY for standalone on-chain verification — is unchanged, and
+> was re-confirmed against two REAL circuits** (not just P0's trivial one) on 2026-07-26. Do not
+> read the rename as the finding being stale.
+>
+> **Correction:** P0's claim that this machine's CPU cannot run native `bb` is machine-specific, not
+> a project fact. `bb` SIGILLs without AVX2/BMI2 (the i3-U330 P0 ran on) and runs fine on a CPU that
+> has them — verified on an i9-9880H. `backend/circuits/codegen-verifiers.sh` is the re-runnable
+> capture of this whole pipeline; prefer it over following the prose below by hand. See TODO.md
+> §2.12 and §1's AVX2 correction.
 
 ## P0 — CONFIRMED GO (toolchain spike, run on this dev machine 2026-07-01)
 
@@ -282,14 +301,20 @@ that workstream; it is NOT assumed to be in scope for the base Noir migration.
   - `withdraw_identity/` (new package) — the actual withdraw circuit: existing-note state-tree
     membership + value conservation + change-note commitment (via `pp::commitment`,
     `pp::lean_imt`, unchanged) plus `pp::identity_asp` for the ASP check. Public I/O pinned to
-    `ProofLib.WithdrawProof.pubSignals`'s existing 8-slot layout — **`Entrypoint.sol`/
-    `PrivacyPool.sol` need NO changes**: `updateRoot`/`latestActiveRoot` are already leaf-semantics-
-    agnostic (confirmed by reading `Entrypoint.sol` — it only ever handles `uint256 root`). Only
-    what the `asp_root`/`asp_tree_depth` slots MEAN changes.
+    `ProofLib.WithdrawProof.pubSignals`'s existing 8-slot layout. **CORRECTED 2026-07-26:** this
+    bullet used to claim "**`Entrypoint.sol`/`PrivacyPool.sol` need NO changes**". That was true of
+    the identity re-keying itself, and is now false of the contracts — both changed substantially
+    in TODO.md sec. 2A Phase 1b. `Entrypoint` maintains the ASP tree on-chain and append-only via
+    `admitIdentity`; `updateRoot`/`latestActiveRoot`/`rootByIndex`/`associationSets` were REMOVED;
+    and `PrivacyPool.validWithdrawal` now gates on `isKnownAspRoot` (any historical root) instead
+    of equality with the single latest active one. The circuit's 8-slot public I/O is genuinely
+    unchanged by all of that — only the contract side moved.
   - `frontend/identity-wallet/src/postman/identityAsp.ts` — the off-chain half: `IdentityAspTree`
     (TS mirror of `lean_imt.nr`'s construction rule, same Poseidon) builds the tree from cleared
-    `holderRoot`s and produces circuit-ready inclusion paths; `publishIdentityAspRoot` calls
-    `Entrypoint.updateRoot` (decodes the real `RootAnchored` event, not assumed from call order).
+    `holderRoot`s and produces circuit-ready inclusion paths. **CORRECTED 2026-07-26:**
+    `publishIdentityAspRoot` is gone with `updateRoot`; the module now exposes `admitIdentity`
+    (one tx per identity, decoding the real `IdentityAdmitted` event) and `loadIdentityAspTree`
+    (replays those events to rebuild the local mirror, since the contract stores only the root).
   - **Explicitly deferred, not built this session:** the notary-credential BINDING layer (proving
     "I am the specific person listed in an external registry entry," as opposed to "I am *an*
     ASP-cleared identity") — see the CRE notary-registry mechanism below, which anchors the raw

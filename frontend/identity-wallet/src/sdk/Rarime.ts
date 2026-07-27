@@ -1,20 +1,20 @@
 import { hexlify, JsonRpcProvider, toUtf8Bytes } from "ethers";
-import { DocumentStatus, RarimePassport } from "./RarimePassport";
+import { DocumentStatus, RarimePassport } from "@rarimo/rarime-rn-sdk";
 import {
   PoseidonSMT__factory,
   RegistrationSimple,
   StateKeeper,
   StateKeeper__factory,
-} from "./types/contracts";
-import { NoirCircuitParams, NoirZKProof } from "./RnNoirModule";
+} from "@rarimo/rarime-rn-sdk";
+import { NoirCircuitParams, NoirZKProof } from "@rarimo/rarime-rn-sdk";
 import { Platform } from "react-native";
-import { HashAlgorithm } from "./helpers/HashAlgorithm";
-import { createRegistrationSimpleContract } from "./helpers/contracts";
-import { RarimeUtils } from "./RarimeUtils";
-import { SignatureAlgorithm } from "./helpers/SignatureAlgorithm";
-import { toPaddedHex32, wrapPem } from "./utils";
-import { QueryProofParams } from "./types";
-import { SparseMerkleTree } from "./types/contracts/PoseidonSMT";
+import { HashAlgorithm } from "@rarimo/rarime-rn-sdk";
+import { createRegistrationSimpleContract } from "@rarimo/rarime-rn-sdk";
+import { RarimeUtils } from "@rarimo/rarime-rn-sdk";
+import { SignatureAlgorithm } from "@rarimo/rarime-rn-sdk";
+import { toPaddedHex32, wrapPem } from "@rarimo/rarime-rn-sdk";
+import { QueryProofParams } from "@rarimo/rarime-rn-sdk";
+import { SparseMerkleTree } from "@rarimo/rarime-rn-sdk";
 import { Poseidon } from "@iden3/js-crypto";
 import { Time } from "@distributedlab/tools";
 import {

@@ -1,3 +1,4 @@
+use crate::big_curve::scalar_field::ScalarFieldTrait;
 use crate::bignum::BigNum;
 use crate::bignum::fields::vestaFq::Vesta_Fq_Params;
 use crate::bignum::fields::vestaFr::Vesta_Fr_Params;

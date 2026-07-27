@@ -40,8 +40,8 @@ fn init() -> ([u32; 5]) {
 // Btw, << operator works fine it both cases.
 
 fn rotate_left<let b: u8>(a: u32) -> u32 {
-    let two_pow_32_minus_b = 1 << (32 - b);
-    ((a << b) & 0xFFFFFFFF) + (a / two_pow_32_minus_b)
+    let two_pow_32_minus_b: u32 = 1 << ((32 - b) as u32);
+    ((a << (b as u32)) & 0xFFFFFFFF) + (a / two_pow_32_minus_b)
 }
 
 fn process_chunk(state: [u32; 5], chunk: [u32; 16]) -> [u32; 5] {
@@ -104,7 +104,7 @@ fn process_chunk(state: [u32; 5], chunk: [u32; 16]) -> [u32; 5] {
 
 pub fn digest<let N: u32>(msg: [u8; N]) -> [u8; 20] {
     let mut msg_block: [u8; 64] = [0; 64];
-    let mut i: u64 = 0; // Message byte pointer
+    let mut i: u32 = 0; // Message byte pointer
     let mut state = init();
     for k in 0..N {
         // Populate msg_block

@@ -33,7 +33,7 @@
 // "an already-ASP-cleared identity's clearance becomes reusable, provable evidence" for
 // peer-vouching (e.g. a NotarialTitle attestation) discussed alongside this upgrade - out of scope
 // for this gadget itself, which only proves membership.
-use noir_dl::not_passports_zk_circuits::extract_pk_identity_hash;
+use crate::holder_root::extract_pk_identity_hash;
 use crate::lean_imt::lean_imt_inclusion;
 
 pub struct IdentityAspMembership {

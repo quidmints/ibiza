@@ -1,7 +1,14 @@
 # PP↔SPV treasury integration: reverse coupling + anonymity-preserving buffer design
 
 Status: implemented and tested (`SpvTreasuryAdapter` + interfaces, `backend/contracts/contracts/pool/spv/`,
-19/19 Forge tests green, full repo 49/49). This doc is the rationale; the contracts are the spec.
+19/19 Forge tests green). This doc is the rationale; the contracts are the spec.
+
+> **Staleness note (2026-07-26).** The repo-wide test count this header used to quote (49/49) is long
+> out of date — it is **149/149** as of today; don't treat a number in this file as current, check
+> `forge test`. More substantively, §5's "Open" list below is **partly stale**: the Aave `ICreditLine`
+> implementation described there as unstarted has since been built (`AaveCreditLine.sol`, 18 tests).
+> `TODO.md` §2.10 is the live tracker for this integration; this document is the design rationale and
+> should be read as such, not as a status board.
 
 ## 1. Why reverse coupling (PP pins SPV, never the reverse)
 
@@ -95,7 +102,10 @@ constant.
   at time 0").
 
 **Open:**
-- Real Aave/Morpho/Euler `ICreditLine` implementation (currently interface-only).
+- ~~Real Aave/Morpho/Euler `ICreditLine` implementation (currently interface-only).~~ **DONE** —
+  `AaveCreditLine.sol` implements `ICreditLine` against Aave V3's real `IPool`, 18 tests passing.
+  Pool/WETH addresses are constructor params because the target chain is still undecided (SPV has
+  not picked one). See TODO.md §2.10.
 - `Basket.mint` integration for idle stablecoins (interface declared, not wired into the adapter yet —
   `Basket.mint`'s collateral/token-whitelist requirements need checking before relying on it, per the
   earlier open item).

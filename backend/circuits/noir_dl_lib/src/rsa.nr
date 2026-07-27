@@ -1,3 +1,4 @@
+use crate::bignum::runtime_bignum::RuntimeBigNumTrait;
 use crate::bignum::{params, bignum::BigNum, RuntimeBigNum, params::BigNumParams};
 
 

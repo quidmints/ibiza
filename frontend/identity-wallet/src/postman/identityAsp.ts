@@ -18,18 +18,25 @@
 // against noir-lang/poseidon and poseidon-solidity (see notes.ts / identity_asp.nr's own headers).
 //
 // NOT the same actor as the wallet holder: this is the ASP_POSTMAN operator's tooling (whoever
-// holds Entrypoint.sol's ASP_POSTMAN role calls updateRoot() with what this module produces, e.g.
-// after admitting a newly-verified identity, or on a refresh cycle - see the CRE-based notary
-// source in src/postman/notaryRegistry.ts for one concrete eligibility feed). It lives in the
-// wallet package only because that's where ethers + the pinned Poseidon dependency already exist
-// and are known-good; split into a dedicated operator package if/when this needs its own deploy
-// lifecycle separate from the wallet's.
+// holds Entrypoint.sol's ASP_POSTMAN role calls admitIdentity() per cleared identity - see the
+// CRE-based notary source in src/postman/notaryRegistry.ts for one concrete eligibility feed). It
+// lives in the wallet package only because that's where ethers + the pinned Poseidon dependency
+// already exist and are known-good; split into a dedicated operator package if/when this needs its
+// own deploy lifecycle separate from the wallet's.
 //
-// Entrypoint.sol itself needs NO changes for this upgrade - `updateRoot`/`latestActiveRoot` are
-// already leaf-semantics-agnostic (confirmed by reading Entrypoint.sol: it only ever handles
-// `uint256 root`, never a leaf). Only what the leaves MEAN changes - identity commitments instead
-// of address-scoped labels - which is exactly why this upgrade is entirely a
-// circuit-plus-tree-builder change, not a contract migration.
+// CORRECTED 2026-07-26 - this header previously claimed "Entrypoint.sol itself needs NO changes
+// for this upgrade", on the reasoning that `updateRoot`/`latestActiveRoot` were leaf-semantics-
+// agnostic. That was true of the IDENTITY re-keying, but it is no longer true of the contract at
+// all: Entrypoint DID change, substantially. It now maintains the ASP tree on-chain and
+// append-only (`admitIdentity`), and `updateRoot`/`latestActiveRoot`/`rootByIndex`/
+// `associationSets` are GONE - removed, not deprecated, so the postman can no longer publish an
+// arbitrary root and thereby drop an existing member. See TODO.md sec. 2.13 / sec. 2A Phase 1b.
+//
+// The tree class below is unaffected by that change and still does what it always did: build the
+// local LeanIMT mirror and emit circuit-ready inclusion paths. What changed is how that mirror is
+// SOURCED (replay `IdentityAdmitted` events via loadIdentityAspTree, rather than holding the
+// canonical copy off-chain) and how admission is PUBLISHED (one admitIdentity tx per identity,
+// rather than one batched root push).
 
 import { LeanIMT } from "@zk-kit/lean-imt";
 import { Poseidon } from "@iden3/js-crypto";
@@ -117,54 +124,46 @@ export class IdentityAspTree {
 }
 
 const ENTRYPOINT_ABI = [
-  "function updateRoot(uint256 _root, string memory _ipfsCID) external returns (uint256 _index)",
-  "event RootAnchored(uint256 root, uint256 index, bytes32 statementKey)",
+  "function admitIdentity(uint256 _holderRoot) external returns (uint256 _root)",
+  "function isKnownAspRoot(uint256 _root) external view returns (bool)",
+  "function aspTreeSize() external view returns (uint256)",
+  "function aspTreeDepth() external view returns (uint256)",
+  "event IdentityAdmitted(uint256 _holderRoot, uint256 _root, uint256 _index)",
 ] as const;
 
-const LEAF_REGISTRY_ABI = [
-  "function publishLeaves(bytes32 root, bytes32[] calldata leaves) external",
-  "function published(bytes32 root) external view returns (bool)",
-] as const;
-
-/** Push a newly-built identity ASP root on-chain via Entrypoint.updateRoot, and make the full
- *  leaf set genuinely available via IdentityAspLeafRegistry.publishLeaves - NOT via an IPFS CID
- *  (dropped, 2026-07-24: an external pinning service is an unnecessary and less reliable
- *  dependency for data cheap enough to just put on-chain, same reasoning RegistrySourceAnchor's
- *  redesign already applied to the notary registry). Entrypoint.sol itself is pre-existing and
- *  unmodified by this fusion, so its `_ipfsCID` parameter still exists and still enforces a
- *  32-64 byte length - it's populated with a locator string pointing at the leaf registry instead
- *  of a real IPFS CID, since Entrypoint can't be changed to accept an empty one.
+/** Admit a newly-cleared identity into the on-chain, append-only ASP tree.
+ *
+ *  REPLACES the old `publishIdentityAspRoot(...)`, which pushed a locally-built root via
+ *  `Entrypoint.updateRoot(root, ipfsCID)` and mirrored the leaf set into IdentityAspLeafRegistry.
+ *  That entire flow is gone, and the change is not cosmetic:
+ *
+ *  - `Entrypoint` now maintains the ASP tree ITSELF, one insertion at a time, so there is no
+ *    locally-computed root to push. This is what makes the tree append-only by construction and
+ *    removes the operator's ability to drop an existing member by publishing a tree without them
+ *    (see TODO.md sec. 2.13 / sec. 2A Phase 1b).
+ *  - The separate leaf-registry publish is obsolete. Every leaf is now emitted by the Entrypoint
+ *    in `IdentityAdmitted`, in insertion order, which is strictly better data availability: it is
+ *    authoritative, whereas the old registry was permissionless and could be fed a wrong leaf set
+ *    that consumers had to detect by recomputing the root themselves.
+ *  - The IPFS-CID locator dance is gone with it; there is no CID field left to satisfy.
  *
  *  Requires the caller to hold Entrypoint's ASP_POSTMAN role - enforced on-chain, not re-checked
- *  client-side. Leaves are published BEFORE the root is anchored: if `updateRoot` then fails, the
- *  only cost is one wasted leaf-publish transaction (harmless); publishing leaves AFTER an
- *  already-anchored root would risk the worse failure mode of a root with no available
- *  reconstruction path if that second call failed. Returns the root's association-set index
- *  (decoded from the real `RootAnchored` event, not assumed from call ordering). */
-export async function publishIdentityAspRoot(
+ *  here. Costs one transaction per identity (an O(log n) on-chain insert), where the old design
+ *  batched an arbitrary number of admissions into one root push; that throughput loss is the
+ *  deliberate price of the append-only property. Returns the leaf index the identity landed at,
+ *  decoded from the real event rather than assumed from call ordering.
+ */
+export async function admitIdentity(
   entrypointAddress: string,
-  leafRegistryAddress: string,
   runner: ContractRunner,
-  tree: IdentityAspTree,
-): Promise<bigint> {
-  const rootBytes32 = "0x" + tree.root.toString(16).padStart(64, "0");
-
-  const leafRegistry = new Contract(leafRegistryAddress, LEAF_REGISTRY_ABI, runner);
-  const alreadyPublished: boolean = await leafRegistry.published(rootBytes32);
-  if (!alreadyPublished) {
-    const leavesBytes32 = tree.leaves.map((leaf) => "0x" + leaf.toString(16).padStart(64, "0"));
-    const leafTx = await leafRegistry.publishLeaves(rootBytes32, leavesBytes32);
-    await leafTx.wait();
+  holderRoot: bigint,
+): Promise<{ index: bigint; root: bigint }> {
+  if (holderRoot <= 0n || holderRoot >= FIELD) {
+    throw new Error("admitIdentity: holderRoot must be a nonzero BN254 field element");
   }
 
   const entrypoint = new Contract(entrypointAddress, ENTRYPOINT_ABI, runner);
-  // Entrypoint.sol enforces a 32-64 BYTE length on this field (InvalidIPFSCIDLength) - a real
-  // IPFS CID's natural range, which this locator must also fit even though it isn't one.
-  // "onchain:" (8) + a lowercase 40-hex-char address (40) = 48 bytes, comfortably inside that
-  // range; the label is intentionally terse (just the registry address, not a description) to
-  // leave headroom.
-  const locator = `onchain:${leafRegistryAddress.toLowerCase().replace(/^0x/, "")}`;
-  const tx = await entrypoint.updateRoot(tree.root, locator);
+  const tx = await entrypoint.admitIdentity(holderRoot);
   const receipt = await tx.wait();
 
   const iface = new Interface(ENTRYPOINT_ABI as unknown as string[]);
@@ -175,7 +174,56 @@ export async function publishIdentityAspRoot(
     } catch {
       continue; // a log from a different contract/topic - not ours to decode
     }
-    if (parsed?.name === "RootAnchored") return BigInt(parsed.args.index);
+    if (parsed?.name === "IdentityAdmitted") {
+      return { index: BigInt(parsed.args._index), root: BigInt(parsed.args._root) };
+    }
   }
-  throw new Error("publishIdentityAspRoot: RootAnchored event not found in the transaction receipt");
+  throw new Error("admitIdentity: IdentityAdmitted event not found in the transaction receipt");
+}
+
+/** Rebuild the local ASP tree mirror from chain state, so a withdrawer can generate the
+ *  asp_leaf_index/asp_siblings inputs their Noir proof needs.
+ *
+ *  The Entrypoint holds only the tree's ROOT and internal accumulator, not its leaves - reading a
+ *  membership path out of contract storage is not possible. `IdentityAdmitted` is the leaf feed,
+ *  and replaying it in index order reconstructs exactly the tree the contract built, because
+ *  insertion order fully determines a LeanIMT.
+ *
+ *  VERIFY, DON'T TRUST: the caller should check the reconstructed root against
+ *  `isKnownAspRoot(tree.root)` before proving against it. A wrong or incomplete log range silently
+ *  produces a valid-looking tree with a root the contract has never seen, which would fail on-chain
+ *  at withdrawal time with no indication of why - so it is worth catching here.
+ */
+export async function loadIdentityAspTree(
+  entrypointAddress: string,
+  runner: ContractRunner,
+  fromBlock: number | bigint = 0,
+  toBlock: number | bigint | "latest" = "latest",
+): Promise<IdentityAspTree> {
+  const entrypoint = new Contract(entrypointAddress, ENTRYPOINT_ABI, runner);
+  const events = await entrypoint.queryFilter(
+    entrypoint.filters.IdentityAdmitted(),
+    fromBlock,
+    toBlock,
+  );
+
+  // Sort by the contract's own leaf index rather than by log ordering: a LeanIMT is fully
+  // determined by insertion order, so replaying out of order yields a different (wrong) root.
+  const admitted = events
+    .map((e) => {
+      const args = (e as unknown as { args: { _holderRoot: bigint; _index: bigint } }).args;
+      return { holderRoot: BigInt(args._holderRoot), index: BigInt(args._index) };
+    })
+    .sort((a, b) => (a.index < b.index ? -1 : a.index > b.index ? 1 : 0));
+
+  admitted.forEach((entry, i) => {
+    if (entry.index !== BigInt(i)) {
+      throw new Error(
+        `loadIdentityAspTree: gap in IdentityAdmitted log - expected leaf index ${i}, got ${entry.index}. ` +
+          "Widen the fromBlock/toBlock range; a partial log range cannot reconstruct the tree.",
+      );
+    }
+  });
+
+  return new IdentityAspTree(admitted.map((entry) => entry.holderRoot));
 }

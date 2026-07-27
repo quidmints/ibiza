@@ -12,7 +12,7 @@ import {ICreditLine} from "./ICreditLine.sol";
  * @notice Routes PP's otherwise-idle ETH into SPV's Vogue LP for yield, WITHOUT breaking PP's
  *         anonymity guarantees and WITHOUT modifying PP's core contracts (`PrivacyPool`/`Entrypoint`
  *         stay completely untouched — this is a separate satellite contract PP's governance funds
- *         periodically). See /home/rico/projects/app/ibiza/PP-SPV-BUFFER-DESIGN.md for the full
+ *         periodically). See ../../../../PP-SPV-BUFFER-DESIGN.md for the full
  *         design rationale; this NatSpec covers the invariants only.
  *
  * WHY THIS EXISTS (the privacy constraint, restated precisely): Vogue's own deposit/withdraw events

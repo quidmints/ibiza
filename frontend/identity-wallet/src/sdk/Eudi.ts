@@ -9,8 +9,8 @@
 //   selector → DCQL claims · event_id → OpenID4VP nonce/RP binding · getEventNullifier → scoped
 //   pseudonym · holder root → cnf holder-binding key · DG1 (MRZ) → PID attribute set
 
-import { QueryProofParams } from "./types";
-import { NoirZKProof } from "./RnNoirModule";
+import { QueryProofParams } from "@rarimo/rarime-rn-sdk";
+import { NoirZKProof } from "@rarimo/rarime-rn-sdk";
 
 /** EUDI PID attribute names (eu.europa.ec.eudi.pid.1) we map rarime/DG1 onto. */
 export enum PidClaim {

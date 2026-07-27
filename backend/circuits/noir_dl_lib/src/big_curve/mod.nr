@@ -1,3 +1,7 @@
+use std::ops::Neg;
+use std::ops::Add;
+use std::ops::Sub;
+use crate::big_curve::scalar_field::ScalarFieldTrait;
 pub(crate) mod scalar_field;
 pub(crate) mod curve_jac;
 pub(crate) mod utils;
@@ -131,8 +135,13 @@ impl<let N: u32> SparseLookup<N> {
         let exclusion_test = found + target_gt_largest_entry + target_lt_smallest_entry;
         assert(exclusion_test * exclusion_test == exclusion_test);
 
-        let mut lhs = self.keys[search_result.lhs_index];
-        let mut rhs = self.keys[search_result.rhs_index];
+        // beta.13 requires u32 indices. These come from an UNCONSTRAINED search hint, so the
+        // bound is asserted rather than assumed - a truncating cast on an out-of-range hint would
+        // silently read the wrong table entry instead of failing.
+        search_result.lhs_index.assert_max_bit_size::<32>();
+        search_result.rhs_index.assert_max_bit_size::<32>();
+        let mut lhs = self.keys[search_result.lhs_index as u32];
+        let mut rhs = self.keys[search_result.rhs_index as u32];
 
         // case where hash < self.key_hashes[0]
         // 0 < hash < hashes[0]
@@ -152,8 +161,9 @@ impl<let N: u32> SparseLookup<N> {
         (self.maximum - idx - 1).assert_max_bit_size::<32>();
 
         let value_index = search_result.lhs_index * found;
+        value_index.assert_max_bit_size::<32>();
 
-        let value = self.values[value_index] * found;
+        let value = self.values[value_index as u32] * found;
         value
     }
 }
@@ -166,7 +176,7 @@ pub struct BigCurve<BigNum, CurveParams> {
     pub is_infinity: bool,
 }
 
-trait CurveParamsTrait<BigNum>
+pub trait CurveParamsTrait<BigNum>
 where
     BigNum: BigNumTrait,
 {
@@ -237,11 +247,11 @@ where
      * this will be very efficient (~12 constraints for 256-bit curves using the barretenberg backend)
      **/
     pub(crate) fn get<CurveParams>(self, idx: u8) -> BigCurve<BigNum, CurveParams> {
-        BigCurve { x: self.x[idx], y: self.y[idx], is_infinity: false }
+        BigCurve { x: self.x[idx as u32], y: self.y[idx as u32], is_infinity: false }
     }
 }
 
-trait BigCurveTrait {
+pub trait BigCurveTrait {
     pub fn neg(self) -> Self;
     pub fn point_at_infinity() -> Self;
     fn offset_generator() -> Self;
@@ -293,14 +303,16 @@ where
     fn conditional_select(lhs: Self, rhs: Self, predicate: bool) -> Self {
         let x = BigNum::conditional_select(lhs.x, rhs.x, predicate);
         let y = BigNum::conditional_select(lhs.y, rhs.y, predicate);
-        let is_infinity = (
-            (lhs.is_infinity as Field - rhs.is_infinity as Field) * predicate as Field
-                + rhs.is_infinity as Field
-        ) as bool;
+        // inputs are bools, so the expression is exactly 0 or 1; `!= 0` is equivalent to the
+        // `as bool` beta.13 no longer permits.
+        let is_infinity = ((lhs.is_infinity as Field - rhs.is_infinity as Field)
+            * predicate as Field
+            + rhs.is_infinity as Field)
+            != 0;
         BigCurve { x, y, is_infinity }
     }
 
-    fn validate_on_curve(self) {
+    pub fn validate_on_curve(self) {
         // if is point at infinity, we're on the curve.
         // In this case just sub in a valid point for the x/y coordinates we are about to test
         let one: Self = BigCurve::one();
@@ -491,7 +503,7 @@ where
         y_out = BigNum::conditional_select(BigNum::new(), y_out, infinity_predicate);
 
         let conditional_select = |a: bool, b: bool, predicate: bool| {
-            ((a as Field - b as Field) * predicate as Field + b as Field) as bool
+            (((a as Field - b as Field) * predicate as Field + b as Field) != 0)
         };
 
         let mut infinity_out = conditional_select(false, true, evaluate_group_operation_predicate);
@@ -597,7 +609,7 @@ where
         y_out = BigNum::conditional_select(BigNum::new(), y_out, infinity_predicate);
 
         let conditional_select = |a: bool, b: bool, predicate: bool| {
-            ((a as Field - b as Field) * predicate as Field + b as Field) as bool
+            (((a as Field - b as Field) * predicate as Field + b as Field) != 0)
         };
 
         let mut infinity_out = conditional_select(false, true, evaluate_group_operation_predicate);

@@ -1,3 +1,4 @@
+use crate::big_curve::scalar_field::ScalarFieldTrait;
 use crate::bignum::BigNum;
 use crate::bignum::fields::bn254Fq::BN254_Fq_Params;
 use crate::big_curve::CurveParamsTrait;

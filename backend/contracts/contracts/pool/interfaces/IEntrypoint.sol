@@ -41,31 +41,17 @@ interface IEntrypoint {
     uint256 relayFeeBPS;
   }
 
-  /**
-   * @notice Struct for the onchain association set data
-   * @param root The ASP root
-   * @param ipfsCID The IPFS v1 CID of the ASP data. A content-addressed identifier computed by hashing
-   *                the content with SHA-256, adding multicodec/multihash prefixes, and encoding in base32/58.
-   *                This uniquely identifies data by its content rather than location.
-   * @param timestamp The timestamp on which the root was updated
-   */
-  struct AssociationSetData {
-    uint256 root;
-    string ipfsCID;
-    uint256 timestamp;
-  }
-
   /*///////////////////////////////////////////////////////////////
                               EVENTS
   //////////////////////////////////////////////////////////////*/
 
   /**
-   * @notice Emitted when pushing a new root to the association root set
-   * @param _root The latest ASP root
-   * @param _ipfsCID The IPFS CID of the association set data
-   * @param _timestamp The timestamp of root update
+   * @notice Emitted when an identity is admitted into the append-only ASP tree
+   * @param _holderRoot The admitted identity's holder root
+   * @param _root The ASP root after insertion
+   * @param _index The leaf index the identity was inserted at
    */
-  event RootUpdated(uint256 _root, string _ipfsCID, uint256 _timestamp);
+  event IdentityAdmitted(uint256 _holderRoot, uint256 _root, uint256 _index);
 
   /**
    * @notice Emitted when an ASP root is anchored in the ERC-7812 evidence registry
@@ -199,7 +185,17 @@ interface IEntrypoint {
   /**
    * @notice Thrown when trying to push a an IPFS CID with an invalid length
    */
-  error InvalidIPFSCIDLength();
+  /// @notice Thrown when admitting an identity already present in the ASP tree
+  error AlreadyAdmitted();
+
+  /// @notice Thrown when an admission authorization's deadline has passed
+  error AuthorizationExpired();
+
+  /// @notice Thrown when an admission authorization was not signed by an ASP_POSTMAN
+  error InvalidAuthorization();
+
+  /// @notice Thrown when a leaf is not a valid BN254 field element
+  error LeafOutOfField();
 
   /**
    * @notice Thrown when trying to push a root with an empty root
@@ -222,19 +218,9 @@ interface IEntrypoint {
   error InvalidFeeBPS();
 
   /**
-   * @notice Thrown when trying to access an association set at an invalid index
-   */
-  error InvalidIndex();
-
-  /**
    * @notice Thrown when trying to get the latest root when no roots exist
    */
   error NoRootsAvailable();
-
-  /**
-   * @notice Thrown when no ASP root has aged past the activation delay (challenge window) yet
-   */
-  error NoActiveRoot();
 
   /**
    * @notice Thrown when trying to register a pool with an asset that doesn't match the pool's asset
@@ -264,12 +250,28 @@ interface IEntrypoint {
   function initialize(address _owner, address _postman, address _evidenceRegistry) external;
 
   /**
-   * @notice Push a new root to the association root set
-   * @param _root The new ASP root
-   * @param _ipfsCID The IPFS v1 CID of the association set data
-   * @return _index The index of the newly added root
+   * @notice Admit an identity into the ASP tree. The ONLY way the ASP root can change - the old
+   *         `updateRoot(root, ipfsCID)` was removed, not deprecated, because leaving a path for the
+   *         postman to publish an arbitrary root would defeat the append-only property entirely.
+   * @param _holderRoot The identity's holder root (Poseidon(pubkey(sk_identity)))
+   * @return _root The ASP root after insertion
    */
-  function updateRoot(uint256 _root, string memory _ipfsCID) external returns (uint256 _index);
+  function admitIdentity(uint256 _holderRoot) external returns (uint256 _root);
+
+  /**
+   * @notice Admit an identity using an off-chain postman signature, submitted by anyone. Lets the
+   *         admission ride along with the user's first deposit instead of needing its own
+   *         postman-sent transaction.
+   * @param _holderRoot The identity's holder root
+   * @param _deadline Unix timestamp after which the authorization is void
+   * @param _signature Postman's EIP-712 signature over (holderRoot, deadline)
+   * @return _root The ASP root after insertion
+   */
+  function admitIdentityWithAuthorization(
+    uint256 _holderRoot,
+    uint256 _deadline,
+    bytes calldata _signature
+  ) external returns (uint256 _root);
 
   /**
    * @notice Make a native asset deposit into the Privacy Pool
@@ -373,42 +375,36 @@ interface IEntrypoint {
     returns (IPrivacyPool _pool, uint256 _minimumDepositAmount, uint256 _vettingFeeBPS, uint256 _maxRelayFeeBPS);
 
   /**
-   * @notice Returns the association set data at an index
-   * @param _index The index of the array
-   * @return _root The updated ASP root
-   * @return _ipfsCID The IPFS v1 CID for the association set data
-   * @return _timestamp The timestamp of the root update
-   */
-  function associationSets(uint256 _index)
-    external
-    view
-    returns (uint256 _root, string memory _ipfsCID, uint256 _timestamp);
-
-  /**
    * @notice Returns the latest ASP root
    * @return _root The latest ASP root
    */
   function latestRoot() external view returns (uint256 _root);
 
   /**
-   * @notice Returns the latest ASP root that has aged past the activation delay (challenge window).
-   *         This is the root withdrawals are gated on — a freshly pushed root is "pending" until it
-   *         clears the delay, so an equivocating/compromised postman cannot take effect instantly.
-   * @return _root The latest active ASP root
+   * @notice Whether `_root` is an ASP root this contract has ever computed. Withdrawals are gated
+   *         on this rather than on equality with the newest root: the tree is append-only by
+   *         construction, so a historical root's membership set is a strict subset of the current
+   *         one and honouring it grants nothing the current root would not. This is what removes
+   *         the postman's ability to invalidate an existing member's private exit.
+   * @param _root The candidate ASP root
+   * @return Whether the root is known
    */
-  function latestActiveRoot() external view returns (uint256 _root);
+  function isKnownAspRoot(uint256 _root) external view returns (bool);
+
+  /**
+   * @notice Current leaf count of the ASP tree
+   */
+  function aspTreeSize() external view returns (uint256);
+
+  /**
+   * @notice Current depth of the ASP tree - the `asp_tree_depth` public signal a withdrawal carries
+   */
+  function aspTreeDepth() external view returns (uint256);
 
   /**
    * @notice The ERC-7812 evidence registry every ASP root is anchored in (shared with identity roots)
    */
   function EVIDENCE_REGISTRY() external view returns (IEvidenceRegistry);
-
-  /**
-   * @notice Returns an ASP root by index
-   * @param _index The index
-   * @return _root The ASP root at the index
-   */
-  function rootByIndex(uint256 _index) external view returns (uint256 _root);
 
   /**
    * @notice Returns a boolean indicating if the precommitment has been used

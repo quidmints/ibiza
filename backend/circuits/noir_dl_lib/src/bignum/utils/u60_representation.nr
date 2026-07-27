@@ -132,7 +132,7 @@ impl<let N: u32, let NumSegments: u32> U60Repr<N, NumSegments> {
         let uint_index = bit % 60;
 
         let limb: u64 = self.limbs[segment_index];
-        let value = (limb >> uint_index as u8) & 1;
+        let value = (limb >> uint_index as u64) & 1;
         value == 1
     }
 
@@ -143,13 +143,13 @@ impl<let N: u32, let NumSegments: u32> U60Repr<N, NumSegments> {
         let num_shifted_limbs = shift / 60;
         let limb_shift = shift % 60;
         let remainder_shift = 60 - limb_shift;
-        let mask: u64 = (((1 as u64) << limb_shift as u8) - 1) << remainder_shift as u8;
-        result.limbs[0] = (self.limbs[0 + num_shifted_limbs] >> limb_shift as u8);
+        let mask: u64 = (((1 as u64) << limb_shift as u64) - 1) << remainder_shift as u64;
+        result.limbs[0] = (self.limbs[0 + num_shifted_limbs] >> limb_shift as u64);
 
         for i in 1..((N * NumSegments) - num_shifted_limbs) {
             let value = self.limbs[i + num_shifted_limbs];
-            result.limbs[i] = (value >> limb_shift as u8);
-            let remainder: u64 = (value << remainder_shift as u8) & mask;
+            result.limbs[i] = (value >> limb_shift as u64);
+            let remainder: u64 = (value << remainder_shift as u64) & mask;
             result.limbs[i - 1] = result.limbs[i - 1] + remainder;
         }
         result
@@ -182,19 +182,19 @@ impl<let N: u32, let NumSegments: u32> U60Repr<N, NumSegments> {
         // inside shift = 19 bits to the left
         // meaning we have 19 carry bits and 41 remainder bits
         let mask: u64 = (1 as u64 << 60) - 1;
-        //   let mask: u64 = (((1 as u64) << limb_shift as u8) - 1) << remainder_shift as u8;
+        //   let mask: u64 = (((1 as u64) << limb_shift as u64) - 1) << remainder_shift as u64;
         let value = self.limbs[0];
 
-        let mut remainder = (value >> remainder_shift);
-        result.limbs[num_shifted_limbs] = (value << (limb_shift as u8)) & mask;
+        let mut remainder = (value >> (remainder_shift as u64));
+        result.limbs[num_shifted_limbs] = (value << (limb_shift as u64)) & mask;
 
         // shift 84. num shifted = 1
         for i in 1..((N * NumSegments) - num_shifted_limbs) {
             let value = self.limbs[i];
-            let upshift = ((value << (limb_shift as u8)) + remainder) & mask;
+            let upshift = ((value << (limb_shift as u64)) + remainder) & mask;
             result.limbs[i + num_shifted_limbs] = upshift;
-            remainder = (value >> remainder_shift);
-            // let remainder: u64 = (self.limbs.get(i + num_shifted_limbs as u64) << remainder_shift as u8) & mask;
+            remainder = (value >> (remainder_shift as u64));
+            // let remainder: u64 = (self.limbs.get(i + num_shifted_limbs as u64) << remainder_shift as u64) & mask;
             // result.limbs.set(i - 1, result.limbs.get(i - 1) + remainder);
         }
         result

@@ -31,13 +31,22 @@ interface IPrivacyPool is IState {
   /**
    * @notice Emitted when making a user deposit
    * @param _depositor The address of the depositor
+   * @param _precommitmentBucket The LOW BITS of `_precommitmentHash` (see PRECOMMITMENT_BUCKETS).
+   *        Indexed purely so a recovering wallet can find its own notes without downloading every
+   *        deposit ever made. Adds NO information to the chain - it is derived from
+   *        `_precommitmentHash`, which is already public in this same log.
    * @param _commitment The commitment hash
    * @param _label The deposit generated label
    * @param _value The deposited amount
    * @param _precommitmentHash The deposit precommitment hash
    */
   event Deposited(
-    address indexed _depositor, uint256 _commitment, uint256 _label, uint256 _value, uint256 _precommitmentHash
+    address indexed _depositor,
+    uint256 indexed _precommitmentBucket,
+    uint256 _commitment,
+    uint256 _label,
+    uint256 _value,
+    uint256 _precommitmentHash
   );
 
   /**

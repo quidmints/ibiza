@@ -27,5 +27,4 @@ authors = [""]
 # package, not just the functions actually called, so this fails regardless of what we use. Staying
 # on v0.1.0 until nargo itself is bumped (same P0-remaining item above).
 [dependencies]
-poseidon = { tag = "v0.1.0", git = "https://github.com/noir-lang/poseidon" }
-noir_dl = { path = "../noir_dl_lib" }
+poseidon = { tag = "v0.2.0", git = "https://github.com/noir-lang/poseidon" }

@@ -1,4 +1,6 @@
-use std::{field, hash::poseidon::PoseidonHasher};
+use std::field;
+use std::hash::Hasher;
+use poseidon::poseidon::PoseidonHasher;
 use super::{sigver, sigver::curve_224::ecdsa_ver, sigver::ecdsa::verify_secp521r1_ecdsa, sigver::ecdsa::verify_brainpoolp512r1_ecdsa, sigver::ecdsa::verify_brainpoolp384r1_ecdsa, sigver::ecdsa::verify_secp256r1_ecdsa, big_curve::curves::secp256r1::Secp256r1Fr, sigver::ecdsa::verify_brainpoolp256r1_ecdsa, big_curve::curves::secp256r1::Secp256r1Fq};
 use crate::bignum::BigNum;
 use crate::sigver::brainpoolP256r1::params::{BrainpoolP256r1Fq, BrainpoolP256r1Fr};
@@ -846,7 +848,7 @@ fn extract_pk_hash<
 }
 
 fn u8_to_8_u1(x:u8) -> [u1; 8]{
-    let out = __u8_to_8_u1(x);
+    let out = unsafe { __u8_to_8_u1(x) };
     assert((out[0] as u8) * 128 +
             (out[1] as u8) * 64 + 
             (out[2] as u8) * 32 + 
@@ -883,7 +885,7 @@ pub fn passport_hash<let HASH_SIZE: u32, let N: u32>(preimage: [u8; N]) -> [u8; 
         }
     }
     if (HASH_SIZE == 32){
-        let hash_result = std::sha256::digest(preimage);
+        let hash_result = sha256::digest(preimage);
         for i in 0..32{
             out[i] = hash_result[i];
         }
@@ -895,7 +897,7 @@ pub fn passport_hash<let HASH_SIZE: u32, let N: u32>(preimage: [u8; N]) -> [u8; 
         }
     }
     if (HASH_SIZE == 64){
-        let hash_result = std::sha512::digest(preimage);
+        let hash_result = crate::sha512::digest(preimage);
         for i in 0..64{
             out[i] = hash_result[i];
         }

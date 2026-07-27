@@ -1,4 +1,5 @@
-use std::hash::poseidon::PoseidonHasher;
+use std::hash::Hasher;
+use poseidon::poseidon::PoseidonHasher;
 use super::utils::{switcher};
 
 fn smt_hash1(

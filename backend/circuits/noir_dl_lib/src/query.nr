@@ -1,4 +1,5 @@
-use std::hash::{self, poseidon::PoseidonHasher};
+use std::hash::{self, Hasher};
+use poseidon::poseidon::PoseidonHasher;
 use crate::smt::smt_verifier;
 use crate::not_passports_zk_circuits::{extract_dg1_commitment, extract_pk_identity_hash};
 
@@ -48,7 +49,9 @@ pub fn date_is_less(date1: Field, date2: Field, current: Field) -> u1{
         yy2 += 2000;
     }
 
-    let verdict = (yy1 < yy2) + (yy1 == yy2) * ((mm1 < mm2) + (mm1 == mm2) * (dd1 < dd2)); 
+    let verdict = (yy1 < yy2) as Field
+        + (yy1 == yy2) as Field
+            * ((mm1 < mm2) as Field + (mm1 == mm2) as Field * (dd1 < dd2) as Field); 
 
     verdict as u1
 }

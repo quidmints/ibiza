@@ -1,3 +1,4 @@
+use crate::bignum::bignum::BigNumTrait;
 use crate::bignum::utils::split_bits;
 use crate::bignum::utils::u60_representation::U60Repr;
 
@@ -64,8 +65,8 @@ pub(crate) unconstrained fn __validate_gt_remainder<let N: u32>(
                 carry = 0;
                 borrow = 0;
             }
-            carry_flags[i / 2] = carry as bool;
-            borrow_flags[i / 2] = borrow as bool;
+            carry_flags[i / 2] = carry != 0;
+            borrow_flags[i / 2] = borrow != 0;
         }
     }
     let result = U60Repr::into(result_u60);
@@ -89,7 +90,7 @@ pub(crate) unconstrained fn __neg_with_flags<let N: u32, let MOD_BITS: u32>(
 
         borrow_in = borrow;
         if ((i & 1) == 1) {
-            borrow_flags[i / 2] = borrow as bool;
+            borrow_flags[i / 2] = borrow != 0;
         }
     }
     let result = U60Repr::into(result_u60);
@@ -135,8 +136,8 @@ pub(crate) unconstrained fn __add_with_flags<let N: u32, let MOD_BITS: u32>(
                 carry = 0;
                 borrow = 0;
             }
-            carry_flags[idx] = carry as bool;
-            borrow_flags[idx] = borrow as bool;
+            carry_flags[idx] = carry != 0;
+            borrow_flags[idx] = borrow != 0;
         }
     }
     let result = U60Repr::into(result_u60);
@@ -181,8 +182,8 @@ pub(crate) unconstrained fn __sub_with_flags<let N: u32, let MOD_BITS: u32>(
                 carry = 0;
                 borrow = 0;
             }
-            carry_flags[i / 2] = carry as bool;
-            borrow_flags[i / 2] = borrow as bool;
+            carry_flags[i / 2] = carry != 0;
+            borrow_flags[i / 2] = borrow != 0;
         }
     }
     let result = U60Repr::into(result_u60);

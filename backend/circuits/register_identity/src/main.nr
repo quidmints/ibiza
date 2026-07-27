@@ -3,7 +3,6 @@ use noir_dl::not_passports_zk_circuits::register_identity;
 
 fn main(
 	dg1: [u8; 93],
-	dg15: [u8; 0],
 	ec: [u8; 126],
 	sa: [u8; 62],
 	pk: [Field; 18],
@@ -12,6 +11,11 @@ fn main(
 	sk_identity: Field,
 	icao_root: Field,
 	inclusion_branches: [Field; 80]) -> pub (Field, Field, Field, Field, Field){
+	// beta.13 rejects `[u8; 0]` as an entry-point type. This variant has no DG15 (note the DG15
+	// length generic below is 0), so the parameter carried no data - it is constructed locally
+	// instead. Constraints and public inputs are unchanged; only the witness map loses an empty
+	// entry.
+	let dg15: [u8; 0] = [];
 	let tmp = register_identity::<
 		93,
 		0,

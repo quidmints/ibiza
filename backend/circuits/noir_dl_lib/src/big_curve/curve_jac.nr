@@ -1,3 +1,7 @@
+use std::ops::Neg;
+use std::ops::Add;
+use std::ops::Sub;
+use crate::big_curve::scalar_field::ScalarFieldTrait;
 use crate::bignum::BigNum;
 use crate::bignum::BigNumTrait;
 use super::{CurveParamsTrait, scalar_field::ScalarField};
@@ -91,11 +95,11 @@ where
         inverse: BigNum,
     ) -> AffineTranscript<BigNum> {
         let z_inv = inverse;
-        let zz = z_inv.__mul(z_inv);
-        let zzz = zz.__mul(z_inv);
-        let lambda = j_tx.lambda_numerator.__mul(z_inv);
-        let x3 = j_tx.x3.__mul(zz);
-        let y3 = j_tx.y3.__mul(zzz);
+        let zz = unsafe { z_inv.__mul(z_inv) };
+        let zzz = unsafe { zz.__mul(z_inv) };
+        let lambda = unsafe { j_tx.lambda_numerator.__mul(z_inv) };
+        let x3 = unsafe { j_tx.x3.__mul(zz) };
+        let y3 = unsafe { j_tx.y3.__mul(zzz) };
         AffineTranscript { x3, y3, lambda }
     }
 
@@ -115,11 +119,11 @@ where
 
         for i in 0..j_tx.len() {
             let z_inv = inverses[i];
-            let zz = z_inv.__mul(z_inv);
-            let zzz = zz.__mul(z_inv);
-            let lambda = j_tx[i].lambda_numerator.__mul(z_inv);
-            let x3 = j_tx[i].x3.__mul(zz);
-            let y3 = j_tx[i].y3.__mul(zzz);
+            let zz = unsafe { z_inv.__mul(z_inv) };
+            let zzz = unsafe { zz.__mul(z_inv) };
+            let lambda = unsafe { j_tx[i].lambda_numerator.__mul(z_inv) };
+            let x3 = unsafe { j_tx[i].x3.__mul(zz) };
+            let y3 = unsafe { j_tx[i].y3.__mul(zzz) };
             result[i] = AffineTranscript { lambda, x3, y3 };
         }
         result
@@ -206,7 +210,7 @@ where
     where
         CurveParams: CurveParamsTrait<BigNum>,
     {
-        CurveJ { x: self.x[idx], y: self.y[idx], z: self.z[idx], is_infinity: false }
+        CurveJ { x: self.x[idx as u32], y: self.y[idx as u32], z: self.z[idx as u32], is_infinity: false }
     }
 }
 
@@ -247,15 +251,15 @@ where
             // Y1 * Z2 * Z2 * Z2 == Y2 * Z1 * Z1 * Z1
             let z1 = self.z;
             let z2 = other.z;
-            let z1z1 = z1.__mul(z1);
-            let z1z1z1 = z1z1.__mul(z1);
-            let z2z2 = z2.__mul(z2);
-            let z2z2z2 = z2z2.__mul(z2);
+            let z1z1 = unsafe { z1.__mul(z1) };
+            let z1z1z1 = unsafe { z1z1.__mul(z1) };
+            let z2z2 = unsafe { z2.__mul(z2) };
+            let z2z2z2 = unsafe { z2z2.__mul(z2) };
 
-            let x_lhs = self.x.__mul(z2z2);
-            let x_rhs = other.x.__mul(z1z1);
-            let y_lhs = self.y.__mul(z2z2z2);
-            let y_rhs = other.y.__mul(z1z1z1);
+            let x_lhs = unsafe { self.x.__mul(z2z2) };
+            let x_rhs = unsafe { other.x.__mul(z1z1) };
+            let y_lhs = unsafe { self.y.__mul(z2z2z2) };
+            let y_rhs = unsafe { other.y.__mul(z1z1z1) };
             let lhs_infinity = self.is_infinity;
             let rhs_infinity = other.is_infinity;
             let both_not_infinity = !(lhs_infinity & rhs_infinity);
@@ -299,14 +303,14 @@ where
         let Y2 = p2.y;
         let Z1 = self.z;
         let Z2 = p2.z;
-        let Z2Z2 = Z2.__mul(Z2);
-        let Z1Z1 = Z1.__mul(Z1);
-        let Z2Z2Z2 = Z2Z2.__mul(Z2);
-        let Z1Z1Z1 = Z1Z1.__mul(Z1);
-        let U1 = X1.__mul(Z2Z2);
-        let U2 = X2.__mul(Z1Z1);
-        let S1 = Y1.__mul(Z2Z2Z2);
-        let S2 = Y2.__mul(Z1Z1Z1);
+        let Z2Z2 = unsafe { Z2.__mul(Z2) };
+        let Z1Z1 = unsafe { Z1.__mul(Z1) };
+        let Z2Z2Z2 = unsafe { Z2Z2.__mul(Z2) };
+        let Z1Z1Z1 = unsafe { Z1Z1.__mul(Z1) };
+        let U1 = unsafe { X1.__mul(Z2Z2) };
+        let U2 = unsafe { X2.__mul(Z1Z1) };
+        let S1 = unsafe { Y1.__mul(Z2Z2Z2) };
+        let S2 = unsafe { Y2.__mul(Z1Z1Z1) };
         // let R = S2.__submod(S1);
         // x1*z2*z2 == x2*z1*z1 => U2 == U2
         let x_equal_predicate = U2.eq(U1);
@@ -385,15 +389,15 @@ where
         let Y2 = p2.y;
         let Z1 = self.z;
         let Z2 = p2.z;
-        let Z2Z2 = Z2.__mul(Z2);
-        let Z1Z1 = Z1.__mul(Z1);
-        let Z2Z2Z2 = Z2Z2.__mul(Z2);
-        let Z1Z1Z1 = Z1Z1.__mul(Z1);
-        let U1 = X1.__mul(Z2Z2);
-        let U2 = X2.__mul(Z1Z1);
-        let S1 = Y1.__mul(Z2Z2Z2);
-        let S2 = Y2.__mul(Z1Z1Z1);
-        let R = S2.__sub(S1);
+        let Z2Z2 = unsafe { Z2.__mul(Z2) };
+        let Z1Z1 = unsafe { Z1.__mul(Z1) };
+        let Z2Z2Z2 = unsafe { Z2Z2.__mul(Z2) };
+        let Z1Z1Z1 = unsafe { Z1Z1.__mul(Z1) };
+        let U1 = unsafe { X1.__mul(Z2Z2) };
+        let U2 = unsafe { X2.__mul(Z1Z1) };
+        let S1 = unsafe { Y1.__mul(Z2Z2Z2) };
+        let S2 = unsafe { Y2.__mul(Z1Z1Z1) };
+        let R = unsafe { S2.__sub(S1) };
 
         let (_, PP): (BigNum, BigNum) = BigNum::__compute_quadratic_expression(
             [[U2, U1]],
@@ -428,7 +432,7 @@ where
             [],
             [],
         );
-        let Z1Z2 = Z1.__mul(Z2);
+        let Z1Z2 = unsafe { Z1.__mul(Z2) };
         let (_, Z3): (BigNum, BigNum) = BigNum::__compute_quadratic_expression(
             [[Z1Z2, BigNum::new()]],
             [[false, false]],
@@ -479,8 +483,8 @@ where
         );
 
         if (CurveParams::a().get_limb(0) != 0) {
-            let ZZ = Z1.__mul(Z1);
-            let AZZZZ = ZZ.__mul(ZZ).__mul(CurveParams::a());
+            let ZZ = unsafe { Z1.__mul(Z1) };
+            let AZZZZ = unsafe { ZZ.__mul(ZZ).__mul(CurveParams::a()) };
             XX_mul_3 = XX_mul_3.__add(AZZZZ);
         }
         let (_, D): (BigNum, BigNum) = BigNum::__compute_quadratic_expression(

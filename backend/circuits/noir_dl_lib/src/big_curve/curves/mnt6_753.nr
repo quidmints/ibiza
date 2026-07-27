@@ -1,3 +1,4 @@
+use crate::big_curve::scalar_field::ScalarFieldTrait;
 use crate::bignum::BigNum;
 use crate::bignum::fields::mnt6_753Fq::MNT6_753_Fq_Params;
 use crate::bignum::fields::mnt6_753Fr::MNT6_753_Fr_Params;

@@ -149,7 +149,15 @@ abstract contract State is IState {
     // Update currentRootIndex to point to the latest root
     currentRootIndex = nextIndex;
 
-    emit LeafInserted(_merkleTree.size, _leaf, _updatedRoot);
+    // `size - 1`, NOT `size`. `_merkleTree._insert` above already incremented size, so emitting it
+    // raw would put `index + 1` in a field named `_index` (upstream PP does exactly that). This is
+    // the leaf feed a withdrawer replays to rebuild the state tree and produce `state_leaf_index`
+    // for withdraw_identity, so an off-by-one here is not cosmetic: it yields a proof that fails
+    // verification on-chain with no diagnostic pointing back to the event. Matches
+    // Entrypoint._admitIdentity's `_aspTree.size - 1` convention for IdentityAdmitted, so both
+    // trees' leaf feeds mean the same thing. Safe to correct: this event had ZERO consumers when
+    // the change was made (2026-07-27) - the state-tree mirror in sec. 2.1 is the first.
+    emit LeafInserted(_merkleTree.size - 1, _leaf, _updatedRoot);
   }
 
   /**

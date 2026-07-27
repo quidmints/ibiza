@@ -1064,7 +1064,18 @@ changing twice in one day.
 **Progress 2026-07-27: the crypto primitives are done — SHA1/SHA384/SHA512 and Date2Time are now
 differential-tested** against Python `hashlib` / `calendar.timegm`, with the padding boundaries
 (111/112/128 bytes) and leap years (2024 yes, 2100 no) that hand-rolled implementations get wrong.
-All correct. **26 remain.**
+All correct. **RSA and Bytes2Poseidon followed — 24 remain.**
+
+`RSA.decrypt` is the 0x05 modexp plumbing every passport signature check runs through; verified
+against an independently generated vector (Miller-Rabin primes, `s = m^d mod n`), including that a
+tampered signature does NOT recover the message and that the output is exactly modulus-length — a
+short buffer would misalign every subsequent digest read.
+
+`Bytes2Poseidon.hash512` **discards the top byte of each 32-byte word** (`mod 2**248`, to fit
+BN254's field), so inputs differing only there hash identically. Not a bug — a 256-bit word cannot
+be a field element — but it means this is not collision-resistant over arbitrary 64 bytes, and it
+must match whatever the circuit does or on-chain and in-circuit commitments diverge. Pinned, along
+with the complement: every OTHER byte does affect the hash.
 
 `Date2Time`'s `+2000` looked like a bug — a two-digit year always decodes as 20xx, so a 1974 birth
 date would become 2074 — but it is only ever applied to `currentDate`, where it is right. Birth

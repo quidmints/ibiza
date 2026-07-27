@@ -830,12 +830,11 @@ at registration") has no passport equivalent and needs its own home regardless.
   though Poseidon hashing dominates. Modest (~5%).
 - **`App.tsx` CONFIG holds literal zero addresses** for `stateKeeper` / `registerSimpleContract` /
   `poseidonSmt` / `holderRegistration` — the exact file to edit the moment anything deploys.
-- **`bitcoin.nr` is orphaned** — `lib.nr` never declares `pub mod bitcoin;`. Same defect class as
-  `recursion.nr`. Delete or wire.
 - **No backend endpoint produces a revocation signature** — `revokeDocument` takes it as a manual
   external input.
-- **ECDSA (8) and recursive-proof (4) Noir suites in the rarime tree have never been run** —
-  deferred as a cost issue, suited to a CI job.
+- **ECDSA (8) Noir suites in the rarime tree have never been run** — deferred as a cost issue,
+  suited to a CI job. (The recursive-proof suites are gone: `recursion.nr` and `bitcoin.nr` were
+  both deleted as orphaned dead code, so there is nothing left to run there.)
 - **Unverified:** whether the repeated-biometric-prompt UX fix landed in `root.ts`.
 - **Efficiency backlog:** Poseidon2 uniform swap, tree-depth tuning, public-input packing,
   shared-SRS reuse.

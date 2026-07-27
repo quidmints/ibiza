@@ -27,4 +27,5 @@ process_passport_*.js
 # Prover.toml as a real source.
 !withdraw_identity/Prover.baseline.toml
 !withdraw_identity/Prover.wallet.toml
+!withdraw_identity/Prover.e2e.toml
 !title_holder/Prover.toml

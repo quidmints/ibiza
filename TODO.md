@@ -1064,7 +1064,21 @@ changing twice in one day.
 **Progress 2026-07-27: the crypto primitives are done — SHA1/SHA384/SHA512 and Date2Time are now
 differential-tested** against Python `hashlib` / `calendar.timegm`, with the padding boundaries
 (111/112/128 bytes) and leap years (2024 yes, 2100 no) that hand-rolled implementations get wrong.
-All correct. **RSA, Bytes2Poseidon and PublicSignalsBuilder followed — 23 remain.**
+All correct. **RSA, Bytes2Poseidon and BOTH PublicSignals builders followed — 22 remain.**
+
+The builders were the highest-risk of the set: 23 and 24 signals written by hand-computed assembly
+offsets (`mstore(add(ptr, 544), x)`) straight into the array a verifier consumes. A wrong offset
+does not revert — it writes the wrong slot AND clobbers whichever signal really lives there. Every
+index in both is now pinned with a distinct sentinel and read back as a whole array, so a COLLISION
+is visible (a per-field test cannot see one — a clobber needs two fields observed together).
+
+**TD1 is not TD3-plus-a-field.** 24 signals vs 23, and the layout genuinely differs: TD1 carries
+birthDate / expirationDate / documentNumberHash / personalNumberHash / documentType as signals of
+their own, shifting nearly everything after index 3. `nationality` is index 4 in TD1 and 5 in TD3.
+Using the wrong builder compiles, runs, and produces a plausible-but-wrong array — the same TD1/TD3
+trap that made the SDK's MRZ parser read passports at ID-card offsets.
+`test_td1AndTd3LayoutsGenuinelyDiffer` pins the divergence so a future "simplification" cannot merge
+them.
 
 `PublicSignalsBuilder` was the highest-risk file of the set: 23 signals written by hand-computed
 assembly offsets (`mstore(add(ptr, 544), x)`) straight into the array a verifier consumes. A wrong

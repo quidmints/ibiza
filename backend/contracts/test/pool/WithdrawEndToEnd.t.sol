@@ -183,6 +183,26 @@ contract WithdrawEndToEndTest is Test {
     // PrivacyPool.validWithdrawal, which recomputes and compares this independently.
     IPrivacyPool.Withdrawal memory w = IPrivacyPool.Withdrawal({processooor: recipient, data: ''});
     emit log_named_uint('context', uint256(keccak256(abi.encode(w, pool.SCOPE()))) % FIELD);
+
+    /*
+     * FIXTURE-DRIFT GUARD. This function used to only LOG, which made it one of two tests in the
+     * suite that could not fail - it looked like coverage and was not.
+     *
+     * It matters here more than most: SCOPE is derived from the pool's ADDRESS, so adding or
+     * reordering a single deployment in setUp silently invalidates the committed proof. Without
+     * this the symptom is a bare ContextMismatch from the withdrawal test, which says nothing about
+     * the cause. These assertions name it.
+     */
+    assertEq(
+      pool.currentRoot(), WALLET_STATE_ROOT, 'fixture is STALE: state root moved (SCOPE changed?)'
+    );
+    assertEq(
+      uint256(keccak256(abi.encode(w, pool.SCOPE()))) % FIELD,
+      E2E_CONTEXT,
+      'fixture is STALE: context moved - regenerate with tools/build-e2e-fixture.js'
+    );
+    assertEq(aspRegistry.aspTreeDepth(), 2, 'ASP tree shape changed - fixture invalid');
+    assertEq(pool.currentTreeSize(), 4, 'deposit count changed - fixture invalid');
   }
 
   /*
@@ -272,19 +292,31 @@ contract WithdrawEndToEndTest is Test {
    * not a feature, so it is asserted here by enumerating every way withdraw() can revert and
    * showing each is either the caller's own doing or the rule-bound membership check.
    *
-   * PrivacyPool.withdraw reverts on exactly these, and nothing else:
-   *   InvalidProcessooor   caller is not the address the proof commits to      -> caller's own
-   *   ContextMismatch      proof does not match these withdrawal parameters    -> caller's own
-   *   InvalidTreeDepth     declared depth exceeds MAX_TREE_DEPTH               -> caller's own
-   *   UnknownStateRoot     state root outside the 64-root history              -> caller's own
-   *                        (staleness only; rebuild the witness and retry)
-   *   InvalidProof         the proof does not verify                           -> caller's own
-   *   NullifierAlreadySpent  note already spent                                -> caller's own
-   *   IncorrectASPRoot     ASP root not one the registry computed              -> RULE-BOUND
+   * withdraw() reverts on exactly NINE conditions. The list was FIRST WRITTEN AS SEVEN, derived by
+   * reading PrivacyPool.sol alone - which missed the two that come from INHERITED calls the
+   * function makes (_spend/_insert live in State, _push in PrivacyPoolSimple). Enumerating a
+   * "closed set" from one file is exactly the kind of blind spot this invariant exists to rule out,
+   * so the provenance of each entry is given:
    *
-   * Only the last is a third party's decision, and it is now bounded by a NON-UPGRADEABLE,
-   * append-only registry with no owner (sec. 2.5a). Nothing else in the path consults any role,
-   * owner, pause flag or upgrade.
+   *   PrivacyPool.validWithdrawal / withdraw:
+   *     InvalidProcessooor       caller is not the address the proof commits to    -> caller's own
+   *     ContextMismatch          proof does not match these withdrawal parameters  -> caller's own
+   *     InvalidTreeDepth         declared depth exceeds MAX_TREE_DEPTH             -> caller's own
+   *     UnknownStateRoot         state root outside the 64-root history            -> caller's own
+   *                              (staleness only - rebuild the witness and retry)
+   *     InvalidProof             the proof does not verify                         -> caller's own
+   *     IncorrectASPRoot         ASP root is not one the registry computed         -> RULE-BOUND
+   *   State (inherited, via _spend/_insert):
+   *     NullifierAlreadySpent    the note is already spent                         -> caller's own
+   *     MaxTreeDepthReached      the state tree is FULL (2^32 leaves)              -> CAPACITY
+   *   PrivacyPoolSimple (inherited, via _push):
+   *     FailedToSendNativeAsset  the recipient contract rejected the ETH           -> caller's own
+   *                              (the caller chose the recipient)
+   *
+   * So exactly ONE revert is a third party's decision - IncorrectASPRoot - and it is bounded by a
+   * non-upgradeable, append-only registry with no owner. MaxTreeDepthReached is not a lever either:
+   * it is a global capacity limit that no one can aim at an individual, and it blocks deposits
+   * before withdrawals. Nothing in the path consults a role, an owner, a pause flag or an upgrade.
    */
   function test_NoGovernanceLeverCanBlockAWithdrawal() public {
     // The ONLY governance action reachable on a live pool is windDown, via the Entrypoint.

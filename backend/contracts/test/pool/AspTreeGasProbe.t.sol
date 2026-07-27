@@ -27,6 +27,8 @@ contract AspTreeGasProbe is Test {
     _gasUsed = _before - gasleft();
   }
 
+  /// @dev MEASUREMENT ONLY - deliberately has no assertion; it exists to print the gas curve.
+  /// Named `test_` so `forge test` runs it, but do not mistake it for coverage.
   function test_MeasureInsertCostAcrossTreeGrowth() public {
     uint256[] memory _samplePoints = new uint256[](6);
     _samplePoints[0] = 1;

@@ -1054,6 +1054,30 @@ at registration") has no passport equivalent and needs its own home regardless.
 
 ---
 
+### 3a. Test-coverage inventory — what is untested, and whose it is (2026-07-27)
+
+**Every contract in OUR fusion surface, and every one inherited from PP/0xbow, is now tested.** The
+PP lineage is exactly five contracts — `PrivacyPool`, `State`, `Entrypoint`, `PrivacyPoolSimple`,
+`PrivacyPoolComplex` — and the last of those had NO tests at all until today despite its constructor
+changing twice in one day.
+
+**30 contracts remain untested, ALL of them rarime's passport stack**, not PP's and not ours:
+`certificate/` dispatchers and signers, `utils/SHA1|SHA384|SHA512|RSA|Date2Time|Bytes2Poseidon`,
+`registration/Registration2`, `sdk/PublicSignals*Builder`, `state/L1RegistrationState`,
+`RegistrationSMTReplicator`.
+
+**This is a DECISION, not an oversight.** They are vendored upstream code on the passport path, and
+several (the SHA and RSA primitives especially) are the kind of thing that wants differential
+testing against reference vectors rather than a smoke test — the same treatment `smt.nr` and the
+curve gadgets got. That is real work and should be scoped deliberately. What matters is that the
+line is now drawn explicitly: nothing of ours is untested, and this list is the exact remainder.
+
+**Deleted rather than left looking healthy:** `WithdrawalVerifier.sol` and `CommitmentVerifier.sol`
+(the superseded Groth16 verifiers — unreferenced after the Honk ports, and a stale verifier that
+still compiles is a deployment hazard), plus `VerifierMock`/`FailingVerifierMock`, which nothing
+instantiated once the proof paths moved to real verifiers, and a dead Groth16 `IVerifier` import in
+`State.sol` implying a Groth16 path that no longer exists.
+
 ## 4. Decisions someone has to make
 
 - **The ASP retroactive lever.** `PrivacyPool` now accepts any historical ASP root, safe *only*

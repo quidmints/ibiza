@@ -9,8 +9,6 @@ import {IPrivacyPool, IPrivacyPoolSimple} from '../../contracts/pool/interfaces/
 import {IState} from '../../contracts/pool/interfaces/IState.sol';
 import {ProofLib} from '../../contracts/pool/lib/ProofLib.sol';
 import {Constants} from '../../contracts/pool/lib/Constants.sol';
-import {VerifierMock} from '../../contracts/mock/verifiers/VerifierMock.sol';
-import {FailingVerifierMock} from '../../contracts/mock/verifiers/FailingVerifierMock.sol';
 import {NoirVerifierMock} from '../../contracts/mock/verifiers/NoirVerifierMock.sol';
 
 /// Minimal stand-in for BOTH the Entrypoint and the ASP registry. Since the sec. 2.5a split the

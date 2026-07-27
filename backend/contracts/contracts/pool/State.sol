@@ -21,7 +21,6 @@ import {InternalLeanIMT, LeanIMTData} from 'lean-imt/InternalLeanIMT.sol';
 
 import {IEntrypoint} from 'interfaces/IEntrypoint.sol';
 import {IState} from 'interfaces/IState.sol';
-import {IVerifier} from 'interfaces/IVerifier.sol';
 import {INoirVerifier} from '../interfaces/verifiers/INoirVerifier.sol';
 
 /**

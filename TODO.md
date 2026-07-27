@@ -1064,7 +1064,15 @@ changing twice in one day.
 **Progress 2026-07-27: the crypto primitives are done — SHA1/SHA384/SHA512 and Date2Time are now
 differential-tested** against Python `hashlib` / `calendar.timegm`, with the padding boundaries
 (111/112/128 bytes) and leap years (2024 yes, 2100 no) that hand-rolled implementations get wrong.
-All correct. **RSA and Bytes2Poseidon followed — 24 remain.**
+All correct. **RSA, Bytes2Poseidon and PublicSignalsBuilder followed — 23 remain.**
+
+`PublicSignalsBuilder` was the highest-risk file of the set: 23 signals written by hand-computed
+assembly offsets (`mstore(add(ptr, 544), x)`) straight into the array a verifier consumes. A wrong
+offset does not revert — it writes the wrong slot AND clobbers whichever signal really lives there.
+Every index is now pinned with a distinct sentinel, read back as a whole array so a COLLISION is
+visible (a per-field test cannot see one, since a clobber needs two fields observed together). All
+23 correct, and the constructor's ZERO_DATE seeding is pinned too — unset dates must not read as
+0000-00-00.
 
 `RSA.decrypt` is the 0x05 modexp plumbing every passport signature check runs through; verified
 against an independently generated vector (Miller-Rabin primes, `s = m^d mod n`), including that a

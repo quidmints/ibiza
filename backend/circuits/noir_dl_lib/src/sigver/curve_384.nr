@@ -336,10 +336,6 @@ fn test_double(){
     curve_double(Brainpool384R1_GENERATOR);
 }
 
-#[test]
-fn test_mult(){
-    print(curve_mult(Brainpool384R1_GENERATOR, [1;384]));
-}
 
 // #[test]
 // fn test_2_mult(){
@@ -357,5 +353,35 @@ fn test_ecdsa(){
     [[0x7a8855eb90334c4ff61dece5b6fa5a,0x106064d099da31b6001a10717a0d39,0xce19eb437ad8a4103f78b3cb363959,0x208b6d],[0x514fd4b6050c942fa37100340ea744,0x91902ac1b543f5055b03041123bf15,0x8abb5c4e5d239ddc066ce6de430031,0x7bbc3e]],
     [[0x539421615e17b75e17cdc95c4bee88,0xa85729b74f86d247c848b7b8eddb2,0xc0e4c5d91e5b17729ba9595f9ea61c,0x1112d9],[0x854d03200e9fee2c5fa88cc604e6b8,0x5aa865926c958e2219f756adbf2496,0x3671411e713fc50322c51fbb84bccc,0x288fdd]],
     [201, 155, 250, 252, 4, 54, 113, 49, 231, 146, 193, 56, 55, 25, 35, 141, 43, 206, 141, 76, 145, 206, 183, 109, 115, 243, 168, 12, 180, 217, 151, 71, 8, 104, 174, 25, 247, 72, 232, 24, 59, 130, 255, 70, 170, 62, 221, 106]
+    );
+}
+
+/*
+ * DIFFERENTIAL TEST against an independent affine reference.
+ *
+ * NOTE THE CURVE: despite the file name, this is BRAINPOOL P384R1, not secp384r1 - the generator
+ * and field parameters are Brainpool's. Using secp384r1's parameters to check this would produce a
+ * confidently wrong vector. Previously print(...) only, so it could not fail.
+ *
+ * The scalar is [1; 384], i.e. 2^384 - 1.
+ */
+#[test]
+fn test_mult_matches_reference() {
+    let got = curve_mult(Brainpool384R1_GENERATOR, [1; 384]);
+    assert(
+        got[0]
+            == [
+                0x83557aac49f51a1e9b602aaf711d68, 0x2043134645ca3bed0166863657a356,
+                0xc97ced5c2f6d0665d90b4979dc04c5, 0xfcce5,
+            ],
+        "(2^384-1)*G x wrong",
+    );
+    assert(
+        got[1]
+            == [
+                0xea8b8256a37e1c500a4e27f109f388, 0x4f38492fee840722d49183c25006f4,
+                0x10b970f2de4085144b4dadf0364e9b, 0x2f75c9,
+            ],
+        "(2^384-1)*G y wrong",
     );
 }

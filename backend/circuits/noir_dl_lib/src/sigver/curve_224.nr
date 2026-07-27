@@ -324,20 +324,7 @@ fn test_double(){
     curve_double([[0x3c1d356c21122343280d6115c1d21, 0xb70e0cbd6bb4bf7f321390b94a],[0x4375a05a07476444d5819985007e34, 0xbd376388b5f723fb4c22dfe6cd]]);
 }
 
-#[test]
-fn test_mult(){
-    print(curve_mult([[0x3c1d356c21122343280d6115c1d21, 0xb70e0cbd6bb4bf7f321390b94a],[0x4375a05a07476444d5819985007e34, 0xbd376388b5f723fb4c22dfe6cd]], 0x21695a86c5d1c5b572ec36da8bbe5818188492e672a64a0f09cb3f95));
-}
 
-#[test]
-fn test_2_mult(){
-    print(
-        curve_two_mult(
-            [[0x3c1d356c21122343280d6115c1d21, 0xb70e0cbd6bb4bf7f321390b94a],[0x4375a05a07476444d5819985007e34, 0xbd376388b5f723fb4c22dfe6cd]], 
-            [[0xcb2bba8f6e37e45621789743cd6633, 0x25a4b8ef0ae112d28aa95742d5],[0x8713800a75730121b92a8740249441, 0x9acf510689f8654b9e1866ae24]],
-            [0x21695a86c5d1c5b572ec36da8bbe5818188492e672a64a0f09cb3f95, 0x9cdf6edcbed49fd11fdfe5b3eeea9b1b472d50625919db29c85c5751]
-    ));
-}
 
 #[test]
 fn test_ecdsa(){
@@ -352,4 +339,32 @@ fn test_ecdsa(){
         ],
 [177, 28, 121, 26, 76, 57, 86, 171, 94, 117, 165, 108, 210, 252, 245, 238, 118, 238, 75, 9, 79, 14, 196, 133, 173, 87, 243, 102]
     );
+}
+
+/*
+ * DIFFERENTIAL TESTS against an independent affine reference over secp224r1's parameters.
+ * Previously print(...) only, so they could not fail. Limbs are little-endian, 120 bits.
+ */
+global K1: Field = 0x21695a86c5d1c5b572ec36da8bbe5818188492e672a64a0f09cb3f95;
+
+#[test]
+fn test_mult_matches_reference() {
+    let got = curve_mult(SECP224R1_GENERATOR, K1);
+    assert(got[0] == [0xd68fb9a582a4b0cc89e349f3fdfa43, 0x82131a16d7e5229f27382f63b2], "k1*G x wrong");
+    assert(got[1] == [0x48f595b5336b5ed9ada150a0a9cfe0, 0xf1bddddb3255bb71071eb6ee86], "k1*G y wrong");
+}
+
+#[test]
+fn test_two_mult_matches_reference() {
+    let p2 = [
+        [0xcb2bba8f6e37e45621789743cd6633, 0x25a4b8ef0ae112d28aa95742d5],
+        [0x8713800a75730121b92a8740249441, 0x9acf510689f8654b9e1866ae24],
+    ];
+    let got = curve_two_mult(
+        SECP224R1_GENERATOR,
+        p2,
+        [K1, 0x9cdf6edcbed49fd11fdfe5b3eeea9b1b472d50625919db29c85c5751],
+    );
+    assert(got[0] == [0x45ca1dfc9a2fa2739965e87093c8d9, 0x84769dea4bd0b48bbe2dee350e], "k1*G+k2*P2 x wrong");
+    assert(got[1] == [0xedc183521182507eb0c623f2c275f8, 0x378be7f5efb731a30612b5075f], "k1*G+k2*P2 y wrong");
 }

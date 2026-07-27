@@ -318,20 +318,8 @@ pub fn ecdsa_ver(sig: [[Field; 2]; 2], pk: [[Field; 2]; 2], hashed: [u8; 20]) {
 }   
 
 
-#[test]
-fn test_add(){
-    print(curve_add([[0x5534631588a3f629a70fb16982a888, 0xdafebf5828783f2ad3], [0xb27bbc141b868f59331afa5c7e93ab, 0xdd6bda0d993da0fa46]], SECP192R1_GENERATOR));
-}
 
-#[test]
-fn test_double(){
-    print(curve_double(SECP192R1_GENERATOR));
-}
 
-#[test]
-fn test_mult(){
-    print(curve_mult(SECP192R1_GENERATOR, 0x03));
-}
 
 // #[test]
 // fn test_2_mult(){
@@ -358,3 +346,45 @@ fn test_ecdsa(){
     );
 }
 
+/*
+ * DIFFERENTIAL TESTS against an independent affine short-Weierstrass reference (plain integer
+ * arithmetic over secp192r1's parameters - deliberately NOT this implementation).
+ *
+ * These were print(...) with no assertion and could not fail whatever the arithmetic returned.
+ * Limbs are little-endian and 120 bits wide.
+ */
+#[test]
+fn test_double_matches_reference() {
+    let got = curve_double(SECP192R1_GENERATOR);
+    assert(got[0] == [0x5534631588a3f629a70fb16982a888, 0xdafebf5828783f2ad3], "2G.x wrong");
+    assert(got[1] == [0xb27bbc141b868f59331afa5c7e93ab, 0xdd6bda0d993da0fa46], "2G.y wrong");
+}
+
+#[test]
+fn test_add_matches_reference() {
+    // The point below IS 2G, so this is 2G + G = 3G.
+    let two_g = [
+        [0x5534631588a3f629a70fb16982a888, 0xdafebf5828783f2ad3],
+        [0xb27bbc141b868f59331afa5c7e93ab, 0xdd6bda0d993da0fa46],
+    ];
+    let got = curve_add(two_g, SECP192R1_GENERATOR);
+    assert(got[0] == [0xd283201fb2b9aadfd0d359cbb263da, 0x76e32a2557599e6edc], "3G.x wrong");
+    assert(got[1] == [0x62e0fed121d49ef3b543660cfd05fd, 0x782c37e372ba4520aa], "3G.y wrong");
+}
+
+#[test]
+fn test_mult_matches_reference() {
+    let got = curve_mult(SECP192R1_GENERATOR, 0x03);
+    assert(got[0] == [0xd283201fb2b9aadfd0d359cbb263da, 0x76e32a2557599e6edc], "3G.x wrong");
+    assert(got[1] == [0x62e0fed121d49ef3b543660cfd05fd, 0x782c37e372ba4520aa], "3G.y wrong");
+}
+
+/// Cross-check between the three primitives: scalar mult by 3 must equal double-then-add.
+/// Catches a consistent-but-wrong ladder that per-op vectors alone could miss.
+#[test]
+fn test_mult_agrees_with_double_then_add() {
+    let via_ladder = curve_mult(SECP192R1_GENERATOR, 0x03);
+    let via_ops = curve_add(curve_double(SECP192R1_GENERATOR), SECP192R1_GENERATOR);
+    assert(via_ladder[0] == via_ops[0], "mult(3) disagrees with double+add in x");
+    assert(via_ladder[1] == via_ops[1], "mult(3) disagrees with double+add in y");
+}

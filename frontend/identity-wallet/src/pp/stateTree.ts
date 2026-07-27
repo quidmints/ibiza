@@ -131,6 +131,7 @@ export class StateTree {
   }
 }
 
+// @contract PrivacyPoolSimple
 const POOL_STATE_ABI = [
   "event LeafInserted(uint256 _index, uint256 _leaf, uint256 _root)",
   "function currentRoot() external view returns (uint256)",

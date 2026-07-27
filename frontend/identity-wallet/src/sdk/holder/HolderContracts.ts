@@ -3,6 +3,7 @@
 
 import { Contract, Interface, ContractRunner, id } from "ethers";
 
+// @contract HolderStateKeeper
 export const HOLDER_STATE_KEEPER_ABI = [
   "function getDocument(bytes32 documentKey) view returns (tuple(bytes32 holderRoot, bytes32 docType, uint64 issueTimestamp, uint64 notAfter, uint64 seq, uint8 status))",
   "function getHolderDocuments(bytes32 holderRoot) view returns (bytes32[])",
@@ -12,6 +13,7 @@ export const HOLDER_STATE_KEEPER_ABI = [
 const PASSPORT_TUPLE =
   "tuple(uint256 dgCommit, bytes32 dg1Hash, bytes32 publicKey, bytes32 passportHash, address verifier)";
 
+// @contract HolderRegistration
 export const HOLDER_REGISTRATION_ABI = [
   `function registerDocumentViaNoir(uint256 holderRoot, ${PASSPORT_TUPLE} passport, bytes32 docType, uint64 notAfter, bytes signature, bytes zkPoints)`,
   `function renewDocumentViaNoir(bytes32 oldDocumentKey, uint256 holderRoot, ${PASSPORT_TUPLE} newPassport, bytes32 newDocType, uint64 newNotAfter, bytes signature, bytes zkPoints)`,

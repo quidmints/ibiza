@@ -44,6 +44,7 @@ export interface Withdrawal {
 const RELAY_DATA_TUPLE = "(address recipient,address feeRecipient,uint256 relayFeeBPS)";
 const WITHDRAWAL_TUPLE = "(address processooor,bytes data)";
 
+// @contract Entrypoint
 const ENTRYPOINT_ABI = [
   "function relay((address processooor,bytes data) _withdrawal, (bytes proof,uint256[8] pubSignals) _proof, uint256 _scope) external",
   "event WithdrawalRelayed(address indexed _relayer, address indexed _recipient, address indexed _asset, uint256 _amount, uint256 _feeAmount)",

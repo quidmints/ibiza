@@ -129,6 +129,7 @@ export class IdentityAspTree {
   }
 }
 
+// @contract IdentityAspRegistry
 const ASP_REGISTRY_ABI = [
   "function admitIdentity(uint256 _holderRoot) external returns (uint256 _root)",
   "function isKnownAspRoot(uint256 _root) external view returns (bool)",

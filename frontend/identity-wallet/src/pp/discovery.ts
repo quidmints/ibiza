@@ -23,6 +23,7 @@ import {
   nullifierHash,
 } from "./notes";
 
+// @contract PrivacyPoolSimple
 const POOL_EVENTS_ABI = [
   "event Deposited(address indexed _depositor, uint256 indexed _precommitmentBucket, uint256 _commitment, uint256 _label, uint256 _value, uint256 _precommitmentHash)",
   "event Withdrawn(address indexed _processooor, uint256 _value, uint256 _spentNullifier, uint256 _newCommitment)",

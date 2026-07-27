@@ -1061,7 +1061,18 @@ PP lineage is exactly five contracts — `PrivacyPool`, `State`, `Entrypoint`, `
 `PrivacyPoolComplex` — and the last of those had NO tests at all until today despite its constructor
 changing twice in one day.
 
-**30 contracts remain untested, ALL of them rarime's passport stack**, not PP's and not ours:
+**Progress 2026-07-27: the crypto primitives are done — SHA1/SHA384/SHA512 and Date2Time are now
+differential-tested** against Python `hashlib` / `calendar.timegm`, with the padding boundaries
+(111/112/128 bytes) and leap years (2024 yes, 2100 no) that hand-rolled implementations get wrong.
+All correct. **26 remain.**
+
+`Date2Time`'s `+2000` looked like a bug — a two-digit year always decodes as 20xx, so a 1974 birth
+date would become 2074 — but it is only ever applied to `currentDate`, where it is right. Birth
+dates never reach it: they stay encoded as bounds and are compared in-circuit.
+`test_TwoDigitYearIsAlways20xx` pins that so the function is not later reused where it does not
+belong.
+
+**26 contracts remain untested, ALL of them rarime's passport stack**, not PP's and not ours:
 `certificate/` dispatchers and signers, `utils/SHA1|SHA384|SHA512|RSA|Date2Time|Bytes2Poseidon`,
 `registration/Registration2`, `sdk/PublicSignals*Builder`, `state/L1RegistrationState`,
 `RegistrationSMTReplicator`.

@@ -979,10 +979,19 @@ at registration") has no passport equivalent and needs its own home regardless.
 
 ## 3. Parallel work — not blocked
 
-- **Denomination splitting in the wallet.** PP is variable-amount — its real privacy weakness versus
-  fixed-denomination pools, since a distinctive amount is a fingerprint. Default to splitting
-  deposits into standard denominations (0.1 / 1 / 10 ETH). **Zero contract change.** Costs more
-  deposit gas, which argues for fixing withdrawal gas first.
+- ✅ **Denomination splitting — DONE 2026-07-27** (`src/pp/deposit.ts`). This turned out to be TWO
+  gaps: the wallet had **no deposit path at all** — it could discover, prove and withdraw, but never
+  create a note. Splitting is the DEFAULT, not an option, since a wallet that quietly deposits
+  3.7314 ETH as one note has already lost the anonymity the pool provides. `allowRemainder` defaults
+  to **false**: an inexpressible amount raises rather than silently emitting a uniquely-sized note,
+  which would be a fingerprint on both deposit and withdrawal.
+  **Honest limit:** the MULTISET still leaks — 1 + 0.1 + 0.1 is less distinctive than 1.3, but not
+  nothing. Real fixed-denomination pools refuse non-multiples outright; that is what the default
+  approximates. Deposits are submitted SEQUENTIALLY because `label` derives from an incrementing
+  pool nonce, so concurrent sends would leave the wallet unable to attribute labels; a partial
+  failure is reported rather than swallowed, since retrying blind would reuse a spent
+  precommitment (`Entrypoint.usedPrecommitments`) and revert. Costs more deposit gas, which is an
+  argument for fixing withdrawal gas (§2.4), not against splitting.
 - **ERC-4337 paymaster** so the user never holds ETH. **NOT yield-funded** — see sec. 2.4c: yield
   belongs to depositors, not to a subsidy pool. Fund it from relay fees or protocol revenue.
 - **Stealth-address withdrawals (ERC-5564)** — removes the "withdraw to a fresh address you must

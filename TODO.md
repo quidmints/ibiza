@@ -804,6 +804,53 @@ a launch-blocking property, and neither Noir nor Barretenberg appears anywhere i
 roadmap. **Revisit only if Aligned ships Honk in the AGGREGATION service** (the hard-finality one) —
 at which point the 7x is real and worth taking. Until then, build our own at N=16.
 
+### 2.13b INVERT THE ASP: blacklist, not allowlist — and keep PP's labels alongside (user, 2026-07-27)
+
+**The instruction:** stop maintaining a list of approved people. Membership should be proven
+NEGATIVELY — "I am not on the blacklist" — and PP's original label-based screening should COEXIST
+rather than be replaced.
+
+**Why this is right.** An allowlist fails closed by omission: a postman who simply never admits you
+censors you without ever acting, which is the same inaction lever §2.5a spent effort removing from
+the revocation side. A blacklist fails OPEN — inaction means everyone can withdraw — and requires an
+affirmative, rule-bound act to exclude anyone. It also enlarges the anonymity set from "everyone
+admitted" to "everyone not excluded", which is strictly larger and does not shrink when the postman
+is slow.
+
+**⚠ THE TRAP: a blacklist over identities is trivially evaded on its own.** If a withdrawal only
+proves `holderRoot ∉ blacklist`, an attacker generates a fresh random `sk_identity`, derives a
+holderRoot nobody has listed, and passes. The check is vacuous. **A negative proof is only
+meaningful against a scarce identity** — something you cannot mint more of.
+
+**The resolution, and it needs no new trust:** pair the negative proof with INCLUSION IN THE
+PERMISSIONLESS REGISTERED-IDENTITY SET. `HolderRegistration.registerDocumentViaNoir` already
+registers a `holderRoot` against a Noir proof binding a real passport's DG1, and it is **not
+role-gated** — anyone with a valid passport can register and nobody can decline them. So inclusion
+there is proof-of-personhood, NOT approval. The distinction is the whole point: an allowlist is
+someone's decision, a registration set is a fact about holding a passport.
+
+**Target shape of a withdrawal proof:**
+1. `holderRoot ∈ registered identities` — permissionless, scarce, nobody's discretion.
+2. `holderRoot ∉ blacklist` — rule-bound (§2.5), fail-open, latest root never expires.
+3. *optionally* `label ∈ ASP-screened set` — PP's ORIGINAL chain-analysis screening, preserved as a
+   separate predicate a deployment may enable, rather than deleted.
+
+That is what "coexist" means concretely: two independent gates on different properties — who you
+are, and where the money came from — neither replacing the other, and neither being an approval
+list.
+
+**What this changes in the code:** `IdentityAspRegistry` stops being the gate (it becomes either the
+registered-identity mirror or is dropped in favour of reading rarime's own registration state);
+`withdraw_identity` swaps `identity_asp_membership` (inclusion in an ADMITTED set) for inclusion in
+the REGISTERED set, keeping the existing `smt_verifier_full` exclusion; PP's label predicate returns
+as an optional public input. The exclusion machinery already exists and is tested — this is a change
+of which tree is consulted, not new cryptography.
+
+**Open, and the reason this is recorded before it is built:** whether the label predicate is
+per-pool configuration or a global toggle, and whether the registered-identity set is read from
+rarime's SMT directly or mirrored into a PP-side registry (the mirror costs a sync, the direct read
+costs a cross-contract dependency on an upgradeable rarime contract — which §2.5a would object to).
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

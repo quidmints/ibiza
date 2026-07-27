@@ -851,6 +851,70 @@ per-pool configuration or a global toggle, and whether the registered-identity s
 rarime's SMT directly or mirrored into a PP-side registry (the mirror costs a sync, the direct read
 costs a cross-contract dependency on an upgradeable rarime contract — which §2.5a would object to).
 
+### 2.13c THE BLACKLIST MUST BE SECRET — options weighed, epoch pseudonyms recommended
+
+**Constraint (user, 2026-07-27): who is on the blacklist is itself confidential.** §2.13b's design
+publishes an SMT of blacklisted `holderRoot`s. That is unacceptable: registered identities are
+public on-chain, so anyone can hash every registered holderRoot against the published tree and
+recover the entire list by brute force. Publishing the tree publishes the list.
+
+**THE CORE TENSION, stated before the options.** To prove non-membership WITHOUT a trusted issuer,
+the prover must know the set — a Merkle non-inclusion path requires the surrounding tree. If the
+prover knows the set, the set is public. **So "secret list" and "trustless non-inclusion proof"
+cannot both hold as stated.** Every option below is a choice about which one bends.
+
+**Option A — public list (status quo).** Trustless, fail-open, already built and tested.
+*Cons:* no confidentiality at all. **Fine for OFAC SDN, which IS a published list — its secrecy is
+not a requirement.** Useless for suspicion/law-enforcement predicates, which are secret by nature.
+
+**Option B — issuer-signed non-membership credentials.** The authority signs "holderRoot X is not
+listed as of epoch T"; the circuit verifies the signature instead of a tree path.
+*Pros:* list never published in any form; simple circuit.
+*Cons:* **reintroduces exactly the failure §2.13b exists to remove.** An issuer that declines to
+sign censors you by inaction, indistinguishably from being slow. This is the allowlist again wearing
+a different hat.
+
+**Option C — cryptographic accumulator (RSA / bilinear) with non-membership witnesses.**
+*Pros:* constant-size state; genuine non-membership witnesses exist.
+*Cons:* computing a witness requires knowing the accumulated set, so either the prover knows it
+(public again) or the issuer computes it (Option B again). Witness updates on every change are a
+standing liveness burden. **Buys nothing over B while costing far more machinery.**
+
+**Option D — EPOCH PSEUDONYM LIST. ← RECOMMENDED**
+Each user holds a revocation secret `s`, shared with the authority at registration and bound to
+their `holderRoot`. For epoch `T`, the authority publishes the list of `P = PRF(s, T)` for revoked
+users only. The list is PUBLIC — so non-inclusion is trustlessly provable — but every entry is an
+opaque PRF output that cannot be linked to an identity without `s`.
+
+The withdrawal proves, with the pseudonym as a **PRIVATE** input:
+1. `holderRoot ∈ registered` (permissionless, scarce — §2.13b's trap fix)
+2. `P = PRF(s, T)` and `s` is the secret bound to that `holderRoot`
+3. `P ∉ blacklist_T`
+
+*Why it resolves the tension:* the SET is public (so anyone can build a path, no issuer in the
+proving path) while the MEMBERSHIP is opaque (entries are PRF outputs). It fails OPEN — an authority
+that does nothing publishes an empty or stale list and everybody withdraws. And it cannot be evaded,
+because `s` is bound to a registered identity, so a fresh `s` fails step 2.
+
+*What it leaks:* the SIZE of the revoked set per epoch, and nothing else on-chain. `P` never appears
+publicly — it is a private input, so the authority (which knows every `s`) still cannot link a
+withdrawal to a user.
+
+*What it costs, honestly:* the authority holds a per-user secret, so a breach grants the ability to
+revoke anyone (NOT to deanonymize — pseudonyms stay private). Users must fetch the current epoch's
+list, which is public data, so no per-user issuance and no refusal surface. Epoch granularity bounds
+how quickly a revocation takes effect, exactly like `MAX_ROOT_AGE` already does.
+
+**Recommendation: A for public predicates, D for secret ones — and they compose.** OFAC is published;
+forcing it through D would add a shared secret for no confidentiality gain. A deployment enables
+whichever predicates it needs, and the circuit checks non-inclusion in each configured tree. The
+exclusion gadget is identical for both — only the leaf derivation differs (`holderRoot` vs
+`PRF(s, T)`), so D is largely a key-derivation change over machinery already built and tested.
+
+**Open before building D:** which PRF (Poseidon over `(s, T)` keeps it in-circuit-cheap and reuses
+the audited hash), epoch length, and how `s` is delivered to the authority at registration
+(encrypted to a published authority key is the obvious route, and wants its own scrutiny).
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

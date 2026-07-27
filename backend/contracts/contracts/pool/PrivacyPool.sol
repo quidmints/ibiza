@@ -20,6 +20,7 @@ import {PoseidonT4} from 'poseidon/PoseidonT4.sol';
 
 import {Constants} from './lib/Constants.sol';
 import {ProofLib} from './lib/ProofLib.sol';
+import {IIdentityAspRegistry} from '../interfaces/registry/IIdentityAspRegistry.sol';
 
 import {IPrivacyPool} from 'interfaces/IPrivacyPool.sol';
 
@@ -70,7 +71,11 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     // operator-supplied snapshot: honouring old roots there would have re-admitted everyone ever
     // removed and made removal a global no-op. The same reasoning already justifies `_isKnownRoot`
     // accepting 64 historical state roots on the line above.
-    if (!ENTRYPOINT.isKnownAspRoot(_proof.ASPRoot())) revert IncorrectASPRoot();
+    // Asked of the REGISTRY, not the Entrypoint. Routing this through the Entrypoint - even as a
+    // pass-through - would preserve the exact hole this split closes: the Entrypoint is
+    // upgradeable by OWNER_ROLE, so an upgraded one could simply lie about which roots are
+    // genuine. See TODO.md sec. 2.5a.
+    if (!ASP_REGISTRY.isKnownAspRoot(_proof.ASPRoot())) revert IncorrectASPRoot();
     _;
   }
 
@@ -99,12 +104,20 @@ abstract contract PrivacyPool is State, IPrivacyPool {
    * @param _ragequitVerifier Address of the Groth16 verifier for ragequit proofs
    * @param _asset Address of the pool asset
    */
+  /// @notice The append-only identity ASP tree. NON-UPGRADEABLE and referenced directly, so no
+  ///         upgradeable contract sits between this pool and the membership set it trusts.
+  IIdentityAspRegistry public immutable ASP_REGISTRY;
+
   constructor(
     address _entrypoint,
     address _withdrawalVerifier,
     address _ragequitVerifier,
-    address _asset
-  ) State(_asset, _entrypoint, _withdrawalVerifier, _ragequitVerifier) {}
+    address _asset,
+    address _aspRegistry
+  ) State(_asset, _entrypoint, _withdrawalVerifier, _ragequitVerifier) {
+    if (_aspRegistry == address(0)) revert ZeroAspRegistry();
+    ASP_REGISTRY = IIdentityAspRegistry(_aspRegistry);
+  }
 
   /*///////////////////////////////////////////////////////////////
                              USER METHODS 

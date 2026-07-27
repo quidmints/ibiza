@@ -849,7 +849,32 @@ still work. The grace window on superseded roots exists so an in-flight proof is
 someone else's revocation landing first - without it, an attester could censor by revoking an
 unrelated identity to invalidate everyone's pending proofs.
 
-**⚠ `Entrypoint` IS UPGRADEABLE, WHICH WEAKENS §2.13's CENTRAL CLAIM.**
+✅ **DONE 2026-07-27 — the ASP tree moved to `contracts/registry/IdentityAspRegistry.sol`.**
+Non-upgradeable (not a proxy), unowned (no roles, no admin), postman fixed at construction,
+append-only. `test_NoRolesNoOwnerNoUpgradeNoRemove` asserts against the ABI that `grantRole`,
+`owner`, `upgradeToAndCall`, `initialize` and `remove` DO NOT EXIST.
+
+**A PASS-THROUGH WOULD NOT HAVE FIXED IT — this is the part worth remembering.** Leaving
+`isKnownAspRoot` on `Entrypoint` to delegate to the registry preserves the entire hole: `PrivacyPool`
+would still be asking an UPGRADEABLE contract whether a root is genuine, and an upgraded Entrypoint
+could simply lie. So `PrivacyPool` takes the registry as a constructor argument and holds it
+`immutable`; the Entrypoint is out of the ASP trust path completely, and stays upgradeable only for
+asset config and routing where that is legitimate.
+
+**Root policy differs from `RevocationRegistry` ON PURPOSE.** This tree accepts EVERY historical
+root, forever — correct here, because it proves INCLUSION and only grows, so an old root's member
+set is a strict subset and can never wrongly admit. That is exactly what removes the operator's
+retroactive lever. The same policy in `RevocationRegistry` was fatal (see above). Same structure,
+opposite direction of use.
+
+**Cost, and the mitigation:** the postman cannot be rotated. Deploy it as a CONTRACT
+(multisig/threshold), never an EOA — the registry only checks `msg.sender` and a signature, so an
+attester contract rotates its own keys while the registry stays immutable.
+
+**Free because nothing is deployed** — `App.tsx` still holds zero addresses and there is no
+`broadcast/` directory, so there was no migration to pay for. That was the deciding factor.
+
+**⚠ ORIGINAL FINDING, now resolved — kept because the reasoning generalises:**
 `_authorizeUpgrade` is `onlyRole(_OWNER_ROLE)`, and `_OWNER_ROLE` also administers `_ASP_POSTMAN`
 and `DEFAULT_ADMIN_ROLE`. §2.13 says the append-only ASP tree means "the postman can no longer drop
 an existing member" — true of the postman, **but the OWNER can upgrade the implementation and

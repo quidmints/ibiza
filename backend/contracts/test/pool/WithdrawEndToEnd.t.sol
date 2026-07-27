@@ -6,6 +6,7 @@ import {ERC1967Proxy} from '@oz/proxy/ERC1967/ERC1967Proxy.sol';
 import {IEvidenceRegistry} from '@rarimo/evidence-registry/interfaces/IEvidenceRegistry.sol';
 
 import {Entrypoint} from '../../contracts/pool/Entrypoint.sol';
+import {IdentityAspRegistry} from '../../contracts/registry/IdentityAspRegistry.sol';
 import {PrivacyPoolSimple} from '../../contracts/pool/implementations/PrivacyPoolSimple.sol';
 import {WithdrawalHonkVerifier} from '../../contracts/pool/verifiers/WithdrawalHonkVerifier.sol';
 import {VerifierMock} from '../../contracts/mock/verifiers/VerifierMock.sol';
@@ -65,6 +66,7 @@ contract MockEvidenceRegistry is IEvidenceRegistry {
  */
 contract WithdrawEndToEndTest is Test {
   Entrypoint internal entrypoint;
+  IdentityAspRegistry internal aspRegistry;
   PrivacyPoolSimple internal pool;
   WithdrawalHonkVerifier internal withdrawalVerifier;
   MockEvidenceRegistry internal registry;
@@ -91,10 +93,10 @@ contract WithdrawEndToEndTest is Test {
    * verify a Merkle path it never actually walks.
    */
   uint256[4] internal PRECOMMITMENTS = [
-    7859817061603428290238186566395526149948046297166087753738334840531322587938,
-    19717560693715280287714986424254343473332961231107022155002803288087080511988,
-    20366035142657093795538900147841796082338868149991991895380794842569755222825,
-    18622503828118355361935587394317966821763155120431008971272362326958763936848
+    14894516687091200428867646999555195857366192177471111112487282030615629365635,
+    13199981910239328870624154981781513659107854765074935359406948407461300864920,
+    12882994012526257397249270087775781613032447103540512961946622769062666449753,
+    10318167675095160449581079747579328628800989145060822024614324067031914075854
   ];
 
   /// Ours is index 1 - deliberately not first or last, so its inclusion path has siblings on both
@@ -109,18 +111,18 @@ contract WithdrawEndToEndTest is Test {
 
   /// Computed OFF-CHAIN by the wallet - see test_WalletMirrorsMatchTheChain.
   uint256 internal constant WALLET_STATE_ROOT =
-    4114006897518807419215143935931624663519652876625887777639485551411280863138;
+    16821439025066267276348068301416927716355643931045125335219004834544672089857;
   uint256 internal constant WALLET_ASP_ROOT =
     13499987760479541807145949197691077146081665672725695371757070291942633612052;
 
   // ── the proved withdrawal (test/fixtures/withdraw_e2e.proof) ────────────────────────────────
   uint256 internal constant WITHDRAWN = 0.3 ether;
   uint256 internal constant E2E_NEW_COMMITMENT =
-    20911098276590035301995024307415858626236264280914295270101660895966176628336;
+    1237296196900923841159970544797035268653241631024055794471141723617698506354;
   uint256 internal constant E2E_NULLIFIER_HASH =
-    3101124718011203832034772889318834163913351541408400082945464046908098353548;
+    19270481334125549904345247761028963384752785010606808297865858680963613098534;
   uint256 internal constant E2E_CONTEXT =
-    2195019173842957884687453008429900813153802825418390942674290471629585962774;
+    19740679237850356548516882207291664877369069337852394327550049754510873474913;
 
   function setUp() public {
     registry = new MockEvidenceRegistry();
@@ -129,9 +131,13 @@ contract WithdrawEndToEndTest is Test {
     bytes memory init = abi.encodeCall(Entrypoint.initialize, (owner, postman, address(registry)));
     entrypoint = Entrypoint(payable(address(new ERC1967Proxy(address(impl), init))));
 
+    // The ASP tree lives in its own NON-UPGRADEABLE registry now (sec. 2.5a), and the pool holds a
+    // direct reference to it - the upgradeable Entrypoint is no longer in the ASP trust path.
+    aspRegistry = new IdentityAspRegistry(postman, address(registry));
+
     withdrawalVerifier = new WithdrawalHonkVerifier();
     pool = new PrivacyPoolSimple(
-      address(entrypoint), address(withdrawalVerifier), address(new VerifierMock())
+      address(entrypoint), address(withdrawalVerifier), address(new VerifierMock()), address(aspRegistry)
     );
 
     // Four real deposits through the real pool, so the state tree has genuine depth.
@@ -149,7 +155,7 @@ contract WithdrawEndToEndTest is Test {
     // Three ASP admissions through the real Entrypoint, ours in the middle.
     for (uint256 i = 0; i < ASP_MEMBERS.length; i++) {
       vm.prank(postman);
-      aspRoot = entrypoint.admitIdentity(ASP_MEMBERS[i]);
+      aspRoot = aspRegistry.admitIdentity(ASP_MEMBERS[i]);
     }
   }
 
@@ -170,7 +176,7 @@ contract WithdrawEndToEndTest is Test {
     emit log_named_uint('state depth', pool.currentTreeDepth());
     emit log_named_uint('state size', pool.currentTreeSize());
     emit log_named_uint('asp root', aspRoot);
-    emit log_named_uint('asp depth', entrypoint.aspTreeDepth());
+    emit log_named_uint('asp depth', aspRegistry.aspTreeDepth());
     emit log_named_uint('deposit value', DEPOSIT_VALUE);
 
     // The context the proof must carry for a SELF-withdrawal to `recipient`. Transcribed from
@@ -193,9 +199,9 @@ contract WithdrawEndToEndTest is Test {
    */
   function test_WalletMirrorsMatchTheChain() public view {
     assertEq(pool.currentRoot(), WALLET_STATE_ROOT, 'wallet stateTree.ts disagrees with the pool');
-    assertTrue(entrypoint.isKnownAspRoot(WALLET_ASP_ROOT), 'wallet identityAsp.ts disagrees with the Entrypoint');
+    assertTrue(aspRegistry.isKnownAspRoot(WALLET_ASP_ROOT), 'wallet identityAsp.ts disagrees with the ASP registry');
     assertEq(pool.currentTreeDepth(), 2, 'state tree is not multi-level - fixture would be degenerate');
-    assertGt(entrypoint.aspTreeDepth(), 0, 'ASP tree is degenerate');
+    assertGt(aspRegistry.aspTreeDepth(), 0, 'ASP tree is degenerate');
   }
 
   function _e2eProof() internal view returns (ProofLib.WithdrawProof memory _p) {

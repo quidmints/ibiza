@@ -13,7 +13,9 @@ import {VerifierMock} from '../../contracts/mock/verifiers/VerifierMock.sol';
 import {FailingVerifierMock} from '../../contracts/mock/verifiers/FailingVerifierMock.sol';
 import {NoirVerifierMock} from '../../contracts/mock/verifiers/NoirVerifierMock.sol';
 
-/// Minimal IEntrypoint stand-in: PrivacyPool only ever calls ENTRYPOINT.isKnownAspRoot() (the
+/// Minimal stand-in for BOTH the Entrypoint and the ASP registry. Since the sec. 2.5a split the
+/// pool asks the REGISTRY about roots, not the Entrypoint; this mock plays both parts so these
+/// tests stay focused on pool mechanics. (the
 /// ASP-gating check in `validWithdrawal`) - deposit/withdraw/ragequit are otherwise pool-internal,
 /// so this settable double is enough to exercise the pool's OWN logic in isolation, same pattern
 /// as HolderStateKeeper.t.sol standing in a plain EOA for "the registration contract".
@@ -53,7 +55,9 @@ contract PrivacyPoolSimpleTest is Test {
     entrypoint = new MockEntrypoint();
     withdrawalVerifier = new NoirVerifierMock();
     ragequitVerifier = new VerifierMock();
-    pool = new PrivacyPoolSimple(address(entrypoint), address(withdrawalVerifier), address(ragequitVerifier));
+    pool = new PrivacyPoolSimple(
+      address(entrypoint), address(withdrawalVerifier), address(ragequitVerifier), address(entrypoint)
+    );
 
     vm.deal(address(entrypoint), 0); // deposits are relayed as msg.value from the caller, not the entrypoint's own balance
     vm.deal(depositor, 0);
@@ -281,7 +285,9 @@ contract PrivacyPoolSimpleTest is Test {
   function test_ragequit_revertsOnInvalidProof() public {
     FailingVerifierMock rejecting = new FailingVerifierMock();
     PrivacyPoolSimple rejectingPool =
-      new PrivacyPoolSimple(address(entrypoint), address(withdrawalVerifier), address(rejecting));
+      new PrivacyPoolSimple(
+        address(entrypoint), address(withdrawalVerifier), address(rejecting), address(entrypoint)
+      );
 
     uint256 value = 1 ether;
     // {value: value} is drawn from the pranked caller (entrypoint), not this test contract.

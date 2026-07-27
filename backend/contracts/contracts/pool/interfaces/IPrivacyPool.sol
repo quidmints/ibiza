@@ -126,6 +126,10 @@ interface IPrivacyPool is IState {
    */
   error IncorrectASPRoot();
 
+  /// @notice Thrown at construction if the ASP registry address is zero - the pool would have no
+  ///         membership set to check against.
+  error ZeroAspRegistry();
+
   /**
    * @notice Thrown when trying to ragequit while not being the original depositor
    */

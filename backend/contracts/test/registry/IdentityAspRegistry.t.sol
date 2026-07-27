@@ -2,11 +2,11 @@
 pragma solidity 0.8.28;
 
 import {Test} from 'forge-std/Test.sol';
-import {ERC1967Proxy} from '@oz/proxy/ERC1967/ERC1967Proxy.sol';
+
 import {IEvidenceRegistry} from '@rarimo/evidence-registry/interfaces/IEvidenceRegistry.sol';
 
-import {Entrypoint} from '../../contracts/pool/Entrypoint.sol';
-import {IEntrypoint} from '../../contracts/pool/interfaces/IEntrypoint.sol';
+import {IdentityAspRegistry} from '../../contracts/registry/IdentityAspRegistry.sol';
+
 import {Constants} from '../../contracts/pool/lib/Constants.sol';
 
 /// Minimal in-test ERC-7812 registry (keccak-isolated) — records statements so we can assert the
@@ -42,28 +42,27 @@ contract MockEvidenceRegistry is IEvidenceRegistry {
   }
 }
 
-contract EntrypointAspTest is Test {
-  Entrypoint internal entrypoint;
-  MockEvidenceRegistry internal registry;
+contract IdentityAspRegistryTest is Test {
+  IdentityAspRegistry internal registry;
+  MockEvidenceRegistry internal evidence;
 
   address internal owner = address(0xA011);
-  address internal postman = address(0xB022);
+  address internal postman = vm.addr(0xB0B); // fixed at construction - there is no grantRole now
 
   function setUp() public {
-    registry = new MockEvidenceRegistry();
-    Entrypoint impl = new Entrypoint();
-    bytes memory init = abi.encodeCall(Entrypoint.initialize, (owner, postman, address(registry)));
-    ERC1967Proxy proxy = new ERC1967Proxy(address(impl), init);
-    entrypoint = Entrypoint(payable(address(proxy)));
+    evidence = new MockEvidenceRegistry();
+    // NON-UPGRADEABLE and unowned: constructed directly, no proxy, no owner. That is the point -
+    // see IdentityAspRegistry.sol's header and TODO.md sec. 2.5a.
+    registry = new IdentityAspRegistry(postman, address(evidence));
   }
 
   function _expectedKey(uint256 _index) internal view returns (bytes32) {
     return
-      bytes32(uint256(keccak256(abi.encodePacked('PP_ASP_ROOT', address(entrypoint), _index))) % Constants.SNARK_SCALAR_FIELD);
+      bytes32(uint256(keccak256(abi.encodePacked('PP_ASP_ROOT', address(registry), _index))) % Constants.SNARK_SCALAR_FIELD);
   }
 
-  function test_initialize_setsEvidenceRegistry() public view {
-    assertEq(address(entrypoint.EVIDENCE_REGISTRY()), address(registry));
+  function test_constructor_setsEvidenceRegistry() public view {
+    assertEq(address(registry.EVIDENCE_REGISTRY()), address(evidence));
   }
 
   /*
@@ -78,24 +77,24 @@ contract EntrypointAspTest is Test {
 
   function test_admitIdentity_anchorsRootInRegistry() public {
     vm.prank(postman);
-    uint256 root = entrypoint.admitIdentity(12_345);
+    uint256 root = registry.admitIdentity(12_345);
 
     // Single-leaf LeanIMT: the root IS the leaf.
     assertEq(root, 12_345);
-    assertEq(entrypoint.aspTreeSize(), 1);
-    assertEq(registry.statements(_expectedKey(0)), bytes32(root));
-    assertEq(registry.count(), 1);
+    assertEq(registry.aspTreeSize(), 1);
+    assertEq(evidence.statements(_expectedKey(0)), bytes32(root));
+    assertEq(evidence.count(), 1);
   }
 
   function test_eachRootGetsDistinctStatementKey() public {
     vm.startPrank(postman);
-    uint256 r0 = entrypoint.admitIdentity(111);
-    uint256 r1 = entrypoint.admitIdentity(222);
+    uint256 r0 = registry.admitIdentity(111);
+    uint256 r1 = registry.admitIdentity(222);
     vm.stopPrank();
 
-    assertEq(registry.statements(_expectedKey(0)), bytes32(r0));
-    assertEq(registry.statements(_expectedKey(1)), bytes32(r1));
-    assertEq(registry.count(), 2);
+    assertEq(evidence.statements(_expectedKey(0)), bytes32(r0));
+    assertEq(evidence.statements(_expectedKey(1)), bytes32(r1));
+    assertEq(evidence.count(), 2);
   }
 
   /*
@@ -109,19 +108,19 @@ contract EntrypointAspTest is Test {
    */
   function test_historicalRootsStayValidForever() public {
     vm.startPrank(postman);
-    uint256 rootAfterFirst = entrypoint.admitIdentity(111);
-    uint256 rootAfterSecond = entrypoint.admitIdentity(222);
-    uint256 rootAfterThird = entrypoint.admitIdentity(333);
+    uint256 rootAfterFirst = registry.admitIdentity(111);
+    uint256 rootAfterSecond = registry.admitIdentity(222);
+    uint256 rootAfterThird = registry.admitIdentity(333);
     vm.stopPrank();
 
     assertTrue(rootAfterFirst != rootAfterSecond);
     assertTrue(rootAfterSecond != rootAfterThird);
 
     // Every root the tree ever produced remains acceptable to a withdrawal.
-    assertTrue(entrypoint.isKnownAspRoot(rootAfterFirst));
-    assertTrue(entrypoint.isKnownAspRoot(rootAfterSecond));
-    assertTrue(entrypoint.isKnownAspRoot(rootAfterThird));
-    assertEq(entrypoint.latestRoot(), rootAfterThird);
+    assertTrue(registry.isKnownAspRoot(rootAfterFirst));
+    assertTrue(registry.isKnownAspRoot(rootAfterSecond));
+    assertTrue(registry.isKnownAspRoot(rootAfterThird));
+    assertEq(registry.latestAspRoot(), rootAfterThird);
   }
 
   /// @notice No activation delay: a freshly admitted identity can prove inclusion immediately.
@@ -130,60 +129,60 @@ contract EntrypointAspTest is Test {
   /// would only have imposed a wait that bought nothing.
   function test_admittedRootIsUsableImmediately() public {
     vm.prank(postman);
-    uint256 root = entrypoint.admitIdentity(777);
-    assertTrue(entrypoint.isKnownAspRoot(root));
+    uint256 root = registry.admitIdentity(777);
+    assertTrue(registry.isKnownAspRoot(root));
   }
 
   function test_isKnownAspRoot_rejectsUnknownAndZero() public {
     vm.prank(postman);
-    entrypoint.admitIdentity(111);
+    registry.admitIdentity(111);
 
-    assertFalse(entrypoint.isKnownAspRoot(0));
-    assertFalse(entrypoint.isKnownAspRoot(999_999));
+    assertFalse(registry.isKnownAspRoot(0));
+    assertFalse(registry.isKnownAspRoot(999_999));
   }
 
   function test_admitIdentity_onlyPostman() public {
     vm.expectRevert();
     vm.prank(owner);
-    entrypoint.admitIdentity(111);
+    registry.admitIdentity(111);
   }
 
   function test_admitIdentity_rejectsDuplicate() public {
     vm.startPrank(postman);
-    entrypoint.admitIdentity(111);
-    vm.expectRevert(IEntrypoint.AlreadyAdmitted.selector);
-    entrypoint.admitIdentity(111);
+    registry.admitIdentity(111);
+    vm.expectRevert(IdentityAspRegistry.AlreadyAdmitted.selector);
+    registry.admitIdentity(111);
     vm.stopPrank();
   }
 
   /// @notice LeanIMT reserves 0 as "empty sibling"; a zero leaf would corrupt inclusion proofs.
   function test_admitIdentity_rejectsZeroLeaf() public {
     vm.prank(postman);
-    vm.expectRevert(IEntrypoint.EmptyRoot.selector);
-    entrypoint.admitIdentity(0);
+    vm.expectRevert(IdentityAspRegistry.EmptyRoot.selector);
+    registry.admitIdentity(0);
   }
 
   function test_admitIdentity_rejectsOutOfFieldLeaf() public {
     vm.prank(postman);
-    vm.expectRevert(IEntrypoint.LeafOutOfField.selector);
-    entrypoint.admitIdentity(Constants.SNARK_SCALAR_FIELD);
+    vm.expectRevert(IdentityAspRegistry.LeafOutOfField.selector);
+    registry.admitIdentity(Constants.SNARK_SCALAR_FIELD);
   }
 
   function test_latestRoot_revertsWhenEmpty() public {
-    vm.expectRevert(IEntrypoint.NoRootsAvailable.selector);
-    entrypoint.latestRoot();
+    vm.expectRevert(IdentityAspRegistry.NoRootsAvailable.selector);
+    registry.latestAspRoot();
   }
 
   function test_treeDepthGrowsWithAdmissions() public {
     vm.startPrank(postman);
-    entrypoint.admitIdentity(1);
-    assertEq(entrypoint.aspTreeDepth(), 0);
-    entrypoint.admitIdentity(2);
-    assertEq(entrypoint.aspTreeDepth(), 1);
-    entrypoint.admitIdentity(3);
-    assertEq(entrypoint.aspTreeDepth(), 2);
+    registry.admitIdentity(1);
+    assertEq(registry.aspTreeDepth(), 0);
+    registry.admitIdentity(2);
+    assertEq(registry.aspTreeDepth(), 1);
+    registry.admitIdentity(3);
+    assertEq(registry.aspTreeDepth(), 2);
     vm.stopPrank();
-    assertEq(entrypoint.aspTreeSize(), 3);
+    assertEq(registry.aspTreeSize(), 3);
   }
 
   /*
@@ -202,10 +201,10 @@ contract EntrypointAspTest is Test {
     bytes32 domainSeparator = keccak256(
       abi.encode(
         keccak256('EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)'),
-        keccak256(bytes('QuidPrivacyPoolEntrypoint')),
+        keccak256(bytes('IdentityAspRegistry')),
         keccak256(bytes('1')),
         block.chainid,
-        address(entrypoint)
+        address(registry)
       )
     );
     return keccak256(abi.encodePacked('\x19\x01', domainSeparator, structHash));
@@ -216,25 +215,19 @@ contract EntrypointAspTest is Test {
     return abi.encodePacked(r, s_, v);
   }
 
-  function _grantPostman(address who) internal {
-    vm.prank(owner);
-    entrypoint.grantRole(keccak256('ASP_POSTMAN'), who);
-  }
 
   function test_admitWithAuthorization_anyoneMaySubmit() public {
-    address signer = vm.addr(postmanPk);
-    _grantPostman(signer);
 
     uint256 deadline = block.timestamp + 1 hours;
     bytes memory sig = _sign(postmanPk, _admitDigest(111, deadline));
 
     // Submitted by an unrelated address - the whole point is the user pays, not the postman.
     vm.prank(address(0xCAFE));
-    uint256 root = entrypoint.admitIdentityWithAuthorization(111, deadline, sig);
+    uint256 root = registry.admitIdentityWithAuthorization(111, deadline, sig);
 
     assertEq(root, 111);
-    assertTrue(entrypoint.isKnownAspRoot(root));
-    assertTrue(entrypoint.aspAdmitted(111));
+    assertTrue(registry.isKnownAspRoot(root));
+    assertTrue(registry.aspAdmitted(111));
   }
 
   function test_admitWithAuthorization_rejectsNonPostmanSigner() public {
@@ -242,53 +235,68 @@ contract EntrypointAspTest is Test {
     uint256 deadline = block.timestamp + 1 hours;
     bytes memory sig = _sign(strangerPk, _admitDigest(111, deadline));
 
-    vm.expectRevert(IEntrypoint.InvalidAuthorization.selector);
-    entrypoint.admitIdentityWithAuthorization(111, deadline, sig);
+    vm.expectRevert(IdentityAspRegistry.InvalidAuthorization.selector);
+    registry.admitIdentityWithAuthorization(111, deadline, sig);
   }
 
   function test_admitWithAuthorization_rejectsExpired() public {
-    address signer = vm.addr(postmanPk);
-    _grantPostman(signer);
 
     uint256 deadline = block.timestamp + 1 hours;
     bytes memory sig = _sign(postmanPk, _admitDigest(111, deadline));
 
     vm.warp(deadline + 1);
-    vm.expectRevert(IEntrypoint.AuthorizationExpired.selector);
-    entrypoint.admitIdentityWithAuthorization(111, deadline, sig);
+    vm.expectRevert(IdentityAspRegistry.AuthorizationExpired.selector);
+    registry.admitIdentityWithAuthorization(111, deadline, sig);
   }
 
   /// @notice `aspAdmitted` IS the replay protection - no separate nonce is needed, because the
   /// only action a signature authorizes is an insert that can happen at most once.
   function test_admitWithAuthorization_signatureCannotBeReplayed() public {
-    address signer = vm.addr(postmanPk);
-    _grantPostman(signer);
 
     uint256 deadline = block.timestamp + 1 hours;
     bytes memory sig = _sign(postmanPk, _admitDigest(111, deadline));
 
-    entrypoint.admitIdentityWithAuthorization(111, deadline, sig);
+    registry.admitIdentityWithAuthorization(111, deadline, sig);
 
-    vm.expectRevert(IEntrypoint.AlreadyAdmitted.selector);
-    entrypoint.admitIdentityWithAuthorization(111, deadline, sig);
+    vm.expectRevert(IdentityAspRegistry.AlreadyAdmitted.selector);
+    registry.admitIdentityWithAuthorization(111, deadline, sig);
   }
 
   /// @notice A signature for one identity must not admit a different one.
   function test_admitWithAuthorization_signatureBindsHolderRoot() public {
-    address signer = vm.addr(postmanPk);
-    _grantPostman(signer);
 
     uint256 deadline = block.timestamp + 1 hours;
     bytes memory sig = _sign(postmanPk, _admitDigest(111, deadline));
 
-    vm.expectRevert(IEntrypoint.InvalidAuthorization.selector);
-    entrypoint.admitIdentityWithAuthorization(222, deadline, sig);
+    vm.expectRevert(IdentityAspRegistry.InvalidAuthorization.selector);
+    registry.admitIdentityWithAuthorization(222, deadline, sig);
   }
 
-  function test_initialize_revertsOnZeroRegistry() public {
-    Entrypoint impl = new Entrypoint();
-    bytes memory init = abi.encodeCall(Entrypoint.initialize, (owner, postman, address(0)));
-    vm.expectRevert(IEntrypoint.ZeroAddress.selector);
-    new ERC1967Proxy(address(impl), init);
+  function test_constructor_rejectsZeroPostman() public {
+    vm.expectRevert(IdentityAspRegistry.PostmanIsZero.selector);
+    new IdentityAspRegistry(address(0), address(evidence));
+  }
+
+  /*
+   * THE REASON THIS CONTRACT EXISTS. The tree used to live in Entrypoint, whose
+   * _authorizeUpgrade is onlyRole(_OWNER_ROLE) - so "append-only by construction" was really
+   * "append-only unless the owner upgrades". Here there is no owner, no role machinery and no
+   * proxy, so the postman genuinely cannot be changed and the tree genuinely cannot be rewritten.
+   * Asserted against the ABI because the claim is that these functions DO NOT EXIST.
+   */
+  function test_NoRolesNoOwnerNoUpgradeNoRemove() public view {
+    string[6] memory forbidden = [
+      'grantRole(bytes32,address)',
+      'revokeRole(bytes32,address)',
+      'owner()',
+      'upgradeToAndCall(address,bytes)',
+      'initialize(address,address,address)',
+      'remove(uint256)'
+    ];
+    for (uint256 i = 0; i < forbidden.length; i++) {
+      (bool ok,) = address(registry).staticcall(abi.encodeWithSelector(bytes4(keccak256(bytes(forbidden[i])))));
+      assertFalse(ok, string.concat('registry answers a forbidden selector: ', forbidden[i]));
+    }
+    assertEq(registry.POSTMAN(), postman, 'postman is not the immutable one');
   }
 }

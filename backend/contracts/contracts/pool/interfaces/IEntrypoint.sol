@@ -45,21 +45,7 @@ interface IEntrypoint {
                               EVENTS
   //////////////////////////////////////////////////////////////*/
 
-  /**
-   * @notice Emitted when an identity is admitted into the append-only ASP tree
-   * @param _holderRoot The admitted identity's holder root
-   * @param _root The ASP root after insertion
-   * @param _index The leaf index the identity was inserted at
-   */
-  event IdentityAdmitted(uint256 _holderRoot, uint256 _root, uint256 _index);
 
-  /**
-   * @notice Emitted when an ASP root is anchored in the ERC-7812 evidence registry
-   * @param _root The ASP root that was anchored
-   * @param _index The association-set index of the root
-   * @param _statementKey The field-reduced ERC-7812 statement key the root was written under
-   */
-  event RootAnchored(uint256 _root, uint256 _index, bytes32 _statementKey);
 
   /**
    * @notice Emitted when pushing a new root to the association root set
@@ -249,29 +235,7 @@ interface IEntrypoint {
    */
   function initialize(address _owner, address _postman, address _evidenceRegistry) external;
 
-  /**
-   * @notice Admit an identity into the ASP tree. The ONLY way the ASP root can change - the old
-   *         `updateRoot(root, ipfsCID)` was removed, not deprecated, because leaving a path for the
-   *         postman to publish an arbitrary root would defeat the append-only property entirely.
-   * @param _holderRoot The identity's holder root (Poseidon(pubkey(sk_identity)))
-   * @return _root The ASP root after insertion
-   */
-  function admitIdentity(uint256 _holderRoot) external returns (uint256 _root);
 
-  /**
-   * @notice Admit an identity using an off-chain postman signature, submitted by anyone. Lets the
-   *         admission ride along with the user's first deposit instead of needing its own
-   *         postman-sent transaction.
-   * @param _holderRoot The identity's holder root
-   * @param _deadline Unix timestamp after which the authorization is void
-   * @param _signature Postman's EIP-712 signature over (holderRoot, deadline)
-   * @return _root The ASP root after insertion
-   */
-  function admitIdentityWithAuthorization(
-    uint256 _holderRoot,
-    uint256 _deadline,
-    bytes calldata _signature
-  ) external returns (uint256 _root);
 
   /**
    * @notice Make a native asset deposit into the Privacy Pool
@@ -374,32 +338,9 @@ interface IEntrypoint {
     view
     returns (IPrivacyPool _pool, uint256 _minimumDepositAmount, uint256 _vettingFeeBPS, uint256 _maxRelayFeeBPS);
 
-  /**
-   * @notice Returns the latest ASP root
-   * @return _root The latest ASP root
-   */
-  function latestRoot() external view returns (uint256 _root);
 
-  /**
-   * @notice Whether `_root` is an ASP root this contract has ever computed. Withdrawals are gated
-   *         on this rather than on equality with the newest root: the tree is append-only by
-   *         construction, so a historical root's membership set is a strict subset of the current
-   *         one and honouring it grants nothing the current root would not. This is what removes
-   *         the postman's ability to invalidate an existing member's private exit.
-   * @param _root The candidate ASP root
-   * @return Whether the root is known
-   */
-  function isKnownAspRoot(uint256 _root) external view returns (bool);
 
-  /**
-   * @notice Current leaf count of the ASP tree
-   */
-  function aspTreeSize() external view returns (uint256);
 
-  /**
-   * @notice Current depth of the ASP tree - the `asp_tree_depth` public signal a withdrawal carries
-   */
-  function aspTreeDepth() external view returns (uint256);
 
   /**
    * @notice The ERC-7812 evidence registry every ASP root is anchored in (shared with identity roots)

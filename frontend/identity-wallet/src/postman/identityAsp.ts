@@ -24,6 +24,12 @@
 // already exist and are known-good; split into a dedicated operator package if/when this needs its
 // own deploy lifecycle separate from the wallet's.
 //
+// MOVED 2026-07-27 - the ASP tree is no longer in Entrypoint at all. It lives in its own
+// NON-UPGRADEABLE, unowned IdentityAspRegistry, and these calls target THAT address. Keeping it in
+// the Entrypoint made the append-only claim untrue: Entrypoint._authorizeUpgrade is
+// onlyRole(_OWNER_ROLE), so the owner could upgrade and rewrite the membership set. See TODO.md
+// sec. 2.5a. Pass the REGISTRY address here, not the Entrypoint's.
+//
 // CORRECTED 2026-07-26 - this header previously claimed "Entrypoint.sol itself needs NO changes
 // for this upgrade", on the reasoning that `updateRoot`/`latestActiveRoot` were leaf-semantics-
 // agnostic. That was true of the IDENTITY re-keying, but it is no longer true of the contract at
@@ -123,7 +129,7 @@ export class IdentityAspTree {
   }
 }
 
-const ENTRYPOINT_ABI = [
+const ASP_REGISTRY_ABI = [
   "function admitIdentity(uint256 _holderRoot) external returns (uint256 _root)",
   "function isKnownAspRoot(uint256 _root) external view returns (bool)",
   "function aspTreeSize() external view returns (uint256)",
@@ -154,7 +160,7 @@ const ENTRYPOINT_ABI = [
  *  decoded from the real event rather than assumed from call ordering.
  */
 export async function admitIdentity(
-  entrypointAddress: string,
+  aspRegistryAddress: string,
   runner: ContractRunner,
   holderRoot: bigint,
 ): Promise<{ index: bigint; root: bigint }> {
@@ -162,11 +168,11 @@ export async function admitIdentity(
     throw new Error("admitIdentity: holderRoot must be a nonzero BN254 field element");
   }
 
-  const entrypoint = new Contract(entrypointAddress, ENTRYPOINT_ABI, runner);
-  const tx = await entrypoint.admitIdentity(holderRoot);
+  const registry = new Contract(aspRegistryAddress, ASP_REGISTRY_ABI, runner);
+  const tx = await registry.admitIdentity(holderRoot);
   const receipt = await tx.wait();
 
-  const iface = new Interface(ENTRYPOINT_ABI as unknown as string[]);
+  const iface = new Interface(ASP_REGISTRY_ABI as unknown as string[]);
   for (const log of (receipt?.logs ?? []) as Log[]) {
     let parsed;
     try {
@@ -195,14 +201,14 @@ export async function admitIdentity(
  *  at withdrawal time with no indication of why - so it is worth catching here.
  */
 export async function loadIdentityAspTree(
-  entrypointAddress: string,
+  aspRegistryAddress: string,
   runner: ContractRunner,
   fromBlock: number | bigint = 0,
   toBlock: number | bigint | "latest" = "latest",
 ): Promise<IdentityAspTree> {
-  const entrypoint = new Contract(entrypointAddress, ENTRYPOINT_ABI, runner);
-  const events = await entrypoint.queryFilter(
-    entrypoint.filters.IdentityAdmitted(),
+  const registry = new Contract(aspRegistryAddress, ASP_REGISTRY_ABI, runner);
+  const events = await registry.queryFilter(
+    registry.filters.IdentityAdmitted(),
     fromBlock,
     toBlock,
   );

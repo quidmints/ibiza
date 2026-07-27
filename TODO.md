@@ -911,6 +911,21 @@ whichever predicates it needs, and the circuit checks non-inclusion in each conf
 exclusion gadget is identical for both — only the leaf derivation differs (`holderRoot` vs
 `PRF(s, T)`), so D is largely a key-derivation change over machinery already built and tested.
 
+**RESIDUAL COST OF SECRECY, AND IT IS NOT SMALL — SECRECY DESTROYS AUDITABILITY.** §2.5 exists to
+make revocation PROVABLY RULE-BOUND: a revocation must cite a predicate, and anyone can check that
+it did. A confidential list breaks that check for everyone except the authority — if observers
+cannot see WHO was listed, they cannot verify the listing followed a rule, and "provably rule-bound"
+degrades to "asserted rule-bound". Option D fixes the CENSORSHIP-BY-INACTION problem, and it does
+not fix this one; no option above does, because the two properties are in genuine tension.
+
+The mitigation, if it is wanted, is a ZK proof of CORRECT LISTING: alongside each published
+pseudonym the authority proves in zero-knowledge that the corresponding identity satisfies a
+declared predicate, without revealing the identity. That restores auditability at real cost (a proof
+per listing, and each predicate must be expressible in-circuit — which the OFAC one currently is
+NOT, since the linkage from a holderRoot to a listed person does not exist on-chain at all; see
+backend/cre/ofac_sdn/main.go's own note on this). Recorded as the honest price rather than buried:
+adopting D means accepting weaker auditability than §2.5 promises until that proof exists.
+
 **Open before building D:** which PRF (Poseidon over `(s, T)` keeps it in-circuit-cheap and reuses
 the audited hash), epoch length, and how `s` is delivered to the authority at registration
 (encrypted to a published authority key is the obvious route, and wants its own scrutiny).

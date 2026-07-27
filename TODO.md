@@ -443,6 +443,48 @@ right way to review that class of change.
 - `ProofLib` and `codegen-verifiers.sh` were updated for the 1.x proof format — no 4-byte length
   prefix, and public inputs written to a SEPARATE file rather than prepended.
 
+### 2.4pre Feasibility spike — MEASURED 2026-07-27. It fits, but barely, and there are traps.
+
+**Run before committing to a design, because "it does not fit" would have changed N and the tree
+shape.** A throwaway N-proof aggregator was built, its Solidity verifier generated and compiled;
+the spike was then deleted. Findings:
+
+**1. It FITS — but ONLY with `optimizer_runs = 1`, and with 83 bytes to spare.**
+
+| build | runtime bytecode | vs EIP-170 (24,576) |
+|---|---|---|
+| default optimizer | **25,506** | **930 OVER — would not deploy** |
+| `optimizer_runs = 1` | **24,493** | fits, **83 bytes** margin |
+
+The aggregation verifier will need its own `compilation_restrictions` entry in `foundry.toml`, like
+the two existing verifiers. **Margin is effectively zero** — the same knife-edge as the withdrawal
+verifier's 85 bytes.
+
+**2. Verifier size is INDEPENDENT OF N.** N=1, 4 and 16 all produce a ~90,372-byte source and the
+same bytecode (±2 bytes). Honk's verifier is a fixed algorithm; N grows the *circuit*, not the
+contract. **So N=16 costs nothing on-chain versus N=1** — the sizing decision is about proving time
+and batch latency (§2.4b), not EIP-170.
+
+**3. That result DEPENDS on keeping the public surface at ONE field.** The spike exposes a single
+`batch_commitment` (a Poseidon fold over every inner proof's 8 public signals) rather than N×8
+public inputs. The verifier's calldata handling scales with public inputs, and 83 bytes leaves no
+room for that. **A design that surfaces per-withdrawal signals will not fit.** Nothing is lost by
+compressing — the pool still checks each withdrawal's real signals itself.
+
+**4. TRAP — `bb` SIGSEGVs (exit 139) on a wrong in-circuit vk length; it does NOT error.** The
+recursive `verification_key` parameter is **128 fields**, NOT the 55 fields of the on-disk
+`target/vk`. Passing 55 segfaults bb *after* it has already printed "Scheme is: ultra_honk", so
+anything grepping stdout for errors reads it as success. Same family as the `-k`-on-`prove` footgun
+(§1). Proof length is 507 fields, matching `target/proof`.
+
+**5. The recursion API on beta.13 is `std::verify_proof_with_type(vk, proof, public_inputs,
+key_hash, proof_type)`.** `std::verify_proof` does NOT exist and `#[recursive]` is not in scope.
+Poseidon is the external `noir-lang/poseidon` package, not `std::hash::poseidon`.
+
+**Still unmeasured, needs the phone:** aggregation-circuit proving time, and per-user withdrawal
+proving time on the A16 (§2.4b). Aggregation batches VERIFICATION — each user still proves their own
+withdrawal locally, and that number is unchanged by any N.
+
 ### 2.4 Build the aggregator — DECIDED: build our own. **DO NOT START YET.** Comes after §2.1.
 
 **Decision (user, 2026-07-27): we build our own aggregator.** Not an AVS (§2.4e — it secures the

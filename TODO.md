@@ -124,10 +124,13 @@ i9-9880H is fine). Check before assuming a machine can't run it. `bb.js` (WASM) 
 
 ## 2. Critical path — in this order
 
-### 2.1 Wallet-side withdrawal witness assembly ← **START HERE**
+### 2.1 Wallet-side withdrawal witness assembly — ✅ DONE 2026-07-27
 
-**Nothing blocks this, and until it exists no user can withdraw at all.** Everything downstream
-(gas work, aggregation) optimises a path that does not yet work end-to-end.
+**Was the blocker on anyone withdrawing at all.** Everything downstream (gas work, aggregation)
+optimises a path that now works end-to-end in everything except on-device proving (§1b).
+
+**NEXT: §2.5 (revocation, circuit work) or §3 items — NOT §2.4.** The aggregator remains explicitly
+deferred by the user, and §2.6/§2.7 need hardware.
 
 Exists: `pp/discovery.ts` (finds your notes), `pp/notes.ts` (secret derivations), `pp/relay.ts`
 (withdrawal + `context`), `postman/identityAsp.ts` (`IdentityAspTree.proof()` for ASP siblings,

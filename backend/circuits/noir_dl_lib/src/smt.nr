@@ -92,12 +92,65 @@ pub fn smt_verifier<let N_LEVELS: u32>(
     (levels[0] == root) as u1
 }
 
+/*
+ * DIFFERENTIAL TESTS against circomlibjs - the implementation this file is a port of.
+ *
+ * The previous test here was `print(smt_verifier::<80>(...))` with NO ASSERTION: it could not
+ * fail, whatever the gadget returned. So the port had never actually been checked against its
+ * reference. Vectors below come from circomlibjs 0.1.7, tree built by inserting
+ * (1,11), (2,22), (7,77), (9,99) into an empty SMT.
+ */
+global REF_ROOT: Field =
+    518494836555806875742446376098343000486175381741467406929375446995815951571;
+
+// Inclusion path for key=7, padded to 10 levels.
+fn ref_siblings_key7() -> [Field; 10] {
+    [
+        3538372437315232912232383076351801231931604997820687320170917796819460581158,
+        7219773115889511897248370091680383759521588836236378252329610603114958225446,
+        0, 0, 0, 0, 0, 0, 0, 0,
+    ]
+}
+
 #[test]
-fn test(){
-    print(smt_verifier::<80>(
-        11035164876722493867956800399324037851238296649576168185861461383200281731661,
-        1914080321768737626845532766495249233577737596115572855738207100669611480269,
-        1914080321768737626845532766495249233577737596115572855738207100669611480269,
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
-        ));
+fn test_inclusion_matches_circomlibjs() {
+    assert(
+        smt_verifier::<10>(REF_ROOT, 77, 7, ref_siblings_key7()) == 1,
+        "inclusion proof for key=7 was rejected",
+    );
+}
+
+/*
+ * NEGATIVE CONTROLS. Without these the test above proves nothing: a gadget that returned 1
+ * unconditionally would pass it. Each perturbs exactly one input.
+ */
+#[test]
+fn test_rejects_wrong_value() {
+    assert(
+        smt_verifier::<10>(REF_ROOT, 78, 7, ref_siblings_key7()) == 0,
+        "a wrong VALUE was accepted",
+    );
+}
+
+#[test]
+fn test_rejects_wrong_key() {
+    assert(
+        smt_verifier::<10>(REF_ROOT, 77, 8, ref_siblings_key7()) == 0,
+        "a wrong KEY was accepted",
+    );
+}
+
+#[test]
+fn test_rejects_wrong_root() {
+    assert(
+        smt_verifier::<10>(REF_ROOT + 1, 77, 7, ref_siblings_key7()) == 0,
+        "a wrong ROOT was accepted",
+    );
+}
+
+#[test]
+fn test_rejects_tampered_sibling() {
+    let mut sib = ref_siblings_key7();
+    sib[0] = sib[0] + 1;
+    assert(smt_verifier::<10>(REF_ROOT, 77, 7, sib) == 0, "a tampered SIBLING was accepted");
 }

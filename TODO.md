@@ -1564,6 +1564,52 @@ pool stopped calling it. Its sibling `isValidRoot` returning unconditional `true
 deliberate there: that suite has no withdraw tests, so the identity gate is never under test - the
 opposite of the Simple case in §2.13q, which did need to honour its `known` mapping.
 
+### 2.14 legalDescriptionHash IS A DE-ANONYMISATION VECTOR (user, 2026-07-28) - NOT BUILT
+
+`TitleLedger.sol:56` carries `bytes32 legalDescriptionHash` - a plain, UNSALTED hash of the
+off-chain legal description. Two separate problems, and the second was never surfaced anywhere in
+this fusion's docs.
+
+**1. It is an unimplemented integration point, not merely a simplified one.** A grep across
+`title_holder.nr`, `title_holder/src/main.nr`, the whole `identity-wallet/src/` tree and `tools/`
+finds NOTHING that computes this hash. Verified: no wallet-side and no circuit-side producer exists.
+The contract stores a value nothing in this system knows how to make.
+
+**2. THE REAL GAP - it is a privacy leak by construction, independent of the missing
+implementation.** Legal descriptions of real property (street address, parcel/APN, plat description)
+are frequently LOW-ENTROPY AND PUBLICLY ENUMERABLE - county assessor records are often public and
+searchable. Anyone asking "is property X tokenised, and under which titleId?" can pull candidate
+descriptions from public records, hash each one exactly as the contract does, and compare against
+every on-chain `legalDescriptionHash`. A match reveals WHICH REAL-WORLD PROPERTY sits behind a given
+titleId. It does not reveal who holds it - `holderCommitment` covers that - but "which properties
+are in the system" is disclosed to anyone willing to run a dictionary.
+
+**The existing test demonstrates the vector rather than guarding against it:**
+`TitleLedger.t.sol:177` asserts `entry.legalDescriptionHash == keccak256('42 Khreshchatyk St,
+Kyiv')` - a bare keccak of a street address, precisely the enumerable input that makes this
+brute-forceable.
+
+**The fix is a pattern this codebase ALREADY RUNS IN PRODUCTION** - Privacy Pool's precommitment
+scheme (`frontend/identity-wallet/src/pp/notes.ts`). Commit to the document together with a random,
+high-entropy, holder-held salt - `Poseidon(legal_description_hash, salt)` - instead of hashing the
+document alone. The commitment stays binding and Ricardian: present the document plus the salt and
+anyone can verify it matches on-chain, which is the property the design wants. But it becomes
+computationally infeasible to brute-force from public records, because the salt supplies the entropy
+the legal description lacks. The salt is disclosed only when opening is actually required - a
+dispute, a loan default, a transfer needing proof of the underlying document - not by default. This
+is NOT a new primitive for this system; it is the same commit-reveal shape already used for PP
+deposits, applied to a field that currently has none of it.
+
+**Real work if pursued:**
+1. Decide the threat model FIRST - must "which property" stay hidden, or only "who holds it"? The
+   answer changes whether this is a defect or an accepted disclosure.
+2. If yes: add the salt to `mintTitle`'s commitment, and to whatever wallet/notary tooling
+   eventually computes it - which does not exist yet, see (1) above.
+3. Define the reveal/verification flow for the cases that genuinely need the commitment opened.
+
+Interacts with §2.13l: if titles become documents and notaries become registered identities, this
+commitment should be settled in the same pass rather than bolted on afterwards.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

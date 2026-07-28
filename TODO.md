@@ -1234,6 +1234,74 @@ Hand-transcribing twelve 77-digit field elements was the obvious place for this 
 would have failed for a reason unrelated to the verifier. 5 tests: real proof verifies, fixture is
 the documented witness, all 12 inputs binding, sealed slots pairwise distinct, malformed rejected.
 
+### 2.13k SUPERSEDES step 5: ONE identity tree, no sk_identity in the withdrawal. -43% MEASURED
+
+Step 5 was "change the RevocationRegistry leaf to Poseidon(s)". Doing it exposed something larger:
+`membership.holder_root` is used for EXACTLY ONE thing in `withdraw_identity` - as the revocation
+key. Once that key becomes the escrow commitment, **the withdrawal does not need `holder_root`, and
+therefore does not need `sk_identity`, at all.** Identity is checked ONCE, at escrow, where
+`escrow_envelope` already proves `holder_root` from `sk_identity` and binds the MRZ.
+
+And the two identity trees collapse into one. Key = the escrow commitment; VALUE carries status:
+`0` = registered and clean, non-zero = the revocation predicate (which §2.13f established is
+already stored there). So a SINGLE INCLUSION proof of `commitment -> 0` replaces BOTH the ASP
+inclusion and the revocation exclusion.
+
+**MEASURED, capacity-matched at depth 32:**
+
+| | ACIR opcodes |
+|---|---|
+| `withdraw_identity` today | 43,772 |
+| proposed, one tree, no sk_identity | **24,812** |
+| | **-18,960 (-43%)** |
+
+Where it comes from: the ASP scalar multiplication disappears (~11.8k), and one LeanIMT inclusion
+plus one SMT exclusion (~18.5k combined) become one SMT inclusion (~11.9k).
+
+**Soundness.** Scarcity still holds: commitments enter the tree ONLY via `escrow_envelope`, which
+proves a registered, uniquely-bound document. Fail-open still holds: a controller that does nothing
+leaves every value at 0 and every withdrawal works. Knowing `s` rather than `sk_identity` is
+equivalent authorisation - neither spends a note, which needs the note secrets; both only satisfy
+the clearance gate.
+
+**THE ROOT-POLICY TRAP THIS CREATES, and it is the one I have already shipped once.** §2.13e recorded
+that inclusion trees need NO root expiry (old roots have fewer members, so they are safe) while
+exclusion trees REQUIRE it. A merged tree does BOTH jobs, so it MUST take the STRICTER policy:
+`MAX_ROOT_AGE` plus always-valid-latest. Without expiry, a revoked identity proves `commitment -> 0`
+against a root from before its revocation, forever. This is exactly the asymmetry I argued should be
+kept in separate contracts precisely so it could not be confused - merging the trees gives that
+argument up, so the policy has to be enforced in code and tested directly.
+
+### 2.13l TITLE PATH CONSISTENCY: three confirmed defects (user, 2026-07-28)
+
+User's framing: *"titleholder is just another document like a second passport, the only thing is
+that it links two identities, the titleholder and the certified identity of a notary attesting the
+title."* Checked against the code, and it does not currently work that way:
+
+1. **`DOC_NOTARIAL_TITLE` is declared and NEVER USED.** `HolderStateKeeper.sol:66` defines it
+   alongside DOC_PASSPORT / DOC_NATIONAL_ID / DOC_MDL / DOC_EUDI_PID; a repo-wide grep finds no
+   other reference. The document model already has a slot for titles and nothing puts one there.
+
+2. **`TitleLedger` does not touch `HolderStateKeeper` at all.** A title is a parallel structure
+   (`mapping(uint256 => bytes32) holderCommitment`), NOT a document under a holder root. So a title
+   gets none of the document machinery: no `dg1Hash`-style uniqueness guard (§2.13f), no
+   supersede/revoke lifecycle, no multi-document-per-identity accounting. If a title is "just
+   another document", it should register through the same path a second passport does.
+
+3. **The notary is an ADDRESS, not a certified identity.** `address notary` and
+   `mapping(address => bytes32) notaryDataHash`. TitleLedger's own header already flags this as an
+   OPEN GAP - "binding a real-world notary's identity to an on-chain signing address ... still isn't
+   cryptographically proven". Under the user's framing the notary should be a REGISTERED
+   `holder_root` like anyone else, so that attesting a title links two identities rather than an
+   identity and a keypair. That also folds the notary into §2.13k's single identity tree, making a
+   notary revocable by the same mechanism as everyone else - which an address can never be.
+
+**Consequence for §2.13k:** if titles become documents and notaries become identities, both sit in
+the SAME merged tree, and `title_holder`'s commitment `Poseidon(holder_root, title_id)` should be
+reconsidered against the escrow commitment so there is one identity key rather than two conventions.
+NOT changed yet - recorded so the merged-tree work does not land while the title path still uses a
+second, incompatible identity notion.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

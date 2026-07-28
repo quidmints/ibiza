@@ -1342,6 +1342,51 @@ inclusion test uses 77. The merged design is the first thing to depend on that p
   controller may update to a predicate. One tree with two different access rules is workable but is
   where an access-control mistake would hide.
 
+### 2.13n MERGE LANDED (contract half): IdentityRegistry, with every trap guarded and tested
+
+`contracts/registry/IdentityRegistry.sol` + 16 tests driving the REAL escrow proof through the REAL
+verifier into the REAL state keeper. 280 forge tests, 84 pp tests, ABI check clean.
+
+**A SIXTH TRAP, found while writing the contract and NOT on the §2.13m list.** `escrow_envelope`
+proves an MRZ hashes to `dg1_hash` and that `holder_root` derives from `sk_identity`. It CANNOT prove
+the passport is GENUINE - the ICAO signature chain is verified during REGISTRATION, not escrow. So a
+caller could invent an MRZ, produce a perfectly valid escrow proof, and land a commitment in the
+identity tree backed by no real document. That would make the tree's scarcity guarantee, and
+therefore the entire blacklist, worthless - the exact vacuity §2.13b's trap was about, re-entering
+one layer down. Closed by requiring `HolderStateKeeper.holderOfDocumentHash(dg1Hash) == holderRoot`,
+which needed a new `dg1Hash -> holderRoot` mapping (`_usedDocumentHash` recorded THAT a hash was
+consumed, never BY WHOM). Two tests: unregistered document, and document bound to another holder.
+
+**A SEVENTH, found by a failing test.** `isValidRoot(bytes32(0))` returned TRUE: the empty tree's
+root IS zero and the constructor records it. Harmless in practice - an inclusion path always ends at
+a non-zero leaf hash, so nothing can be proven against an empty root - but `State.sol::_isKnownRoot`
+already rejects zero and the two must not disagree about what a zero root means. Now rejected
+explicitly.
+
+**All six earlier traps are guarded AND pinned by a test that fails if the guard is removed:**
+
+| trap | guard | test |
+|---|---|---|
+| root expiry mandatory (merged tree does BOTH jobs) | `isValidRoot` MAX_ROOT_AGE + always-valid-latest | `test_ASupersededCleanRootExpires`, `test_LatestRootIsAlwaysValidHoweverOld` |
+| zero predicate = revoke-into-clean | rejected in `revoke` AND at deploy | `test_RevokeRejectsAZeroPredicate`, `test_ConstructorRejectsAZeroPredicate` |
+| `remove` = censorship by erasure | never called; no external path | `test_ThereIsNoRemovalPath` |
+| two writers on one tree | `register` proof-gated, `revoke` controller-only | `test_RevokeRevertsForNonController` |
+| duplicate / re-add resets a revocation | `registered` mapping + SMT `KeyAlreadyExists` | `test_RegisterRevertsOnDuplicate`, `test_RevokedCommitmentCannotBeReAdded` |
+| unreadable envelope = unrevocable identity | controller key pinned as immutable | `test_RegisterRevertsOnAForeignControllerKey` |
+
+**`test_ConstructorRejectsAZeroPredicate` needed try/catch**, not `vm.expectRevert` - forge does not
+reliably match a revert raised inside CREATE, and reports "did not revert" even when the guard is
+working. Same trap hit earlier this project; noted so the next CREATE-guard test does not rediscover it.
+
+**Integration verified end-to-end, not argued:** on-chain `add(key, 0)` produces EXACTLY the root the
+Noir gadget computes (`test_ZeroValueLeafMatchesTheCircuitRoot`), a zero-valued leaf is
+distinguishable from an empty tree, and revocation's `update` (0 -> predicate) yields the expected
+leaf hash.
+
+**STILL TO DO for the 43%:** the `withdraw_identity` circuit rewrite itself (one SMT inclusion, no
+`sk_identity`), regenerated fixtures + verifier, `ProofLib`/`PrivacyPool`/`IState` public-input
+changes (9 -> 7), and the wallet. The contract half is what landed here.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

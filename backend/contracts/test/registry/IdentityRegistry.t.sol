@@ -1,0 +1,310 @@
+// SPDX-License-Identifier: Apache-2.0
+pragma solidity 0.8.28;
+
+import {Test} from 'forge-std/Test.sol';
+import {ERC1967Proxy} from '@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol';
+
+import {IdentityRegistry} from '../../contracts/registry/IdentityRegistry.sol';
+import {EscrowEnvelopeHonkVerifier} from '../../contracts/registry/verifiers/EscrowEnvelopeHonkVerifier.sol';
+import {HolderStateKeeperMock} from '../../contracts/mock/holder/HolderStateKeeperMock.sol';
+import {PoseidonSMTMock} from '../../contracts/mock/state/PoseidonSMTMock.sol';
+
+/// See HolderRegistration.t.sol - OZ 5.6.1 rejects empty proxy init data; this suite
+/// deploys-then-initializes, which is safe single-threaded.
+contract UnsafeTestProxy is ERC1967Proxy {
+  constructor(address impl) ERC1967Proxy(impl, '') {}
+
+  function _unsafeAllowUninitialized() internal pure override returns (bool) {
+    return true;
+  }
+}
+
+contract TestEvidenceRegistry {
+  mapping(bytes32 => bytes32) public statements;
+
+  function addStatement(bytes32 key_, bytes32 value_) external {
+    statements[keccak256(abi.encodePacked(msg.sender, key_))] = value_;
+  }
+}
+
+/*
+ * TODO.md sec. 2.13k/2.13m - the SINGLE identity tree, and every trap the merge creates.
+ *
+ * This suite drives the REAL escrow proof through the REAL verifier into the REAL state keeper.
+ * Nothing here is mocked except the state keeper's registration gate, which is opened to this test
+ * so a document can be planted without going through a passport proof.
+ *
+ * WHY EACH TRAP IS TESTED RATHER THAN ARGUED. Merging an inclusion tree and an exclusion tree gives
+ * up protections the split provided structurally - most importantly the root-expiry asymmetry, which
+ * I have already got WRONG once on RevocationRegistry (marking every root valid forever, safe for
+ * inclusion, fatal for exclusion). Each guard below is therefore pinned by a test that fails if the
+ * guard is removed, not by a comment asserting it holds.
+ */
+contract IdentityRegistryTest is Test {
+  IdentityRegistry internal registry;
+  HolderStateKeeperMock internal sk;
+
+  bytes32 internal constant ICAO = 0x2c50ce3aa92bc3dd0351a89970b02630415547ea83c487befbc8b1795ea90c45;
+  uint256 internal constant MAX_ROOT_AGE = 1 days;
+
+  address internal CONTROLLER = address(0xC0FFEE);
+  bytes32 internal constant PREDICATE_SANCTIONS = keccak256('OFAC_SDN');
+  bytes32 internal constant PREDICATE_DOC_INVALID = keccak256('DOC_INVALID');
+
+  /// From the committed escrow_envelope fixture - see EscrowEnvelopeHonkVerifier.t.sol.
+  uint256 internal constant CONTROLLER_KEY_X =
+    4_880_901_335_776_166_390_443_888_589_907_570_248_644_423_541_468_541_082_967_598_048_550_539_024_543;
+  uint256 internal constant CONTROLLER_KEY_Y =
+    6_509_666_988_291_764_283_313_685_078_036_329_297_907_336_602_650_572_952_945_826_675_203_643_401_307;
+
+  function setUp() public {
+    PoseidonSMTMock smt = PoseidonSMTMock(_proxy(address(new PoseidonSMTMock())));
+    PoseidonSMTMock certs = PoseidonSMTMock(_proxy(address(new PoseidonSMTMock())));
+    sk = HolderStateKeeperMock(_proxy(address(new HolderStateKeeperMock())));
+
+    TestEvidenceRegistry ev = new TestEvidenceRegistry();
+    smt.__PoseidonSMT_init(address(sk), address(ev), 80);
+    certs.__PoseidonSMT_init(address(sk), address(ev), 80);
+    sk.__StateKeeper_init(address(0xA11CE), address(smt), address(certs), ICAO);
+
+    // Open the registration gate to this test so a document can be planted directly.
+    string[] memory keys = new string[](1);
+    keys[0] = 'test';
+    address[] memory vals = new address[](1);
+    vals[0] = address(this);
+    sk.mockAddRegistrations(keys, vals);
+
+    bytes32[] memory preds = new bytes32[](2);
+    preds[0] = PREDICATE_SANCTIONS;
+    preds[1] = PREDICATE_DOC_INVALID;
+
+    registry = new IdentityRegistry(
+      address(new EscrowEnvelopeHonkVerifier()),
+      address(sk),
+      CONTROLLER,
+      CONTROLLER_KEY_X,
+      CONTROLLER_KEY_Y,
+      20,
+      MAX_ROOT_AGE,
+      preds
+    );
+  }
+
+  function _proxy(address impl) internal returns (address) {
+    return address(new UnsafeTestProxy(impl));
+  }
+
+  function _proof() internal view returns (bytes memory) {
+    return vm.readFileBinary('test/fixtures/escrow_envelope.proof');
+  }
+
+  function _publicInputs() internal view returns (bytes32[] memory _inputs) {
+    bytes memory _raw = vm.readFileBinary('test/fixtures/escrow_envelope.public');
+    _inputs = new bytes32[](12);
+    for (uint256 _i = 0; _i < 12; _i++) {
+      bytes32 _w;
+      assembly {
+        _w := mload(add(_raw, add(32, mul(_i, 32))))
+      }
+      _inputs[_i] = _w;
+    }
+  }
+
+  /// Plant the document the fixture's escrow refers to, so `register` finds it bound.
+  function _plantDocument() internal {
+    bytes32[] memory p = _publicInputs();
+    sk.addDocument(bytes32(uint256(0xD0C)), p[4] /* dg1Hash */, p[2] /* holderRoot */, sk.DOC_PASSPORT(), 111, 0);
+  }
+
+  // ── the happy path ──────────────────────────────────────────────────────────────────────
+
+  function test_RegisterWithRealProof() public {
+    _plantDocument();
+    bytes32 before = registry.root();
+
+    registry.register(_proof(), _publicInputs());
+
+    bytes32[] memory p = _publicInputs();
+    assertTrue(registry.registered(p[3]), 'commitment not marked registered');
+    assertEq(registry.statusOf(p[3]), bytes32(0), 'a fresh registration must be CLEAN (value 0)');
+    assertEq(registry.registeredCount(), 1);
+    assertTrue(registry.root() != before, 'root did not change on registration');
+    assertTrue(registry.isValidRoot(registry.root()), 'the new root is not valid');
+  }
+
+  // ── TRAP 5: an escrow proof does NOT prove the passport is real ──────────────────────────
+
+  function test_RegisterRevertsWhenTheDocumentWasNeverRegistered() public {
+    // No _plantDocument(). The proof is perfectly valid - it just attests to an MRZ nobody has ever
+    // registered through the ICAO-verified path. Without this guard the tree's scarcity guarantee,
+    // and therefore the entire blacklist, is worthless.
+    bytes32[] memory p = _publicInputs();
+    bytes memory pf = _proof();
+
+    vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.DocumentNotRegistered.selector, p[4]));
+    registry.register(pf, p);
+  }
+
+  function test_RegisterRevertsWhenTheDocumentBelongsToAnotherHolder() public {
+    bytes32[] memory p = _publicInputs();
+    sk.addDocument(bytes32(uint256(0xD0C)), p[4], bytes32(uint256(0xBEEF)), sk.DOC_PASSPORT(), 111, 0);
+    bytes memory pf = _proof();
+
+    vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.DocumentBoundToAnotherHolder.selector, p[4]));
+    registry.register(pf, p);
+  }
+
+  // ── envelope must be readable by the controller ──────────────────────────────────────────
+
+  function test_RegisterRevertsOnAForeignControllerKey() public {
+    _plantDocument();
+    bytes32[] memory p = _publicInputs();
+    p[0] = bytes32(uint256(p[0]) + 1); // sealed to a key the controller does not hold
+    bytes memory pf = _proof();
+
+    vm.expectRevert(IdentityRegistry.WrongControllerKey.selector);
+    registry.register(pf, p);
+  }
+
+  function test_RegisterRevertsOnWrongInputCount() public {
+    bytes32[] memory short_ = new bytes32[](11);
+    bytes memory pf = _proof();
+
+    vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.WrongPublicInputCount.selector, uint256(11)));
+    registry.register(pf, short_);
+  }
+
+  function test_RegisterRevertsOnDuplicate() public {
+    _plantDocument();
+    registry.register(_proof(), _publicInputs());
+
+    bytes32[] memory p = _publicInputs();
+    bytes memory pf = _proof();
+    vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.AlreadyRegistered.selector, p[3]));
+    registry.register(pf, p);
+  }
+
+  // ── TRAP 4: only the controller revokes ─────────────────────────────────────────────────
+
+  function test_RevokeRevertsForNonController() public {
+    _plantDocument();
+    registry.register(_proof(), _publicInputs());
+    bytes32 c = _publicInputs()[3];
+
+    vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.NotTheController.selector, address(this)));
+    registry.revoke(c, PREDICATE_SANCTIONS);
+  }
+
+  // ── TRAP 2: zero is the CLEAN sentinel ──────────────────────────────────────────────────
+
+  function test_RevokeRejectsAZeroPredicate() public {
+    _plantDocument();
+    registry.register(_proof(), _publicInputs());
+    bytes32 c = _publicInputs()[3];
+
+    // A zero predicate would write the CLEAN value and "revoke" the identity into good standing.
+    vm.prank(CONTROLLER);
+    vm.expectRevert(IdentityRegistry.ZeroPredicate.selector);
+    registry.revoke(c, bytes32(0));
+  }
+
+  function test_ConstructorRejectsAZeroPredicate() public {
+    bytes32[] memory preds = new bytes32[](1);
+    preds[0] = bytes32(0);
+
+    // vm.expectRevert does NOT reliably match a revert raised inside CREATE, so this asserts the
+    // deployment failed via try/catch instead. Using expectRevert here reports "did not revert"
+    // even when the guard is working - a false failure that hides a working guard.
+    address verifier_ = address(new EscrowEnvelopeHonkVerifier());
+    try new IdentityRegistry(
+      verifier_, address(sk), CONTROLLER, CONTROLLER_KEY_X, CONTROLLER_KEY_Y, 20, MAX_ROOT_AGE, preds
+    ) {
+      fail('a zero predicate was accepted at deploy - revocation could write the CLEAN state');
+    } catch {}
+  }
+
+  function test_RevokeRejectsAnUnknownPredicate() public {
+    _plantDocument();
+    registry.register(_proof(), _publicInputs());
+    bytes32 c = _publicInputs()[3];
+
+    vm.prank(CONTROLLER);
+    vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.UnknownPredicate.selector, keccak256('MADE_UP')));
+    registry.revoke(c, keccak256('MADE_UP'));
+  }
+
+  function test_RevokeRevertsForAnUnregisteredCommitment() public {
+    vm.prank(CONTROLLER);
+    vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.NotRegistered.selector, bytes32(uint256(0xAB))));
+    registry.revoke(bytes32(uint256(0xAB)), PREDICATE_SANCTIONS);
+  }
+
+  function test_RevokeIsMonotone() public {
+    _plantDocument();
+    registry.register(_proof(), _publicInputs());
+    bytes32 c = _publicInputs()[3];
+
+    vm.prank(CONTROLLER);
+    registry.revoke(c, PREDICATE_SANCTIONS);
+    assertEq(registry.statusOf(c), PREDICATE_SANCTIONS, 'predicate not recorded as the leaf status');
+
+    vm.prank(CONTROLLER);
+    vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.AlreadyRevoked.selector, c));
+    registry.revoke(c, PREDICATE_DOC_INVALID);
+  }
+
+  // ── TRAP 1: root expiry, the asymmetry I already got wrong once ─────────────────────────
+
+  function test_LatestRootIsAlwaysValidHoweverOld() public {
+    _plantDocument();
+    registry.register(_proof(), _publicInputs());
+    bytes32 latest = registry.root();
+
+    // Inaction must stay harmless: a controller that never acts again blocks nobody.
+    vm.warp(block.timestamp + 365 days);
+    assertTrue(registry.isValidRoot(latest), 'the latest root expired - inaction became censorship');
+  }
+
+  function test_ASupersededCleanRootExpires() public {
+    _plantDocument();
+    registry.register(_proof(), _publicInputs());
+    bytes32 cleanRoot = registry.root();
+    bytes32 c = _publicInputs()[3];
+
+    vm.prank(CONTROLLER);
+    registry.revoke(c, PREDICATE_SANCTIONS);
+
+    // THE WHOLE POINT. The pre-revocation root still proves `commitment -> 0`. It stays valid only
+    // long enough not to invalidate in-flight proofs; if it NEVER expired, a revoked identity could
+    // withdraw forever by proving against it. That is precisely the bug shipped once on
+    // RevocationRegistry by reasoning from the ASP's inclusion semantics.
+    assertTrue(registry.isValidRoot(cleanRoot), 'a just-superseded root should still be usable');
+
+    vm.warp(block.timestamp + MAX_ROOT_AGE + 1);
+    assertFalse(registry.isValidRoot(cleanRoot), 'the pre-revocation root NEVER EXPIRED - revocation is escapable');
+    assertTrue(registry.isValidRoot(registry.root()), 'the post-revocation root should be valid');
+  }
+
+  function test_UnknownRootIsRejected() public view {
+    assertFalse(registry.isValidRoot(bytes32(uint256(0xDEAD))), 'an invented root was accepted');
+    assertFalse(registry.isValidRoot(bytes32(0)), 'the zero root was accepted');
+  }
+
+  // ── TRAP 3: removal must not exist ──────────────────────────────────────────────────────
+
+  function test_ThereIsNoRemovalPath() public {
+    _plantDocument();
+    registry.register(_proof(), _publicInputs());
+    bytes32 c = _publicInputs()[3];
+
+    // The solarity SMT provides `remove`, and exposing it would let a controller ERASE a
+    // registration - censorship by deletion. Assert no such selector is callable: any of the
+    // obvious spellings must hit the fallback and fail.
+    string[3] memory sigs = ['remove(bytes32)', 'unregister(bytes32)', 'deregister(bytes32)'];
+    for (uint256 i = 0; i < sigs.length; i++) {
+      (bool ok,) = address(registry).call(abi.encodeWithSignature(sigs[i], c));
+      assertFalse(ok, 'a removal path exists on the registry');
+    }
+    assertTrue(registry.registered(c), 'the registration is gone');
+  }
+}

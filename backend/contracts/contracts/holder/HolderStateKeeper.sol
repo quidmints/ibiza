@@ -86,6 +86,21 @@ contract HolderStateKeeper is StateKeeper {
     mapping(bytes32 => bytes32[]) internal _holderDocuments; // holderRoot => documentKeys
     mapping(bytes32 => bool) internal _usedDocumentHash; // anti-replay for the hash variant
 
+    /**
+     * @notice Which holder a document hash is bound to. Appended after all prior storage, so the
+     *         proxy layout is unaffected.
+     *
+     * WHY THIS EXISTS. `_usedDocumentHash` records THAT a document hash was consumed but not BY
+     * WHOM, which is enough for anti-replay and not enough for escrow (TODO.md sec. 2.13k). The
+     * escrow circuit proves an MRZ hashes to `dg1Hash` and that `holder_root` derives from
+     * `sk_identity` - it does NOT and CANNOT prove the passport is genuine, because the ICAO
+     * signature chain is checked during REGISTRATION, not escrow. Without this lookup a caller
+     * could invent a DG1, escrow against it, and land a commitment in the identity tree backed by
+     * no real document - which would make the tree's scarcity guarantee, and therefore the entire
+     * blacklist, worthless.
+     */
+    mapping(bytes32 => bytes32) internal _holderOfDocumentHash; // dg1Hash => holderRoot
+
     event DocumentAdded(bytes32 indexed holderRoot, bytes32 documentKey, bytes32 docType);
     event DocumentRenewed(
         bytes32 indexed holderRoot,
@@ -126,6 +141,7 @@ contract HolderStateKeeper is StateKeeper {
         if (documentHash_ != bytes32(0)) {
             require(!_usedDocumentHash[documentHash_], "HolderStateKeeper: document hash used");
             _usedDocumentHash[documentHash_] = true;
+            _holderOfDocumentHash[documentHash_] = holderRoot_;
         }
 
         _bindDocument(documentKey_, holderRoot_, docType_, dgCommit_, notAfter_, 0);
@@ -157,6 +173,7 @@ contract HolderStateKeeper is StateKeeper {
         if (newDocumentHash_ != bytes32(0)) {
             require(!_usedDocumentHash[newDocumentHash_], "HolderStateKeeper: document hash used");
             _usedDocumentHash[newDocumentHash_] = true;
+            _holderOfDocumentHash[newDocumentHash_] = holderRoot_;
         }
 
         // Supersede the old leaf (keeps it provably non-current in the tree).
@@ -228,6 +245,15 @@ contract HolderStateKeeper is StateKeeper {
                 ++count_;
             }
         }
+    }
+
+    /**
+     * @notice The holder a document hash is bound to, or zero if that hash was never registered.
+     * @dev Read by the identity registry to confirm an escrow is backed by a REAL, ICAO-verified
+     *      document rather than an invented MRZ. See `_holderOfDocumentHash`.
+     */
+    function holderOfDocumentHash(bytes32 documentHash_) external view returns (bytes32) {
+        return _holderOfDocumentHash[documentHash_];
     }
 
     function _bindDocument(

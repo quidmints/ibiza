@@ -42,26 +42,26 @@ jurisdiction-agnostic; only registry endpoints and legal enforcement are local.
 
 ## 2. Implementation: approach, activities, and milestones *(1000 max)*
 
-**Status.** The core is built and tested, not audited: 269 contract tests, 84 circuit tests, and real
+**Status.** Built and tested, not audited: 269 contract tests, 84 circuit tests, and real
 zero-knowledge proofs verified on-chain through generated verifiers, not mocks. What remains is
 external review, then contact with reality.
 
 **What exists.** Four Noir/UltraHonk circuits (withdrawal, ragequit, escrow, registration); the
 identity registry, pool, entrypoint and title ledger; and a wallet holding one BIP39 seed in the
-device secure enclave, from which every other key derives.
+device secure enclave, from which every key derives.
 
 ### Milestone 1 — Security audit (the gate for everything else)
 
-Nothing goes near a real user before independent review. Scope, in descending order of risk:
+Nothing reaches a real user before independent review. Scope, by descending risk:
 
 **Circuits.** A soundness bug here is silent and total — a wrong constraint lets an attacker mint
-value or bypass identity while every test passes. `withdraw_identity`, `escrow_envelope` (the
-sealing that makes an identity revocable), `ragequit`, and the inherited passport circuits.
+value or bypass identity while every test passes. `withdraw_identity`, `escrow_envelope`,
+`ragequit`, and the inherited passport circuits.
 
-**The identity registry.** Its guarantees are the product: registration is permissionless and cannot
-be refused; exclusion requires an affirmative, rule-citing act; a stale root expires so revocation
-cannot be evaded, while the newest never expires so inaction cannot block anyone. Each is a property
-an auditor should try to break.
+**The identity registry.** Its guarantees are the product: registration cannot be refused; exclusion
+requires an affirmative, rule-citing act; a stale root expires so revocation cannot be evaded, while
+the newest never expires so inaction cannot block anyone. Each is a property an auditor should try
+to break.
 
 **The pool.** Deposit/withdraw accounting, nullifier handling, the change-note path and ragequit
 payouts — inherited from Privacy Pools, plus our modifications.
@@ -76,52 +76,60 @@ We will also commission a review of the trust model itself — not "is the code 
 ### Milestone 2 — Hardware bring-up
 
 The wallet cannot run on our development machines (the identity SDK ships device-only binaries), and
-NFC passport reading is not implemented at all. This milestone implements NFC chip reading against
-real passports from several issuing states, verifies the enclave-backed key path on physical
-devices, and confirms a phone-generated proof verifies on-chain. Passports vary in ways specs
-do not capture, so this needs real documents, not test vectors.
+NFC passport reading is not implemented. This milestone implements NFC reading against real
+passports from several issuing states, verifies the enclave-backed key path on physical devices, and
+confirms a phone-generated proof verifies on-chain. Passports vary in ways specs do not capture, so
+this needs real documents, not test vectors.
 
 ### Milestone 3 — Closed pilot on testnet
 
-A small cohort of consenting users, no real value at risk. Full round trip: scan a passport,
-register, deposit, withdraw to a fresh address, and confirm an observer holding the whole chain
-cannot link the two. We measure proving time on mid-range devices, not flagships — the population
-that most needs this does not carry new hardware.
+A small consenting cohort, no real value at risk. Full round trip: scan a passport, register,
+deposit, withdraw to a fresh address, and confirm an observer holding the whole chain cannot link
+the two. We measure proving time on mid-range devices, not flagships — the population that most
+needs this does not carry new hardware.
 
 ### Milestone 4 — Property, capital, and lending
 
-The title ledger exists; the registry bridge does not. This milestone builds the notary attestation
-path — automated indexing of official registry portals through a decentralised oracle network, where
-every node must independently fetch and produce a byte-identical result before anything is recorded,
-so a notary's licence status rests on consensus rather than on any single operator's assertion — plus
-the lien and mortgage lifecycle.
+The title ledger exists; the registry bridge does not. Iran's cadastre (*Sabt-e Asnad va Amlak*,
+سازمان ثبت) already exposes tiered access we build on rather than replace:
 
-It also integrates the capital layer: our dollar pool, with diversified reserves and a redemption
-schedule that is a maturity ladder rather than an at-will promise. That matters for mortgages
-specifically — a mortgage is long-duration, and funding one from capital withdrawable on demand is
-the mismatch that breaks lenders. Loans are collateralised by the titles above, the property
-identified only by an opaque pseudonym, so the pool verifies a lien is unique and unencumbered
-without learning which building it is. **The legal machinery has to work, or none of the rest matters** — a foreclosure unenforceable in a
-real court is a loan nobody funds, so this milestone is as much legal as technical. Two things make
-it tractable. The enforcement path already exists as public institutions — judicial
-process servers, state auction platforms, licensed appraisers — and the protocol interfaces with
-them rather than replacing them. And at origination the borrower executes an irrevocable assignment
-of the deed, held in escrow; that instrument lets a lender enforce on default without the borrower's
-later cooperation, and it is a form the courts already recognise rather than a novel construct we
-ask a judge to accept.
+- **Tier 1, the owner** — *Sabt-e Man* (my.ssaa.ir): every parcel and encumbrance under their
+  national ID (*Kārt-e Melli*, کد ملی).
+- **Tier 2, lenders and public** — *Tasdiq-e Asalat* (تصدیق اصالت), deed authenticity from the
+  18-digit *Shenaseh Yekta* plus the owner's national ID.
+- **Tier 3, licensed notaries** (*Sardaftar*, سردفتر) — ssar.ir: query encumbrances (*Bāzdāsht*,
+  بازداشت), register mortgages, execute binding transfers.
 
-**Accountability without exposure.** A fraudulent attestation injures the lenders who underwrote
-against it as much as the owner, and both must be able to act — but notaries can be targeted for
-serving a system like this, so their participation must not be public. Same construction as
-elsewhere in the protocol: a notary proves in zero knowledge that they are one of the licensed
-notaries without revealing which, and their attestation carries an encrypted identity a quorum of
-legal guardians can open **only** on a fraud finding. Normal operation reveals nothing; misconduct
-is attributable. And privacy from the public is not privacy from a counterparty — a lender learns
-which property they appraised — so the party that lost money holds its evidence.
+**That division decides the design.** Anyone can verify a deed, so no lender need trust a notary's
+word about a property. What only a notary can do is *make a lien legally exist* — a mortgage
+registered by anyone else is void. So we prove notary licensing on-chain by indexing the official
+register through a decentralised oracle network where every node must return byte-identical data:
+the narrow claim that the party executing the registration was entitled to. Deed truth comes from
+Tier 2, independently.
 
-We will not claim this part is finished. Legal counsel per jurisdiction is budgeted, and where the
-assignment instrument proves unenforceable we would ship the identity and title layers without the
-lending layer rather than pretend otherwise.
+This also gives fraud detection needing no accuser: a notary either registered the lien or did not,
+and the register says which. An oracle re-query catches a missing encumbrance mechanically, from
+state data, identifying nobody.
+
+**Notaries can be targeted for serving a system like this**, so their participation stays private:
+a notary proves in zero knowledge that they are one of the licensed set without revealing which, and
+their attestation carries an encrypted identity that a quorum of legal guardians can open **only** on
+a proven discrepancy. Normal operation reveals nothing; misconduct is attributable.
+
+**We distribute, we do not originate.** Loans are written by locally licensed institutions — proven
+real through their financial regulator's public register, the same oracle pattern, a separate source
+— who verify the deed, appraise, underwrite and service. They post first-loss capital, slashed
+automatically on a title defect. No party vouches for another: three independent state registers,
+each attested separately. Our dollar pool then funds the loan, its reserves diversified and its
+redemption schedule a maturity ladder, because a mortgage is long-duration and funding one from
+capital withdrawable on demand is the mismatch that breaks lenders.
+
+Foreclosure interfaces with existing institutions — *Ejra-ye Ahkam* (اجرای احکام) for judicial
+enforcement via adliran.ir, *Mozāyedeh* (مزایده) public auctions via setadiran.ir — and at
+origination the borrower executes an irrevocable assignment (*Vekālat-nāmeh-ye Belā-'Azl*,
+وکالت‌نامه بلاعزل) held in escrow, a form the courts already recognise. Legal counsel per
+jurisdiction is budgeted; where that instrument proves unenforceable we ship identity and title
+without lending rather than pretend otherwise.
 
 ### Milestone 5 — Field testing
 
@@ -130,8 +138,8 @@ The first deployment with real value, deliberately small and reversible. What we
 - **Audit remediation complete**, with fixes re-reviewed.
 - **Devices and documents** — Android and iOS handsets, and passports from multiple issuing states,
   since MRZ layouts and chip behaviour differ.
-- **A pilot cohort** recruited through partners the users already trust, with informed consent about
-  residual risk and a documented exit path.
+- **A pilot cohort** recruited through partners users already trust, with informed consent and a
+  documented exit path.
 - **Legal counsel** in the target jurisdiction for the enforcement layer.
 - **Monitoring that does not itself surveil** — we must know the system works without collecting the
   data it exists to protect. That is a constraint on our own telemetry.
@@ -148,29 +156,35 @@ liberty rather than money.
 
 ## 3. Technical feasibility *(300 max)*
 
-**Technologies.** Noir with the UltraHonk proving system for circuits; Solidity for on-chain
-verification; React Native with platform secure enclaves for the client. Identity follows ICAO 9303,
-the passport standard, so the trust root is the issuing state's own signature rather than anything we
-control.
+**Technologies.** Noir/UltraHonk circuits; Solidity verification; React Native with platform secure
+enclaves. Identity follows ICAO 9303, so the trust root is the issuing state's signature, not
+anything we control.
 
-**Capacity.** The system is already built and tested, which is the strongest available evidence that
-we can build it. Along the way we have repeatedly found and fixed subtle defects — a proof binding to
-an unconstrained field, a registry whose stale roots would have let revocation be evaded, a
-commitment scheme that hid the property while silently permitting the same parcel to be titled twice.
-That record of finding our own errors matters more than a claim of correctness.
+**Capacity.** The system is built and tested, which is the strongest evidence we can build it. Along
+the way we found and fixed subtle defects — a proof binding to an unconstrained field, stale roots
+that would have let revocation be evaded, a commitment scheme that hid the property while permitting
+the same parcel to be titled twice. That record of finding our own errors matters more than a claim
+of correctness.
 
-**Dependencies.** The proving toolchain, the passport standard, and the target jurisdiction's
-registry portals. The first two are stable and open. The third is not under our control and is the
-main external risk.
+**Dependencies.** The proving toolchain and passport standard, both stable and open; the
+jurisdiction's registry portals, outside our control; and, for lending only, a licensed originator
+willing to partner.
 
-**Risks and mitigation.** *Registry access changes or is withdrawn* — the local integration sits
-behind an interface, so a jurisdiction is configuration rather than a fork. *Proving is too slow on
-low-end phones* — measured on real mid-range devices during the pilot; the withdrawal circuit has
-already been reduced by 43% and can be reduced further. *A circuit soundness bug* — the reason audit
-is the first milestone, not the last. *Key loss* — every key derives from one enclave-held seed, so
-recovery is seed recovery; note ownership is re-derivable by scanning, with nothing else to lose.
+**Risks and mitigation.** *No originator partners with us* — the likeliest reason lending never
+ships, and a business problem rather than a technical one; mitigated by scoping identity and title to
+stand alone, since provable private ownership is useful without anyone lending against it. *Portal
+changes break the scrapers* — versioned workflows with a timelock, so an update is visible before it
+takes effect. *Registry access withdrawn* — local integration sits behind an interface, so a
+jurisdiction is configuration, not a fork. *Proving too slow* — measured on mid-range devices in the
+pilot; the withdrawal circuit is already 43% smaller. *A soundness bug* — why audit is first. *Key
+loss* — every key derives from one enclave-held seed, and notes are re-derivable by scanning.
 
-*(≈270 words)*
+**One bound we state rather than hide.** All three registers are the state's own: strong against
+private fraud — a bribed notary, a fake originator, a forged deed — and worth nothing against a state
+fabricating credentials. We protect privacy *from* the state, not the protocol's integrity
+*against* it.
+
+*(≈295 words)*
 
 ---
 
@@ -259,7 +273,7 @@ one where a test had silently stopped testing anything.
 
 **Audit before users.** No real value until independent review is complete and remediated.
 
-*(≈270 words)*
+*(≈295 words)*
 
 ---
 

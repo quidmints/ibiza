@@ -25,9 +25,17 @@
  *     can produce a withdrawal the chain accepts.
  *
  * USAGE (from the repo root):
- *   cd frontend/identity-wallet && npx tsc src/pp/withdrawWitness.ts \
- *     src/postman/identityAsp.ts --outDir <build> --module commonjs --target es2022 \
- *     --moduleResolution node --esModuleInterop --skipLibCheck
+ *   cd frontend/identity-wallet && npx tsc src/pp/withdrawWitness.ts --outDir <build> \
+ *     --rootDir src --module commonjs --target es2022 --moduleResolution node --esModuleInterop \
+ *     --skipLibCheck
+ *
+ *   --rootDir src is REQUIRED. With a single input file tsc infers the root as src/pp and emits a
+ *   FLAT build, so the pp/ prefix this script requires disappears. It used to be implicit only
+ *   because two files from different directories were compiled together.
+ *
+ *   <build> MUST sit INSIDE frontend/identity-wallet (e.g. ./build), or the compiled modules cannot
+ *   resolve @iden3/js-crypto - node walks UP from the file's own directory looking for
+ *   node_modules, and tools/build has none above it.
  *   node tools/build-withdrawal-fixture.js --build <build>
  *
  * then, per fixture:
@@ -53,7 +61,21 @@ if (!fs.existsSync(BUILD)) {
 
 const { masterKeysFromMnemonic, depositSecrets, commitment, nullifierHash } = require(path.join(BUILD, 'pp/notes.js'));
 const { StateTree } = require(path.join(BUILD, 'pp/stateTree.js'));
-const { IdentityAspTree } = require(path.join(BUILD, 'postman/identityAsp.js'));
+/*
+ * The identity witness is READ FROM DISK, not built here.
+ *
+ * It is emitted by IdentityRegistry.t.sol::test_EmitIdentityWitnessFixture, which registers three
+ * identities through the REAL registry and calls getProof. This script cannot build it: the
+ * identity tree is a @solarity SparseMerkleTree and there is deliberately no JS reimplementation of
+ * one (see frontend/identity-wallet/src/pp/identityProof.ts) - a second sparse trie would be a
+ * permanent byte-compatibility liability, and a witness built here would only prove that two of our
+ * own implementations agree. Regenerate it with:
+ *
+ *   forge test --match-test test_EmitIdentityWitnessFixture
+ */
+const IDENTITY_WITNESS = path.join(
+  __dirname, '..', 'backend', 'contracts', 'test', 'fixtures', 'identity_witness.json',
+);
 const { buildWithdrawalWitness } = require(path.join(BUILD, 'pp/withdrawWitness.js'));
 // holderRoot derivation comes from the ASSEMBLER ITSELF (holderRootFromSk), not a local copy and
 // not the SDK. The ASP tree is keyed by this value, so the tree-builder and the circuit must agree
@@ -71,6 +93,30 @@ const keys = masterKeysFromMnemonic(MNEMONIC);
 const SK_IDENTITY = 1234n;
 const HOLDER_ROOT = holderRootFromSk(SK_IDENTITY);
 
+// escrow0's revocation secret. Its Poseidon commitment IS the identity tree's key, so this MUST be
+// the secret behind the commitment the emitted witness proves inclusion for - see
+// tools/build-escrow-fixtures.js.
+const REVOCATION_SECRET = 987654321n;
+
+if (!fs.existsSync(IDENTITY_WITNESS)) {
+  console.error(
+    `No identity witness at ${IDENTITY_WITNESS}.\n` +
+    'Run:  forge test --match-test test_EmitIdentityWitnessFixture',
+  );
+  process.exit(1);
+}
+const iw = JSON.parse(fs.readFileSync(IDENTITY_WITNESS, 'utf8'));
+const identity = {
+  identityRoot: BigInt(iw.root),
+  siblings: iw.siblings.map((x) => BigInt(x)),
+};
+if (identity.siblings.every((x) => x === 0n)) {
+  throw new Error(
+    'identity witness is DEGENERATE - every sibling is zero, so no sibling would ever be hashed. ' +
+    'The emitter must register more than one identity.',
+  );
+}
+
 const CONTEXT = 42_424_242n;
 const CIRCUIT_DIR = path.join(__dirname, '..', 'backend', 'circuits', 'withdraw_identity');
 
@@ -82,33 +128,30 @@ function buildTrees(spentCommitment) {
   const stateLeafIndex = BigInt(stateTree.leaves.length - 1);
   stateTree.insert(444n); // further activity after ours
 
-  const aspTree = new IdentityAspTree([777n, 888n]);
-  aspTree.insert(HOLDER_ROOT);
-  aspTree.insert(999n);
-
-  return { stateTree, stateLeafIndex, aspTree };
+  return { stateTree, stateLeafIndex };
 }
 
 function emit(name, note, withdrawnValue) {
-  const { stateTree, stateLeafIndex, aspTree } = buildTrees(note.commitment);
+  const { stateTree, stateLeafIndex } = buildTrees(note.commitment);
 
   const w = buildWithdrawalWitness({
-    note, stateLeafIndex, stateTree, aspTree,
-    masterKeys: keys, skIdentity: SK_IDENTITY, withdrawnValue, context: CONTEXT,
-    withdrawalIndex: 0n,
+    note, stateLeafIndex, stateTree,
+    masterKeys: keys, identity, revocationSecret: REVOCATION_SECRET,
+    withdrawnValue, context: CONTEXT, withdrawalIndex: 0n,
   });
 
   // Independent cross-checks - not "the assembler agrees with itself".
   const eq = (a, b, m) => { if (a !== b) throw new Error(`${name}: ${m}: ${a} != ${b}`); };
   eq(w.pubSignals[1], nullifierHash(note.nullifier), 'nullifier hash');
   eq(w.pubSignals[3], stateTree.root, 'state_root');
-  eq(w.pubSignals[5], aspTree.root, 'asp_root');
+  eq(w.pubSignals[5], identity.identityRoot, 'identity_root');
   eq(w.pubSignals[0], commitment(note.value - withdrawnValue, note.label, w.changeNote), 'change note');
   eq(stateTree.leaves[Number(stateLeafIndex)], note.commitment, 'state leaf index');
 
-  // The guard this whole file exists for.
-  if (w.pubSignals[4] === 0n || w.pubSignals[6] === 0n) {
-    throw new Error(`${name}: DEGENERATE - a tree has depth 0, so no sibling is hashed. Add filler leaves.`);
+  // The guard this whole file exists for. The identity side is checked at load (siblings all zero);
+  // only the state tree's depth is a public signal now.
+  if (w.pubSignals[4] === 0n) {
+    throw new Error(`${name}: DEGENERATE - the state tree has depth 0, so no sibling is hashed. Add filler leaves.`);
   }
 
   const toml = Object.entries(w.inputs).map(([k, v]) =>
@@ -117,9 +160,9 @@ function emit(name, note, withdrawnValue) {
   const out = path.join(CIRCUIT_DIR, `Prover.${name}.toml`);
   fs.writeFileSync(out, toml);
 
-  console.log(`\n${name}:  state_depth=${w.pubSignals[4]}  asp_depth=${w.pubSignals[6]}`);
+  console.log(`\n${name}:  state_depth=${w.pubSignals[4]}`);
   ['new_commitment', 'existing_nullifier_hash', 'withdrawn_value', 'state_root',
-   'state_tree_depth', 'asp_root', 'asp_tree_depth', 'context']
+   'state_tree_depth', 'identity_root', 'context']
     .forEach((n, i) => console.log(`  [${i}] ${n} = 0x${w.pubSignals[i].toString(16).padStart(64, '0')}`));
   console.log(`  -> ${path.relative(path.join(__dirname, '..'), out)}`);
 }

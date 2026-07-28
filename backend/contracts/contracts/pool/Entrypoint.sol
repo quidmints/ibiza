@@ -31,7 +31,6 @@ import {ProofLib} from './lib/ProofLib.sol';
 import {IEntrypoint} from 'interfaces/IEntrypoint.sol';
 import {IPrivacyPool} from 'interfaces/IPrivacyPool.sol';
 import {IEvidenceRegistry} from '@rarimo/evidence-registry/interfaces/IEvidenceRegistry.sol';
-import {EIP712Upgradeable} from '@oz-upgradeable/utils/cryptography/EIP712Upgradeable.sol';
 import {ECDSA} from '@oz/utils/cryptography/ECDSA.sol';
 
 /**
@@ -41,7 +40,6 @@ import {ECDSA} from '@oz/utils/cryptography/ECDSA.sol';
 contract Entrypoint is
   AccessControlUpgradeable,
   UUPSUpgradeable,
-  EIP712Upgradeable,
   ReentrancyGuardTransient,
   IEntrypoint
 {
@@ -111,11 +109,6 @@ contract Entrypoint is
     // UUPSUpgradeable has no storage/init step in OZ 5.6.1 (it's a thin, stateless wrapper);
     // ReentrancyGuardTransient is likewise stateless (EIP-1153 transient storage).
     __AccessControl_init();
-    // Domain separator for `admitIdentityWithAuthorization`'s off-chain postman signatures. Binds
-    // each authorization to THIS contract and chain, so a signature cannot be replayed onto another
-    // deployment of the same code.
-    __EIP712_init('QuidPrivacyPoolEntrypoint', '1');
-
     // Initialize roles
     _setRoleAdmin(DEFAULT_ADMIN_ROLE, _OWNER_ROLE);
     _setRoleAdmin(_OWNER_ROLE, _OWNER_ROLE); // Owner can manage owner role

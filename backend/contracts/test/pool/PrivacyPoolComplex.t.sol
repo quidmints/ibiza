@@ -21,10 +21,9 @@ contract TestToken is ERC20 {
 /// Stands in for the Entrypoint AND both registries - these cases are about ERC20 asset movement,
 /// not membership policy, and the proof paths are covered end to end elsewhere.
 contract MinimalEntrypoint {
-  function isKnownAspRoot(uint256) external pure returns (bool) {
-    return true;
-  }
-
+  /// Unconditional by design: this suite has no withdraw tests, so the identity gate is never the
+  /// thing under test here. Checked, not assumed - PrivacyPoolSimple's equivalent DID need to
+  /// honour its `known` mapping, because that suite perturbs the identity root and expects a revert.
   function isValidRoot(bytes32) external pure returns (bool) {
     return true;
   }
@@ -59,18 +58,18 @@ contract PrivacyPoolComplexTest is Test {
       address(new NoirVerifierMock()),
       address(new NoirVerifierMock()),
       address(token),
-      address(entrypoint),
       address(entrypoint)
     );
 
     token.mint(address(entrypoint), VALUE * 10);
   }
 
-  /// @notice The constructor wiring nothing else exercises - both registries and the asset.
-  function test_ConstructorWiresAssetAndRegistries() public view {
+  /// @notice The constructor wiring nothing else exercises - the identity registry and the asset.
+  /// @dev ONE registry where there were two: the ASP tree and the revocation list merged into a
+  ///      single identity tree, with status carried in the leaf value (TODO.md sec. 2.13k).
+  function test_ConstructorWiresAssetAndRegistry() public view {
     assertEq(pool.ASSET(), address(token));
-    assertEq(address(pool.ASP_REGISTRY()), address(entrypoint));
-    assertEq(address(pool.REVOCATION_REGISTRY()), address(entrypoint));
+    assertEq(address(pool.IDENTITY_REGISTRY()), address(entrypoint));
   }
 
   /// @notice An ERC20 pool must refuse the native asset outright - otherwise its address becomes a
@@ -83,7 +82,6 @@ contract PrivacyPoolComplexTest is Test {
       address(new NoirVerifierMock()),
       address(new NoirVerifierMock()),
       Constants.NATIVE_ASSET,
-      address(entrypoint),
       address(entrypoint)
     ) {
       fail('an ERC20 pool was constructed with the NATIVE asset');

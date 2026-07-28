@@ -5,6 +5,7 @@ import {Test} from 'forge-std/Test.sol';
 import {ERC1967Proxy} from '@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol';
 
 import {IdentityRegistry} from '../../contracts/registry/IdentityRegistry.sol';
+import {SparseMerkleTree} from '@solarity/solidity-lib/libs/data-structures/SparseMerkleTree.sol';
 import {EscrowEnvelopeHonkVerifier} from '../../contracts/registry/verifiers/EscrowEnvelopeHonkVerifier.sol';
 import {HolderStateKeeperMock} from '../../contracts/mock/holder/HolderStateKeeperMock.sol';
 import {PoseidonSMTMock} from '../../contracts/mock/state/PoseidonSMTMock.sol';
@@ -47,6 +48,12 @@ contract IdentityRegistryTest is Test {
   bytes32 internal constant ICAO = 0x2c50ce3aa92bc3dd0351a89970b02630415547ea83c487befbc8b1795ea90c45;
   uint256 internal constant MAX_ROOT_AGE = 1 days;
 
+  /// MUST equal withdraw_identity's IDENTITY_TREE_DEPTH and identityProof.ts's IDENTITY_TREE_DEPTH.
+  /// Solarity's maxDepth is a CAP, so the ROOT is the same at any height - but a shallower registry
+  /// would reject a deep insert the circuit accepts, and an emitted witness longer than the
+  /// circuit's fixed sibling array cannot be padded into one.
+  uint32 internal constant IDENTITY_TREE_DEPTH = 32;
+
   address internal CONTROLLER = address(0xC0FFEE);
   bytes32 internal constant PREDICATE_SANCTIONS = keccak256('OFAC_SDN');
   bytes32 internal constant PREDICATE_DOC_INVALID = keccak256('DOC_INVALID');
@@ -84,7 +91,7 @@ contract IdentityRegistryTest is Test {
       CONTROLLER,
       CONTROLLER_KEY_X,
       CONTROLLER_KEY_Y,
-      20,
+      IDENTITY_TREE_DEPTH,
       MAX_ROOT_AGE,
       preds
     );
@@ -95,11 +102,20 @@ contract IdentityRegistryTest is Test {
   }
 
   function _proof() internal view returns (bytes memory) {
-    return vm.readFileBinary('test/fixtures/escrow_envelope.proof');
+    return _proofAt(0);
   }
 
-  function _publicInputs() internal view returns (bytes32[] memory _inputs) {
-    bytes memory _raw = vm.readFileBinary('test/fixtures/escrow_envelope.public');
+  function _proofAt(uint256 _i) internal view returns (bytes memory) {
+    return vm.readFileBinary(string.concat('test/fixtures/escrow_envelope', vm.toString(_i), '.proof'));
+  }
+
+  function _publicInputs() internal view returns (bytes32[] memory) {
+    return _publicInputsAt(0);
+  }
+
+  function _publicInputsAt(uint256 _n) internal view returns (bytes32[] memory _inputs) {
+    bytes memory _raw =
+      vm.readFileBinary(string.concat('test/fixtures/escrow_envelope', vm.toString(_n), '.public'));
     _inputs = new bytes32[](12);
     for (uint256 _i = 0; _i < 12; _i++) {
       bytes32 _w;
@@ -112,8 +128,50 @@ contract IdentityRegistryTest is Test {
 
   /// Plant the document the fixture's escrow refers to, so `register` finds it bound.
   function _plantDocument() internal {
-    bytes32[] memory p = _publicInputs();
-    sk.addDocument(bytes32(uint256(0xD0C)), p[4] /* dg1Hash */, p[2] /* holderRoot */, sk.DOC_PASSPORT(), 111, 0);
+    _plantDocumentAt(0);
+  }
+
+  function _plantDocumentAt(uint256 _n) internal {
+    bytes32[] memory p = _publicInputsAt(_n);
+    sk.addDocument(
+      bytes32(uint256(0xD0C) + _n), p[4] /* dg1Hash */, p[2] /* holderRoot */, sk.DOC_PASSPORT(), 111 + _n, 0
+    );
+  }
+
+  /*
+   * EMITS the identity inclusion witness the withdrawal fixture is built from.
+   *
+   * WHY THE TEST SUITE GENERATES IT. The wallet never rebuilds this tree - it asks the contract,
+   * because a second implementation of a sparse trie is a permanent byte-compatibility liability
+   * (see pp/identityProof.ts). The FIXTURE has to come from the same place for the same reason: a
+   * witness built off-chain would only ever prove that two of our own implementations agree.
+   * Regenerating it inside the suite means it cannot go stale against the contract.
+   *
+   * THREE REGISTRATIONS, NOT ONE. A single-leaf SMT has an EMPTY inclusion path, so a withdrawal
+   * built on it would hash no siblings and prove nothing about the Merkle path - the same
+   * degeneracy tools/build-withdrawal-fixture.js already refuses to emit for the state tree. Each
+   * one goes through the real `register` with its own genuine escrow proof; there is deliberately
+   * no privileged insert to shortcut with.
+   */
+  function test_EmitIdentityWitnessFixture() public {
+    for (uint256 i = 0; i < 3; i++) {
+      _plantDocumentAt(i);
+      registry.register(_proofAt(i), _publicInputsAt(i));
+    }
+    assertEq(registry.registeredCount(), 3, 'expected three genuine registrations');
+
+    bytes32 commitment = _publicInputsAt(0)[3];
+    SparseMerkleTree.Proof memory p = registry.getProof(commitment);
+
+    assertTrue(p.existence, 'the primary identity is not in the tree');
+    assertEq(p.value, bytes32(0), 'the primary identity is not CLEAN');
+    assertGt(p.siblings.length, 0, 'DEGENERATE witness - no sibling would ever be hashed');
+
+    string memory json = 'identityWitness';
+    vm.serializeBytes32(json, 'root', p.root);
+    vm.serializeBytes32(json, 'commitment', commitment);
+    string memory out = vm.serializeBytes32(json, 'siblings', p.siblings);
+    vm.writeJson(out, 'test/fixtures/identity_witness.json');
   }
 
   // ── the happy path ──────────────────────────────────────────────────────────────────────
@@ -217,7 +275,7 @@ contract IdentityRegistryTest is Test {
     // even when the guard is working - a false failure that hides a working guard.
     address verifier_ = address(new EscrowEnvelopeHonkVerifier());
     try new IdentityRegistry(
-      verifier_, address(sk), CONTROLLER, CONTROLLER_KEY_X, CONTROLLER_KEY_Y, 20, MAX_ROOT_AGE, preds
+      verifier_, address(sk), CONTROLLER, CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
     ) {
       fail('a zero predicate was accepted at deploy - revocation could write the CLEAN state');
     } catch {}

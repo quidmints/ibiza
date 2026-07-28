@@ -1,38 +1,58 @@
-// Identity-based withdraw circuit - the rescoped P2 port (PP-NOIR-FUSION.md P2 + the 2026-07-24
-// "build the identity-based upgrade... using ERC identity standard" directive).
+// Identity-based withdraw circuit.
 //
-// NOT YET nargo-compiled/tested (standing constraint this session: don't run nargo without
-// approval - see PP-NOIR-FUSION.md's P1 log for the pattern this repo follows once that approval
-// is given: compile, `nargo test`, differential-check against the on-chain reference before
-// trusting it for real value). Written against the SAME gadgets that already passed differential
-// tests (pp::commitment, pp::lean_imt) plus the new pp::identity_asp (cross-checked in Node against
-// the wallet's real derivation, see identity_asp.nr's own test) - not invented from scratch.
+// ONE IDENTITY TREE, AND NO sk_identity (TODO.md sec. 2.13k). This circuit previously proved TWO
+// separate things about identity: inclusion of `holder_root` in an ASP tree, and non-inclusion of
+// that same value in a separate revocation tree. Both collapse into a SINGLE INCLUSION PROOF once
+// status lives in the leaf VALUE: `commitment -> 0` means registered and clean, and a non-zero
+// value is the revocation predicate. There is no state a revoked identity can prove.
 //
-// PUBLIC I/O pinned to PrivacyPool.sol's ProofLib.WithdrawProof.pubSignals (8 elements, unchanged
-// order/count from upstream - the contract does not need to change):
+// MEASURED: 43,772 -> 24,812 ACIR opcodes, -43%. Two sources - the ASP scalar multiplication
+// disappears entirely (~11.8k, since `holder_root` is no longer derived here), and a LeanIMT
+// inclusion plus an SMT exclusion (~18.5k combined) become one SMT inclusion (~11.9k).
+//
+// WHY DROPPING sk_identity IS SOUND. Identity is proven ONCE, at escrow: `escrow_envelope` proves
+// `holder_root` derives from `sk_identity`, binds the authenticated MRZ, and IdentityRegistry
+// additionally requires that MRZ to be a document already registered through the ICAO-verified
+// path. A commitment can therefore only enter the tree backed by a real, uniquely-bound passport.
+// By withdrawal time, knowing the escrowed secret IS the proof of clearance - and knowing it
+// authorises nothing else, since spending a note still requires that note's own secrets.
+//
+// PUBLIC I/O pinned to ProofLib.WithdrawProof.pubSignals - SEVEN elements now, down from nine:
 //   [0] new_commitment          [4] state_tree_depth
-//   [1] existing_nullifier_hash [5] asp_root       <- now an IDENTITY tree root, not a label tree
-//   [2] withdrawn_value         [6] asp_tree_depth
-//   [3] state_root              [7] context
+//   [1] existing_nullifier_hash [5] identity_root   <- replaces asp_root AND revocation_root
+//   [2] withdrawn_value         [6] context
+//   [3] state_root
+// `asp_tree_depth` is gone with the LeanIMT identity tree; the SMT depth is FIXED, so there is no
+// prover-supplied depth to reason about at all.
 //
 // `context` is a plain pass-through public signal - PrivacyPool.sol independently recomputes and
-// checks it (keccak256(abi.encode(withdrawal, scope)) % SNARK_SCALAR_FIELD, see ProofLib.context()
-// and PrivacyPool.validWithdrawal) against this same value, so the circuit doesn't need to
-// constrain it against anything else internally; it only needs to be bound as a public input,
-// which `pub` on a Noir main() parameter already guarantees regardless of whether the body
-// references it.
+// checks it (keccak256(abi.encode(withdrawal, scope)) % SNARK_SCALAR_FIELD) against this same
+// value, so the circuit only needs it bound as a public input, which `pub` already guarantees.
 use pp::commitment::commitment_hasher;
-use pp::identity_asp::identity_asp_membership;
+use pp::envelope::secret_commitment;
 use pp::lean_imt::lean_imt_inclusion;
 use pp::smt::smt_verifier_full;
 
-/// SMT depth of the revocation registry. MUST equal RevocationRegistry's constructor `treeHeight_`
-/// and the wallet's REVOCATION_TREE_DEPTH. A mismatch fails every proof with no useful diagnostic.
-global REVOCATION_TREE_DEPTH: u32 = 20;
+/// SMT depth of the identity registry. MUST equal IdentityRegistry's constructor `treeHeight_` and
+/// the wallet's IDENTITY_TREE_DEPTH. A mismatch fails every proof with no useful diagnostic.
+///
+/// 32, not 20: this tree holds EVERY registered identity, not just revoked ones, so it is the large
+/// tree. Depth 20 caps at ~1M identities and would be cheaper in-circuit (7,889 vs 11,856 opcodes),
+/// but raising a tree's depth later invalidates every proof and forces a migration.
+global IDENTITY_TREE_DEPTH: u32 = 32;
 
-/// `fnc = 1` selects EXCLUSION in smt_verifier_full. Named because passing 0 here would silently
-/// prove the opposite of what this circuit needs - that the identity IS revoked.
-global SMT_EXCLUSION: u1 = 1;
+/// `fnc = 0` selects INCLUSION in smt_verifier_full. Named because passing 1 here would prove the
+/// OPPOSITE - that the identity is absent from the registry - which is what an UNREGISTERED party
+/// can prove and a registered one cannot.
+global SMT_INCLUSION: u1 = 0;
+
+/// The value a clean identity carries. Non-zero means revoked, and the value IS the predicate.
+///
+/// This constant is the entire security of the merged design, so the two ways it could be hollow
+/// are tested directly in pp/src/smt.nr rather than assumed:
+///   - an ABSENT key cannot be proven present with value 0 (else every unregistered party passes)
+///   - a leaf holding a NON-ZERO value cannot claim 0 (else revocation is escapable)
+global STATUS_CLEAN: Field = 0;
 
 fn main(
     new_commitment: pub Field,
@@ -40,12 +60,11 @@ fn main(
     withdrawn_value: pub Field,
     state_root: pub Field,
     state_tree_depth: pub Field,
-    asp_root: pub Field,
-    asp_tree_depth: pub Field,
+    // Root of the identity registry. PrivacyPool checks it against IdentityRegistry.isValidRoot,
+    // which enforces MAX_ROOT_AGE - REQUIRED here, because this tree carries revocations and an
+    // unbounded-age root would let a revoked identity prove the clean state forever.
+    identity_root: pub Field,
     context: pub Field,
-    // Root of the revocation registry this proof asserts non-membership of. PrivacyPool checks it
-    // against RevocationRegistry.isValidRoot, so a stale or invented root is rejected on-chain.
-    revocation_root: pub Field,
     // The existing note being spent.
     value: Field,
     label: Field,
@@ -59,17 +78,10 @@ fn main(
     // re-derived per withdrawal index, per the wallet's withdrawalSecrets() convention.
     out_nullifier: Field,
     out_secret: Field,
-    // Identity-based ASP membership (the actual upgrade) - see pp/src/identity_asp.nr.
-    sk_identity: Field,
-    asp_leaf_index: Field,
-    asp_siblings: [Field; 32],
-    // Non-inclusion witness for the revocation registry, straight from its own getProof(). The
-    // registry is a @solarity SparseMerkleTree; `revocation_is_old0` is the INVERSE of solarity's
-    // `auxExistence` (see the wallet's src/pp/revocation.ts, where the conversion is done).
-    revocation_old_key: Field,
-    revocation_old_value: Field,
-    revocation_is_old0: u1,
-    revocation_siblings: [Field; REVOCATION_TREE_DEPTH],
+    // The escrowed revocation secret. Replaces sk_identity: its commitment is the registry key.
+    revocation_secret: Field,
+    // Inclusion witness for the identity registry, straight from its own getProof().
+    identity_siblings: [Field; IDENTITY_TREE_DEPTH],
 ) {
     // 1. Existing note: reconstruct its commitment + nullifier hash, and prove membership in the
     // PP state tree at `state_root`. `state_tree_depth` is a public signal (contract-selectable,
@@ -98,38 +110,23 @@ fn main(
     let out = commitment_hasher(new_value, label, out_nullifier, out_secret);
     assert(out.commitment == new_commitment);
 
-    // 4. Identity-based ASP membership: the withdrawer must know an sk_identity whose holder_root
-    // (Poseidon(pubkey(sk_identity)), the SAME value rarime's HolderStateKeeper anchors) is
-    // included in the identity ASP tree at `asp_root`. This is the actual upgrade over upstream's
-    // per-label membership check - see pp/src/identity_asp.nr for the full rationale.
-    let membership = identity_asp_membership(
-        sk_identity,
-        asp_root,
-        asp_leaf_index,
-        asp_siblings,
-        asp_tree_depth as u32,
-    );
-
-    // 5. NOT REVOKED. The withdrawer must show their holder_root is ABSENT from the revocation
-    // registry at `revocation_root`. This is the second half of TODO.md sec. 2.5: admission alone
-    // is no longer sufficient, and revocation is the only thing that can withdraw it.
+    // 4. REGISTERED AND NOT REVOKED, in one proof. The withdrawer must know the escrowed
+    // `revocation_secret` whose commitment sits in the identity registry carrying STATUS_CLEAN.
     //
-    // The key is `membership.holder_root` - the SAME value just proven to be an ASP member - not a
-    // free input. Letting the prover choose the key would make this vacuous: they would simply
-    // prove non-revocation of an identity that was never revoked and withdraw as someone else.
-    //
-    // smt_verifier_full's own `assert_keys_ok` additionally makes it impossible to claim exclusion
-    // while pointing at the very key being queried, so a revoked identity cannot pass by supplying
-    // itself as the occupying leaf.
-    let not_revoked = smt_verifier_full::<REVOCATION_TREE_DEPTH>(
-        revocation_root,
-        membership.holder_root,
+    // The key is DERIVED from the secret, never a free input. Letting the prover supply the key
+    // directly would make this vacuous: they would name any clean identity's commitment - all of
+    // which are public in the tree - and withdraw as someone else. Knowledge of the preimage is the
+    // whole gate.
+    let commitment = secret_commitment(revocation_secret);
+    let cleared = smt_verifier_full::<IDENTITY_TREE_DEPTH>(
+        identity_root,
+        commitment,
+        STATUS_CLEAN,
         0,
-        revocation_old_key,
-        revocation_old_value,
-        revocation_is_old0,
-        SMT_EXCLUSION,
-        revocation_siblings,
+        0,
+        0,
+        SMT_INCLUSION,
+        identity_siblings,
     );
-    assert(not_revoked == 1, "identity is revoked, or the non-inclusion witness is invalid");
+    assert(cleared == 1, "identity is unregistered or revoked, or the inclusion witness is invalid");
 }

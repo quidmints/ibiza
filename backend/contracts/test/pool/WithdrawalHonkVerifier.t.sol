@@ -57,13 +57,10 @@ contract WithdrawalHonkVerifierTest is Test {
   uint256 internal constant STATE_ROOT =
     4344985332480040079471765000069393836362873940320599351794913073184699413871;
   uint256 internal constant STATE_TREE_DEPTH = 3;
-  uint256 internal constant ASP_ROOT =
-    1522124106446982941850697475682832288439778505078879394740292496036204931764;
-  uint256 internal constant ASP_TREE_DEPTH = 2;
-  uint256 internal constant CONTEXT = 42_424_242;
+  uint256 internal constant IDENTITY_ROOT =
+    406318650705240760235803096569314685721996710259988392525137199379957793483;
+  uint256 internal constant CONTEXT = 42424242;
   /// Empty revocation registry: root 0, and an all-zero witness proves absence for every key
-  /// (pp/src/smt.nr::test_exclusion_against_the_empty_tree).
-  uint256 internal constant REVOCATION_ROOT = 0;
 
   function setUp() public {
     verifier = INoirVerifier(address(new WithdrawalHonkVerifier()));
@@ -77,10 +74,8 @@ contract WithdrawalHonkVerifierTest is Test {
       WITHDRAWN_VALUE,
       STATE_ROOT,
       STATE_TREE_DEPTH,
-      ASP_ROOT,
-      ASP_TREE_DEPTH,
-      CONTEXT,
-      REVOCATION_ROOT
+      IDENTITY_ROOT,
+      CONTEXT
     ];
   }
 
@@ -101,20 +96,16 @@ contract WithdrawalHonkVerifierTest is Test {
       WITHDRAWN_VALUE,
       STATE_ROOT,
       STATE_TREE_DEPTH,
-      ASP_ROOT,
-      ASP_TREE_DEPTH,
-      CONTEXT,
-      REVOCATION_ROOT
+      IDENTITY_ROOT,
+      CONTEXT
     ];
     assertEq(_p.newCommitmentHash(), NEW_COMMITMENT);
     assertEq(_p.existingNullifierHash(), EXISTING_NULLIFIER_HASH);
     assertEq(_p.withdrawnValue(), WITHDRAWN_VALUE);
     assertEq(_p.stateRoot(), STATE_ROOT);
     assertEq(_p.stateTreeDepth(), STATE_TREE_DEPTH);
-    assertEq(_p.ASPRoot(), ASP_ROOT);
-    assertEq(_p.ASPTreeDepth(), ASP_TREE_DEPTH);
+    assertEq(_p.identityRoot(), IDENTITY_ROOT);
     assertEq(_p.context(), CONTEXT);
-    assertEq(_p.revocationRoot(), REVOCATION_ROOT);
   }
 
   /*
@@ -130,7 +121,7 @@ contract WithdrawalHonkVerifierTest is Test {
    */
   function test_RejectsTamperedContext() public {
     ProofLib.WithdrawProof memory _p = _withdrawProof();
-    _p.pubSignals[7] = CONTEXT + 1;
+    _p.pubSignals[6] = CONTEXT + 1;
     _assertRejects(_p);
   }
 
@@ -144,7 +135,7 @@ contract WithdrawalHonkVerifierTest is Test {
   /// turns on - must not produce a passing proof.
   function test_RejectsTamperedAspRoot() public {
     ProofLib.WithdrawProof memory _p = _withdrawProof();
-    _p.pubSignals[5] = ASP_ROOT ^ 1;
+    _p.pubSignals[5] = IDENTITY_ROOT ^ 1;
     _assertRejects(_p);
   }
 
@@ -176,14 +167,13 @@ contract WithdrawalHonkVerifierTest is Test {
     19761324528885713390391631165680038172128702826549789957405969105810862789935;
   uint256 internal constant W_EXISTING_NULLIFIER_HASH =
     5483191249680064704425129569822560397968224872405526965537704682354244953720;
-  uint256 internal constant W_WITHDRAWN_VALUE = 0.3 ether;
+  uint256 internal constant W_WITHDRAWN_VALUE = 300000000000000000;
   uint256 internal constant W_STATE_ROOT =
     11922358609946525750179191892257841520060631680150773185653959528175536025855;
   uint256 internal constant W_STATE_TREE_DEPTH = 3;
-  uint256 internal constant W_ASP_ROOT =
-    1522124106446982941850697475682832288439778505078879394740292496036204931764;
-  uint256 internal constant W_ASP_TREE_DEPTH = 2;
-  uint256 internal constant W_CONTEXT = 42_424_242;
+  uint256 internal constant W_IDENTITY_ROOT =
+    406318650705240760235803096569314685721996710259988392525137199379957793483;
+  uint256 internal constant W_CONTEXT = 42424242;
 
   function _walletProof() internal view returns (ProofLib.WithdrawProof memory _p) {
     _p.proof = vm.readFileBinary('test/fixtures/withdraw_identity_wallet.proof');
@@ -193,10 +183,8 @@ contract WithdrawalHonkVerifierTest is Test {
       W_WITHDRAWN_VALUE,
       W_STATE_ROOT,
       W_STATE_TREE_DEPTH,
-      W_ASP_ROOT,
-      W_ASP_TREE_DEPTH,
-      W_CONTEXT,
-      REVOCATION_ROOT
+      W_IDENTITY_ROOT,
+      W_CONTEXT
     ];
   }
 
@@ -211,11 +199,18 @@ contract WithdrawalHonkVerifierTest is Test {
   /// here would fail; the suite would simply stop covering multi-level sibling hashing. That is
   /// the failure mode worth pinning: a green test that has quietly stopped testing anything.
   /// tools/build-withdrawal-fixture.js refuses to emit depth 0; this is the second line.
+  ///
+  /// COVERAGE MOVED, NOT DROPPED. The ASP tree's depth used to be a PUBLIC signal, so its
+  /// degeneracy could be asserted right here. The identity witness is now an SMT inclusion path
+  /// carried entirely in PRIVATE inputs (sec. 2.13k), so nothing about it is visible from
+  /// `pubSignals` and this test physically cannot see it. That check now lives at the two places
+  /// that CAN see it: WithdrawEndToEnd asserts the live registry returns a non-empty sibling path
+  /// for the fixture's commitment, and IdentityRegistry.t.sol's emitter asserts the same before
+  /// writing the witness at all. Recorded explicitly because a silently narrower degeneracy check
+  /// is exactly the "green test that stopped testing anything" this function exists to prevent.
   function test_FixturesAreNotDegenerate() public pure {
     assertGt(STATE_TREE_DEPTH, 0, 'baseline state tree is degenerate - no siblings hashed');
-    assertGt(ASP_TREE_DEPTH, 0, 'baseline ASP tree is degenerate - no siblings hashed');
     assertGt(W_STATE_TREE_DEPTH, 0, 'wallet state tree is degenerate - no siblings hashed');
-    assertGt(W_ASP_TREE_DEPTH, 0, 'wallet ASP tree is degenerate - no siblings hashed');
   }
 
   /// @notice The wallet path must be no weaker than the baseline against public-input tampering.
@@ -227,7 +222,7 @@ contract WithdrawalHonkVerifierTest is Test {
 
   function test_RejectsTamperedWalletContext() public {
     ProofLib.WithdrawProof memory _p = _walletProof();
-    _p.pubSignals[7] = W_CONTEXT + 1;
+    _p.pubSignals[6] = W_CONTEXT + 1;
     _assertRejects(_p);
   }
 

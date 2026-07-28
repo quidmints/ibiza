@@ -15,9 +15,10 @@ library ProofLib {
    * @notice Struct containing a Noir/Honk proof and public signals for withdrawal verification
    * @dev Withdrawal is identity-based-ASP (backend/circuits/withdraw_identity), Noir/Honk-proved,
    * NOT Groth16 - see State.sol's WITHDRAWAL_VERIFIER (INoirVerifier). `proof` is the serialized
-   * Honk proof (`bb prove_ultra_keccak_honk` output); `pubSignals` keeps the same 8-slot uint256
-   * layout/order the original Groth16 design used (contract-side accessors below are unchanged),
-   * converted to `bytes32[]` only at the verifier-call boundary (`publicInputsBytes32`) since
+   * Honk proof (`bb prove_ultra_keccak_honk` output); `pubSignals` is SEVEN slots as of the single
+   * identity tree (TODO.md sec. 2.13k) - `ASPRoot` + `revocationRoot` collapsed into one
+   * `identityRoot`, and `ASPTreeDepth` disappeared with the LeanIMT identity tree, since the SMT's
+   * depth is fixed. Converted to `bytes32[]` only at the verifier-call boundary (`publicInputsBytes32`) since
    * INoirVerifier.verify expects `bytes32[] calldata`, matching every other Noir verifier call in
    * this fusion (see RegistrationSimple._verifyNoirZKProof for the same pattern).
    * @param proof The serialized Honk proof bytes
@@ -27,14 +28,14 @@ library ProofLib {
    *        - [2] withdrawnValue: Amount being withdrawn
    *        - [3] stateRoot: Current state root of the privacy pool
    *        - [4] stateTreeDepth: Current depth of the state tree
-   *        - [5] ASPRoot: Current root of the IDENTITY-based Association Set tree
-   *        - [6] ASPTreeDepth: Current depth of the ASP tree
-   *        - [7] context: Context value for the withdrawal operation
-   *        - [8] revocationRoot: Root of the RevocationRegistry the proof shows NON-membership of
+   *        - [5] identityRoot: Root of the IdentityRegistry. The proof shows the withdrawer's
+   *              escrow commitment is present there carrying the CLEAN status (value 0), which is
+   *              simultaneously "registered" and "not revoked" - one proof, not two.
+   *        - [6] context: Context value for the withdrawal operation
    */
   struct WithdrawProof {
     bytes proof;
-    uint256[9] pubSignals;
+    uint256[7] pubSignals;
   }
 
   /**
@@ -46,8 +47,8 @@ library ProofLib {
    * @return _publicInputs The public signals as a dynamic bytes32 array, in the same order
    */
   function publicInputsBytes32(WithdrawProof memory _p) internal pure returns (bytes32[] memory _publicInputs) {
-    _publicInputs = new bytes32[](9);
-    for (uint256 _i = 0; _i < 9; ++_i) {
+    _publicInputs = new bytes32[](7);
+    for (uint256 _i = 0; _i < 7; ++_i) {
       _publicInputs[_i] = bytes32(_p.pubSignals[_i]);
     }
   }
@@ -98,22 +99,14 @@ library ProofLib {
   }
 
   /**
-   * @notice Retrieves the ASP root from the proof's public signals
+   * @notice Retrieves the identity registry root from the proof's public signals
    * @param _p The proof containing the public signals
    * @return The latest root of the ASP tree at time of proof generation
    */
-  function ASPRoot(WithdrawProof memory _p) internal pure returns (uint256) {
+  function identityRoot(WithdrawProof memory _p) internal pure returns (uint256) {
     return _p.pubSignals[5];
   }
 
-  /**
-   * @notice Retrieves the ASP tree depth from the proof's public signals
-   * @param _p The proof containing the public signals
-   * @return The depth of the ASP tree at time of proof generation
-   */
-  function ASPTreeDepth(WithdrawProof memory _p) internal pure returns (uint256) {
-    return _p.pubSignals[6];
-  }
 
   /**
    * @notice Retrieves the context value from the proof's public signals
@@ -121,15 +114,9 @@ library ProofLib {
    * @return The context value binding the proof to specific withdrawal data
    */
   function context(WithdrawProof memory _p) internal pure returns (uint256) {
-    return _p.pubSignals[7];
+    return _p.pubSignals[6];
   }
 
-  /// @notice Root of the revocation registry this proof asserts the withdrawer is ABSENT from.
-  /// @dev PrivacyPool checks it with RevocationRegistry.isValidRoot, so a stale or invented root is
-  ///      rejected on-chain - the circuit alone cannot know which roots the registry really had.
-  function revocationRoot(WithdrawProof memory _p) internal pure returns (uint256) {
-    return _p.pubSignals[8];
-  }
 
   /*///////////////////////////////////////////////////////////////
                           RAGEQUIT PROOF 

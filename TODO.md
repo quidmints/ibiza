@@ -1387,6 +1387,302 @@ leaf hash.
 `sk_identity`), regenerated fixtures + verifier, `ProofLib`/`PrivacyPool`/`IState` public-input
 changes (9 -> 7), and the wallet. The contract half is what landed here.
 
+### 2.13o REVERTED: the JS sparse Merkle tree. ASK THE CONTRACT (user, 2026-07-28)
+
+I hit the merge's blocker - no TS/JS SparseMerkleTree exists in this repo - by ADDING one
+(`@zk-kit/smt` + `postman/identityTree.ts`), then wrote a three-way validation
+(`tools/check-identity-tree.js`) against circomlibjs, solarity and the Noir gadget to manage the
+divergence risk. All 8 checks passed. **All of it is removed.**
+
+**`revocation.ts` had already decided this, in a header I did not read before writing the mirror:**
+
+> NO LOCAL TREE MIRROR, DELIBERATELY. stateTree.ts and identityAsp.ts both rebuild their trees
+> off-chain because those are LeanIMTs whose contracts expose only a root - a membership path cannot
+> be read out of contract storage, so the wallet has no choice. The revocation registry is
+> different: it is a `@solarity` SparseMerkleTree, and `getProof(key)` is a VIEW FUNCTION that
+> returns the whole witness. Rebuilding it locally would mean writing a second implementation of a
+> sparse trie and keeping it byte-compatible forever, for no benefit. Asking the contract is both
+> less code and IMPOSSIBLE TO DRIFT.
+
+The validation passing did not make the mirror worth keeping - it was managing a risk that asking
+the contract does not have. `getProof` is a view function on the identity registry too.
+
+**`pp/identityProof.ts` replaces `pp/revocation.ts`**, fetching the INCLUSION witness from
+`IdentityRegistry.getProof` and distinguishing each failure where the diagnostic still exists: not
+registered (post the escrow envelope first), REVOKED under a named predicate, tree/mapping
+disagreement (a contract bug), path deeper than the circuit. `withdrawWitness.ts` now takes that
+witness plus `revocationSecret` and drops `skIdentity`/`aspTree` entirely - the assembler's 17
+emitted input names match the circuit's parameters exactly.
+
+**Consequence for fixtures:** the generator cannot build the tree in JS either, so it must obtain
+the witness the same way - from a deployed registry. A forge script that deploys IdentityRegistry,
+registers, calls `getProof` and writes the witness is the remaining piece, and it makes the fixture
+provably consistent with the real contract rather than with a second implementation of it.
+
+### 2.13p Fixtures come FROM THE CONTRACT, and the bootstrap order that forces
+
+Following §2.13o's rule (never rebuild the SMT off-chain), the withdrawal fixture's identity witness
+cannot be built in JS either. It is emitted by a forge test that drives the REAL registry:
+`IdentityRegistry.t.sol::test_EmitIdentityWitnessFixture` registers three identities, calls
+`getProof`, and writes `test/fixtures/identity_witness.json`. Generating it inside the suite means it
+CANNOT go stale against the contract - a witness built off-chain would only ever prove that two of
+our own implementations agree.
+
+**THREE registrations, not one, and there is no shortcut.** A single-leaf SMT has an EMPTY inclusion
+path, so a withdrawal built on it would hash NO SIBLINGS and prove nothing about the Merkle path -
+the same degeneracy `tools/build-withdrawal-fixture.js` already refuses to emit for the state tree.
+The registry admits a commitment ONLY via `register`, which requires a genuine escrow proof; adding
+a privileged insert to seed the tree would be exactly the mock this project forbids. So
+`tools/build-escrow-fixtures.js` emits three distinct witnesses and all three are proved with bb and
+committed (`escrow_envelope{0,1,2}.proof/.public`, all verified).
+
+**A BUG IN MY OWN GENERATOR, caught before it cost anything.** The first run produced three
+identities sharing ONE `dg1Hash`: the MRZ varied the passport number via
+`String(1234567890 + i).slice(0, 9)`, which truncated the very digit being varied. Because a
+document hash may bind to exactly one holder (§2.13f), identities 1 and 2 would have failed to
+register with a `DocumentBoundToAnotherHolder` revert far from the cause. Fixed to a nine-digit
+number that survives the slice; all three hashes now differ, and `escrow0` still reproduces the
+previously committed fixture exactly.
+
+**THE BOOTSTRAP ORDER, because it is circular and not obvious:**
+1. escrow witnesses -> bb proofs -> committed (DONE)
+2. pool test suites must COMPILE, or the emitter test cannot run at all (3 files: constructor arity
+   for the single registry, `pubSignals` 9 -> 7, `ASP_REGISTRY` -> `IDENTITY_REGISTRY`)
+3. run the emitter -> `identity_witness.json`
+4. `tools/build-withdrawal-fixture.js` consumes it -> withdrawal witness -> bb proof
+5. regenerate the withdrawal verifier (7 public inputs) and re-run everything
+
+Steps 2-5 are the remainder. `main` stays green throughout; all of this is on
+`wip/identity-tree-merge`.
+
+### 2.13q Rewiring the pool suites: TWO bugs caught that would have shipped silently
+
+Bootstrap step 2 (§2.13p). `PrivacyPoolSimple`/`PrivacyPoolComplex` now build against the single
+registry. Both defects below would have COMPILED AND PASSED.
+
+**BUG 1 - the registry was built at the wrong depth.** `IdentityRegistry.t.sol` constructed the tree
+with `treeHeight_ = 20` while the circuit is fixed at `IDENTITY_TREE_DEPTH = 32`. Solarity's
+`maxDepth` is a CAP, so the ROOT is identical either way and every existing test still passed - which
+is exactly why it would have survived. It bites later: a depth-20 registry rejects a deep insert the
+depth-32 circuit accepts, and a witness longer than the circuit's fixed sibling array cannot be
+padded into one. Now a named constant with the agreement spelled out.
+
+**BUG 2 - a test that would have stopped testing anything.** `MockEntrypoint.isValidRoot` returned
+`true` UNCONDITIONALLY. That was sound while it only stood in for the REVOCATION registry: the ASP
+root was checked separately through `isKnownAspRoot`, which did honour its `known` mapping, so the
+identity gate was still exercised. Under the single tree `isValidRoot` IS the only identity gate, so
+an unconditional `true` would have made `test_withdraw_revertsOnInvalidIdentityRoot` pass while
+asserting NOTHING. Now honours `known` and rejects the zero root, matching the real registry.
+
+**Slot renumbering, done by reading each site rather than pattern-replacing** - the shift is not
+uniform, because a slot was REMOVED from the middle:
+
+| old | new | |
+|---|---|---|
+| [5] asp_root | [5] identityRoot | same slot, different registry |
+| [6] asp_tree_depth | - | gone with the LeanIMT identity tree |
+| [7] context | [6] context | **moved** |
+| [8] revocation_root | - | merged into [5] |
+
+A blind `[7] -> [6]` would have been wrong for the tests perturbing `[5]`, and a blind shift-by-one
+wrong for `[3]`/`[4]`. Every site was read.
+
+**Remaining:** `WithdrawEndToEnd` (18 references to the two old registries) and
+`WithdrawalHonkVerifier` both need the REGENERATED withdrawal fixture, which needs the emitter to
+run, which needs those files to compile - the circular step from §2.13p. That is the next piece, and
+it is deliberately not being rushed: those two suites are the primary guard on the withdrawal path.
+
+### 2.13r INVISIBLE-BUG AUDIT (user: "search for any more invisible bugs like this")
+
+Hunting the CLASSES of the two defects in §2.13q - a mock that silently stops asserting, and a
+constant that disagrees across a boundary while every test still passes.
+
+**FOUND AND FIXED - the escrow digest had NO independent check.**
+`IdentityRegistry.register` requires `holderOfDocumentHash(dg1_hash) == holder_root`, so the escrow's
+`dg1_hash` must equal the one REGISTRATION produced. Nothing verified that: `IdentityRegistry.t.sol`
+plants the document using the ESCROW'S OWN `dg1Hash`, so the two could have disagreed - about the
+DG1 length, the digest algorithm, or the byte packing - and every test would still have passed while
+NO REAL DOCUMENT COULD EVER BE ESCROWED.
+
+I nearly "fixed" it the wrong way. `escrow_envelope` uses `DG1_LEN = 95` while `register_identity`
+takes 93, which looked like a straightforward mismatch. It is not: 95 is the ICAO TD1 layout that
+`register_identity_light_td1` takes, and the LIGHT circuit is the one actually verified -
+`RegistrationSimple._PROOF_SIGNALS_COUNT` is 3, the light circuit's output arity, where the full
+`register_identity` returns 5. So 95 is CORRECT, my comment calling it "TD3 (passport)" was wrong,
+and changing it to 93 would have BROKEN the working path.
+`escrow_envelope::test_dg1_hash_matches_the_registration_circuit` now compares against
+`register_identity_light`'s OWN returned value - the only reference that cannot drift with that file.
+It passes.
+
+**CHECKED AND CLEAN - constants that must agree across boundaries:**
+
+| constant | contract | circuit | wallet |
+|---|---|---|---|
+| state tree depth | `State.MAX_TREE_DEPTH` 32 | `state_siblings [Field; 32]` | `stateTree.ts` 32 |
+| identity tree depth | `IdentityRegistry.t.sol` 32 | `IDENTITY_TREE_DEPTH` 32 | `identityProof.ts` 32 |
+| escrow public inputs | `PUBLIC_INPUT_COUNT` 12 | 12 | codegen target 12 |
+
+**FOUND - dead inheritance in live contract code.** `Entrypoint` inherits AND initializes
+`EIP712Upgradeable`, with an init comment describing `admitIdentityWithAuthorization` - a function
+that no longer exists there (it moved to IdentityAspRegistry in §2.5a). There is no
+`_hashTypedDataV4`, no typehash and no signature recovery anywhere in the contract. Costs bytecode
+and misleads about what the contract does. Removal is layout-safe under OZ 5's ERC-7201 namespaced
+storage, but it is an inheritance change to an UPGRADEABLE contract, so it belongs in the merge's
+deletion pass rather than being slipped in mid-rewire.
+
+**FOUND - `MinimalEntrypoint.isKnownAspRoot`** in PrivacyPoolComplex.t.sol is now unreachable: the
+pool no longer calls it. Its sibling `isValidRoot` returning an unconditional `true` is FINE there,
+unlike the Simple case in §2.13q, because that suite has no withdraw tests at all - checked, not
+assumed.
+
+**ORPHANED BY THE MERGE, to delete once WithdrawEndToEnd is rewired:** `IdentityAspRegistry` +
+`IIdentityAspRegistry` + its test, `RevocationRegistry` + `IRevocationRegistry` + its test, and the
+wallet's `postman/identityAsp.ts`. Listing them now so the deletion is deliberate rather than
+discovered later by a dead-symbol scan.
+
+### 2.13s SETTLED: Entrypoint no longer inherits EIP712Upgradeable (user, 2026-07-28)
+
+*"if you are using none of it dont inherit it"*. `Entrypoint` inherited AND initialized
+`EIP712Upgradeable` while containing no `_hashTypedDataV4`, no typehash and no signature recovery -
+left over from when `admitIdentityWithAuthorization` lived there, before §2.5a moved it to
+IdentityAspRegistry. The init comment still described that function.
+
+**Storage safety VERIFIED, not argued.** Removing an inherited contract from an UPGRADEABLE
+contract is the one way this could go badly, so it was checked with `forge inspect Entrypoint
+storage-layout` before and after:
+
+    before: scopeToPool@0, assetConfig@1, usedPrecommitments@2, EVIDENCE_REGISTRY@3
+    after:  scopeToPool@0, assetConfig@1, usedPrecommitments@2, EVIDENCE_REGISTRY@3
+
+BYTE-IDENTICAL, because OZ 5 puts EIP712's state in an ERC-7201 NAMESPACED slot
+(`EIP712StorageLocation = 0xa16a46d9...`) rather than in the sequential layout. Had it used
+sequential storage, this removal would have shifted every variable after it and silently corrupted a
+deployed proxy - which is precisely why it was measured rather than reasoned about.
+
+Also removed `MinimalEntrypoint.isKnownAspRoot` (PrivacyPoolComplex.t.sol), unreachable since the
+pool stopped calling it. Its sibling `isValidRoot` returning unconditional `true` is documented as
+deliberate there: that suite has no withdraw tests, so the identity gate is never under test - the
+opposite of the Simple case in §2.13q, which did need to honour its `known` mapping.
+
+### 2.14 legalDescriptionHash IS A DE-ANONYMISATION VECTOR (user, 2026-07-28) - NOT BUILT
+
+`TitleLedger.sol:56` carries `bytes32 legalDescriptionHash` - a plain, UNSALTED hash of the
+off-chain legal description. Two separate problems, and the second was never surfaced anywhere in
+this fusion's docs.
+
+**1. It is an unimplemented integration point, not merely a simplified one.** A grep across
+`title_holder.nr`, `title_holder/src/main.nr`, the whole `identity-wallet/src/` tree and `tools/`
+finds NOTHING that computes this hash. Verified: no wallet-side and no circuit-side producer exists.
+The contract stores a value nothing in this system knows how to make.
+
+**2. THE REAL GAP - it is a privacy leak by construction, independent of the missing
+implementation.** Legal descriptions of real property (street address, parcel/APN, plat description)
+are frequently LOW-ENTROPY AND PUBLICLY ENUMERABLE - county assessor records are often public and
+searchable. Anyone asking "is property X tokenised, and under which titleId?" can pull candidate
+descriptions from public records, hash each one exactly as the contract does, and compare against
+every on-chain `legalDescriptionHash`. A match reveals WHICH REAL-WORLD PROPERTY sits behind a given
+titleId. It does not reveal who holds it - `holderCommitment` covers that - but "which properties
+are in the system" is disclosed to anyone willing to run a dictionary.
+
+**The existing test demonstrates the vector rather than guarding against it:**
+`TitleLedger.t.sol:177` asserts `entry.legalDescriptionHash == keccak256('42 Khreshchatyk St,
+Kyiv')` - a bare keccak of a street address, precisely the enumerable input that makes this
+brute-forceable.
+
+**The fix is a pattern this codebase ALREADY RUNS IN PRODUCTION** - Privacy Pool's precommitment
+scheme (`frontend/identity-wallet/src/pp/notes.ts`). Commit to the document together with a random,
+high-entropy, holder-held salt - `Poseidon(legal_description_hash, salt)` - instead of hashing the
+document alone. The commitment stays binding and Ricardian: present the document plus the salt and
+anyone can verify it matches on-chain, which is the property the design wants. But it becomes
+computationally infeasible to brute-force from public records, because the salt supplies the entropy
+the legal description lacks. The salt is disclosed only when opening is actually required - a
+dispute, a loan default, a transfer needing proof of the underlying document - not by default. This
+is NOT a new primitive for this system; it is the same commit-reveal shape already used for PP
+deposits, applied to a field that currently has none of it.
+
+**Real work if pursued:**
+1. Decide the threat model FIRST - must "which property" stay hidden, or only "who holds it"? The
+   answer changes whether this is a defect or an accepted disclosure.
+2. If yes: add the salt to `mintTitle`'s commitment, and to whatever wallet/notary tooling
+   eventually computes it - which does not exist yet, see (1) above.
+3. Define the reveal/verification flow for the cases that genuinely need the commitment opened.
+
+Interacts with §2.13l: if titles become documents and notaries become registered identities, this
+commitment should be settled in the same pass rather than bolted on afterwards.
+
+### 2.13t MERGE: the circular bootstrap is BROKEN, and the withdrawal proves on-chain at 7 signals
+
+268/269 forge tests. The withdrawal circuit, both its fixtures, the verifier, ProofLib, PrivacyPool
+and four test suites are all on the single identity tree.
+
+**THE LOOP IS CLOSED, contract to circuit.** `IdentityRegistry` registers three identities through
+real escrow proofs, `getProof` emits root + siblings, and the Noir circuit's `smt_verifier_full`
+ACCEPTS them as an inclusion of `commitment -> 0`. Verified by `nargo execute` against the emitted
+witness, then proved and verified with bb, then verified ON-CHAIN by the regenerated verifier
+(`WithdrawalHonkVerifier.t.sol`, 11/11, both the hand-vector and wallet-derived fixtures).
+
+**Withdrawal is 24,812 ACIR opcodes, down from 43,772 (-43%)** - the projection, confirmed on the
+real circuit rather than a scratch model.
+
+**Test constants were patched FROM THE PROOF FILES, never transcribed.** Fourteen 77-digit values by
+hand is where this would have rotted; a wrong constant fails as `SumcheckFailed` with nothing
+pointing at the transcription.
+
+**Four incidental defects fixed on the way, each of which would have failed confusingly later:**
+- `tools/build-withdrawal-fixture.js`'s documented `tsc` invocation was missing `--rootDir src`.
+  With one input file tsc infers the root as `src/pp` and emits a FLAT build, so the `pp/` prefix the
+  script requires disappears. It was implicit only while two files from different directories were
+  compiled together.
+- The same header pointed the build at `tools/build`, which cannot resolve `@iden3/js-crypto` - node
+  walks UP for `node_modules` and there is none above `tools/`. It must sit inside the wallet.
+- `WithdrawEndToEnd`'s new mock proxies used empty init data, which OZ 5.6.1 rejects; the other
+  suites already carry an `UnsafeTestProxy` for exactly this.
+- `test_FixturesAreNotDegenerate` could no longer see the identity path, since it is now PRIVATE.
+  The check MOVED (registry `getProof` siblings, asserted in WithdrawEndToEnd and in the emitter)
+  rather than being dropped - recorded in the test itself, because a silently narrower degeneracy
+  check is the exact failure that function exists to prevent.
+
+**REMAINING: `tools/build-e2e-fixture.js` DOES NOT EXIST.** `WithdrawEndToEnd`'s header has always
+pointed at it, and it is not in the repo - so `Prover.e2e.toml` has never been reproducible from a
+committed script. Its 9 tests fail only because the fixture is stale: adding the state keeper and
+registry deployments moved the pool's address, hence `SCOPE`, hence every label, commitment and
+context derived from it. That staleness is exactly what `test_ScopeMatchesFixture` exists to catch,
+and it caught it. Writing that generator - as a mode of `build-withdrawal-fixture.js` rather than a
+second script - is the last step, and it closes a reproducibility hole that predates this work.
+
+### 2.13u MERGE COMPLETE: 281/281, and the missing e2e generator now exists
+
+The single identity tree is live end to end. 281 forge tests, 84 pp tests, 1 escrow circuit test,
+tsc clean, client ABI check clean, all four verifiers inside EIP-170.
+
+**`tools/build-e2e-fixture.js` NOW EXISTS.** `WithdrawEndToEnd.t.sol` had named it as its fixture
+provenance since the commit that introduced the test - and it was never written. Checked properly
+before writing it: absent from this repo's entire history (58 commits, root
+`0762975 Fork rarime + Privacy Pools...`), and it CANNOT exist upstream either, because
+`withdraw_identity` is this fork's own Noir circuit while upstream Privacy Pools is Circom/Groth16
+with no `Prover.toml` at all. So `Prover.e2e.toml` had never been reproducible from anything
+committed. It is now, including a `--ragequit` mode for the second e2e fixture, which had the same
+gap.
+
+**The regeneration cascade, and why so much moved.** Adding the state keeper and registry
+deployments to setUp moved the pool's ADDRESS, hence `SCOPE`, hence every label, precommitment,
+commitment and context derived from it. `test_ScopeMatchesFixture` caught it immediately, which is
+what it exists for. Regenerated in order: precommitments -> deposits -> state root -> withdrawal
+witness -> proof, then the ragequit note the same way.
+
+**A defect the generator's own cross-check caught.** The first draft reconstructed only OUR leaf and
+padded the other three with a placeholder - but a LeanIMT root depends on EVERY leaf, so the root
+would have been wrong. The `state_root disagrees with the chain` assertion fired immediately. Fixed
+by deriving all four labels from the pool's own rule (`keccak256(SCOPE, nonce) % FIELD`, nonce from
+1), which reproduces the chain's root exactly. Without that cross-check the failure would have
+surfaced as an unexplained proof rejection.
+
+**Every constant in both suites was patched FROM THE PROOF FILES, never transcribed** - twenty-odd
+77-digit values, where a single typo fails as `SumcheckFailed` with nothing pointing at the cause.
+
+Withdrawal: **24,812 ACIR opcodes, down from 43,772 (-43%)**, proving on-chain at 7 public inputs
+against a root produced by the real registry from three genuine escrow registrations.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

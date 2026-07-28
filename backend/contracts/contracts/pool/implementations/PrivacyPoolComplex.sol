@@ -37,10 +37,9 @@ contract PrivacyPoolComplex is PrivacyPool, IPrivacyPoolComplex {
     address _withdrawalVerifier,
     address _ragequitVerifier,
     address _asset,
-    address _aspRegistry,
-    address _revocationRegistry
+    address _identityRegistry
   ) PrivacyPool(
-    _entrypoint, _withdrawalVerifier, _ragequitVerifier, _asset, _aspRegistry, _revocationRegistry
+    _entrypoint, _withdrawalVerifier, _ragequitVerifier, _asset, _identityRegistry
   ) {
     if (_asset == Constants.NATIVE_ASSET) revert NativeAssetNotSupported();
   }

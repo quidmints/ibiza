@@ -6,14 +6,28 @@ import {ERC1967Proxy} from '@oz/proxy/ERC1967/ERC1967Proxy.sol';
 import {IEvidenceRegistry} from '@rarimo/evidence-registry/interfaces/IEvidenceRegistry.sol';
 
 import {Entrypoint} from '../../contracts/pool/Entrypoint.sol';
-import {IdentityAspRegistry} from '../../contracts/registry/IdentityAspRegistry.sol';
-import {RevocationRegistry} from '../../contracts/registry/RevocationRegistry.sol';
+import {IdentityRegistry} from '../../contracts/registry/IdentityRegistry.sol';
+import {EscrowEnvelopeHonkVerifier} from '../../contracts/registry/verifiers/EscrowEnvelopeHonkVerifier.sol';
+import {HolderStateKeeperMock} from '../../contracts/mock/holder/HolderStateKeeperMock.sol';
+import {PoseidonSMTMock} from '../../contracts/mock/state/PoseidonSMTMock.sol';
 import {PrivacyPoolSimple} from '../../contracts/pool/implementations/PrivacyPoolSimple.sol';
 import {WithdrawalHonkVerifier} from '../../contracts/pool/verifiers/WithdrawalHonkVerifier.sol';
 import {RagequitHonkVerifier} from '../../contracts/pool/verifiers/RagequitHonkVerifier.sol';
 import {IPrivacyPool} from '../../contracts/pool/interfaces/IPrivacyPool.sol';
 import {ProofLib} from '../../contracts/pool/lib/ProofLib.sol';
 import {Constants} from '../../contracts/pool/lib/Constants.sol';
+
+/// OZ 5.6.1 rejects an ERC1967Proxy constructed with EMPTY init data (front-run protection for real
+/// deployments). The state-keeper and SMT mocks below are deploy-then-initialize, matching their own
+/// external `__xxx_init` pattern, so they need a proxy that opts back into that - safe in a
+/// single-threaded test. Same helper as HolderRegistration.t.sol and IdentityRegistry.t.sol.
+contract UnsafeTestProxy is ERC1967Proxy {
+  constructor(address impl) ERC1967Proxy(impl, '') {}
+
+  function _unsafeAllowUninitialized() internal pure override returns (bool) {
+    return true;
+  }
+}
 
 /// Minimal ERC-7812 registry — same pattern as EntrypointAsp.t.sol (the real one has a
 /// Poseidon-under-Forge linking issue); nothing here depends on its behaviour beyond storing.
@@ -67,8 +81,8 @@ contract MockEvidenceRegistry is IEvidenceRegistry {
  */
 contract WithdrawEndToEndTest is Test {
   Entrypoint internal entrypoint;
-  IdentityAspRegistry internal aspRegistry;
-  RevocationRegistry internal revocationRegistry;
+  IdentityRegistry internal identityRegistry;
+  HolderStateKeeperMock internal stateKeeper;
   PrivacyPoolSimple internal pool;
   WithdrawalHonkVerifier internal withdrawalVerifier;
   MockEvidenceRegistry internal registry;
@@ -95,38 +109,64 @@ contract WithdrawEndToEndTest is Test {
    * verify a Merkle path it never actually walks.
    */
   uint256[4] internal PRECOMMITMENTS = [
-    14532176820071183191910939975615247127154011830269690416648964044653403022228,
-    3365986579115248599382117794041612453533846249664417834676141899261165947410,
-    7806741418763995791372551619618961616298409422840660822951385994126218673299,
-    2931722169941254107911418990580283382461358409943807287832325373879439927530
+    130057558160235592511055446676943016014093381401877549806303212122208039886,
+    10628472012802191424235906145265078701485565840597635313540335553880462567724,
+    6196614239054392184399340120842402753896919304195442741949196984892521157213,
+    961821015248050687755360829681989756125935114364007114347328514489660411156
   ];
 
   /// Ours is index 1 - deliberately not first or last, so its inclusion path has siblings on both
   /// sides rather than riding the LeanIMT's carry-up-on-empty edge case.
   uint256 internal constant OUR_NOTE_INDEX = 1;
 
-  uint256[3] internal ASP_MEMBERS = [uint256(777), HOLDER_ROOT, uint256(999)];
 
   uint256 internal ourCommitment;
   uint256 internal ourLabel;
-  uint256 internal aspRoot;
+  uint256 internal identityRoot;
+
+  /// The controller's Baby Jubjub sealing key, pinned in pp/src/envelope.nr's tests and used by the
+  /// committed escrow fixtures. MUST match, or `register` rejects every envelope as sealed to a key
+  /// the controller does not hold.
+  uint256 internal constant CONTROLLER_KEY_X =
+    4_880_901_335_776_166_390_443_888_589_907_570_248_644_423_541_468_541_082_967_598_048_550_539_024_543;
+  uint256 internal constant CONTROLLER_KEY_Y =
+    6_509_666_988_291_764_283_313_685_078_036_329_297_907_336_602_650_572_952_945_826_675_203_643_401_307;
+  uint32 internal constant IDENTITY_TREE_DEPTH = 32;
+
+  function _escrowProof(uint256 _i) internal view returns (bytes memory) {
+    return vm.readFileBinary(string.concat('test/fixtures/escrow_envelope', vm.toString(_i), '.proof'));
+  }
+
+  function _escrowPublicInputs(uint256 _n) internal view returns (bytes32[] memory _inputs) {
+    bytes memory _raw =
+      vm.readFileBinary(string.concat('test/fixtures/escrow_envelope', vm.toString(_n), '.public'));
+    _inputs = new bytes32[](12);
+    for (uint256 _i = 0; _i < 12; _i++) {
+      bytes32 _w;
+      assembly {
+        _w := mload(add(_raw, add(32, mul(_i, 32))))
+      }
+      _inputs[_i] = _w;
+    }
+  }
 
   /// Computed OFF-CHAIN by the wallet - see test_WalletMirrorsMatchTheChain.
   uint256 internal constant WALLET_STATE_ROOT =
-    442245141663737106664083203515763524737232404594727485994307149172745896933;
-  uint256 internal constant WALLET_ASP_ROOT =
-    13499987760479541807145949197691077146081665672725695371757070291942633612052;
+    17647775993228371937828414909900047898638566776413106032397089864943146310076;
+  /// The identity registry's root after setUp's three genuine registrations. Committed so a change
+  /// in registration order or content shows up as a STALE FIXTURE rather than as an unexplained
+  /// proof rejection. Cross-checked against the live registry in test_WalletMirrorsMatchTheChain.
+  uint256 internal constant E2E_IDENTITY_ROOT =
+    406318650705240760235803096569314685721996710259988392525137199379957793483;
 
   // ── the proved withdrawal (test/fixtures/withdraw_e2e.proof) ────────────────────────────────
-  uint256 internal constant WITHDRAWN = 0.3 ether;
+  uint256 internal constant WITHDRAWN = 300000000000000000;
   uint256 internal constant E2E_NEW_COMMITMENT =
-    2230043761081266912857408604216380966523575443703029933921406311509913275264;
+    7031891398791970800414930823347530208578030685559810783551693782385841142526;
   uint256 internal constant E2E_NULLIFIER_HASH =
-    15539785998683851078763905299770817193117567773532894655594243887923184612813;
-  /// Empty revocation registry - see setUp.
-  uint256 internal constant E2E_REVOCATION_ROOT = 0;
+    15290910983522090939153476761957425103311695243444399647157808844235598158968;
   uint256 internal constant E2E_CONTEXT =
-    19873353585827271554130256788435252351917362313320817604861132620215117300314;
+    16421636434921514101164844418780783785449995672727086439500565456823744804800;
 
   function setUp() public {
     registry = new MockEvidenceRegistry();
@@ -135,24 +175,37 @@ contract WithdrawEndToEndTest is Test {
     bytes memory init = abi.encodeCall(Entrypoint.initialize, (owner, postman, address(registry)));
     entrypoint = Entrypoint(payable(address(new ERC1967Proxy(address(impl), init))));
 
-    // The ASP tree lives in its own NON-UPGRADEABLE registry now (sec. 2.5a), and the pool holds a
-    // direct reference to it - the upgradeable Entrypoint is no longer in the ASP trust path.
-    aspRegistry = new IdentityAspRegistry(postman, address(registry));
+    // ONE identity tree now (sec. 2.13k): registration AND revocation status live together, with
+    // status carried in the leaf value. NON-UPGRADEABLE, and the pool holds a direct reference, so
+    // nothing upgradeable sits between it and a set that can block a withdrawal (sec. 2.5a).
+    //
+    // The registry needs a state keeper because `register` REFUSES an escrow whose MRZ was never
+    // registered through the ICAO-verified path - the escrow proof binds the MRZ to a hash but
+    // cannot prove the passport is genuine (sec. 2.13n, trap 5).
+    PoseidonSMTMock smt = PoseidonSMTMock(address(new UnsafeTestProxy(address(new PoseidonSMTMock()))));
+    PoseidonSMTMock certs = PoseidonSMTMock(address(new UnsafeTestProxy(address(new PoseidonSMTMock()))));
+    stateKeeper = HolderStateKeeperMock(address(new UnsafeTestProxy(address(new HolderStateKeeperMock()))));
+    smt.__PoseidonSMT_init(address(stateKeeper), address(registry), 80);
+    certs.__PoseidonSMT_init(address(stateKeeper), address(registry), 80);
+    stateKeeper.__StateKeeper_init(owner, address(smt), address(certs), bytes32(uint256(1)));
 
-    // A REAL revocation registry with nobody revoked - root 0. The fixture proves non-inclusion
-    // against that empty root, which pp/src/smt.nr::test_exclusion_against_the_empty_tree pins as
-    // provable for every key. Without this the pool could never bootstrap: no withdrawal would be
-    // possible until somebody had been revoked.
+    string[] memory skKeys = new string[](1);
+    skKeys[0] = 'e2e';
+    address[] memory skVals = new address[](1);
+    skVals[0] = address(this);
+    stateKeeper.mockAddRegistrations(skKeys, skVals);
+
     bytes32[] memory preds = new bytes32[](1);
     preds[0] = keccak256('predicate.document.not-current');
-    address[] memory attesters = new address[](1);
-    attesters[0] = postman;
-    revocationRegistry = new RevocationRegistry(preds, attesters, 20, 1 hours);
+    identityRegistry = new IdentityRegistry(
+      address(new EscrowEnvelopeHonkVerifier()), address(stateKeeper), postman,
+      CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, 1 hours, preds
+    );
 
     withdrawalVerifier = new WithdrawalHonkVerifier();
     pool = new PrivacyPoolSimple(
       address(entrypoint), address(withdrawalVerifier), address(new RagequitHonkVerifier()),
-      address(aspRegistry), address(revocationRegistry)
+      address(identityRegistry)
     );
 
     // Four real deposits through the real pool, so the state tree has genuine depth.
@@ -167,10 +220,16 @@ contract WithdrawEndToEndTest is Test {
       }
     }
 
-    // Three ASP admissions through the real Entrypoint, ours in the middle.
-    for (uint256 i = 0; i < ASP_MEMBERS.length; i++) {
-      vm.prank(postman);
-      aspRoot = aspRegistry.admitIdentity(ASP_MEMBERS[i]);
+    // Three GENUINE registrations, each with its own real escrow proof and its own planted
+    // document. Three rather than one because a single-leaf SMT has an EMPTY inclusion path, so the
+    // withdrawal would hash no siblings and prove nothing about the Merkle path.
+    for (uint256 i = 0; i < 3; i++) {
+      bytes32[] memory pi = _escrowPublicInputs(i);
+      stateKeeper.addDocument(
+        bytes32(uint256(0xD0C) + i), pi[4] /* dg1Hash */, pi[2] /* holderRoot */,
+        stateKeeper.DOC_PASSPORT(), 111 + i, 0
+      );
+      identityRoot = uint256(identityRegistry.register(_escrowProof(i), pi));
     }
   }
 
@@ -190,8 +249,7 @@ contract WithdrawEndToEndTest is Test {
     emit log_named_uint('state root', pool.currentRoot());
     emit log_named_uint('state depth', pool.currentTreeDepth());
     emit log_named_uint('state size', pool.currentTreeSize());
-    emit log_named_uint('asp root', aspRoot);
-    emit log_named_uint('asp depth', aspRegistry.aspTreeDepth());
+    emit log_named_uint('identity root', identityRoot);
     emit log_named_uint('deposit value', DEPOSIT_VALUE);
 
     // The context the proof must carry for a SELF-withdrawal to `recipient`. Transcribed from
@@ -216,7 +274,7 @@ contract WithdrawEndToEndTest is Test {
       E2E_CONTEXT,
       'fixture is STALE: context moved - regenerate with tools/build-e2e-fixture.js'
     );
-    assertEq(aspRegistry.aspTreeDepth(), 2, 'ASP tree shape changed - fixture invalid');
+    assertEq(identityRegistry.registeredCount(), 3, 'registration count changed - fixture invalid');
     assertEq(pool.currentTreeSize(), 4, 'deposit count changed - fixture invalid');
   }
 
@@ -234,9 +292,13 @@ contract WithdrawEndToEndTest is Test {
    */
   function test_WalletMirrorsMatchTheChain() public view {
     assertEq(pool.currentRoot(), WALLET_STATE_ROOT, 'wallet stateTree.ts disagrees with the pool');
-    assertTrue(aspRegistry.isKnownAspRoot(WALLET_ASP_ROOT), 'wallet identityAsp.ts disagrees with the ASP registry');
     assertEq(pool.currentTreeDepth(), 2, 'state tree is not multi-level - fixture would be degenerate');
-    assertGt(aspRegistry.aspTreeDepth(), 0, 'ASP tree is degenerate');
+
+    // The identity tree is NOT mirrored off-chain any more - the wallet asks the registry via
+    // getProof (sec. 2.13o), so there is no second implementation to disagree with. What still
+    // needs pinning is that the fixture was proved against THIS registry's root.
+    assertEq(uint256(identityRegistry.root()), E2E_IDENTITY_ROOT, 'fixture proved against a different identity root');
+    assertGt(identityRegistry.getProof(_escrowPublicInputs(0)[3]).siblings.length, 0, 'identity witness is degenerate');
   }
 
   function _e2eProof() internal view returns (ProofLib.WithdrawProof memory _p) {
@@ -247,10 +309,8 @@ contract WithdrawEndToEndTest is Test {
       WITHDRAWN,
       WALLET_STATE_ROOT,
       uint256(2), // state_tree_depth
-      WALLET_ASP_ROOT,
-      uint256(2), // asp_tree_depth
-      E2E_CONTEXT,
-      E2E_REVOCATION_ROOT
+      E2E_IDENTITY_ROOT,
+      E2E_CONTEXT
     ];
   }
 
@@ -355,40 +415,47 @@ contract WithdrawEndToEndTest is Test {
   /// is served by a contract with no owner and no upgrade path. If a future change routes it back
   /// through anything upgradeable, this pins the address the pool actually trusts.
   function test_TheOnlyThirdPartyGateIsTheNonUpgradeableRegistry() public view {
-    assertEq(address(pool.ASP_REGISTRY()), address(aspRegistry), 'pool trusts an unexpected contract');
+    assertEq(address(pool.IDENTITY_REGISTRY()), address(identityRegistry), 'pool trusts an unexpected contract');
 
     string[4] memory forbidden =
       ['owner()', 'upgradeToAndCall(address,bytes)', 'grantRole(bytes32,address)', 'remove(uint256)'];
     for (uint256 i = 0; i < forbidden.length; i++) {
       (bool ok,) =
-        address(aspRegistry).staticcall(abi.encodeWithSelector(bytes4(keccak256(bytes(forbidden[i])))));
+        address(identityRegistry).staticcall(abi.encodeWithSelector(bytes4(keccak256(bytes(forbidden[i])))));
       assertFalse(ok, string.concat('the ASP gate answers a governance selector: ', forbidden[i]));
     }
   }
 
   /*
-   * REVOCATION ACTUALLY BITES. The proof commits to revocation_root = 0 (the empty registry), and
-   * PrivacyPool checks that root with isValidRoot. Once a revocation lands, the empty root is
-   * superseded - and after MAX_ROOT_AGE it stops being accepted, so this exact proof dies.
+   * REVOCATION ACTUALLY BITES. The proof commits to E2E_IDENTITY_ROOT - the root after setUp's
+   * three registrations - and PrivacyPool checks it with isValidRoot. Once ANY revocation lands
+   * that root is superseded, and after MAX_ROOT_AGE it stops being accepted, so this exact proof
+   * dies.
    *
-   * That is the whole point of sec. 2.5 and the reason RevocationRegistry does NOT honour every
-   * historical root: if it did, this proof would keep working forever and revocation would be
-   * decorative.
+   * ROOT EXPIRY IS WHY. On a pure INCLUSION tree an old root could be honoured forever, since an
+   * append-only tree's historical membership is a strict subset of the current one. This tree also
+   * carries REVOCATIONS, so an old root has FEWER of them - honouring one indefinitely would let a
+   * revoked identity prove the clean status forever and revocation would be decorative. See
+   * sec. 2.13m, trap 1.
+   *
+   * STRONGER THAN THE VERSION THIS REPLACES, which revoked a placeholder key against an EMPTY
+   * registry. The identity revoked here is one of the three GENUINELY REGISTERED in setUp, so the
+   * root moves because a real identity was excluded.
    */
   function test_RevocationEventuallyInvalidatesAnOldProof() public {
     IPrivacyPool.Withdrawal memory w = IPrivacyPool.Withdrawal({processooor: recipient, data: ''});
 
-    // Someone unrelated is revoked, superseding the empty root.
+    // A DIFFERENT registered identity is revoked - not ours - superseding the root our proof used.
     vm.prank(postman);
-    revocationRegistry.revoke(bytes32(uint256(0xDEAD)), keccak256('predicate.document.not-current'));
+    identityRegistry.revoke(_escrowPublicInputs(1)[3], keccak256('predicate.document.not-current'));
 
     // Inside the grace window the in-flight proof still works - deliberate, so an unrelated
     // revocation cannot be used to kill everyone's pending withdrawals.
-    assertTrue(revocationRegistry.isValidRoot(bytes32(0)), 'grace window closed immediately');
+    assertTrue(identityRegistry.isValidRoot(bytes32(E2E_IDENTITY_ROOT)), 'grace window closed immediately');
 
     vm.warp(block.timestamp + 1 hours + 1);
 
-    assertFalse(revocationRegistry.isValidRoot(bytes32(0)), 'superseded root never expired');
+    assertFalse(identityRegistry.isValidRoot(bytes32(E2E_IDENTITY_ROOT)), 'superseded root never expired');
     vm.prank(recipient);
     vm.expectRevert();
     pool.withdraw(w, _e2eProof());
@@ -396,15 +463,15 @@ contract WithdrawEndToEndTest is Test {
 
   /// @notice ...and the CURRENT root still works after that same delay, so expiry is not a
   /// liveness failure. Rebuild the witness against the new root and the withdrawal proceeds.
-  function test_CurrentRevocationRootSurvivesTheSameDelay() public {
+  function test_CurrentIdentityRootSurvivesTheSameDelay() public {
     vm.prank(postman);
-    revocationRegistry.revoke(bytes32(uint256(0xDEAD)), keccak256('predicate.document.not-current'));
-    bytes32 current = revocationRegistry.root();
+    identityRegistry.revoke(_escrowPublicInputs(1)[3], keccak256('predicate.document.not-current'));
+    bytes32 current = identityRegistry.root();
 
     vm.warp(block.timestamp + 3650 days);
 
     assertTrue(
-      revocationRegistry.isValidRoot(current),
+      identityRegistry.isValidRoot(current),
       'the CURRENT root expired - inaction would block withdrawals'
     );
   }
@@ -425,12 +492,12 @@ contract WithdrawEndToEndTest is Test {
    * two end-to-end paths cannot mask each other.
    */
   uint256 internal constant RQ_COMMITMENT =
-    12917025229888783294206029436526078537230310489065382508244059085069276358626;
+    17975503696435785383825560335987043444961350313588353426419281924309605667268;
   uint256 internal constant RQ_NULLIFIER_HASH =
-    3572094978166145730760062909166620898739575626294502484653765558404442689039;
+    8804420519297481257523323779945157586225041386282682497066402836735884193743;
   uint256 internal constant RQ_VALUE = 1 ether;
   uint256 internal constant RQ_LABEL =
-    616841212373873173522856975102379060024107276534765293132318009474304992750;
+    15657487282795624093814845682454643069651346009494294240642302522288600992635;
 
   function _ragequitProof() internal view returns (ProofLib.RagequitProof memory _p) {
     _p.proof = vm.readFileBinary('test/fixtures/ragequit_e2e.proof');

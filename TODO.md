@@ -2358,6 +2358,69 @@ lending layer never ships.** The realistic path is ONE vetted originator, a smal
 set deliberately high, to prove the mechanics before widening. That is also why §2.17's conclusion
 stands: identity and title first, lending gated on an originator existing at all.
 
+### 2.17f WHAT THE NOTARY/CRE LINK IS ACTUALLY FOR, and how originators are onboarded
+
+Four questions that together ask whether the notary machinery earns its keep. Reading §2.2 against
+§2.15 answers all of them, and corrects a conflation I have been carrying.
+
+**1. THE CONCRETE BENEFIT - I WAS CONFLATING VERIFICATION WITH EXECUTION.**
+Tier 2 verifies a deed is authentic, and ANYONE may do it. Tier 3's exclusive powers are different:
+*"query active encumbrances, REGISTER MORTGAGES, and EXECUTE BINDING TITLE TRANSFERS using hardware
+tokens."*
+
+So a notary's unique capability is not "tell us this title is real" - Tier 2 does that better,
+independently, and without trusting them. It is **MAKING THE LIEN LEGALLY EXIST.** A mortgage
+registered by a non-notary is VOID, and a pool holding a void lien holds nothing.
+
+**That is the whole point of the CRE link, and it is narrow and real:** it proves the person
+executing the legal registration was licensed to do so at the time. The attestation is about the
+LIEN, not the title. Everything I wrote treating the notary as the source of truth about the
+PROPERTY was misdirected - Tier 2 owns that.
+
+**2. FRAUD DEFENCE WITHOUT DEANONYMISATION - and it needs no complaint.**
+A notary who claims to have registered a lien either did or did not, and the state register says
+which. CRE-attest a FOLLOW-UP Tier 1/Tier 2 query: does the encumbrance actually appear? If the
+notary took the fee and never registered it, the lien is absent and that is MECHANICALLY DETECTABLE
+by oracle, from state data, **without knowing which notary it was.**
+
+Only when the check FAILS is there cause to open the envelope. So anonymity holds in the normal case,
+detection needs no plaintiff (which §2.17 established we do not have), and deanonymisation is
+reserved for a proven discrepancy rather than a suspicion.
+
+**3. ONBOARDING ORIGINATORS - the same mechanism, not a new trust assumption.**
+*How we know they are real:* licensed credit institutions appear on a FINANCIAL REGULATOR'S PUBLIC
+REGISTER. Scrape it, attest it by DON consensus - byte-identical across nodes - exactly as
+`backend/cre/notary_registry/main.go` already does for notaries. Same pattern, third register.
+
+*Why they work with us:* access to capital they cannot otherwise reach, given the banking
+constraints that are this project's premise; origination and servicing income without committing
+their own balance sheet; and they keep the customer relationship.
+
+*Why we work with them:* they hold the licence, the staff and the legal standing we do not, and they
+carry first-loss.
+
+**4. "IS IT BACK TO TRUSTING THE NOTARIES ABOUT THE ORIGINATORS?" NO - NOBODY VOUCHES FOR ANYBODY.**
+Three INDEPENDENT state sources, each attested separately:
+- notary register -> licensed to execute liens
+- financial regulator register -> licensed to originate
+- cadastre Tier 2 -> the deed is genuine
+
+No party in this system attests to another party's standing. That is the entire reason for using
+REGISTERS rather than reputation or vouching, and it is why a corrupt notary cannot smuggle in a fake
+originator: they have no say in it.
+
+**THE DEEPEST RESIDUAL, and it should be stated plainly rather than discovered later.** The trust root
+of all three is THE STATE'S OWN REGISTERS. That is strong against PRIVATE fraud - a bribed notary,
+a fake originator, a forged deed - and worth nothing against STATE-LEVEL FABRICATION. A government
+that wants to conjure a licensed notary or a genuine-looking deed can.
+
+This sits in tension with the threat model, where the state is the surveillance adversary. The
+tension is COHERENT - one can trust that a passport is genuinely issued while not wanting the issuer
+to watch one's transactions, and the identity layer already rests on exactly that - but it bounds
+what this system claims. It defends the user's PRIVACY from the state. It does not defend the
+protocol's INTEGRITY from the state, and no amount of cryptography over state-issued credentials
+would.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

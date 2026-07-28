@@ -1955,6 +1955,69 @@ circuit that does not exist yet.
 with no current document; and a VALID identity whose registry entry is absent from the snapshot is a
 valid person but not a valid notary - the two checks failing separately, as designed.
 
+### 2.13l-B The notary binding is PROOF-GATED - no new circuit was needed (user, 2026-07-29)
+
+*"are you sure we need the circuit that doesnt exist yet?"* - no, and the challenge was right.
+
+I claimed closing the notary-binding gap needed a circuit proving control of `holder_root` at bind
+time. **`pp::title_holder` already does exactly that.** It proves
+`holder_root == extract_pk_identity_hash(sk_identity)` and binds it to a SECOND FIELD - and that
+field is an arbitrary CONTEXT. It is named `title_id` only because that was its first use. Its
+verifier is already deployed and wired into TitleLedger, and PoseidonUnit2L is already available
+on-chain, so the whole thing was a call away.
+
+`bindNotaryIdentity` now requires that proof, against a context binding BOTH the signing key and the
+register entry, so a proof obtained for one binding cannot be replayed to attach a different key or
+a different notary.
+
+**WHAT THIS CLOSES:** the postman can no longer fabricate a binding for an identity whose owner never
+consented. Previously it could name any holderRoot at all.
+
+**WHAT REMAINS, and it is a materially smaller claim:** the postman still chooses WHICH register
+entry is attached. Proving the entry is genuinely this person's needs the register's name and office
+number matched against the passport's own DG1 name field - a comparison no circuit here performs.
+So the residual trust is "the postman attached the right entry", not "the postman invented a notary".
+
+**THE LESSON:** I reached for a new circuit before checking what the existing ones actually prove.
+The generality was in the parameter NAME, not the constraint - `title_id: Field` constrains nothing
+about titles.
+
+### 2.16 HOLDING A NOTARY TO ACCOUNT WITHOUT UNMASKING ANYONE (user, 2026-07-29)
+
+*"if they make fraudulent claims someone should be able to prove that and hold it against them in
+court - how would this reveal the notary's identity though without defeating the purpose?"*
+
+**IT DOES NOT, BECAUSE A NOTARY'S IDENTITY IS ALREADY PUBLIC BY PROFESSION.** They hold a public
+office; their name, office number and licence status are ON THE STATE REGISTER - that register is
+precisely what the CRE scraper reads. Attribution therefore discloses only what the state already
+publishes.
+
+The evidentiary chain is complete and permanent: the notary's signature over the mint message, bound
+to their signing key, bound to their `holderRoot`, bound to their `notaryDataHash`, which IS their
+register entry. Non-repudiable, and it names a real person in a real register - which is what a court
+needs.
+
+**WHAT STAYS PRIVATE:** which PROPERTY (opaque `propertyKey`) and WHO the holder is
+(`holderCommitment`). And the aggrieved party in a notary-fraud case IS the holder, so disclosing the
+property is at the VICTIM'S OWN DISCRETION when they bring the case. Nobody else can open it.
+
+**AND THE NOTARY'S PERSONAL FINANCES STAY SEPARATE.** This is where §2.13l's refusal to key the
+notary on their pool commitment pays off: professional accountability without exposing their private
+financial life. Had we taken the easy revocation check, holding a notary to account for fraud would
+have simultaneously deanonymised their own pool activity.
+
+**NO STAKE OR BOND IS NEEDED**, and this is a design conclusion rather than an omission. A notary is
+LEGALLY bound - they already hold a licence a court can strip. Requiring them to pledge capital into
+the pool would add a slashing mechanism that duplicates a sanction the law already imposes far more
+heavily, while making the professional role capital-gated.
+
+**ONE REAL LEAK TO FLAG.** `IdentityRegistry.register` carries BOTH `holder_root` and `commitment` as
+public inputs, so they are linkable from calldata. A notary's `holderRoot` becomes public when bound,
+which makes their pool COMMITMENT discoverable. Their ACTIVITY stays hidden - a withdrawal never
+discloses the commitment, it is a private SMT key - but their PARTICIPATION becomes visible.
+Mitigation: a notary should register a SEPARATE identity for their professional role. The system
+already supports many identities per person, so this is operational guidance, not new machinery.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

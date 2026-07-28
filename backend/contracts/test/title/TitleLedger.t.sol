@@ -134,7 +134,7 @@ contract TitleLedgerTest is Test {
     notaryProof[0] = (a == leaf0) ? leaf1 : leaf0; // the OTHER leaf is notaryDataHash's sibling
 
     vm.prank(postman);
-    ledger.bindNotaryIdentity(NOTARY_HOLDER_ROOT, notaryDataHash, notary);
+    ledger.bindNotaryIdentity(NOTARY_HOLDER_ROOT, notaryDataHash, notary, '');
   }
 
   function _mintMessage(
@@ -242,7 +242,32 @@ contract TitleLedgerTest is Test {
   function test_bindNotaryIdentity_refusesAnIdentityWithNoDocument() public {
     vm.prank(postman);
     vm.expectRevert(TitleLedger.NotaryIdentityHasNoCurrentDocument.selector);
-    ledger.bindNotaryIdentity(keccak256('nobody'), notaryDataHash, address(0xBEEF));
+    ledger.bindNotaryIdentity(keccak256('nobody'), notaryDataHash, address(0xBEEF), '');
+  }
+
+  /// THE BINDING IS PROOF-GATED. The postman can no longer fabricate a binding for an identity
+  /// whose owner never consented - it needs a `pp::title_holder` proof of control over that
+  /// holderRoot, bound to this exact signing key and register entry so it cannot be replayed.
+  ///
+  /// No new circuit was needed: title_holder already proves
+  /// `holder_root == extract_pk_identity_hash(sk_identity)` and binds it to a second field, and
+  /// that field is an arbitrary CONTEXT - named `title_id` only because that was its first use.
+  function test_bindNotaryIdentity_requiresAProofOfIdentityControl() public {
+    // An identity that DOES hold a current document, so the document guard is not what fires -
+    // the proof check is.
+    titleHolderVerifier.setShouldVerify(false);
+
+    vm.prank(postman);
+    vm.expectRevert(TitleLedger.InvalidNotaryIdentityProof.selector);
+    ledger.bindNotaryIdentity(NOTARY_HOLDER_ROOT, notaryDataHash, address(0xBEEF), '');
+  }
+
+  /// The context must bind BOTH the signing key and the register entry, or a proof obtained for one
+  /// binding could be replayed to attach a different key - or the same key to a different notary.
+  function test_theBindContextSeparatesKeysAndEntries() public view {
+    bytes32 a = ledger.notaryBindContext(notaryDataHash, notary);
+    assertTrue(a != ledger.notaryBindContext(notaryDataHash, otherSigner), 'context ignores the signing key');
+    assertTrue(a != ledger.notaryBindContext(decoyLeaf, notary), 'context ignores the register entry');
   }
 
   /// Losing NOTARY status and losing IDENTITY status are DIFFERENT EVENTS, which is why they are
@@ -254,7 +279,7 @@ contract TitleLedgerTest is Test {
       bytes32(uint256(0xD0D)), keccak256('other-dg1'), otherHolder, stateKeeper.DOC_PASSPORT(), 2, 0
     );
     vm.prank(postman);
-    ledger.bindNotaryIdentity(otherHolder, keccak256('not in any snapshot'), otherSigner);
+    ledger.bindNotaryIdentity(otherHolder, keccak256('not in any snapshot'), otherSigner, '');
 
     // The identity check passes - they hold a current document...
     assertEq(stateKeeper.getActiveDocumentCount(otherHolder), 1, 'the document should be current');
@@ -283,7 +308,7 @@ contract TitleLedgerTest is Test {
 
   function test_bindNotaryIdentity_revertsForNonPostman() public {
     vm.expectRevert(TitleLedger.OnlyRegistryPostman.selector);
-    ledger.bindNotaryIdentity(NOTARY_HOLDER_ROOT, notaryDataHash, notary);
+    ledger.bindNotaryIdentity(NOTARY_HOLDER_ROOT, notaryDataHash, notary, '');
   }
 
   // ── mintTitle ───────────────────────────────────────────────────────────────────────────

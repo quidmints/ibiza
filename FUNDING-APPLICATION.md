@@ -8,32 +8,35 @@
 
 ## 1. Short description of the proposed project *(300 max)*
 
-We are building privacy-preserving infrastructure that lets people prove who they are, and what they
-own, without disclosing either to the public.
+We build infrastructure that lets people prove who they are, and what they own, without disclosing
+either publicly.
 
-The work starts from two mature open-source systems and joins them. Privacy Pools (0xbow) is a
-shielded pool that lets a user deposit and later withdraw funds unlinkably, while proving their
-funds came from a screened set. Rarime provides passport-based identity: a phone reads the NFC chip
-in an ICAO-standard passport and produces a zero-knowledge proof of a genuine government document,
-revealing nothing about the holder.
+The work joins two mature open-source systems. Privacy Pools (0xbow) is a shielded pool: deposit and
+later withdraw unlinkably, while proving your funds came from a screened set. Rarime provides
+passport-based identity — a phone reads an ICAO passport chip and proves the document is genuine,
+revealing nothing about its holder.
 
-Separately, each has a gap. Privacy Pools screens *money*, using chain-analysis heuristics that taint
-funds by association. Rarime proves *personhood* but has no financial layer. We merged them so a
-withdrawal proves the honest property — that the withdrawer is a real, admitted person — rather than
+Each has a gap. Privacy Pools screens *money*, by chain-analysis heuristics that taint funds by
+association. Rarime proves *personhood* but has no financial layer. We merged them, so a withdrawal
+proves the honest property — that the withdrawer is a real, admitted person — rather than
 guilt-by-association about where their money has been.
 
 On that base we built what the merge exposed as missing: an identity registry where exclusion is
 *fail-open* (an operator who does nothing cannot block anyone), where nobody can be retroactively
-removed after the fact, and where a person's status is proved in a single zero-knowledge inclusion
-proof. We then extended it to real property — a title ledger where ownership is provable but the
-property is not publicly identifiable, and where the same parcel cannot be titled or mortgaged
-twice.
+removed, and where a person's status is proved in a single zero-knowledge inclusion proof. We then
+extended it to real property — a title ledger where ownership is provable but the property is not
+publicly identifiable, and where the same parcel cannot be titled or mortgaged twice.
 
-The target users are people who need to transact, borrow against property, or prove identity under
-governments that treat financial surveillance as an instrument of control. The cryptography is
+The third component supplies the money. We operate a duration-matched dollar pool backed by
+diversified reserves, which underwrites mortgages against those titles. Origination, payment, default and
+discharge are contract logic, not an institution's discretion — so access to credit does not depend
+on a bank's willingness to serve you.
+
+The users are people who must transact, borrow against property, or prove identity under governments
+that treat financial surveillance as an instrument of control. The cryptography is
 jurisdiction-agnostic; only registry endpoints and legal enforcement are local.
 
-*(≈290 words)*
+*(≈295 words)*
 
 ---
 
@@ -88,14 +91,24 @@ register, deposit, withdraw to a fresh address, and confirm the withdrawal canno
 deposit by an observer holding the full chain. We measure proving time and failure modes on
 mid-range devices, not flagships — the population that most needs this does not carry new hardware.
 
-### Milestone 4 — Property and lending layer
+### Milestone 4 — Property, capital, and lending
 
 The title ledger exists; the registry bridge does not. This milestone builds the notary attestation
 path — automated indexing of official registry portals through a decentralised oracle network, where
 every node must independently fetch and produce a byte-identical result before anything is recorded,
 so a notary's licence status rests on consensus rather than on any single operator's assertion — plus
-the lien and mortgage lifecycle. It requires legal review in the target jurisdiction, because a foreclosure
-that cannot be enforced in a real court is a loan nobody will fund.
+the lien and mortgage lifecycle.
+
+It also integrates the capital layer: our existing dollar pool, whose reserves are diversified and
+whose redemption schedule is a maturity ladder rather than an at-will promise. That matters for
+mortgage underwriting specifically — a mortgage is a long-duration asset, and funding it from
+capital that can be withdrawn instantly is the mismatch that breaks lenders. Matching the two is
+what lets the pool underwrite a loan whose term is measured in years.
+
+Loans are collateralised by the titles above, with the property identified only by an opaque
+pseudonym, so the pool can verify a lien is unique and unencumbered without learning which building
+it is. This requires legal review in the target jurisdiction, because a foreclosure that cannot be
+enforced in a real court is a loan nobody will fund.
 
 ### Milestone 5 — Field testing
 
@@ -116,7 +129,7 @@ The first deployment with real value, deliberately small and reversible. What we
 on all of them. We would rather delay than field an unaudited system to users whose exposure is
 measured in liberty rather than money.
 
-*(≈700 words)*
+*(≈840 words)*
 
 ---
 
@@ -289,8 +302,8 @@ upstream we push upstream — we have already contributed fixes back.
 most likely to break — a government portal changing — is the part cheapest to repair, and can be
 repaired by someone local without touching the cryptography.
 
-**Sustainability path.** The lending layer generates protocol revenue, which can fund maintenance
-without further grants. We are explicitly not planning to depend on repeated grant cycles for
+**Sustainability path.** The lending layer generates protocol revenue — origination and interest
+spread on the dollar pool — which can fund maintenance without further grants. We are explicitly not planning to depend on repeated grant cycles for
 survival; grant funding is for the work that cannot be self-funded, principally security audit.
 
 **Realistic commitment.** We will not claim indefinite stewardship. What we commit to is leaving the

@@ -7,6 +7,7 @@ import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProo
 import {AccessControlUpgradeable} from "@oz-upgradeable/access/AccessControlUpgradeable.sol";
 import {UUPSUpgradeable} from "@oz-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
+import {PoseidonUnit2L} from "../libraries/Poseidon.sol";
 import {HolderStateKeeper} from "../holder/HolderStateKeeper.sol";
 import {INoirVerifier} from "../interfaces/verifiers/INoirVerifier.sol";
 import {RegistrySourceAnchor} from "../registry/RegistrySourceAnchor.sol";
@@ -163,6 +164,7 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
     error NotaryNotActive();
     error ZeroNotaryIdentity();
     error NotaryIdentityHasNoCurrentDocument();
+    error InvalidNotaryIdentityProof();
     error InvalidNotarySignature();
     error InvalidHolderProof();
     error ZeroCommitment();
@@ -209,17 +211,41 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
      * @dev The identity must already hold at least one current document - a notary is a passport
      *      holder in this system before they are a notary, which is what makes them revocable.
      *
-     *      STILL POSTMAN-GATED, and this is the honest remaining gap: the claim "this holderRoot
-     *      really is that notary" is asserted here, not proven. It is NARROWER than it was - the
-     *      subject is now a real, registered, revocable identity rather than an anonymous keypair,
-     *      and the registry entry itself is CRE-attested - but closing it fully needs the notary to
-     *      prove control of `holderRoot_` at bind time, which needs a circuit that does not exist
-     *      yet. Recorded rather than papered over.
+     *      THE NOTARY MUST PROVE CONTROL OF `holderRoot_`. This needed no new circuit:
+     *      `pp::title_holder` already proves `holder_root == extract_pk_identity_hash(sk_identity)`
+     *      and binds it to a second field, and that field is an arbitrary CONTEXT - it is named
+     *      `title_id` only because that was its first use. Passing a bind context instead gives
+     *      exactly "I control this identity, and I am committing to THIS binding".
+     *
+     *      WHAT THAT CLOSES: the postman can no longer fabricate a binding for an identity whose
+     *      owner never consented. Previously it could name any holderRoot at all.
+     *
+     *      WHAT REMAINS, stated rather than implied: the postman still chooses WHICH register entry
+     *      is attached. Proving the entry is genuinely THIS person's needs the register's name and
+     *      office number matched against the passport's own DG1 name field - a comparison no circuit
+     *      here performs. So the residual trust is "the postman attached the right entry", not
+     *      "the postman invented a notary", which is a materially smaller claim.
      */
-    function bindNotaryIdentity(bytes32 holderRoot_, bytes32 notaryDataHash_, address signingKey_) external {
+    function bindNotaryIdentity(
+        bytes32 holderRoot_,
+        bytes32 notaryDataHash_,
+        address signingKey_,
+        bytes calldata identityProof_
+    ) external {
         if (!NOTARY_REGISTRY.hasRole(NOTARY_REGISTRY.REGISTRY_POSTMAN(), msg.sender)) revert OnlyRegistryPostman();
         if (holderRoot_ == bytes32(0) || signingKey_ == address(0)) revert ZeroNotaryIdentity();
         if (STATE_KEEPER.getActiveDocumentCount(holderRoot_) == 0) revert NotaryIdentityHasNoCurrentDocument();
+
+        // The context binds the proof to THIS signing key and THIS register entry, so a proof of
+        // identity control cannot be replayed to bind a different key or a different notary.
+        bytes32 context_ = notaryBindContext(notaryDataHash_, signingKey_);
+        bytes32 expected_ =
+            bytes32(PoseidonUnit2L.poseidon([uint256(holderRoot_), uint256(context_)]));
+
+        bytes32[] memory publicInputs_ = new bytes32[](2);
+        publicInputs_[0] = expected_;
+        publicInputs_[1] = context_;
+        if (!TITLE_HOLDER_VERIFIER.verify(identityProof_, publicInputs_)) revert InvalidNotaryIdentityProof();
 
         notaryDataHashOf[holderRoot_] = notaryDataHash_;
         notaryIdentityOf[signingKey_] = holderRoot_;
@@ -395,6 +421,18 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
      * Losing notary status and losing identity status are different events, so they are checked
      * separately rather than collapsed into one flag somebody has to remember to clear.
      */
+    /**
+     * @notice The context a notary's identity proof must commit to. Exposed so the notary can build
+     *         the proof off-chain against the exact value this contract will check.
+     * @dev Reduced modulo the field because it is a circuit input, not a keccak digest.
+     */
+    function notaryBindContext(bytes32 notaryDataHash_, address signingKey_) public pure returns (bytes32) {
+        return bytes32(
+            uint256(keccak256(abi.encodePacked("TITLE_LEDGER_NOTARY_BIND", notaryDataHash_, signingKey_)))
+                % 21888242871839275222246405745257275088548364400416034343698204186575808495617
+        );
+    }
+
     function _requireActiveNotary(bytes32 registryId_, address notary_, bytes32[] calldata proof_) internal view {
         bytes32 holderRoot = notaryIdentityOf[notary_];
         if (holderRoot == bytes32(0)) revert NotaryNotActive();

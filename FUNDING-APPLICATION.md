@@ -72,8 +72,8 @@ ragequit payouts; and on the capital side, reserve accounting and the redemption
 funds regardless of the circuits. **The four generated verifiers**, against the circuits they claim
 to verify.
 
-We will also commission a review of the trust model itself — not "is the code correct" but "who can
-do what to whom", which is where this class of system usually fails.
+We will also review the trust model itself — not "is the code correct" but "who can do what to
+whom", where this class of system usually fails.
 
 ### Milestone 2 — Deploy
 

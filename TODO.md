@@ -1145,6 +1145,49 @@ revocation secret to anyone who looks. Base-independent, so the leak is universa
 key-specific. Both facts are asserted in
 `test_mul_point_by_zero_returns_the_sentinel_not_the_identity`.
 
+### 2.13i Step 4 COMPLETE: the escrow envelope proves, verifies on-chain, and costs 37,384
+
+`pp/src/envelope.nr` (hashed ElGamal over Baby Jubjub) + the `escrow_envelope` circuit + a generated
+Solidity verifier that has ACCEPTED A REAL PROOF. End to end: JS witness -> nargo execute -> bb
+write_vk -> bb prove -> bb verify -> on-chain `forge test`.
+
+**COST CORRECTION - 37,384 ACIR opcodes, not the 23,727 quoted in §2.13d.** That estimate missed a
+THIRD scalar multiplication (deriving `holder_root` from `sk_identity`) and used Poseidon2 rather
+than the circomlib Poseidon this codebase actually shares with the wallet and poseidon-solidity.
+Three scalar mults at ~11.8k each dominate. It is a ONE-TIME, off-hot-path cost, so the conclusion
+stands; the number was wrong by 58%.
+
+**Why `holder_root` is PROVEN and not supplied** (the third scalar mult, and worth its cost): if the
+caller could name any holder root, an attacker would escrow a commitment to a secret of THEIR
+choosing against a VICTIM's identity. The victim's withdrawal - which proves its `s` matches the
+escrowed commitment - would then fail forever. Requiring knowledge of `sk_identity` makes escrow
+self-service only.
+
+**The r=0 guard is exercised, not merely present.** Four negative witnesses were run and each fails
+with its own assertion: zero ephemeral, holder_root not derived from sk_identity, commitment not
+matching the sealed secret, tampered ciphertext.
+
+**EIP-170 - THE NEW VERIFIER DID NOT FIT.** At the default optimizer setting it compiled to 25,503
+bytes, 927 OVER the 24,576 limit and undeployable. It has 8 public inputs, more than any other
+circuit here, and each costs runtime code. Fixed by scoping `optimizer_runs = 1` to it in
+foundry.toml, exactly as the other three verifiers already do -> 24,490 bytes, 86 bytes of headroom.
+This surfaces ONLY at deploy time, so `forge build --sizes` must be checked after any change that
+adds a public input.
+
+**Regenerating all four verifiers confirmed the jubjub refactor was ACIR-neutral**: the three
+existing verifiers came out byte-identical (no git diff), which is the strongest available evidence
+that delegating `priv_to_pub` to `mul_point` did not fork `holder_root`.
+
+**Cross-implementation, not a self-consistent loop:** every public input in the fixture was produced
+by @iden3/js-crypto - the same babyJub and Poseidon the wallet uses - and then accepted by the Noir
+circuit and the Solidity verifier.
+
+**Still open on this circuit:** the sealed `document_attribute` is currently ONE field supplied by
+the caller. §2.13f wants the FULL authenticated DG1 sealed so the controller can attribute
+registrations to a person across passports; that needs the DG1 bytes re-hashed in-circuit to bind
+them to the proof-bound `dg1Hash`, whose cost has NOT been measured. Sealing more fields is nearly
+free (one shared secret, ~8 opcodes per extra mask); re-hashing DG1 is the unknown.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

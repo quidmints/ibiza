@@ -32,3 +32,10 @@ optimizer_runs = 1
 [[profile.default.compilation_restrictions]]
 paths = "contracts/pool/verifiers/RagequitHonkVerifier.sol"
 optimizer_runs = 1
+
+# Without this the generated verifier is 25,503 bytes - 927 OVER the EIP-170 24,576 limit and
+# undeployable. It has 8 public inputs, the most of any circuit here, and each one costs runtime
+# code. The failure surfaces only at deploy time, so it is caught by `forge build --sizes`.
+[[profile.default.compilation_restrictions]]
+paths = "contracts/registry/verifiers/EscrowEnvelopeHonkVerifier.sol"
+optimizer_runs = 1

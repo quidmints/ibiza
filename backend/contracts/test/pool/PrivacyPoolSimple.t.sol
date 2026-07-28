@@ -28,15 +28,16 @@ contract MockEntrypoint {
     known[root_] = true;
   }
 
-  /// Also stands in for the revocation registry: the pool asks isValidRoot before accepting a
-  /// proof, and these tests are about pool mechanics rather than revocation policy.
-  function isValidRoot(bytes32) external pure returns (bool) {
-    return true;
-  }
-
-  function isKnownAspRoot(uint256 root_) external view returns (bool) {
-    if (root_ == 0) return false;
-    return known[root_];
+  /// Stands in for the IdentityRegistry: the pool asks isValidRoot before accepting a proof.
+  ///
+  /// THIS MUST HONOUR `known`, not return true. It previously DID return true unconditionally,
+  /// which was fine when it only stood in for the revocation registry and the ASP root was checked
+  /// separately via isKnownAspRoot. Under the single identity tree this IS the only identity gate,
+  /// so an unconditional true would make test_withdraw_revertsOnInvalidIdentityRoot pass while
+  /// asserting nothing at all.
+  function isValidRoot(bytes32 root_) external view returns (bool) {
+    if (root_ == bytes32(0)) return false;
+    return known[uint256(root_)];
   }
 }
 
@@ -61,7 +62,7 @@ contract PrivacyPoolSimpleTest is Test {
     ragequitVerifier = new NoirVerifierMock();
     pool = new PrivacyPoolSimple(
       address(entrypoint), address(withdrawalVerifier), address(ragequitVerifier),
-      address(entrypoint), address(entrypoint)
+      address(entrypoint)
     );
 
     vm.deal(address(entrypoint), 0); // deposits are relayed as msg.value from the caller, not the entrypoint's own balance
@@ -85,7 +86,7 @@ contract PrivacyPoolSimpleTest is Test {
   }
 
   function _emptyWithdrawProof() internal pure returns (ProofLib.WithdrawProof memory p) {
-    p.pubSignals = [uint256(0), 0, 0, 0, 0, 0, 0, 0, 0];
+    p.pubSignals = [uint256(0), 0, 0, 0, 0, 0, 0];
   }
 
   /// @dev Honk since the sec. 2.5b port - `proof` is bytes, not pA/pB/pC.
@@ -144,8 +145,8 @@ contract PrivacyPoolSimpleTest is Test {
     returns (IPrivacyPool.Withdrawal memory withdrawal_, ProofLib.WithdrawProof memory proof_)
   {
     (, uint256 label) = _deposit(1 ether, 123);
-    uint256 aspRoot = 999;
-    entrypoint.setActiveRoot(aspRoot);
+    uint256 identityRoot = 999;
+    entrypoint.setActiveRoot(identityRoot);
 
     withdrawal_ = IPrivacyPool.Withdrawal({processooor: processooor, data: abi.encode(label)});
     uint256 context = uint256(keccak256(abi.encode(withdrawal_, pool.SCOPE()))) % FIELD;
@@ -156,9 +157,8 @@ contract PrivacyPoolSimpleTest is Test {
     proof_.pubSignals[2] = withdrawnValue_;
     proof_.pubSignals[3] = pool.currentRoot();
     proof_.pubSignals[4] = pool.currentTreeDepth();
-    proof_.pubSignals[5] = aspRoot;
-    proof_.pubSignals[6] = 1;
-    proof_.pubSignals[7] = context;
+    proof_.pubSignals[5] = identityRoot;
+    proof_.pubSignals[6] = context;
   }
 
   function test_withdraw_succeeds() public {
@@ -182,7 +182,7 @@ contract PrivacyPoolSimpleTest is Test {
 
   function test_withdraw_revertsOnContextMismatch() public {
     (IPrivacyPool.Withdrawal memory w, ProofLib.WithdrawProof memory p) = _validWithdrawProof(0.4 ether);
-    p.pubSignals[7] = p.pubSignals[7] + 1; // corrupt context
+    p.pubSignals[6] = p.pubSignals[6] + 1; // corrupt context - slot 6 since asp_tree_depth went
 
     vm.prank(processooor);
     vm.expectRevert(IPrivacyPool.ContextMismatch.selector);
@@ -198,12 +198,14 @@ contract PrivacyPoolSimpleTest is Test {
     pool.withdraw(w, p);
   }
 
-  function test_withdraw_revertsOnIncorrectASPRoot() public {
+  /// The identity gate: slot 5 is now `identityRoot`, checked against IdentityRegistry.isValidRoot
+  /// rather than the old ASP root equality. One registry where there were two (TODO.md sec. 2.13k).
+  function test_withdraw_revertsOnInvalidIdentityRoot() public {
     (IPrivacyPool.Withdrawal memory w, ProofLib.WithdrawProof memory p) = _validWithdrawProof(0.4 ether);
-    p.pubSignals[5] = p.pubSignals[5] + 1; // no longer matches entrypoint.activeRoot()
+    p.pubSignals[5] = p.pubSignals[5] + 1; // no longer a root the registry ever had
 
     vm.prank(processooor);
-    vm.expectRevert(IPrivacyPool.IncorrectASPRoot.selector);
+    vm.expectRevert(IPrivacyPool.InvalidIdentityRoot.selector);
     pool.withdraw(w, p);
   }
 
@@ -294,7 +296,7 @@ contract PrivacyPoolSimpleTest is Test {
     PrivacyPoolSimple rejectingPool =
       new PrivacyPoolSimple(
         address(entrypoint), address(withdrawalVerifier), address(rejecting),
-        address(entrypoint), address(entrypoint)
+        address(entrypoint)
       );
 
     uint256 value = 1 ether;

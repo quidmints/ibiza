@@ -1455,6 +1455,43 @@ previously committed fixture exactly.
 Steps 2-5 are the remainder. `main` stays green throughout; all of this is on
 `wip/identity-tree-merge`.
 
+### 2.13q Rewiring the pool suites: TWO bugs caught that would have shipped silently
+
+Bootstrap step 2 (§2.13p). `PrivacyPoolSimple`/`PrivacyPoolComplex` now build against the single
+registry. Both defects below would have COMPILED AND PASSED.
+
+**BUG 1 - the registry was built at the wrong depth.** `IdentityRegistry.t.sol` constructed the tree
+with `treeHeight_ = 20` while the circuit is fixed at `IDENTITY_TREE_DEPTH = 32`. Solarity's
+`maxDepth` is a CAP, so the ROOT is identical either way and every existing test still passed - which
+is exactly why it would have survived. It bites later: a depth-20 registry rejects a deep insert the
+depth-32 circuit accepts, and a witness longer than the circuit's fixed sibling array cannot be
+padded into one. Now a named constant with the agreement spelled out.
+
+**BUG 2 - a test that would have stopped testing anything.** `MockEntrypoint.isValidRoot` returned
+`true` UNCONDITIONALLY. That was sound while it only stood in for the REVOCATION registry: the ASP
+root was checked separately through `isKnownAspRoot`, which did honour its `known` mapping, so the
+identity gate was still exercised. Under the single tree `isValidRoot` IS the only identity gate, so
+an unconditional `true` would have made `test_withdraw_revertsOnInvalidIdentityRoot` pass while
+asserting NOTHING. Now honours `known` and rejects the zero root, matching the real registry.
+
+**Slot renumbering, done by reading each site rather than pattern-replacing** - the shift is not
+uniform, because a slot was REMOVED from the middle:
+
+| old | new | |
+|---|---|---|
+| [5] asp_root | [5] identityRoot | same slot, different registry |
+| [6] asp_tree_depth | - | gone with the LeanIMT identity tree |
+| [7] context | [6] context | **moved** |
+| [8] revocation_root | - | merged into [5] |
+
+A blind `[7] -> [6]` would have been wrong for the tests perturbing `[5]`, and a blind shift-by-one
+wrong for `[3]`/`[4]`. Every site was read.
+
+**Remaining:** `WithdrawEndToEnd` (18 references to the two old registries) and
+`WithdrawalHonkVerifier` both need the REGENERATED withdrawal fixture, which needs the emitter to
+run, which needs those files to compile - the circular step from §2.13p. That is the next piece, and
+it is deliberately not being rushed: those two suites are the primary guard on the withdrawal path.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

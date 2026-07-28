@@ -48,6 +48,12 @@ contract IdentityRegistryTest is Test {
   bytes32 internal constant ICAO = 0x2c50ce3aa92bc3dd0351a89970b02630415547ea83c487befbc8b1795ea90c45;
   uint256 internal constant MAX_ROOT_AGE = 1 days;
 
+  /// MUST equal withdraw_identity's IDENTITY_TREE_DEPTH and identityProof.ts's IDENTITY_TREE_DEPTH.
+  /// Solarity's maxDepth is a CAP, so the ROOT is the same at any height - but a shallower registry
+  /// would reject a deep insert the circuit accepts, and an emitted witness longer than the
+  /// circuit's fixed sibling array cannot be padded into one.
+  uint32 internal constant IDENTITY_TREE_DEPTH = 32;
+
   address internal CONTROLLER = address(0xC0FFEE);
   bytes32 internal constant PREDICATE_SANCTIONS = keccak256('OFAC_SDN');
   bytes32 internal constant PREDICATE_DOC_INVALID = keccak256('DOC_INVALID');
@@ -85,7 +91,7 @@ contract IdentityRegistryTest is Test {
       CONTROLLER,
       CONTROLLER_KEY_X,
       CONTROLLER_KEY_Y,
-      20,
+      IDENTITY_TREE_DEPTH,
       MAX_ROOT_AGE,
       preds
     );
@@ -269,7 +275,7 @@ contract IdentityRegistryTest is Test {
     // even when the guard is working - a false failure that hides a working guard.
     address verifier_ = address(new EscrowEnvelopeHonkVerifier());
     try new IdentityRegistry(
-      verifier_, address(sk), CONTROLLER, CONTROLLER_KEY_X, CONTROLLER_KEY_Y, 20, MAX_ROOT_AGE, preds
+      verifier_, address(sk), CONTROLLER, CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
     ) {
       fail('a zero predicate was accepted at deploy - revocation could write the CLEAN state');
     } catch {}

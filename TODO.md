@@ -1082,6 +1082,38 @@ against. Costs nothing — the field exists and is being filled with zero. Stric
 event, and it drops the per-predicate attester mapping's misconfiguration surface without losing
 the record.
 
+### 2.13g CANCELLED: the SMT swap for the registered mirror. Measured, and it is a net loss
+
+Step 2 of the §2.13 build order, dropped before implementation on its own numbers.
+
+**Claimed:** swapping the registered mirror from LeanIMT to SparseMerkleTree would be free or
+cheaper, drop the `asp_tree_depth` public input, and leave ONE proof gadget instead of two.
+
+**Measured with `nargo info`, capacity-matched at depth 32 (~4 billion identities):**
+
+| gadget | ACIR opcodes |
+|---|---|
+| `lean_imt_inclusion` (current) | 10,575 |
+| `smt_verifier_full` inclusion (proposed) | **11,856** |
+
+The swap COSTS +1,281 opcodes (+12%) on every withdrawal. The earlier "SMT is cheaper" figure
+compared depth-20 SMT (7,889) against depth-32 LeanIMT — different capacities, so not a comparison
+at all. The registered set is the LARGE tree; the depth-20 figure belongs to the blacklist, which
+holds thousands, not millions.
+
+**And the main justification was false.** PP's own state tree uses `lean_imt_inclusion` too
+(withdraw_identity/src/main.nr:81) and is not changing, so LeanIMT stays in the trusted base
+regardless. The swap does not remove a gadget — it only changes which tree uses which. That claim
+was made without checking the tree three lines above the one being changed.
+
+Net: pay +12% per withdrawal to drop one public input. Not worth it. `asp_tree_depth` stays, and its
+existing safety argument holds — a false depth simply fails to reconstruct the root, so no separate
+range check is needed.
+
+**What survives from the original step 2:** nothing. The key->value property that motivated "SMT
+everywhere" is wanted only for the EXCLUSION tree's predicate slot (§2.13f), and that tree is
+ALREADY a SparseMerkleTree.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

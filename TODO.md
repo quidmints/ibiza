@@ -2112,6 +2112,73 @@ Consequences, both real:
 Until it is settled, `TitleLedger`'s propertyKey comment is stale and should not be read as a
 specification.
 
+### 2.17 "MORTGAGES MIGHT NOT BE VIABLE AT ALL?" - the honest answer (user, 2026-07-29)
+
+**MY LENDER ARGUMENT IS DEAD, and the user killed it correctly.** §2.16b's detection story rested on
+"the lender appraised the property, so they know what they lent against". **THERE IS NO LENDER.**
+Underwriting comes from a pool of QUI holders - basket shares in the SPV - and there is no class
+action either. So:
+
+- **Nobody knows which property backs a loan**, so nobody notices a fraudulent title.
+- **Nobody has standing**, so the conditional-deanonymisation trigger has no plaintiff.
+- **The pool silently eats the loss**, and cannot even tell a loss from a defect.
+
+That is not a gap in the mechanism; it removes the party the mechanism assumed.
+
+**THE STRUCTURAL FACT.** Someone must (a) know the property, (b) have skin in the game, and (c) be
+accountable. A diffuse pool has none of the three. The protocol CAN enforce the mechanical
+predicates - the title is unique, a licensed notary attested it, LTV/DTI are within limits, payments
+arrive, default is timed - but it CANNOT verify that a declared appraisal is honest or that the
+property is worth what is claimed. Every one of those rests on the notary's attestation being TRUE,
+which is a single point of failure the cryptography does not touch.
+
+**SO: A FULLY TRUSTLESS POOLED MORTGAGE IS NOT VIABLE.** Saying otherwise would be dishonest. What IS
+viable is narrower and worth stating precisely:
+
+> A pool that funds loans ORIGINATED BY ACCOUNTABLE AGENTS, where the protocol enforces the
+> mechanical parts and licensed humans carry the judgment parts.
+
+That is how mortgage markets already work - originate-to-distribute - and the protocol's contribution
+is privacy, automation and capital access, NOT the elimination of an underwriter.
+
+**WHAT THE SPEC IS MISSING, and the user spotted it.** §6 hires post-default vendors - process
+servers, auctioneers, REO brokers, preservation contractors - but NO PRE-DEFAULT ROLES. There is no
+appraiser, no title investigator, no servicer, and no fraud investigator. Those are not optional:
+- **Independent appraisal** as a separately attested role, ideally CRE-verified from a licensed
+  appraisers' register exactly as notaries are - so valuation is not the notary's word alone.
+- **A servicer** who knows the property and is compensated and liable, giving the pool an agent with
+  standing where the pool itself has none.
+- **Investigators.** Loss mitigation requires someone to investigate suspected fraud. Real servicing
+  costs run roughly 25-50bps; this is a normal, PRICEABLE operating cost taken out of the interest
+  spread - but it must be priced, not assumed away.
+
+**WHAT SURVIVES WITHOUT ANY OF THIS.** Over-collateralisation does real work: at LTV <= 70% a 30%
+buffer absorbs ordinary valuation error, though not outright fraud. And the notary's LICENCE is the
+actual bond - a professional who can be struck off has more at stake than most crypto collateral,
+which is exactly why §2.16 concluded no stake was needed.
+
+**IMPLICATION FOR SCOPE, and it should be faced now rather than at field testing.** This strengthens
+the case for shipping IDENTITY AND TITLE FIRST and treating lending as a later phase gated on the
+agent roles existing. FUNDING-APPLICATION.md already commits to that shape - "where the assignment
+instrument proves unenforceable we would ship the identity and title layers without the lending
+layer" - and this is a second, independent reason for the same ordering. The identity and title work
+is valuable ON ITS OWN: provable ownership without public disclosure does not depend on anyone
+lending against it.
+
+### 2.17a Notary anonymity: proceed on the §5 Option B pattern
+
+Confirmed direction. The k-of-n legal guardian set the spec already specifies for the power of
+attorney ALSO holds the notary-deanonymisation shares - one guardian set, two purposes, no new
+trusted party. Concretely:
+- The notary proves ZK set membership in the CRE-anchored active-notary snapshot; no identity on chain.
+- The attestation carries a hashed-ElGamal envelope (`pp/src/envelope.nr`, built and tested) sealing
+  their identity to the guardian set's threshold key.
+- Opening requires k of n, on a stated predicate, exactly as the default bridge opens the PoA.
+
+**BUT NOTE WHAT §2.17 DOES TO THE TRIGGER:** the guardians can only act on a COMPLAINT, and with no
+lender there may be no complainant. The mechanism is sound and the plaintiff is missing - so the
+servicer role above is a PREREQUISITE for this to mean anything, not an optimisation.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

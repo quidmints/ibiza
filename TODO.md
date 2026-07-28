@@ -1880,6 +1880,42 @@ lien machinery is jurisdiction-agnostic; only the registry endpoints, the deed s
 enforcement vendors are local. Keep them behind an interface so a second jurisdiction is a
 configuration, not a fork. `iran-constitutional-monarchy` is OUT OF SCOPE for now.
 
+### 2.15a CRE INSTEAD OF TLSNotary, with a controller-published workflow version (user, 2026-07-29)
+
+The spec (§2.15) specifies TLSNotary 2PC MPC-TLS over `portal.notary.ir`. **We already have the
+property that buys, by a cheaper route.** `backend/cre/notary_registry/main.go` exists and does
+exactly this job for Ukraine's Ministry of Justice registry: cron-triggered scrape, then
+`cre.ConsensusIdenticalAggregation` requires EVERY DON node to independently fetch and produce a
+BYTE-IDENTICAL result before a report is generated. That is what makes it an anchored external
+authority rather than one operator's assertion - the same reason TLSNotary is specified, without the
+MPC-TLS machinery.
+
+**THE PROBLEM CRE HAS AND TLSNotary DOES NOT: scrapers rot.** A government portal changes its HTML
+and the workflow silently starts producing nothing, or worse, produces a consensus-valid parse of
+the wrong fields. TLSNotary proves the SESSION, so a format change breaks the parse in the prover;
+CRE proves the CONSENSUS, so a format change breaks it identically on every node and consensus is
+still reached on a wrong answer.
+
+**USER'S PROPOSAL: the SAME controller that writes the label and blacklist lists also publishes
+which CRE workflow version is current**, so the scraper can be updated when a portal changes.
+
+That is the right shape - one authority, already trusted for exactly this class of decision, rather
+than a second one - but it needs the trust caveat stated: **a controller that can point at a new
+workflow can point at a MALICIOUS one**, and the DON would faithfully reach consensus on its output.
+CRE's consensus protects against a rogue NODE, not against a rogue WORKFLOW.
+
+Mitigations to design in, not assume:
+- A workflow is compiled wasm with a deterministic ID, so a pointer names a SPECIFIC, auditable
+  artifact - not "whatever the controller runs".
+- Version history APPEND-ONLY, so a swap is permanently visible rather than a silent substitution.
+- A TIMELOCK between publishing a version and it taking effect, so a swap can be seen and contested
+  BEFORE it is load-bearing. Without this the update mechanism is a same-block censorship lever.
+- The existing fail-open rule still applies: if no valid workflow is published, the last good
+  anchored data stays valid rather than everything halting.
+
+**NOT YET BUILT.** Recorded now because it changes §2.15's stated approach and because the timelock
+is the kind of thing that is hard to add after a mechanism is depended upon.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

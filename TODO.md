@@ -2308,6 +2308,56 @@ That is what "priced" should point at for this risk class, and a deployment with
 insurance or an originator first-loss deep enough to stand in for it is under-capitalised regardless
 of how good the circuits are.
 
+### 2.17e ORIGINATORS: the plan, and why TIER 2 changes the risk picture (user, 2026-07-29)
+
+**MY TITLE-INSURANCE ANSWER WAS US-CENTRIC AND LARGELY WRONG HERE.** Title insurance exists mainly
+in RECORDING systems (US/Canada), where the register is evidence of a claim and a private insurer
+underwrites the gap. Iran runs a CIVIL-LAW STATE CADASTRE (*Sazman-e Sabt*): registration is
+constitutive, the state deed IS the title, and the STATE stands behind the register. Private title
+insurance is largely redundant in that model and may simply not exist locally. So "the originator
+has title insurance handled" is probably the wrong question - **needs local confirmation, but the
+structural answer is that the state register plays the role I was assigning to an insurer.**
+
+**AND SPEC §2.2 TIER 2 IS THE PART I UNDER-WEIGHTED.** *"General Public / Lenders - Deed Authenticity
+Check (Tasdiq-e Asalat) - can verify deed authenticity by submitting the 18-digit Unique ID +
+Owner's National ID."*
+
+**AN ORIGINATOR CAN INDEPENDENTLY VERIFY THE DEED AGAINST THE STATE.** That collapses the threat I
+have been building elaborate machinery around: the notary is NOT a single point of failure, because
+their attestation is CORROBORABLE against the government's own system by the party taking the risk.
+A bribed notary cannot forge a deed the state will not confirm.
+
+**THIS SHOULD BE CRE-ATTESTED, and it is the highest-value unrecorded item.** The same oracle pattern
+already built for the notary register can run the Tier 2 authenticity check, putting on-chain
+evidence that the deed is genuine - independent of BOTH the notary and the originator. That reduces
+trust in both simultaneously, using machinery that exists (`backend/cre/notary_registry/main.go` is
+the template). It is a better use of effort than anything downstream of assuming the notary lied.
+
+**THE ORIGINATOR PLAN.**
+
+*What they do* (none of it protocol-replaceable): the Tier 2 deed check; appraisal; borrower
+underwriting for DTI; servicing and collection; loss mitigation and investigation.
+
+*What they post*: first-loss capital, sized against their book, slashed automatically on a title
+defect (§2.17b) - so the trigger is mechanical and needs no plaintiff.
+
+*What they warrant*: representations on deed authenticity, valuation basis, and borrower identity -
+enforceable in-jurisdiction, which is what the first-loss backstops rather than replaces.
+
+*What the protocol enforces*: lien uniqueness, LTV/DTI at origination, payment schedule, default
+timing, and the slashing.
+
+*ROLE SEPARATION IS MANDATORY*: originator != notary, so any fraud needs two accountable parties
+colluding. This must be enforced in the contract, not the documentation.
+
+**WHO THEY ACTUALLY ARE - the honest weak point.** In a sanctioned jurisdiction the banks are
+constrained, which is the project's whole premise, so originators are likely licensed non-bank credit
+institutions or real-estate finance companies. **Recruiting even one is a
+BUSINESS-DEVELOPMENT problem, not a technical one, and it is the single most likely reason the
+lending layer never ships.** The realistic path is ONE vetted originator, a small book, and first-loss
+set deliberately high, to prove the mechanics before widening. That is also why §2.17's conclusion
+stands: identity and title first, lending gated on an originator existing at all.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

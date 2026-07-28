@@ -42,9 +42,9 @@ jurisdiction-agnostic; only registry endpoints and legal enforcement are local.
 
 ## 2. Implementation: approach, activities, and milestones *(1000 max)*
 
-**Status.** The core is built and tested, not audited: 269 passing contract tests, 84 circuit tests,
-and real zero-knowledge proofs verified on-chain through generated verifiers, not mocks. What remains
-is external review, then contact with reality.
+**Status.** The core is built and tested, not audited: 269 contract tests, 84 circuit tests, and real
+zero-knowledge proofs verified on-chain through generated verifiers, not mocks. What remains is
+external review, then contact with reality.
 
 **What exists.** Four Noir/UltraHonk circuits (withdrawal, ragequit, escrow, passport registration);
 the identity registry, privacy pool, entrypoint and title ledger contracts; and a wallet holding one
@@ -52,7 +52,7 @@ BIP39 seed in the device secure enclave, from which every other key derives.
 
 ### Milestone 1 — Security audit (the gate for everything else)
 
-Nothing goes near a real user before independent review. The scope, in descending order of risk:
+Nothing goes near a real user before independent review. Scope, in descending order of risk:
 
 **Circuits.** A soundness bug here is silent and total — a wrong constraint lets an attacker mint
 value or bypass identity while every test passes. `withdraw_identity`, `escrow_envelope` (the
@@ -142,7 +142,7 @@ The first deployment with real value, deliberately small and reversible. What we
 them. We would rather delay than field an unaudited system to users whose exposure is measured in
 liberty rather than money.
 
-*(≈995 words)*
+*(≈1000 words)*
 
 ---
 

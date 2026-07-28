@@ -46,9 +46,9 @@ jurisdiction-agnostic; only registry endpoints and legal enforcement are local.
 zero-knowledge proofs verified on-chain through generated verifiers, not mocks. What remains is
 external review, then contact with reality.
 
-**What exists.** Four Noir/UltraHonk circuits (withdrawal, ragequit, escrow, passport registration);
-the identity registry, privacy pool, entrypoint and title ledger contracts; and a wallet holding one
-BIP39 seed in the device secure enclave, from which every other key derives.
+**What exists.** Four Noir/UltraHonk circuits (withdrawal, ragequit, escrow, registration); the
+identity registry, pool, entrypoint and title ledger; and a wallet holding one BIP39 seed in the
+device secure enclave, from which every other key derives.
 
 ### Milestone 1 — Security audit (the gate for everything else)
 

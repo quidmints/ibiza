@@ -1387,6 +1387,48 @@ leaf hash.
 `sk_identity`), regenerated fixtures + verifier, `ProofLib`/`PrivacyPool`/`IState` public-input
 changes (9 -> 7), and the wallet. The contract half is what landed here.
 
+### 2.13o The merge's blocker is resolved: a VALIDATED JS/TS sparse Merkle tree
+
+The single-tree rewrite stalled on something not anticipated when it was sequenced: **there is no
+TS/JS SparseMerkleTree anywhere in this repo.** `revocation.ts` only CONSUMES proofs from the
+contract via `getProof`. The fixture generator builds its trees in JavaScript, so it could not
+produce an identity-tree witness, and without fixtures five pool suites cannot pass.
+
+**Resolved with `@zk-kit/smt` 1.0.2** - same family as the `@zk-kit/lean-imt` already depended on,
+with Poseidon (@iden3/js-crypto) injected as its pluggable hash. NOT hand-rolled, for the reason
+identityAsp.ts gives: the reference implementation is more trustworthy than a second independent
+implementation of the same algorithm.
+
+**VALIDATED AGAINST THREE INDEPENDENT REFERENCES BEFORE ANY WITNESS IS BUILT ON IT**
+(`tools/check-identity-tree.js`, 8 checks, all passing). This mattered more than a usual dependency
+check: a sparse Merkle tree that is subtly wrong - reversed siblings, a different empty-node
+convention, a leaf hash off by one field - still produces PLAUSIBLE-LOOKING proofs that simply
+verify against nothing, on-chain, with no diagnostic pointing back at the builder.
+
+1. **ROOT vs circomlibjs** - `{1:11, 2:22, 7:77, 9:99}` reproduces `pp/src/smt.nr::REF_ROOT` exactly.
+2. **ROOT vs @solarity ON-CHAIN for a ZERO value** - a single `5 -> 0` leaf gives the same root
+   `test/registry/SmtCompat.t.sol` asserts the real registry produces. This is the case NOTHING had
+   exercised before the merged design, since RevocationRegistry only ever added a non-zero predicate.
+3. **SIBLING ORDERING vs the Noir gadget** - the proof for key 7 matches
+   `pp/src/smt.nr::ref_siblings_key7()` element-for-element. A REVERSED array would look equally
+   plausible and verify against nothing.
+
+Plus: a zero-valued leaf is distinguishable from an empty tree, revocation moves the root, and the
+revoked root equals the circuit's own leaf hash.
+
+**Written as a standalone script, not a jest test, because the wallet package has NO test runner
+configured** - this would have been its first test file, and a test that cannot run is not a test.
+`tools/check-client-abis.py` is the established precedent for verification that must actually
+execute.
+
+`postman/identityTree.ts` wraps it and REFUSES to emit an unusable witness: it throws for an
+unregistered commitment (rather than silently returning a non-membership proof), throws for a
+REVOKED one naming the predicate, rejects a zero predicate on revoke, and errors if the path
+outgrows the circuit depth instead of truncating.
+
+**Remaining for the 43%:** `withdrawWitness.ts`, the fixture generator, regenerated fixtures and
+verifier, the five pool suites, and the wallet's `revocation.ts` (now superseded by the merged tree).
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

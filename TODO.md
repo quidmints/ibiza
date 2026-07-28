@@ -1610,6 +1610,46 @@ deposits, applied to a field that currently has none of it.
 Interacts with §2.13l: if titles become documents and notaries become registered identities, this
 commitment should be settled in the same pass rather than bolted on afterwards.
 
+### 2.13t MERGE: the circular bootstrap is BROKEN, and the withdrawal proves on-chain at 7 signals
+
+268/269 forge tests. The withdrawal circuit, both its fixtures, the verifier, ProofLib, PrivacyPool
+and four test suites are all on the single identity tree.
+
+**THE LOOP IS CLOSED, contract to circuit.** `IdentityRegistry` registers three identities through
+real escrow proofs, `getProof` emits root + siblings, and the Noir circuit's `smt_verifier_full`
+ACCEPTS them as an inclusion of `commitment -> 0`. Verified by `nargo execute` against the emitted
+witness, then proved and verified with bb, then verified ON-CHAIN by the regenerated verifier
+(`WithdrawalHonkVerifier.t.sol`, 11/11, both the hand-vector and wallet-derived fixtures).
+
+**Withdrawal is 24,812 ACIR opcodes, down from 43,772 (-43%)** - the projection, confirmed on the
+real circuit rather than a scratch model.
+
+**Test constants were patched FROM THE PROOF FILES, never transcribed.** Fourteen 77-digit values by
+hand is where this would have rotted; a wrong constant fails as `SumcheckFailed` with nothing
+pointing at the transcription.
+
+**Four incidental defects fixed on the way, each of which would have failed confusingly later:**
+- `tools/build-withdrawal-fixture.js`'s documented `tsc` invocation was missing `--rootDir src`.
+  With one input file tsc infers the root as `src/pp` and emits a FLAT build, so the `pp/` prefix the
+  script requires disappears. It was implicit only while two files from different directories were
+  compiled together.
+- The same header pointed the build at `tools/build`, which cannot resolve `@iden3/js-crypto` - node
+  walks UP for `node_modules` and there is none above `tools/`. It must sit inside the wallet.
+- `WithdrawEndToEnd`'s new mock proxies used empty init data, which OZ 5.6.1 rejects; the other
+  suites already carry an `UnsafeTestProxy` for exactly this.
+- `test_FixturesAreNotDegenerate` could no longer see the identity path, since it is now PRIVATE.
+  The check MOVED (registry `getProof` siblings, asserted in WithdrawEndToEnd and in the emitter)
+  rather than being dropped - recorded in the test itself, because a silently narrower degeneracy
+  check is the exact failure that function exists to prevent.
+
+**REMAINING: `tools/build-e2e-fixture.js` DOES NOT EXIST.** `WithdrawEndToEnd`'s header has always
+pointed at it, and it is not in the repo - so `Prover.e2e.toml` has never been reproducible from a
+committed script. Its 9 tests fail only because the fixture is stale: adding the state keeper and
+registry deployments moved the pool's address, hence `SCOPE`, hence every label, commitment and
+context derived from it. That staleness is exactly what `test_ScopeMatchesFixture` exists to catch,
+and it caught it. Writing that generator - as a mode of `build-withdrawal-fixture.js` rather than a
+second script - is the last step, and it closes a reproducibility hole that predates this work.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

@@ -1302,6 +1302,46 @@ reconsidered against the escrow commitment so there is one identity key rather t
 NOT changed yet - recorded so the merged-tree work does not land while the title path still uses a
 second, incompatible identity notion.
 
+### 2.13m MERGE TRAPS: enumerated, and the two fatal ones are now TESTED CLOSED
+
+Before landing §2.13k's single identity tree, the traps in "status lives in the VALUE" were hunted
+deliberately rather than assumed away. Two would have been fatal and silent; both are now pinned by
+tests in pp/src/smt.nr (84 pp tests pass).
+
+**TRAP 1 - would `key -> 0` be indistinguishable from ABSENCE?** If so, ANY unregistered identity
+could prove the clean state and withdraw, and the gate would be vacuous for exactly the population
+it exists to exclude. NOT vacuous: leaf hashing is `Poseidon(key, value, 1)`, so `leaf(k, 0)` is a
+non-zero hash while an empty node is literal `0`, and the two cannot collide.
+`test_absent_key_cannot_be_proven_present_with_value_zero` asserts it.
+
+**TRAP 2 - is the VALUE actually binding?** If a leaf's value could be misreported, a REVOKED
+identity would claim 0 and withdraw, defeating revocation entirely. It is binding:
+`test_a_revoked_entry_cannot_claim_value_zero` proves key=7 (present with value 77 in the reference
+tree) CANNOT be shown to hold 0. Plus `test_inclusion_with_value_zero_is_provable` (the clean case
+must genuinely work) and `test_value_zero_inclusion_still_binds_the_root`.
+
+NONE of these were covered before, because no caller had ever passed value 0 - the existing
+inclusion test uses 77. The merged design is the first thing to depend on that path.
+
+**REMAINING TRAPS, to enforce when the merge lands:**
+
+- **ROOT EXPIRY IS NOW MANDATORY.** §2.13e recorded that inclusion trees need none and exclusion
+  trees require it. The merged tree does BOTH jobs, so it must take the STRICTER policy
+  (`MAX_ROOT_AGE` + always-valid-latest). Without it a revoked identity proves `commitment -> 0`
+  against a pre-revocation root FOREVER. This is the asymmetry I argued should stay in separate
+  contracts precisely so it could not be confused; merging surrenders that structural protection, so
+  it must be enforced in code and tested directly.
+- **`predicate != 0` MUST BE REJECTED.** Zero is the CLEAN sentinel, so a zero predicate would
+  "revoke" an identity into the clean state. Negligible by accident, fatal if reachable.
+- **`remove` MUST NEVER BE EXPOSED.** `@solarity` `Bytes32SMT` provides `add`, `update` AND
+  `remove`. `update` is what revocation needs (0 -> predicate, one-way, guarded by the existing
+  `isRevoked` mapping). `remove` would DELETE a registration - censorship by erasure, and precisely
+  the "postman can drop an existing member" failure the append-only design was built to prevent.
+  It must not be reachable from any external function.
+- **TWO WRITERS, ONE TREE.** Escrow adds `commitment -> 0` permissionlessly (proof-gated); only the
+  controller may update to a predicate. One tree with two different access rules is workable but is
+  where an access-control mistake would hide.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

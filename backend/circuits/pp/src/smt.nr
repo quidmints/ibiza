@@ -418,3 +418,64 @@ fn test_exclusion_against_empty_tree_any_key() {
         "non-inclusion against an EMPTY tree failed for a different key",
     );
 }
+
+/*
+ * MERGED-TREE SOUNDNESS (TODO.md sec. 2.13k).
+ *
+ * The single identity tree encodes STATUS IN THE VALUE: `commitment -> 0` means registered and
+ * clean, `commitment -> predicate` means revoked. A withdrawal proves INCLUSION with value 0. That
+ * collapses two trees into one and removes 43% of the withdrawal circuit, but it rests entirely on
+ * two properties that were NOT previously tested, because no caller had ever used value 0:
+ *
+ *   1. `key -> 0` must be DISTINGUISHABLE FROM ABSENCE. If proving inclusion-with-value-0 were the
+ *      same as proving nothing, ANY unregistered identity could withdraw - the gate would be
+ *      vacuous for exactly the population it exists to exclude.
+ *   2. The VALUE must be BINDING. If a leaf's value could be misreported, a REVOKED identity
+ *      (value = predicate) would simply claim 0 and withdraw anyway, which is the whole failure the
+ *      revocation mechanism exists to prevent.
+ *
+ * Leaf hashing is `Poseidon(key, value, 1)`, so `leaf(k, 0)` is a non-zero hash while an empty node
+ * is literal 0 - the two cannot collide. These tests assert that rather than trusting it.
+ */
+
+/// A one-entry tree holding key=5 with value 0. For a single-leaf SMT the root IS the leaf hash;
+/// computed with @iden3/js-crypto as Poseidon([5, 0, 1]).
+global ZERO_VALUE_ROOT: Field =
+    15739329723942587145467652550645860604592570947603611249889485952228479492237;
+
+#[test]
+fn test_inclusion_with_value_zero_is_provable() {
+    // The "registered and clean" case must actually work, or the merged design is dead on arrival.
+    assert(
+        smt_verifier_full::<10>(ZERO_VALUE_ROOT, 5, 0, 0, 0, 0, 0, [0; 10]) == 1,
+        "a genuine key->0 inclusion proof was rejected",
+    );
+}
+
+#[test]
+fn test_absent_key_cannot_be_proven_present_with_value_zero() {
+    // THE TRAP. If this passed, every unregistered identity could withdraw.
+    assert(
+        smt_verifier_full::<10>(ZERO_VALUE_ROOT, 6, 0, 0, 0, 0, 0, [0; 10]) == 0,
+        "an ABSENT key was proven included with value 0 - the merged tree gate is vacuous",
+    );
+}
+
+#[test]
+fn test_a_revoked_entry_cannot_claim_value_zero() {
+    // THE OTHER TRAP. key=7 is present in REF_ROOT with value 77 - stand-in for a revocation
+    // predicate. Claiming it holds 0 must fail, or revocation can be shrugged off.
+    assert(
+        smt_verifier_full::<10>(REF_ROOT, 7, 0, 0, 0, 0, 0, ref_siblings_key7()) == 0,
+        "a leaf with a NON-ZERO value was proven to hold 0 - revocation is escapable",
+    );
+}
+
+#[test]
+fn test_value_zero_inclusion_still_binds_the_root() {
+    // A stale or invented root must not be accepted just because the value is 0.
+    assert(
+        smt_verifier_full::<10>(ZERO_VALUE_ROOT + 1, 5, 0, 0, 0, 0, 0, [0; 10]) == 0,
+        "key->0 inclusion accepted against the wrong root",
+    );
+}

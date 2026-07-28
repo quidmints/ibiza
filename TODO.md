@@ -1540,6 +1540,30 @@ assumed.
 wallet's `postman/identityAsp.ts`. Listing them now so the deletion is deliberate rather than
 discovered later by a dead-symbol scan.
 
+### 2.13s SETTLED: Entrypoint no longer inherits EIP712Upgradeable (user, 2026-07-28)
+
+*"if you are using none of it dont inherit it"*. `Entrypoint` inherited AND initialized
+`EIP712Upgradeable` while containing no `_hashTypedDataV4`, no typehash and no signature recovery -
+left over from when `admitIdentityWithAuthorization` lived there, before §2.5a moved it to
+IdentityAspRegistry. The init comment still described that function.
+
+**Storage safety VERIFIED, not argued.** Removing an inherited contract from an UPGRADEABLE
+contract is the one way this could go badly, so it was checked with `forge inspect Entrypoint
+storage-layout` before and after:
+
+    before: scopeToPool@0, assetConfig@1, usedPrecommitments@2, EVIDENCE_REGISTRY@3
+    after:  scopeToPool@0, assetConfig@1, usedPrecommitments@2, EVIDENCE_REGISTRY@3
+
+BYTE-IDENTICAL, because OZ 5 puts EIP712's state in an ERC-7201 NAMESPACED slot
+(`EIP712StorageLocation = 0xa16a46d9...`) rather than in the sequential layout. Had it used
+sequential storage, this removal would have shifted every variable after it and silently corrupted a
+deployed proxy - which is precisely why it was measured rather than reasoned about.
+
+Also removed `MinimalEntrypoint.isKnownAspRoot` (PrivacyPoolComplex.t.sol), unreachable since the
+pool stopped calling it. Its sibling `isValidRoot` returning unconditional `true` is documented as
+deliberate there: that suite has no withdraw tests, so the identity gate is never under test - the
+opposite of the Simple case in §2.13q, which did need to honour its `known` mapping.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

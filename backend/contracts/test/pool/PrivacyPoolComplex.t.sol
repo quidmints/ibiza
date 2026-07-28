@@ -21,10 +21,9 @@ contract TestToken is ERC20 {
 /// Stands in for the Entrypoint AND both registries - these cases are about ERC20 asset movement,
 /// not membership policy, and the proof paths are covered end to end elsewhere.
 contract MinimalEntrypoint {
-  function isKnownAspRoot(uint256) external pure returns (bool) {
-    return true;
-  }
-
+  /// Unconditional by design: this suite has no withdraw tests, so the identity gate is never the
+  /// thing under test here. Checked, not assumed - PrivacyPoolSimple's equivalent DID need to
+  /// honour its `known` mapping, because that suite perturbs the identity root and expects a revert.
   function isValidRoot(bytes32) external pure returns (bool) {
     return true;
   }

@@ -1419,6 +1419,42 @@ the witness the same way - from a deployed registry. A forge script that deploys
 registers, calls `getProof` and writes the witness is the remaining piece, and it makes the fixture
 provably consistent with the real contract rather than with a second implementation of it.
 
+### 2.13p Fixtures come FROM THE CONTRACT, and the bootstrap order that forces
+
+Following §2.13o's rule (never rebuild the SMT off-chain), the withdrawal fixture's identity witness
+cannot be built in JS either. It is emitted by a forge test that drives the REAL registry:
+`IdentityRegistry.t.sol::test_EmitIdentityWitnessFixture` registers three identities, calls
+`getProof`, and writes `test/fixtures/identity_witness.json`. Generating it inside the suite means it
+CANNOT go stale against the contract - a witness built off-chain would only ever prove that two of
+our own implementations agree.
+
+**THREE registrations, not one, and there is no shortcut.** A single-leaf SMT has an EMPTY inclusion
+path, so a withdrawal built on it would hash NO SIBLINGS and prove nothing about the Merkle path -
+the same degeneracy `tools/build-withdrawal-fixture.js` already refuses to emit for the state tree.
+The registry admits a commitment ONLY via `register`, which requires a genuine escrow proof; adding
+a privileged insert to seed the tree would be exactly the mock this project forbids. So
+`tools/build-escrow-fixtures.js` emits three distinct witnesses and all three are proved with bb and
+committed (`escrow_envelope{0,1,2}.proof/.public`, all verified).
+
+**A BUG IN MY OWN GENERATOR, caught before it cost anything.** The first run produced three
+identities sharing ONE `dg1Hash`: the MRZ varied the passport number via
+`String(1234567890 + i).slice(0, 9)`, which truncated the very digit being varied. Because a
+document hash may bind to exactly one holder (§2.13f), identities 1 and 2 would have failed to
+register with a `DocumentBoundToAnotherHolder` revert far from the cause. Fixed to a nine-digit
+number that survives the slice; all three hashes now differ, and `escrow0` still reproduces the
+previously committed fixture exactly.
+
+**THE BOOTSTRAP ORDER, because it is circular and not obvious:**
+1. escrow witnesses -> bb proofs -> committed (DONE)
+2. pool test suites must COMPILE, or the emitter test cannot run at all (3 files: constructor arity
+   for the single registry, `pubSignals` 9 -> 7, `ASP_REGISTRY` -> `IDENTITY_REGISTRY`)
+3. run the emitter -> `identity_witness.json`
+4. `tools/build-withdrawal-fixture.js` consumes it -> withdrawal witness -> bb proof
+5. regenerate the withdrawal verifier (7 public inputs) and re-run everything
+
+Steps 2-5 are the remainder. `main` stays green throughout; all of this is on
+`wip/identity-tree-merge`.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

@@ -70,7 +70,7 @@ payouts — inherited from Privacy Pools, plus our modifications.
 funds regardless of the circuits. **The four generated verifiers**, against the circuits they claim
 to verify.
 
-We will additionally commission a review of the trust model itself — not "is the code correct" but
+We will also commission a review of the trust model itself — not "is the code correct" but
 "who can do what to whom", which is where this class of system usually fails.
 
 ### Milestone 2 — Hardware bring-up
@@ -78,8 +78,8 @@ We will additionally commission a review of the trust model itself — not "is t
 The wallet cannot run on our development machines (the identity SDK ships device-only binaries), and
 NFC passport reading is not implemented at all. This milestone implements NFC chip reading against
 real passports from several issuing states, verifies the enclave-backed key path on physical
-devices, and confirms a phone-generated proof verifies on-chain. Passports vary in ways
-specifications do not capture, so this needs real documents, not test vectors.
+devices, and confirms a phone-generated proof verifies on-chain. Passports vary in ways specs
+do not capture, so this needs real documents, not test vectors.
 
 ### Milestone 3 — Closed pilot on testnet
 

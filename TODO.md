@@ -2064,6 +2064,54 @@ bindings in it and proving against its root.
 `_requireActiveNotary` shape is publicly identifying and should not be deployed to anyone who can be
 targeted for it.
 
+### 2.16b "HOW COULD THERE BE A FRAUD FINDING IF EVERYTHING IS SECRET" (user, 2026-07-29)
+
+The question finds a real hole. §2.16a proposed conditional deanonymisation "on a fraud finding"
+without ever specifying HOW FRAUD IS DETECTED. If the notary is anonymous, the property is an opaque
+pseudonym and the holder is a commitment, nothing on-chain is legible enough for anyone to notice
+wrongdoing - so the trigger for opening the envelope was assumed, not designed.
+
+**PART ONE, WHICH IS FINE ONCE STATED: DETECTION IS OFF-CHAIN, AND SHOULD BE.** Notarial fraud is a
+REAL-WORLD ACT - registering a lien or transfer against a property - and it leaves its trace in the
+STATE CADASTRE, not here. The spec's §2.2 Tier 1 gives a property owner full view of every parcel and
+encumbrance registered under their National ID via `Sabt-e Man`. That is where an owner sees a charge
+they never authorised. A lender detects it differently and just as concretely: they appraised the
+property, so they know exactly what they lent against, and discover the defect when they enforce.
+
+So the chain is the ATTRIBUTION surface, not the DETECTION surface. Detection comes from a party who
+already knows the underlying facts - the owner via the official registry, the lender via their own
+underwriting - and the chain then supplies non-repudiable evidence of who attested what. That is
+coherent, and it is what §2.16a should have said instead of "a fraud finding" as though it were
+self-executing.
+
+**PART TWO, AND THIS ONE IS AN ACTUAL GAP: NOBODY IS ASSIGNED TO COMPUTE `propertyKey`.**
+§2.14b specified `PRF(registryKey, legalDescriptionHash)` "computed off-chain by the notary".
+§2.15 then established that notaries compute nothing and hold no protocol key. **The correction was
+never propagated** - `TitleLedger.sol:60` still says "computed off-chain by the notary", and no party
+in the current design holds `registryKey`.
+
+Consequences, both real:
+- The mint path is unimplementable as written; someone must hold the key.
+- **A property owner CANNOT CHECK whether their own property has been titled here**, because
+  computing `propertyKey` needs a key they do not have. That is a detection path we lose - the owner
+  can see a fraudulent entry in the STATE register, but not a fraudulent entry in OURS.
+
+**THE CANDIDATES, none obviously right:**
+- *The controller* (the party already managing labels and the blacklist) - simplest, but puts it in
+  the path of every mint, which is a liveness and censorship dependency on exactly the party the
+  rest of the design works to keep out of that position.
+- *A protocol-wide constant* - no key custody at all, but then `propertyKey` is brute-forceable,
+  since a *Shenaseh Yekta* is an 18-digit enumerable identifier. That is the confidentiality the
+  keyed pseudonym existed to provide, given straight back.
+- *The k-of-n legal guardian set* already proposed for deanonymisation, via a threshold PRF - no
+  single party can brute-force, and it reuses a group the design already needs. Cost is a threshold
+  interaction per mint.
+
+**UNRESOLVED, and it is the same tension as §2.15's parcel nullifier** - the spec's own
+`N = PoseidonHash(Cadastral_ID, Secret_Salt)` faces this identically. Settle it once, for both.
+Until it is settled, `TitleLedger`'s propertyKey comment is stale and should not be read as a
+specification.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

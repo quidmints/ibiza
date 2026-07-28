@@ -56,8 +56,15 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
     struct TitleEntry {
         // Public, self-describing legal metadata - NEVER identity.
         /**
-         * DETERMINISTIC KEYED PSEUDONYM for the property: `PRF(registryKey, legalDescriptionHash)`,
-         * computed off-chain by the notary. Opaque here; this contract never sees the document.
+         * DETERMINISTIC KEYED PSEUDONYM for the property: `PRF(registryKey, legalDescriptionHash)`.
+         * Opaque here; this contract never sees the document.
+         *
+         * WHO COMPUTES IT IS UNRESOLVED - see TODO.md sec. 2.16b. An earlier revision said "computed
+         * off-chain by the notary"; that is WRONG and has been removed rather than left to mislead.
+         * A notary holds no protocol key and performs no protocol computation - their status is
+         * attested, not trusted. No party in the current design holds `registryKey`, which means the
+         * mint path is not yet implementable as specified, and a property owner cannot check whether
+         * their own property has been titled here. Do not read this field as settled.
          *
          * WHY NOT A SALTED COMMITMENT, which was the obvious fix and was briefly built. Legal
          * descriptions - street address, parcel/APN, plat description - are low-entropy and

@@ -6,7 +6,6 @@ import {ERC1967Proxy} from '@oz/proxy/ERC1967/ERC1967Proxy.sol';
 import {MessageHashUtils} from '@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol';
 import {IEvidenceRegistry} from '@rarimo/evidence-registry/interfaces/IEvidenceRegistry.sol';
 
-import {PoseidonUnit2L} from '../../contracts/libraries/Poseidon.sol';
 import {TitleLedger} from '../../contracts/title/TitleLedger.sol';
 import {RegistrySourceAnchor} from '../../contracts/registry/RegistrySourceAnchor.sol';
 import {NoirVerifierMock} from '../../contracts/mock/verifiers/NoirVerifierMock.sol';
@@ -122,26 +121,36 @@ contract TitleLedgerTest is Test {
     vm.etch(address(titleHolderVerifier), address(new TitleHolderHonkVerifier()).code);
   }
 
-  /// The document, and the holder's salt. The DOCUMENT is deliberately the kind of low-entropy,
-  /// publicly-enumerable string that makes a bare hash brute-forceable - a street address anyone can
-  /// pull from a county register. The SALT is what stops that (TODO.md sec. 2.14).
+  /// The document is deliberately the kind of low-entropy, publicly-enumerable string that makes a
+  /// BARE hash brute-forceable from county records - a street address. The stored value is a
+  /// DETERMINISTIC KEYED PSEUDONYM of it, `PRF(registryKey, hash)`, computed off-chain by the
+  /// notary. Deterministic so duplicates collide; opaque so the dictionary attack fails.
   bytes32 internal constant DESC_HASH = keccak256('42 Khreshchatyk St, Kyiv');
-  bytes32 internal constant DESC_SALT =
-    bytes32(uint256(0x5eed_5a17_c0ffee_1234_5678_9abc_def0_1111_2222_3333_4444_5555_6666_7777));
+  /// Stands in for the registry's PRF key. The contract never sees it - the pseudonym arrives
+  /// already computed - so a keccak stand-in is faithful to what the contract can observe.
+  bytes32 internal constant REGISTRY_KEY = keccak256('notary-registry-prf-key');
 
-  function _commit(bytes32 hash_, bytes32 salt_) internal pure returns (bytes32) {
-    return bytes32(PoseidonUnit2L.poseidon([uint256(hash_), uint256(salt_)]));
+  function _propertyKey(bytes32 hash_) internal pure returns (bytes32) {
+    return keccak256(abi.encodePacked(REGISTRY_KEY, hash_));
   }
 
   function _mintValidTitle(bytes32 holderCommitment_) internal returns (uint256 titleId_) {
-    bytes32 descHash = _commit(DESC_HASH, DESC_SALT);
+    return _mintTitleForProperty(DESC_HASH, holderCommitment_);
+  }
+
+  /// Mint over a NAMED property. Needed because one property may carry only one live title, so any
+  /// test wanting two titles must use two properties - which is the invariant working, not a
+  /// nuisance to route around.
+  function _mintTitleForProperty(bytes32 documentHash_, bytes32 holderCommitment_)
+    internal
+    returns (uint256 titleId_)
+  {
+    bytes32 descHash = _propertyKey(documentHash_);
     bytes32 jurisdiction = keccak256('UA');
     bytes memory sig = _sign(NOTARY_PK, _mintMessage(descHash, jurisdiction, 0));
 
     titleId_ = ledger.mintTitle(
-      // URI left EMPTY on purpose: a publicly-resolvable pointer to the document would defeat the
-      // salted commitment entirely, since an observer would just fetch it instead of brute-forcing.
-      descHash, '', jurisdiction, 0, REGISTRY_ID, notary, notaryProof, sig, holderCommitment_
+      descHash, jurisdiction, 0, REGISTRY_ID, notary, notaryProof, sig, holderCommitment_
     );
   }
 
@@ -188,7 +197,7 @@ contract TitleLedgerTest is Test {
     assertEq(titleId, 1);
     assertEq(ledger.holderCommitment(titleId), holderCommitment);
     TitleLedger.TitleEntry memory entry = ledger.getTitle(titleId);
-    assertEq(entry.legalDescriptionCommitment, _commit(DESC_HASH, DESC_SALT));
+    assertEq(entry.propertyKey, _propertyKey(DESC_HASH));
     assertEq(entry.jurisdiction, keccak256('UA'));
     assertEq(entry.priorTitleId, 0);
     assertEq(entry.notaryRegistryId, REGISTRY_ID);
@@ -197,40 +206,61 @@ contract TitleLedgerTest is Test {
     assertFalse(entry.encumbered);
   }
 
-  // ── sec. 2.14: the commitment must be CONFIDENTIAL but OPENABLE ──────────────────────────
+  // ── sec. 2.14a: confidential AND unique ──────────────────────────────────────────────────
 
-  /// THE VECTOR THIS CLOSES. The stored value must NOT be the bare hash of the document - if it
-  /// were, anyone could pull candidate legal descriptions from public county records, hash each one
-  /// the way the contract does, and learn which real-world property sits behind a titleId.
-  function test_theStoredCommitmentIsNotABareHashOfTheDocument() public {
+  /// THE DICTIONARY ATTACK. The stored value must NOT be derivable from the document alone, or
+  /// anyone could pull candidate legal descriptions from public county records and learn which
+  /// real-world property sits behind a titleId.
+  function test_theStoredKeyIsNotDerivableFromTheDocumentAlone() public {
     uint256 titleId = _mintValidTitle(keccak256('holder'));
     TitleLedger.TitleEntry memory entry = ledger.getTitle(titleId);
 
+    assertTrue(entry.propertyKey != DESC_HASH, 'the bare document hash is stored');
     assertTrue(
-      entry.legalDescriptionCommitment != DESC_HASH,
-      'the bare document hash is stored - a public-records dictionary would deanonymise the property'
+      entry.propertyKey != keccak256(abi.encodePacked(DESC_HASH)),
+      'the stored key is a plain re-hash - still brute-forceable from public records'
     );
   }
 
-  /// ...and it stays RICARDIAN: the document plus the salt verifies on-chain, with no trusted party.
-  function test_theCommitmentOpensWithTheDocumentAndSalt() public {
-    uint256 titleId = _mintValidTitle(keccak256('holder'));
-    assertTrue(ledger.verifyLegalDescription(titleId, DESC_HASH, DESC_SALT), 'the true document did not open it');
+  /// THE PROPERTY A SALT WOULD HAVE DESTROYED. A salted commitment hides the property but makes two
+  /// titles over the same land look unrelated, so double-minting becomes undetectable. A
+  /// DETERMINISTIC key collides, and the collision is what this rejects.
+  function test_thesamePropertyCannotBeTitledTwice() public {
+    _mintValidTitle(keccak256('holder'));
+
+    bytes32 key = _propertyKey(DESC_HASH);
+    bytes32 jurisdiction = keccak256('UA');
+    bytes memory sig = _sign(NOTARY_PK, _mintMessage(key, jurisdiction, 0));
+
+    vm.expectRevert(abi.encodeWithSelector(TitleLedger.PropertyAlreadyTitled.selector, key, uint256(1)));
+    ledger.mintTitle(key, jurisdiction, 0, REGISTRY_ID, notary, notaryProof, sig, keccak256('someone else'));
   }
 
-  function test_theCommitmentDoesNotOpenWithTheWrongSaltOrDocument() public {
-    uint256 titleId = _mintValidTitle(keccak256('holder'));
-    assertFalse(ledger.verifyLegalDescription(titleId, DESC_HASH, bytes32(uint256(DESC_SALT) + 1)), 'wrong salt opened it');
-    assertFalse(ledger.verifyLegalDescription(titleId, keccak256('some other address'), DESC_SALT), 'wrong document opened it');
+  /// ...but a genuine SUCCESSION must still work, or the uniqueness rule would block every reissue
+  /// and transfer of title. It must cite the title it replaces.
+  function test_aSuccessorTitleOverTheSamePropertyIsAllowedWhenItCitesThePrior() public {
+    uint256 first = _mintValidTitle(keccak256('holder'));
+
+    bytes32 key = _propertyKey(DESC_HASH);
+    bytes32 jurisdiction = keccak256('UA');
+    bytes memory sig = _sign(NOTARY_PK, _mintMessage(key, jurisdiction, first));
+
+    uint256 second =
+      ledger.mintTitle(key, jurisdiction, first, REGISTRY_ID, notary, notaryProof, sig, keccak256('new holder'));
+    assertEq(ledger.titleOfProperty(key), second, 'the property should now point at the successor');
   }
 
-  /// The same document under two salts must give two commitments, or two titles over one property
-  /// would be linkable to each other even while the property itself stayed hidden.
-  function test_theSameDocumentUnderDifferentSaltsIsUnlinkable() public view {
-    assertTrue(
-      _commit(DESC_HASH, DESC_SALT) != _commit(DESC_HASH, bytes32(uint256(DESC_SALT) + 1)),
-      'the salt does not affect the commitment - two titles over one property would be linkable'
-    );
+  /// A successor may not cite a prior title over a DIFFERENT property - that would launder one
+  /// property's chain of title into another's.
+  function test_aSuccessorCannotCiteAPriorTitleForAnotherProperty() public {
+    uint256 first = _mintValidTitle(keccak256('holder'));
+
+    bytes32 otherKey = _propertyKey(keccak256('99 Some Other St'));
+    bytes32 jurisdiction = keccak256('UA');
+    bytes memory sig = _sign(NOTARY_PK, _mintMessage(otherKey, jurisdiction, first));
+
+    vm.expectRevert(abi.encodeWithSelector(TitleLedger.PriorTitleIsForAnotherProperty.selector, first));
+    ledger.mintTitle(otherKey, jurisdiction, first, REGISTRY_ID, notary, notaryProof, sig, keccak256('h'));
   }
 
   function test_mintTitle_revertsOnZeroCommitment() public {
@@ -239,7 +269,7 @@ contract TitleLedgerTest is Test {
     bytes memory sig = _sign(NOTARY_PK, _mintMessage(descHash, jurisdiction, 0));
 
     vm.expectRevert(TitleLedger.ZeroCommitment.selector);
-    ledger.mintTitle(descHash, '', jurisdiction, 0, REGISTRY_ID, notary, notaryProof, sig, bytes32(0));
+    ledger.mintTitle(descHash, jurisdiction, 0, REGISTRY_ID, notary, notaryProof, sig, bytes32(0));
   }
 
   function test_mintTitle_revertsOnUnboundNotary() public {
@@ -249,7 +279,7 @@ contract TitleLedgerTest is Test {
 
     vm.expectRevert(TitleLedger.NotaryNotActive.selector);
     ledger.mintTitle(
-      descHash, '', jurisdiction, 0, REGISTRY_ID, otherSigner, notaryProof, sig, keccak256('hc')
+      descHash, jurisdiction, 0, REGISTRY_ID, otherSigner, notaryProof, sig, keccak256('hc')
     );
   }
 
@@ -262,7 +292,7 @@ contract TitleLedgerTest is Test {
     badProof[0] = keccak256('wrong-sibling');
 
     vm.expectRevert(TitleLedger.NotaryNotActive.selector);
-    ledger.mintTitle(descHash, '', jurisdiction, 0, REGISTRY_ID, notary, badProof, sig, keccak256('hc'));
+    ledger.mintTitle(descHash, jurisdiction, 0, REGISTRY_ID, notary, badProof, sig, keccak256('hc'));
   }
 
   function test_mintTitle_revertsOnInvalidSignature() public {
@@ -272,7 +302,7 @@ contract TitleLedgerTest is Test {
     bytes memory sig = _sign(OTHER_PK, _mintMessage(descHash, jurisdiction, 0));
 
     vm.expectRevert(TitleLedger.InvalidNotarySignature.selector);
-    ledger.mintTitle(descHash, '', jurisdiction, 0, REGISTRY_ID, notary, notaryProof, sig, keccak256('hc'));
+    ledger.mintTitle(descHash, jurisdiction, 0, REGISTRY_ID, notary, notaryProof, sig, keccak256('hc'));
   }
 
   // ── addLegend ───────────────────────────────────────────────────────────────────────────
@@ -362,7 +392,8 @@ contract TitleLedgerTest is Test {
   /// unlock every title, which is the whole property `title_id` is a public input for.
   function test_verifyHolderProof_rejectsAProofBoundToAnotherTitle() public {
     _mintValidTitle(bytes32(TITLE1_COMMITMENT));
-    uint256 second = _mintValidTitle(bytes32(TITLE1_COMMITMENT));
+    // A SECOND PROPERTY, not a second title over the first - one property carries one live title.
+    uint256 second = _mintTitleForProperty(keccak256('7 Another St, Lviv'), bytes32(TITLE1_COMMITMENT));
     _useRealVerifier();
 
     // The Honk verifier REVERTS (SumcheckFailed) rather than returning false when the public

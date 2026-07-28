@@ -1802,6 +1802,47 @@ so two titles over one property are not linkable to each other even while the pr
 stay hidden at all. The mechanism now supports either answer - empty URI for confidential, populated
 for public - where before it silently supported only the leaky one.
 
+### 2.14b SALT REPLACED - it bought confidentiality by DESTROYING uniqueness (user, 2026-07-29)
+
+*"forget salts and use the better primitive"*. Correct, and the salt was worse than merely
+suboptimal.
+
+**WHAT THE SALT BROKE.** Nothing in `TitleLedger` prevented two titles over the SAME property -
+verified, not assumed. A bare hash at least COLLIDES, so a duplicate is detectable. A per-holder
+salt makes two titles over one parcel produce two unrelated values, so **DOUBLE-MINTING BECOMES
+INVISIBLE**. I had even written `test_theSameDocumentUnderDifferentSaltsIsUnlinkable` celebrating
+that as a privacy win; for a title registry it is a hole. The salt traded away the one property a
+land register cannot do without.
+
+**THE REPLACEMENT: a DETERMINISTIC KEYED PSEUDONYM**, `propertyKey = PRF(registryKey, docHash)`,
+computed off-chain by the notary. DETERMINISTIC, so a second title over the same property collides
+and is rejected. OPAQUE without the key, so the public cannot run a dictionary against county
+records. And it adds NO new trust: the notary already knows the document - they attest to it - so
+holding the key grants them nothing they did not have.
+
+**The same primitive as the identity registry's revocation pseudonyms (§2.13e)** - a public set of
+opaque deterministic values - now serving two subsystems instead of one.
+
+It also removes the salt's CUSTODY failure, which would have been the worse operational bug: a lost
+salt makes a commitment permanently unopenable, and for a real property title that is unrecoverable.
+There is no per-title secret here to lose.
+
+**THE UNIQUENESS INVARIANT, which never existed before:** `titleOfProperty` maps a property to its
+one live title. A second mint reverts unless it is a genuine SUCCESSION citing the title it replaces
+- without that branch every legitimate reissue and transfer would be blocked - and a successor may
+not cite a prior title over a DIFFERENT property, which would launder one property's chain of title
+into another's.
+
+**`legalDescriptionURI` IS GONE.** §2.14a documented it as a decision the deployer must make; that
+was too weak. Its only role was pointing at the document, publicly. Under this design the document
+is never opened on-chain at all - binding is the notary's signature over `propertyKey` - so a public
+pointer buys nothing and costs everything. Removing it also resolved a `Stack too deep` that the new
+check triggered, which is the compiler agreeing the field was surplus.
+
+**The invariant immediately caught a test minting two titles over one property**
+(`test_verifyHolderProof_rejectsAProofBoundToAnotherTitle`), which now uses two properties.
+263 forge tests, ABI check clean.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

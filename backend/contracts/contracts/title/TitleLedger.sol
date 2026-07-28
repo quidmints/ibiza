@@ -7,7 +7,6 @@ import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProo
 import {AccessControlUpgradeable} from "@oz-upgradeable/access/AccessControlUpgradeable.sol";
 import {UUPSUpgradeable} from "@oz-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-import {PoseidonUnit2L} from "../libraries/Poseidon.sol";
 import {INoirVerifier} from "../interfaces/verifiers/INoirVerifier.sol";
 import {RegistrySourceAnchor} from "../registry/RegistrySourceAnchor.sol";
 
@@ -55,40 +54,40 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
     struct TitleEntry {
         // Public, self-describing legal metadata - NEVER identity.
         /**
-         * SALTED commitment to the legal description: `Poseidon(legalDescriptionHash, salt)`, with
-         * a random high-entropy salt held by the holder. NOT a bare hash of the document.
+         * DETERMINISTIC KEYED PSEUDONYM for the property: `PRF(registryKey, legalDescriptionHash)`,
+         * computed off-chain by the notary. Opaque here; this contract never sees the document.
          *
-         * WHY THE SALT IS LOAD-BEARING (TODO.md sec. 2.14). Legal descriptions of real property -
-         * street address, parcel/APN, plat description - are frequently LOW-ENTROPY AND PUBLICLY
-         * ENUMERABLE, because county assessor records are often public and searchable. A bare hash
-         * is therefore brute-forceable: pull candidate descriptions from public records, hash each
-         * one the way this contract does, and compare against every stored value. A match reveals
-         * WHICH REAL-WORLD PROPERTY sits behind a titleId. The salt supplies the entropy the legal
-         * description itself lacks.
+         * WHY NOT A SALTED COMMITMENT, which was the obvious fix and was briefly built. Legal
+         * descriptions - street address, parcel/APN, plat description - are low-entropy and
+         * publicly enumerable from county records, so a BARE hash is brute-forceable and reveals
+         * which real-world property sits behind a titleId. A per-holder SALT fixes that, and breaks
+         * something a title registry cannot do without: with a random salt, two titles over the SAME
+         * property produce two unrelated values, so DOUBLE-MINTING BECOMES UNDETECTABLE. A bare hash
+         * at least collides. The salt bought confidentiality by destroying uniqueness.
          *
-         * It stays BINDING and Ricardian: present the document and the salt and anyone can verify
-         * the commitment with `verifyLegalDescription`. The salt is disclosed only when opening is
-         * genuinely required - a dispute, a loan default, a transfer needing proof of the
-         * underlying document - not by default.
+         * A keyed pseudonym gives both. DETERMINISTIC in the document, so a second title over the
+         * same property collides and is rejected below. OPAQUE without the key, so the public cannot
+         * run a dictionary against county records. And it adds NO new trust: the notary already
+         * knows the document - they attest to it - so holding the key grants them nothing they did
+         * not have.
          *
-         * Same commit-reveal shape as Privacy Pool's precommitments
-         * (frontend/identity-wallet/src/pp/notes.ts), not a new primitive for this system.
+         * SAME PRIMITIVE AS THE IDENTITY REGISTRY'S revocation pseudonyms (TODO.md sec. 2.13e), for
+         * the same reason and with the same trade: a public set of opaque, deterministic values.
+         *
+         * It also removes the salt's custody failure. A lost salt makes a commitment permanently
+         * unopenable - for a real property title that is unrecoverable. There is no per-title secret
+         * here to lose.
+         *
+         * BINDING comes from the notary's signature over this value at mint, not from an on-chain
+         * opening: whoever holds the document and the registry key can recompute it and check.
          */
-        bytes32 legalDescriptionCommitment;
-        /**
-         * Optional pointer to the document.
-         *
-         * A NON-EMPTY, PUBLICLY-RESOLVABLE URI DEFEATS THE COMMITMENT ENTIRELY. There is no point
-         * salting the commitment if the field beside it links straight to the document being
-         * committed to - an observer skips the brute force and simply fetches it. This was the
-         * gap in the original sec. 2.14 write-up, which addressed the hash and not its neighbour.
-         *
-         * So: leave it EMPTY when "which property" must stay confidential, or point it at an
-         * ENCRYPTED or access-controlled resource. Deliberately not enforced empty - a deployment
-         * that genuinely wants public property records is legitimate, and this contract should not
-         * decide that. But it must be a decision, not an accident.
-         */
-        string legalDescriptionURI;
+        bytes32 propertyKey;
+        // NOTE: there is deliberately NO legalDescriptionURI. It existed to point at the document
+        // (e.g. `ipfs://...`) and was PUBLIC, which defeated the whole point of hiding the property:
+        // an observer would skip any attack on `propertyKey` and simply fetch the document. Under
+        // this design the document is never opened on-chain at all - binding is the notary's
+        // signature over `propertyKey` - so a public pointer buys nothing and costs everything.
+        // Whoever needs the document gets it out of band, from the notary or the holder.
         bytes32 jurisdiction; // e.g. keccak256("UA") - which registry/law this title is under
         uint256 priorTitleId; // 0 if this is a root entry; otherwise a chain-of-title link
         bytes32 notaryRegistryId; // which RegistrySourceAnchor registryId attested this entry
@@ -112,6 +111,11 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
     mapping(uint256 => string[]) public restrictionLegends; // titleId => legends, separately mutable
     mapping(uint256 => bytes32) public holderCommitment; // titleId => Poseidon2(holder_root, titleId)
 
+    /// propertyKey => the title currently covering that property. THE UNIQUENESS INVARIANT: one
+    /// property, one live title. Nothing enforced this before - two titles could be minted over the
+    /// same land with nothing to detect it.
+    mapping(bytes32 => uint256) public titleOfProperty;
+
     // See the OPEN GAP note above - placeholder trust bootstrap, not a solved binding. Gated by
     // NOTARY_REGISTRY's OWN REGISTRY_POSTMAN role (checked live via hasRole, not copied into a
     // separate admin key here) - deliberately the SAME trust boundary the notary registry itself
@@ -132,7 +136,9 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
     error InvalidNotarySignature();
     error InvalidHolderProof();
     error ZeroCommitment();
-    error ZeroLegalDescription();
+    error ZeroPropertyKey();
+    error PropertyAlreadyTitled(bytes32 propertyKey, uint256 existingTitleId);
+    error PriorTitleIsForAnotherProperty(uint256 priorTitleId);
     error OnlyRegistryPostman();
     error ZeroAddress();
 
@@ -173,8 +179,7 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
     /// `notaryMerkleProof_` against RegistrySourceAnchor.latestActiveRoot - the same
     /// keccak/MerkleProof-compatible tree backend/cre/notary_registry builds).
     function mintTitle(
-        bytes32 legalDescriptionCommitment_,
-        string calldata legalDescriptionURI_,
+        bytes32 propertyKey_,
         bytes32 jurisdiction_,
         uint256 priorTitleId_,
         bytes32 notaryRegistryId_,
@@ -184,19 +189,20 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
         bytes32 initialHolderCommitment_
     ) external returns (uint256 titleId_) {
         if (initialHolderCommitment_ == bytes32(0)) revert ZeroCommitment();
-        if (legalDescriptionCommitment_ == bytes32(0)) revert ZeroLegalDescription();
+        if (propertyKey_ == bytes32(0)) revert ZeroPropertyKey();
         _requireActiveNotary(notaryRegistryId_, notary_, notaryMerkleProof_);
         bytes32 mintMessage_ = keccak256(
             abi.encodePacked(
-                "TITLE_LEDGER_MINT", address(this), legalDescriptionCommitment_, jurisdiction_, priorTitleId_
+                "TITLE_LEDGER_MINT", address(this), propertyKey_, jurisdiction_, priorTitleId_
             )
         );
         _requireSignedByNotary(notary_, notarySignature_, mintMessage_);
 
+        _requireUntitledOrValidSuccession(propertyKey_, priorTitleId_);
+
         titleId_ = nextTitleId++;
         titles[titleId_] = TitleEntry({
-            legalDescriptionCommitment: legalDescriptionCommitment_,
-            legalDescriptionURI: legalDescriptionURI_,
+            propertyKey: propertyKey_,
             jurisdiction: jurisdiction_,
             priorTitleId: priorTitleId_,
             notaryRegistryId: notaryRegistryId_,
@@ -205,6 +211,7 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
             encumbered: false
         });
         holderCommitment[titleId_] = initialHolderCommitment_;
+        titleOfProperty[propertyKey_] = titleId_;
 
         emit TitleMinted(titleId_, jurisdiction_, notary_, initialHolderCommitment_);
     }
@@ -283,28 +290,6 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
         return _verifyHolderProof(titleId_, proof_);
     }
 
-    /**
-     * @notice Open the legal-description commitment: does `hash` under `salt` produce the stored
-     *         commitment for this title?
-     * @dev This is the RICARDIAN half of the commit-reveal. The commitment is opaque on-chain, but
-     *      whoever is shown the document and the salt can verify - here, on-chain, with no trusted
-     *      party - that it is the exact document the notary attested to at mint. Without this the
-     *      salt would make the commitment merely unreadable rather than confidential-but-provable.
-     * @param titleId_ the title
-     * @param legalDescriptionHash_ hash of the document being disclosed
-     * @param salt_ the holder's salt
-     */
-    function verifyLegalDescription(uint256 titleId_, bytes32 legalDescriptionHash_, bytes32 salt_)
-        external
-        view
-        returns (bool)
-    {
-        bytes32 stored_ = titles[titleId_].legalDescriptionCommitment;
-        if (stored_ == bytes32(0)) return false; // no such title
-        return stored_
-            == bytes32(PoseidonUnit2L.poseidon([uint256(legalDescriptionHash_), uint256(salt_)]));
-    }
-
     function getRestrictionLegends(uint256 titleId_) external view returns (string[] memory) {
         return restrictionLegends[titleId_];
     }
@@ -322,6 +307,30 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
         publicInputs[0] = holderCommitment[titleId_];
         publicInputs[1] = bytes32(titleId_);
         return TITLE_HOLDER_VERIFIER.verify(proof_, publicInputs);
+    }
+
+    /**
+     * ONE PROPERTY, ONE TITLE - unless this is a genuine succession, in which case it must cite the
+     * title it replaces.
+     *
+     * Its own function because `mintTitle` already carries nine parameters and adding a local here
+     * overflowed the stack. Keeping it separate also puts the invariant somewhere nameable.
+     *
+     * Without the succession branch this would block every legitimate reissue and transfer of
+     * title. Without the check itself, the same land could be titled twice over with nothing able
+     * to detect it - which is precisely what a per-holder SALT on the description would have caused,
+     * since two salted commitments over one property look unrelated.
+     */
+    function _requireUntitledOrValidSuccession(bytes32 propertyKey_, uint256 priorTitleId_) internal view {
+        uint256 existing_ = titleOfProperty[propertyKey_];
+        if (existing_ != 0 && priorTitleId_ != existing_) {
+            revert PropertyAlreadyTitled(propertyKey_, existing_);
+        }
+        // A successor may not cite a prior title over a DIFFERENT property - that would launder one
+        // property's chain of title into another's.
+        if (priorTitleId_ != 0 && titles[priorTitleId_].propertyKey != propertyKey_) {
+            revert PriorTitleIsForAnotherProperty(priorTitleId_);
+        }
     }
 
     function _requireActiveNotary(bytes32 registryId_, address notary_, bytes32[] calldata proof_) internal view {

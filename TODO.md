@@ -1026,6 +1026,47 @@ live, everything failing open:
 | person not listed | exclusion tree | `Poseidon(s)` |
 | deposit not flagged | SAME exclusion tree | `Poseidon(s, label)` |
 
+### 2.13f CORRECTION: "no cryptographic invariant across passports" was too broad — build these
+
+Challenged by the user, and the challenge was right. Two DIFFERENT things were blurred: DERIVING a
+person-linkage from document contents (genuinely limited) and ENFORCING document-level uniqueness
+(entirely possible, and currently NOT DONE).
+
+**THE UNENFORCED HOLE.** `HolderRegistration` has NO mapping from `documentKey` to `holderRoot`, and
+its own docstring confirms the intent — *"this does NOT require the holder to be unused"*. So today
+THE SAME PASSPORT CAN REGISTER UNDER UNLIMITED FRESH IDENTITIES. That is the most direct evasion of
+any blacklist: get listed, re-register the same document under a new `sk_identity`, withdraw.
+
+FIX: `mapping(bytes32 documentKey => bytes32 holderRoot)` — a document binds to exactly ONE identity,
+permanently. `documentKey` is the passport's own public key, so it is unique, with NO collisions and
+NO false positives. Re-homing a listed document reverts. A real cryptographic invariant that was
+sitting unenforced.
+
+**TWO MORE THAT HOLD:**
+- **Mandatory authenticated DG1 in the envelope** — the full MRZ, not a digest. The controller
+  receives name, DOB, sex, nationality and document number PASSPORT-SIGNED via the ICAO chain, which
+  is STRONGER than conventional KYC where documents can be forged.
+- **The MRZ personal-number field** (TD3 line 2, 14 chars) carries a national ID in many states.
+  Where populated it links one person's documents from the same issuer cryptographically.
+
+**WHERE IT STOPS, AND WHY IT MUST.** Cross-STATE, different-name linkage. ICAO 9303 defines no field
+shared between two states' passports for the same person. The available quasi-identifier is
+DOB + sex + place of birth, and thousands of people collide on it — making it a hard key would BLOCK
+INNOCENT PEOPLE from withdrawing. That false-positive cost is why it stays a fuzzy match rather than
+a cryptographic one; the harm from a wrong hard key is borne by someone who did nothing.
+
+Accurate claim, replacing the too-broad one: the protocol enforces that NO DOCUMENT ESCAPES THE
+CONTROLLER'S VIEW and NO DOCUMENT CAN BE RE-HOMED. Cross-state person-linkage is fuzzy matching on
+UNFORGEABLE inputs — the same matching sanctions screening already performs, on better data.
+
+**PREDICATE CITATION: an event is not enough (user).** Events are log data — not contract state, not
+readable on-chain, droppable by any indexer. The exclusion SMT is key->value and its VALUE SLOT IS
+CURRENTLY WASTED (always 0). Store the predicate THERE: covered by the root, part of the committed
+state, impossible to omit or prune, and exactly what a ZK proof-of-correct-listing must prove
+against. Costs nothing — the field exists and is being filled with zero. Strictly stronger than an
+event, and it drops the per-predicate attester mapping's misconfiguration surface without losing
+the record.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

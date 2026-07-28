@@ -7,6 +7,7 @@ import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProo
 import {AccessControlUpgradeable} from "@oz-upgradeable/access/AccessControlUpgradeable.sol";
 import {UUPSUpgradeable} from "@oz-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
+import {PoseidonUnit2L} from "../libraries/Poseidon.sol";
 import {INoirVerifier} from "../interfaces/verifiers/INoirVerifier.sol";
 import {RegistrySourceAnchor} from "../registry/RegistrySourceAnchor.sol";
 
@@ -53,8 +54,41 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
 
     struct TitleEntry {
         // Public, self-describing legal metadata - NEVER identity.
-        bytes32 legalDescriptionHash; // hash of the off-chain legal description document
-        string legalDescriptionURI; // where to find it (IPFS/similar)
+        /**
+         * SALTED commitment to the legal description: `Poseidon(legalDescriptionHash, salt)`, with
+         * a random high-entropy salt held by the holder. NOT a bare hash of the document.
+         *
+         * WHY THE SALT IS LOAD-BEARING (TODO.md sec. 2.14). Legal descriptions of real property -
+         * street address, parcel/APN, plat description - are frequently LOW-ENTROPY AND PUBLICLY
+         * ENUMERABLE, because county assessor records are often public and searchable. A bare hash
+         * is therefore brute-forceable: pull candidate descriptions from public records, hash each
+         * one the way this contract does, and compare against every stored value. A match reveals
+         * WHICH REAL-WORLD PROPERTY sits behind a titleId. The salt supplies the entropy the legal
+         * description itself lacks.
+         *
+         * It stays BINDING and Ricardian: present the document and the salt and anyone can verify
+         * the commitment with `verifyLegalDescription`. The salt is disclosed only when opening is
+         * genuinely required - a dispute, a loan default, a transfer needing proof of the
+         * underlying document - not by default.
+         *
+         * Same commit-reveal shape as Privacy Pool's precommitments
+         * (frontend/identity-wallet/src/pp/notes.ts), not a new primitive for this system.
+         */
+        bytes32 legalDescriptionCommitment;
+        /**
+         * Optional pointer to the document.
+         *
+         * A NON-EMPTY, PUBLICLY-RESOLVABLE URI DEFEATS THE COMMITMENT ENTIRELY. There is no point
+         * salting the commitment if the field beside it links straight to the document being
+         * committed to - an observer skips the brute force and simply fetches it. This was the
+         * gap in the original sec. 2.14 write-up, which addressed the hash and not its neighbour.
+         *
+         * So: leave it EMPTY when "which property" must stay confidential, or point it at an
+         * ENCRYPTED or access-controlled resource. Deliberately not enforced empty - a deployment
+         * that genuinely wants public property records is legitimate, and this contract should not
+         * decide that. But it must be a decision, not an accident.
+         */
+        string legalDescriptionURI;
         bytes32 jurisdiction; // e.g. keccak256("UA") - which registry/law this title is under
         uint256 priorTitleId; // 0 if this is a root entry; otherwise a chain-of-title link
         bytes32 notaryRegistryId; // which RegistrySourceAnchor registryId attested this entry
@@ -98,6 +132,7 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
     error InvalidNotarySignature();
     error InvalidHolderProof();
     error ZeroCommitment();
+    error ZeroLegalDescription();
     error OnlyRegistryPostman();
     error ZeroAddress();
 
@@ -138,7 +173,7 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
     /// `notaryMerkleProof_` against RegistrySourceAnchor.latestActiveRoot - the same
     /// keccak/MerkleProof-compatible tree backend/cre/notary_registry builds).
     function mintTitle(
-        bytes32 legalDescriptionHash_,
+        bytes32 legalDescriptionCommitment_,
         string calldata legalDescriptionURI_,
         bytes32 jurisdiction_,
         uint256 priorTitleId_,
@@ -149,15 +184,18 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
         bytes32 initialHolderCommitment_
     ) external returns (uint256 titleId_) {
         if (initialHolderCommitment_ == bytes32(0)) revert ZeroCommitment();
+        if (legalDescriptionCommitment_ == bytes32(0)) revert ZeroLegalDescription();
         _requireActiveNotary(notaryRegistryId_, notary_, notaryMerkleProof_);
         bytes32 mintMessage_ = keccak256(
-            abi.encodePacked("TITLE_LEDGER_MINT", address(this), legalDescriptionHash_, jurisdiction_, priorTitleId_)
+            abi.encodePacked(
+                "TITLE_LEDGER_MINT", address(this), legalDescriptionCommitment_, jurisdiction_, priorTitleId_
+            )
         );
         _requireSignedByNotary(notary_, notarySignature_, mintMessage_);
 
         titleId_ = nextTitleId++;
         titles[titleId_] = TitleEntry({
-            legalDescriptionHash: legalDescriptionHash_,
+            legalDescriptionCommitment: legalDescriptionCommitment_,
             legalDescriptionURI: legalDescriptionURI_,
             jurisdiction: jurisdiction_,
             priorTitleId: priorTitleId_,
@@ -243,6 +281,28 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
     function verifyHolderProof(uint256 titleId_, bytes calldata proof_) external view returns (bool) {
         if (titles[titleId_].mintedAt == 0) revert TitleDoesNotExist();
         return _verifyHolderProof(titleId_, proof_);
+    }
+
+    /**
+     * @notice Open the legal-description commitment: does `hash` under `salt` produce the stored
+     *         commitment for this title?
+     * @dev This is the RICARDIAN half of the commit-reveal. The commitment is opaque on-chain, but
+     *      whoever is shown the document and the salt can verify - here, on-chain, with no trusted
+     *      party - that it is the exact document the notary attested to at mint. Without this the
+     *      salt would make the commitment merely unreadable rather than confidential-but-provable.
+     * @param titleId_ the title
+     * @param legalDescriptionHash_ hash of the document being disclosed
+     * @param salt_ the holder's salt
+     */
+    function verifyLegalDescription(uint256 titleId_, bytes32 legalDescriptionHash_, bytes32 salt_)
+        external
+        view
+        returns (bool)
+    {
+        bytes32 stored_ = titles[titleId_].legalDescriptionCommitment;
+        if (stored_ == bytes32(0)) return false; // no such title
+        return stored_
+            == bytes32(PoseidonUnit2L.poseidon([uint256(legalDescriptionHash_), uint256(salt_)]));
     }
 
     function getRestrictionLegends(uint256 titleId_) external view returns (string[] memory) {

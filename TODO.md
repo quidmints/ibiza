@@ -1774,6 +1774,34 @@ since the fixtures are only read by proofs that would then fail somewhere else e
 
 259 forge, 84 pp, tsc clean, ABI check clean.
 
+### 2.14a IMPLEMENTED - and the original write-up missed the bigger leak sitting next to it
+
+§2.14's fix is built: `legalDescriptionHash` becomes `legalDescriptionCommitment`, a SALTED
+`Poseidon(hash, salt)`, plus `verifyLegalDescription(titleId, hash, salt)` for the Ricardian open.
+Without that view the salt would make the commitment merely unreadable rather than
+confidential-but-provable. 259 forge tests, ABI check clean.
+
+**THE GAP IN THE ORIGINAL ANALYSIS: `legalDescriptionURI`.** §2.14 identified the bare hash as
+brute-forceable from public county records and proposed a salt - correct, and incomplete. The struct
+carries a PUBLIC `string legalDescriptionURI` right beside it, and the existing test filled it with
+`'ipfs://legal-doc'`. **If that URI resolves to the document, the salt buys nothing** - an observer
+skips the dictionary attack and simply fetches it. Fixing the hash while its neighbour links
+straight to the plaintext would have produced confidence without confidentiality.
+
+Handled by DOCUMENTING the field's effect and leaving it optional rather than forcing it empty: a
+deployment that genuinely wants public property records is legitimate, and this contract should not
+decide that. But it must now be a DECISION, not an accident. The test suite leaves it empty and says
+why.
+
+**Tests assert the vector is closed, not merely that the code runs:** the stored value is NOT the
+bare document hash (the dictionary attack); the true document plus salt DOES open it on-chain; a
+wrong salt or wrong document does not; and the same document under two salts gives two commitments,
+so two titles over one property are not linkable to each other even while the property stays hidden.
+
+**Still open, and it is the policy question §2.14 flagged first:** whether "which property" must
+stay hidden at all. The mechanism now supports either answer - empty URI for confidential, populated
+for public - where before it silently supported only the leaky one.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

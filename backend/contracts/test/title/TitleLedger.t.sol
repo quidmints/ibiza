@@ -6,6 +6,7 @@ import {ERC1967Proxy} from '@oz/proxy/ERC1967/ERC1967Proxy.sol';
 import {MessageHashUtils} from '@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol';
 import {IEvidenceRegistry} from '@rarimo/evidence-registry/interfaces/IEvidenceRegistry.sol';
 
+import {PoseidonUnit2L} from '../../contracts/libraries/Poseidon.sol';
 import {TitleLedger} from '../../contracts/title/TitleLedger.sol';
 import {RegistrySourceAnchor} from '../../contracts/registry/RegistrySourceAnchor.sol';
 import {NoirVerifierMock} from '../../contracts/mock/verifiers/NoirVerifierMock.sol';
@@ -121,13 +122,26 @@ contract TitleLedgerTest is Test {
     vm.etch(address(titleHolderVerifier), address(new TitleHolderHonkVerifier()).code);
   }
 
+  /// The document, and the holder's salt. The DOCUMENT is deliberately the kind of low-entropy,
+  /// publicly-enumerable string that makes a bare hash brute-forceable - a street address anyone can
+  /// pull from a county register. The SALT is what stops that (TODO.md sec. 2.14).
+  bytes32 internal constant DESC_HASH = keccak256('42 Khreshchatyk St, Kyiv');
+  bytes32 internal constant DESC_SALT =
+    bytes32(uint256(0x5eed_5a17_c0ffee_1234_5678_9abc_def0_1111_2222_3333_4444_5555_6666_7777));
+
+  function _commit(bytes32 hash_, bytes32 salt_) internal pure returns (bytes32) {
+    return bytes32(PoseidonUnit2L.poseidon([uint256(hash_), uint256(salt_)]));
+  }
+
   function _mintValidTitle(bytes32 holderCommitment_) internal returns (uint256 titleId_) {
-    bytes32 descHash = keccak256('42 Khreshchatyk St, Kyiv');
+    bytes32 descHash = _commit(DESC_HASH, DESC_SALT);
     bytes32 jurisdiction = keccak256('UA');
     bytes memory sig = _sign(NOTARY_PK, _mintMessage(descHash, jurisdiction, 0));
 
     titleId_ = ledger.mintTitle(
-      descHash, 'ipfs://legal-doc', jurisdiction, 0, REGISTRY_ID, notary, notaryProof, sig, holderCommitment_
+      // URI left EMPTY on purpose: a publicly-resolvable pointer to the document would defeat the
+      // salted commitment entirely, since an observer would just fetch it instead of brute-forcing.
+      descHash, '', jurisdiction, 0, REGISTRY_ID, notary, notaryProof, sig, holderCommitment_
     );
   }
 
@@ -174,13 +188,49 @@ contract TitleLedgerTest is Test {
     assertEq(titleId, 1);
     assertEq(ledger.holderCommitment(titleId), holderCommitment);
     TitleLedger.TitleEntry memory entry = ledger.getTitle(titleId);
-    assertEq(entry.legalDescriptionHash, keccak256('42 Khreshchatyk St, Kyiv'));
+    assertEq(entry.legalDescriptionCommitment, _commit(DESC_HASH, DESC_SALT));
     assertEq(entry.jurisdiction, keccak256('UA'));
     assertEq(entry.priorTitleId, 0);
     assertEq(entry.notaryRegistryId, REGISTRY_ID);
     assertEq(entry.notary, notary);
     assertEq(entry.mintedAt, block.timestamp);
     assertFalse(entry.encumbered);
+  }
+
+  // ── sec. 2.14: the commitment must be CONFIDENTIAL but OPENABLE ──────────────────────────
+
+  /// THE VECTOR THIS CLOSES. The stored value must NOT be the bare hash of the document - if it
+  /// were, anyone could pull candidate legal descriptions from public county records, hash each one
+  /// the way the contract does, and learn which real-world property sits behind a titleId.
+  function test_theStoredCommitmentIsNotABareHashOfTheDocument() public {
+    uint256 titleId = _mintValidTitle(keccak256('holder'));
+    TitleLedger.TitleEntry memory entry = ledger.getTitle(titleId);
+
+    assertTrue(
+      entry.legalDescriptionCommitment != DESC_HASH,
+      'the bare document hash is stored - a public-records dictionary would deanonymise the property'
+    );
+  }
+
+  /// ...and it stays RICARDIAN: the document plus the salt verifies on-chain, with no trusted party.
+  function test_theCommitmentOpensWithTheDocumentAndSalt() public {
+    uint256 titleId = _mintValidTitle(keccak256('holder'));
+    assertTrue(ledger.verifyLegalDescription(titleId, DESC_HASH, DESC_SALT), 'the true document did not open it');
+  }
+
+  function test_theCommitmentDoesNotOpenWithTheWrongSaltOrDocument() public {
+    uint256 titleId = _mintValidTitle(keccak256('holder'));
+    assertFalse(ledger.verifyLegalDescription(titleId, DESC_HASH, bytes32(uint256(DESC_SALT) + 1)), 'wrong salt opened it');
+    assertFalse(ledger.verifyLegalDescription(titleId, keccak256('some other address'), DESC_SALT), 'wrong document opened it');
+  }
+
+  /// The same document under two salts must give two commitments, or two titles over one property
+  /// would be linkable to each other even while the property itself stayed hidden.
+  function test_theSameDocumentUnderDifferentSaltsIsUnlinkable() public view {
+    assertTrue(
+      _commit(DESC_HASH, DESC_SALT) != _commit(DESC_HASH, bytes32(uint256(DESC_SALT) + 1)),
+      'the salt does not affect the commitment - two titles over one property would be linkable'
+    );
   }
 
   function test_mintTitle_revertsOnZeroCommitment() public {

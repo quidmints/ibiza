@@ -1843,6 +1843,43 @@ check triggered, which is the compiler agreeing the field was surplus.
 (`test_verifyHolderProof_rejectsAProofBoundToAnotherTitle`), which now uses two properties.
 263 forge tests, ABI check clean.
 
+### 2.15 SPEC.PDF (Cryptographic Mortgage Protocol v2.0) - what it corrects and what it adds
+
+Read 2026-07-29. Corrects a design decision I made without it, and opens scope not previously recorded.
+
+**CORRECTION - THE NOTARY COMPUTES NOTHING.** §2.14b had the notary computing
+`propertyKey = PRF(registryKey, docHash)` off-chain. Wrong. Per §3 of the spec, a notary is A REGULAR
+USER; their notary status is established by TLSNOTARY PROOFS (2PC MPC-TLS) over WebPKI TLS sessions
+from `portal.notary.ir`, verified on-chain in `NotaryRegistry.sol`, with headless scrapers indexing
+office number, name and licence status. Explicitly NO third-party aggregator (no Reclaim). So the
+notary holds no protocol key and performs no protocol computation - they are attested, not trusted
+with secrets. `TitleLedger`'s current `bindNotaryAddress` placeholder is superseded by this.
+
+**THE SPEC'S OWN NULLIFIER HAS THE TENSION I FOUND IN §2.14b.** §4.1 defines
+`N = PoseidonHash(Cadastral_ID, Secret_Salt)`, described as "deterministic, un-linkable" and used to
+prevent double-mortgaging. Those two properties pull against each other exactly as §2.14b found:
+a per-borrower secret salt makes N un-linkable but ALSO makes two liens on one parcel look
+unrelated, defeating the double-mortgage check; a shared salt makes N deterministic but
+brute-forceable, since *Shenaseh Yekta* is an 18-digit enumerable key. UNRESOLVED IN THE SPEC.
+Resolving it is the same problem `propertyKey` faces and should be settled once, for both.
+
+**NEW SCOPE, none of it previously recorded:**
+- `LandRegistry.sol` - parcel nullifiers, lien registration/discharge, `verifyParcelNullifier`.
+- `MortgageEngine.sol` - loan lifecycle (ACTIVE/DELINQUENT/IN_DEFAULT/PAID_OFF), monthly payments,
+  default enforcement at day 91, LTV <= 70% and DTI <= 43% underwriting, algorithmic rates on pool
+  utilisation.
+- Two capital models: sovereign treasury (7% APY RWA, 200-300bps subsidy) vs private LP vaults.
+- Tiered cadastral access (§2.2): Tier 2 - general public/lenders - can verify deed authenticity
+  from the 18-digit ID plus the owner's National ID. That is the verification path a lender uses,
+  and it is PUBLIC, which constrains how much the parcel nullifier can hide.
+- Default bridge: threshold encryption is OPTIONAL. Option A is a 2-of-3 legal multisig / notarised
+  escrow of an irrevocable power of attorney; Option B is k-of-n threshold ElGamal.
+
+**GENERALISATION (user, 2026-07-29):** this work must not be Iran-specific. The identity, title and
+lien machinery is jurisdiction-agnostic; only the registry endpoints, the deed schema and the
+enforcement vendors are local. Keep them behind an interface so a second jurisdiction is a
+configuration, not a fork. `iran-constitutional-monarchy` is OUT OF SCOPE for now.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

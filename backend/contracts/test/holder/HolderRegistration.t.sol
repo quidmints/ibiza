@@ -208,6 +208,115 @@ contract HolderRegistrationTest is Test {
         assertEq(sk.getActiveDocumentCount(bytes32(holderRoot)), 2);
     }
 
+    // ── document re-homing: one passport may bind to exactly ONE holder root ────────────────
+    //
+    // THE ATTACK these cover. The Noir proof binds only `dgCommit`, `dg1Hash` and `holderRoot`
+    // (RegistrationSimple._verifyNoirZKProof's three public signals). `publicKey` and
+    // `passportHash` are caller-supplied struct fields attested ONLY by the backend signer, so a
+    // caller able to obtain a signature could present a fresh pair for the SAME physical passport
+    // and bind it under a SECOND identity. That defeats ANY identity-level blacklist by
+    // construction: get listed, re-register, withdraw as someone new.
+    //
+    // The guard that stops it is the state keeper's `_usedDocumentHash`, which was being fed
+    // `passportHash` (unconstrained) instead of `dg1Hash` (proof-bound, computed in-circuit over
+    // the MRZ, so deterministic for a given passport).
+
+    function test_sameDg1CannotBindToASecondHolderRoot() public {
+        bytes32 dg1 = bytes32(uint256(0xDEADBEEF)); // the one value the proof actually pins
+
+        RegistrationSimple.Passport memory p1 = _passport(111, dg1, bytes32(uint256(0xA0A0)), bytes32(uint256(0xAA)));
+        reg.registerDocumentViaNoir(uint256(uint160(address(0xF00D))), p1, sk.DOC_PASSPORT(), 0, _sign(SIGNER_PK, p1), "");
+
+        // Same passport, but EVERY field the proof does not constrain is changed: fresh document
+        // key, fresh passport hash, fresh dgCommit, different holder root. Without the fix this
+        // succeeds and the attacker holds two unlinked identities backed by one passport.
+        RegistrationSimple.Passport memory p2 = _passport(999, dg1, bytes32(uint256(0xC0C0)), bytes32(uint256(0xCC)));
+        bytes32 docPassport = sk.DOC_PASSPORT();
+        bytes memory sig2 = _sign(SIGNER_PK, p2);
+
+        vm.expectRevert("HolderStateKeeper: document hash used");
+        reg.registerDocumentViaNoir(uint256(uint160(address(0xBEEF))), p2, docPassport, 0, sig2, "");
+    }
+
+    function test_sameDg1CannotRebindEvenToTheSameHolderRoot() public {
+        uint256 holderRoot = uint256(uint160(address(0xF00D)));
+        bytes32 dg1 = bytes32(uint256(0xDEADBEEF));
+
+        RegistrationSimple.Passport memory p1 = _passport(111, dg1, bytes32(uint256(0xA0A0)), bytes32(uint256(0xAA)));
+        reg.registerDocumentViaNoir(holderRoot, p1, sk.DOC_PASSPORT(), 0, _sign(SIGNER_PK, p1), "");
+
+        RegistrationSimple.Passport memory p2 = _passport(222, dg1, bytes32(uint256(0xB0B0)), bytes32(uint256(0xBB)));
+        bytes32 docPassport = sk.DOC_PASSPORT();
+        bytes memory sig2 = _sign(SIGNER_PK, p2);
+
+        vm.expectRevert("HolderStateKeeper: document hash used");
+        reg.registerDocumentViaNoir(holderRoot, p2, docPassport, 0, sig2, "");
+    }
+
+    /// The complement, and the one that proves the guard actually MOVED rather than merely being
+    /// present: a colliding `passportHash` — the field the check used to key on — must no longer
+    /// block anything, because it is not what identifies a document.
+    function test_collidingPassportHashNoLongerBlocks() public {
+        uint256 holderRoot = uint256(uint160(address(0xF00D)));
+        bytes32 shared = bytes32(uint256(0x5A5A));
+
+        RegistrationSimple.Passport memory p1 = _passport(111, bytes32(uint256(1)), bytes32(uint256(0xA0A0)), shared);
+        RegistrationSimple.Passport memory p2 = _passport(222, bytes32(uint256(2)), bytes32(uint256(0xB0B0)), shared);
+
+        reg.registerDocumentViaNoir(holderRoot, p1, sk.DOC_PASSPORT(), 0, _sign(SIGNER_PK, p1), "");
+        reg.registerDocumentViaNoir(holderRoot, p2, sk.DOC_NATIONAL_ID(), 0, _sign(SIGNER_PK, p2), "");
+
+        assertEq(sk.getActiveDocumentCount(bytes32(holderRoot)), 2);
+    }
+
+    /// A zero `dg1Hash` must be refused outright. `addDocument` treats a zero hash as "no
+    /// anti-replay wanted" and SKIPS the check, so without this the guard is bypassed by passing
+    /// zero.
+    function test_zeroDg1HashIsRejected() public {
+        RegistrationSimple.Passport memory p = _passport(111, bytes32(0), bytes32(uint256(0xA0A0)), bytes32(uint256(0xAA)));
+
+        bytes32 docPassport = sk.DOC_PASSPORT();
+        bytes memory sig = _sign(SIGNER_PK, p);
+
+        vm.expectRevert("HolderRegistration: zero dg1 hash");
+        reg.registerDocumentViaNoir(uint256(uint160(address(0xF00D))), p, docPassport, 0, sig, "");
+    }
+
+    /// Renewal must stay possible: a renewed passport has a NEW MRZ, hence a new `dg1Hash`, so the
+    /// guard does not catch it. If this broke, the fix would have closed the hole by breaking a
+    /// legitimate flow.
+    function test_renewalStillWorksUnderTheDg1Guard() public {
+        uint256 holderRoot = uint256(uint160(address(0xF00D)));
+
+        RegistrationSimple.Passport memory oldP = _passport(111, bytes32(uint256(1)), bytes32(uint256(0xA0A0)), bytes32(uint256(0xAA)));
+        reg.registerDocumentViaNoir(holderRoot, oldP, sk.DOC_PASSPORT(), 0, _sign(SIGNER_PK, oldP), "");
+
+        RegistrationSimple.Passport memory newP = _passport(333, bytes32(uint256(3)), bytes32(uint256(0xD0D0)), bytes32(uint256(0xDD)));
+        reg.renewDocumentViaNoir(oldP.publicKey, holderRoot, newP, sk.DOC_PASSPORT(), 0, _sign(SIGNER_PK, newP), "");
+
+        assertEq(sk.getDocument(newP.publicKey).holderRoot, bytes32(holderRoot));
+    }
+
+    /// Renewal must ALSO be covered, or the re-homing attack simply moves to renewDocumentViaNoir.
+    function test_renewalCannotRebindAnAlreadyUsedDg1() public {
+        uint256 holderRoot = uint256(uint160(address(0xF00D)));
+        bytes32 dg1 = bytes32(uint256(0xDEADBEEF));
+
+        RegistrationSimple.Passport memory p1 = _passport(111, dg1, bytes32(uint256(0xA0A0)), bytes32(uint256(0xAA)));
+        reg.registerDocumentViaNoir(holderRoot, p1, sk.DOC_PASSPORT(), 0, _sign(SIGNER_PK, p1), "");
+
+        RegistrationSimple.Passport memory anchor = _passport(222, bytes32(uint256(2)), bytes32(uint256(0xB0B0)), bytes32(uint256(0xBB)));
+        reg.registerDocumentViaNoir(holderRoot, anchor, sk.DOC_NATIONAL_ID(), 0, _sign(SIGNER_PK, anchor), "");
+
+        RegistrationSimple.Passport memory replay = _passport(444, dg1, bytes32(uint256(0xE0E0)), bytes32(uint256(0xEE)));
+        bytes32 docPassport = sk.DOC_PASSPORT();
+        bytes memory sigR = _sign(SIGNER_PK, replay);
+        bytes32 anchorKey = anchor.publicKey;
+
+        vm.expectRevert("HolderStateKeeper: document hash used");
+        reg.renewDocumentViaNoir(anchorKey, holderRoot, replay, docPassport, 0, sigR, "");
+    }
+
     // ── renewDocumentViaNoir ────────────────────────────────────────────────────────────────
 
     function test_renewDocumentViaNoir_succeeds() public {

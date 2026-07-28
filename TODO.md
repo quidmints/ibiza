@@ -1032,15 +1032,30 @@ Challenged by the user, and the challenge was right. Two DIFFERENT things were b
 person-linkage from document contents (genuinely limited) and ENFORCING document-level uniqueness
 (entirely possible, and currently NOT DONE).
 
-**THE UNENFORCED HOLE.** `HolderRegistration` has NO mapping from `documentKey` to `holderRoot`, and
-its own docstring confirms the intent — *"this does NOT require the holder to be unused"*. So today
-THE SAME PASSPORT CAN REGISTER UNDER UNLIMITED FRESH IDENTITIES. That is the most direct evasion of
-any blacklist: get listed, re-register the same document under a new `sk_identity`, withdraw.
+**THE HOLE — CORRECTED AFTER READING THE CODE. My first description of it was wrong.** I claimed
+`HolderRegistration` had no `documentKey -> holderRoot` mapping. It effectively does: `addDocument`
+requires `status == DocStatus.None`, status only ever moves None -> Current -> Superseded/Revoked and
+NEVER back, and `_usedDocumentHash` is set-only. So a document key cannot be re-bound.
 
-FIX: `mapping(bytes32 documentKey => bytes32 holderRoot)` — a document binds to exactly ONE identity,
-permanently. `documentKey` is the passport's own public key, so it is unique, with NO collisions and
-NO false positives. Re-homing a listed document reverts. A real cryptographic invariant that was
-sitting unenforced.
+The REAL defect is one level down, and sharper. `_verifyNoirZKProof` binds exactly three public
+signals — `dgCommit`, `dg1Hash`, `holderRoot`. But the uniqueness guard was keyed on
+`passport_.passportHash`, and the document identity on `passport_.publicKey`, and **NEITHER OF THOSE
+IS CONSTRAINED BY THE PROOF** — both are caller-supplied struct fields attested only by the backend
+signer's signature. So the guard keyed on values the proof never checks, while a proof-bound value
+sat unused beside them. Anyone able to obtain a signature could present a FRESH `publicKey` and
+`passportHash` for the SAME physical passport and bind it to a SECOND `holderRoot`; the proof still
+verifies, because nothing ties those fields to the document. That defeats any identity-level
+blacklist by construction: get listed, re-register, withdraw as someone new.
+
+FIX (landed): feed the anti-replay guard `dg1Hash` instead of `passportHash`, and reject zero on
+this path. `dg1Hash` is computed IN-CIRCUIT as `passport_hash(dg1)` over the MRZ, so it is
+deterministic per passport and unforgeable. No new storage, no signature change — the guard already
+existed and was simply being fed the wrong value. Zero must be rejected HERE because `addDocument`
+treats a zero hash as "no anti-replay wanted" and skips the check entirely.
+
+Renewal is unaffected: a renewed passport has a new MRZ, hence a new `dg1Hash`. Verified by
+reverting the fix — 5 of the 6 new tests fail without it, and `test_renewalStillWorksUnderTheDg1Guard`
+passes both ways by design, being the regression guard rather than an attack.
 
 **TWO MORE THAT HOLD:**
 - **Mandatory authenticated DG1 in the envelope** — the full MRZ, not a digest. The controller

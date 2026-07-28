@@ -48,7 +48,7 @@ contract HolderRegistration is RegistrationSimple {
 
         _holderStateKeeper().addDocument(
             passport_.publicKey,
-            passport_.passportHash,
+            _replayKey(passport_),
             bytes32(holderRoot_),
             docType_,
             passport_.dgCommit,
@@ -79,7 +79,7 @@ contract HolderRegistration is RegistrationSimple {
         _holderStateKeeper().renewDocument(
             oldDocumentKey_,
             newPassport_.publicKey,
-            newPassport_.passportHash,
+            _replayKey(newPassport_),
             bytes32(holderRoot_),
             newDocType_,
             newPassport_.dgCommit,
@@ -162,6 +162,37 @@ contract HolderRegistration is RegistrationSimple {
             bytes32(holderRoot_),
             zkPoints_
         );
+    }
+
+    /**
+     * @dev The anti-replay key for a document binding: `dg1Hash`, NOT `passportHash`.
+     *
+     * WHY THIS MATTERS, AND WHAT WAS WRONG. `HolderStateKeeper` already refuses to bind the same
+     * document twice (`_usedDocumentHash`), but it was being fed `passport_.passportHash` — a
+     * caller-supplied struct field that the Noir proof DOES NOT CONSTRAIN. `_verifyNoirZKProof`
+     * binds exactly three public signals: `dgCommit`, `dg1Hash` and `holderRoot`. `passportHash`
+     * and `publicKey` are attested only by the backend signer's signature.
+     *
+     * So the uniqueness guard keyed on values the proof never checks, while a proof-bound value
+     * sat unused. Anyone able to obtain a signature could present a FRESH `publicKey` and
+     * `passportHash` for the SAME physical passport and bind it to a SECOND `holderRoot` — the
+     * proof still verifies, because nothing links those fields to the document. That defeats any
+     * identity-level blacklist by construction: get listed, re-register, withdraw as someone new.
+     *
+     * `dg1Hash` is computed IN-CIRCUIT as `passport_hash(dg1)` over the MRZ (see
+     * noir_dl_lib/src/lite.nr::register_identity_light), so it is deterministic for a given
+     * passport and unforgeable. Two different documents cannot collide on it — the MRZ carries the
+     * document number — so renewal is unaffected: a renewed passport has a new MRZ, hence a new
+     * key, and legitimately binds under the same holder root.
+     *
+     * ZERO IS REJECTED HERE rather than in `addDocument`, which treats a zero hash as "no
+     * anti-replay wanted" and skips the check. That permissiveness is fine for the state keeper as
+     * a general primitive, but on THIS path the guard is load-bearing, and silently skipping it is
+     * exactly the shape of hole this function exists to close.
+     */
+    function _replayKey(Passport memory passport_) internal pure returns (bytes32) {
+        require(passport_.dg1Hash != bytes32(0), "HolderRegistration: zero dg1 hash");
+        return passport_.dg1Hash;
     }
 
     function _holderStateKeeper() internal view returns (HolderStateKeeper) {

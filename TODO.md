@@ -1650,6 +1650,39 @@ context derived from it. That staleness is exactly what `test_ScopeMatchesFixtur
 and it caught it. Writing that generator - as a mode of `build-withdrawal-fixture.js` rather than a
 second script - is the last step, and it closes a reproducibility hole that predates this work.
 
+### 2.13u MERGE COMPLETE: 281/281, and the missing e2e generator now exists
+
+The single identity tree is live end to end. 281 forge tests, 84 pp tests, 1 escrow circuit test,
+tsc clean, client ABI check clean, all four verifiers inside EIP-170.
+
+**`tools/build-e2e-fixture.js` NOW EXISTS.** `WithdrawEndToEnd.t.sol` had named it as its fixture
+provenance since the commit that introduced the test - and it was never written. Checked properly
+before writing it: absent from this repo's entire history (58 commits, root
+`0762975 Fork rarime + Privacy Pools...`), and it CANNOT exist upstream either, because
+`withdraw_identity` is this fork's own Noir circuit while upstream Privacy Pools is Circom/Groth16
+with no `Prover.toml` at all. So `Prover.e2e.toml` had never been reproducible from anything
+committed. It is now, including a `--ragequit` mode for the second e2e fixture, which had the same
+gap.
+
+**The regeneration cascade, and why so much moved.** Adding the state keeper and registry
+deployments to setUp moved the pool's ADDRESS, hence `SCOPE`, hence every label, precommitment,
+commitment and context derived from it. `test_ScopeMatchesFixture` caught it immediately, which is
+what it exists for. Regenerated in order: precommitments -> deposits -> state root -> withdrawal
+witness -> proof, then the ragequit note the same way.
+
+**A defect the generator's own cross-check caught.** The first draft reconstructed only OUR leaf and
+padded the other three with a placeholder - but a LeanIMT root depends on EVERY leaf, so the root
+would have been wrong. The `state_root disagrees with the chain` assertion fired immediately. Fixed
+by deriving all four labels from the pool's own rule (`keccak256(SCOPE, nonce) % FIELD`, nonce from
+1), which reproduces the chain's root exactly. Without that cross-check the failure would have
+surfaced as an unexplained proof rejection.
+
+**Every constant in both suites was patched FROM THE PROOF FILES, never transcribed** - twenty-odd
+77-digit values, where a single typo fails as `SumcheckFailed` with nothing pointing at the cause.
+
+Withdrawal: **24,812 ACIR opcodes, down from 43,772 (-43%)**, proving on-chain at 7 public inputs
+against a root produced by the real registry from three genuine escrow registrations.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

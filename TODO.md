@@ -1492,6 +1492,54 @@ wrong for `[3]`/`[4]`. Every site was read.
 run, which needs those files to compile - the circular step from §2.13p. That is the next piece, and
 it is deliberately not being rushed: those two suites are the primary guard on the withdrawal path.
 
+### 2.13r INVISIBLE-BUG AUDIT (user: "search for any more invisible bugs like this")
+
+Hunting the CLASSES of the two defects in §2.13q - a mock that silently stops asserting, and a
+constant that disagrees across a boundary while every test still passes.
+
+**FOUND AND FIXED - the escrow digest had NO independent check.**
+`IdentityRegistry.register` requires `holderOfDocumentHash(dg1_hash) == holder_root`, so the escrow's
+`dg1_hash` must equal the one REGISTRATION produced. Nothing verified that: `IdentityRegistry.t.sol`
+plants the document using the ESCROW'S OWN `dg1Hash`, so the two could have disagreed - about the
+DG1 length, the digest algorithm, or the byte packing - and every test would still have passed while
+NO REAL DOCUMENT COULD EVER BE ESCROWED.
+
+I nearly "fixed" it the wrong way. `escrow_envelope` uses `DG1_LEN = 95` while `register_identity`
+takes 93, which looked like a straightforward mismatch. It is not: 95 is the ICAO TD1 layout that
+`register_identity_light_td1` takes, and the LIGHT circuit is the one actually verified -
+`RegistrationSimple._PROOF_SIGNALS_COUNT` is 3, the light circuit's output arity, where the full
+`register_identity` returns 5. So 95 is CORRECT, my comment calling it "TD3 (passport)" was wrong,
+and changing it to 93 would have BROKEN the working path.
+`escrow_envelope::test_dg1_hash_matches_the_registration_circuit` now compares against
+`register_identity_light`'s OWN returned value - the only reference that cannot drift with that file.
+It passes.
+
+**CHECKED AND CLEAN - constants that must agree across boundaries:**
+
+| constant | contract | circuit | wallet |
+|---|---|---|---|
+| state tree depth | `State.MAX_TREE_DEPTH` 32 | `state_siblings [Field; 32]` | `stateTree.ts` 32 |
+| identity tree depth | `IdentityRegistry.t.sol` 32 | `IDENTITY_TREE_DEPTH` 32 | `identityProof.ts` 32 |
+| escrow public inputs | `PUBLIC_INPUT_COUNT` 12 | 12 | codegen target 12 |
+
+**FOUND - dead inheritance in live contract code.** `Entrypoint` inherits AND initializes
+`EIP712Upgradeable`, with an init comment describing `admitIdentityWithAuthorization` - a function
+that no longer exists there (it moved to IdentityAspRegistry in §2.5a). There is no
+`_hashTypedDataV4`, no typehash and no signature recovery anywhere in the contract. Costs bytecode
+and misleads about what the contract does. Removal is layout-safe under OZ 5's ERC-7201 namespaced
+storage, but it is an inheritance change to an UPGRADEABLE contract, so it belongs in the merge's
+deletion pass rather than being slipped in mid-rewire.
+
+**FOUND - `MinimalEntrypoint.isKnownAspRoot`** in PrivacyPoolComplex.t.sol is now unreachable: the
+pool no longer calls it. Its sibling `isValidRoot` returning an unconditional `true` is FINE there,
+unlike the Simple case in §2.13q, because that suite has no withdraw tests at all - checked, not
+assumed.
+
+**ORPHANED BY THE MERGE, to delete once WithdrawEndToEnd is rewired:** `IdentityAspRegistry` +
+`IIdentityAspRegistry` + its test, `RevocationRegistry` + `IRevocationRegistry` + its test, and the
+wallet's `postman/identityAsp.ts`. Listing them now so the deletion is deliberate rather than
+discovered later by a dead-symbol scan.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

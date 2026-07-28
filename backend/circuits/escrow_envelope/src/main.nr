@@ -30,7 +30,20 @@ use noir_dl::not_passports_zk_circuits::passport_hash;
 use pp::envelope::{seal_payload, secret_commitment};
 use pp::holder_root::extract_pk_identity_hash;
 
-/// DG1 length for the TD3 (passport) layout, matching register_identity_light_td1.
+/// DG1 length. 95 = the ICAO TD1 layout (3 lines x 30 chars, plus a 5-byte tag/length header),
+/// which is what `register_identity_light_td1` takes.
+///
+/// THIS MUST MATCH THE REGISTRATION CIRCUIT THAT HolderRegistration ACTUALLY VERIFIES, and that is
+/// the LIGHT one: `RegistrationSimple._PROOF_SIGNALS_COUNT` is 3, which is the light circuit's
+/// output arity (the full `register_identity` returns 5 and takes a 93-byte TD3 DG1). Hashing a
+/// different number of bytes than registration did yields a different `dg1_hash`, so
+/// `IdentityRegistry.register` would revert `DocumentNotRegistered` for EVERY genuine document -
+/// and no test that plants the escrow's own hash could ever see it. Hence
+/// `test_dg1_hash_matches_the_registration_circuit` below, which compares against the registration
+/// circuit's OWN output rather than against a value this file computed.
+///
+/// A TD3/93-byte escrow variant is still needed if the full `register_identity` path is ever wired
+/// up - see TODO.md.
 global DG1_LEN: u32 = 95;
 /// sha256.
 global DG_HASH_ALGO: u32 = 32;
@@ -127,4 +140,38 @@ fn main(
     for i in 0..PAYLOAD_LEN {
         assert(envelope.payload[i] == sealed[i], "escrow: sealed payload mismatch");
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE CROSS-CHECK THAT WAS MISSING.
+//
+// `IdentityRegistry.register` requires `holderOfDocumentHash(dg1_hash) == holder_root`, so the
+// escrow's `dg1_hash` MUST equal the one the registration circuit produced and HolderStateKeeper
+// stored. Nothing verified that: IdentityRegistry.t.sol plants the document using the ESCROW's own
+// dg1Hash, so escrow and registration could have disagreed - about the DG1 length, the digest
+// algorithm, or the byte-packing - and every test would still have passed while no real document
+// could ever be escrowed.
+//
+// This compares against `register_identity_light`'s OWN RETURNED VALUE for the same bytes, which is
+// the only reference that cannot drift with this file.
+// ---------------------------------------------------------------------------------------------
+#[test]
+fn test_dg1_hash_matches_the_registration_circuit() {
+    let mut dg1: [u8; DG1_LEN] = [0; DG1_LEN];
+    // Arbitrary but non-trivial bytes - an all-zero DG1 could agree by accident.
+    for i in 0..DG1_LEN {
+        dg1[i] = ((i * 7 + 13) % 251) as u8;
+    }
+
+    // What registration computes and the contract binds as pubSignals[1].
+    let registration = noir_dl::lite::register_identity_light::<DG1_LEN, DG_HASH_ALGO>(dg1, 1234);
+    let registration_dg1_hash = registration.1;
+
+    // What this circuit computes and asserts against `dg1_hash`.
+    let escrow_dg1_hash = dg1_hash_field(passport_hash::<DG_HASH_ALGO, DG1_LEN>(dg1));
+
+    assert(
+        escrow_dg1_hash == registration_dg1_hash,
+        "escrow's dg1_hash disagrees with the registration circuit - no genuine document could be escrowed",
+    );
 }

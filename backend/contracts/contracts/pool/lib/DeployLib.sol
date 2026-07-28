@@ -28,8 +28,11 @@ library DeployLib {
   bytes11 internal constant RAGEQUIT_VERIFIER_SALT = bytes11(keccak256(abi.encodePacked('RagequitVerifier_1')));
   /// @dev The two registries PrivacyPool now holds directly (sec. 2.5a) - both NON-UPGRADEABLE, so
   ///      their addresses are fixed at deploy and worth pinning deterministically like the rest.
-  bytes11 internal constant ASP_REGISTRY_SALT = bytes11(keccak256(abi.encodePacked('IdentityAspRegistry_1')));
-  bytes11 internal constant REVOCATION_REGISTRY_SALT = bytes11(keccak256(abi.encodePacked('RevocationRegistry_1')));
+  /// The single identity tree - registration AND revocation status in one contract (TODO.md
+  /// sec. 2.13k). Replaces the separate ASP and revocation registry salts, which named contracts
+  /// that no longer exist.
+  bytes11 internal constant IDENTITY_REGISTRY_SALT = bytes11(keccak256(abi.encodePacked('IdentityRegistry_1')));
+  bytes11 internal constant ESCROW_VERIFIER_SALT = bytes11(keccak256(abi.encodePacked('EscrowEnvelopeVerifier_1')));
 
   /**
    * @dev Creates a custom salt for deterministic deployments

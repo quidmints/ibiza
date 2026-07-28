@@ -348,6 +348,103 @@ contract IdentityRegistryTest is Test {
     assertFalse(registry.isValidRoot(bytes32(0)), 'the zero root was accepted');
   }
 
+  // ── coverage PORTED from RevocationRegistry.t.sol, which this registry supersedes ───────────
+  //
+  // Mapped case by case rather than assumed. Most of that suite already has an equivalent above
+  // (CannotRevokeTwice -> RevokeIsMonotone, StrangerCannotRevoke -> RevokeRevertsForNonController,
+  // StaleRootStopsBeingValid -> ASupersededCleanRootExpires, RootThatNeverExisted ->
+  // UnknownRootIsRejected, UnknownPredicateIsUncitable -> RevokeRejectsAnUnknownPredicate). These
+  // are the ones that did NOT, and deleting that file without them would have silently narrowed
+  // coverage - the exact failure mode this project keeps finding.
+  //
+  // One case is deliberately NOT ported. `test_AttesterCannotCiteAnotherPredicate` covered
+  // per-predicate attesters, which are gone BY DESIGN: one controller writes this list and the
+  // label list alike. That is a removed behaviour, not lost coverage.
+
+  /// A duplicate passes silently otherwise - `isPredicate` is idempotent - while pushing the same
+  /// value twice into `_predicates`, so the published set misreports itself. Deploy-time only and
+  /// immutable, so there is no correcting it afterwards. This guard did NOT exist until the port
+  /// found RevocationRegistry had it and IdentityRegistry did not.
+  function test_ConstructorRejectsDuplicatePredicates() public {
+    bytes32[] memory preds = new bytes32[](2);
+    preds[0] = PREDICATE_SANCTIONS;
+    preds[1] = PREDICATE_SANCTIONS;
+
+    address verifier_ = address(new EscrowEnvelopeHonkVerifier());
+    try new IdentityRegistry(
+      verifier_, address(sk), CONTROLLER, CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
+    ) {
+      fail('a duplicate predicate was accepted - the published set would misreport itself forever');
+    } catch {}
+  }
+
+  function test_ConstructorRejectsAnEmptyPredicateSet() public {
+    bytes32[] memory preds = new bytes32[](0);
+    address verifier_ = address(new EscrowEnvelopeHonkVerifier());
+    try new IdentityRegistry(
+      verifier_, address(sk), CONTROLLER, CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
+    ) {
+      fail('a registry with NO predicates was accepted - no revocation could ever cite a reason');
+    } catch {}
+  }
+
+  function test_ConstructorRejectsZeroAddresses() public {
+    bytes32[] memory preds = new bytes32[](1);
+    preds[0] = PREDICATE_SANCTIONS;
+    address verifier_ = address(new EscrowEnvelopeHonkVerifier());
+
+    try new IdentityRegistry(
+      address(0), address(sk), CONTROLLER, CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
+    ) { fail('a zero verifier was accepted'); } catch {}
+
+    try new IdentityRegistry(
+      verifier_, address(0), CONTROLLER, CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
+    ) { fail('a zero state keeper was accepted'); } catch {}
+
+    try new IdentityRegistry(
+      verifier_, address(sk), address(0), CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
+    ) { fail('a zero controller was accepted - nobody could ever revoke'); } catch {}
+  }
+
+  /// The predicate must land in the TREE as the leaf value, not merely in a mapping. That is what
+  /// makes a revocation auditable from committed state rather than from the event log, and what a
+  /// future proof-of-correct-listing would prove against.
+  function test_TheLeafValueRecordsThePredicate() public {
+    _plantDocument();
+    registry.register(_proof(), _publicInputs());
+    bytes32 c = _publicInputs()[3];
+
+    vm.prank(CONTROLLER);
+    registry.revoke(c, PREDICATE_SANCTIONS);
+
+    SparseMerkleTree.Proof memory p = registry.getProof(c);
+    assertTrue(p.existence, 'the revoked identity left the tree');
+    assertEq(p.value, PREDICATE_SANCTIONS, 'the leaf value is not the cited predicate');
+  }
+
+  function test_RevokingMovesTheRoot() public {
+    _plantDocument();
+    registry.register(_proof(), _publicInputs());
+    bytes32 before = registry.root();
+
+    vm.prank(CONTROLLER);
+    registry.revoke(_publicInputs()[3], PREDICATE_SANCTIONS);
+
+    assertTrue(registry.root() != before, 'revoking did not move the root, so it would not take effect');
+    assertEq(registry.revokedCount(), 1);
+  }
+
+  /// No owner, no upgrade path, no role administration. The value of this registry is that NOBODY
+  /// can rewrite it, including us - an upgradeable identity gate is a mutable one with extra steps.
+  function test_ThereIsNoGovernanceSurface() public view {
+    string[4] memory forbidden =
+      ['owner()', 'upgradeToAndCall(address,bytes)', 'grantRole(bytes32,address)', 'transferOwnership(address)'];
+    for (uint256 i = 0; i < forbidden.length; i++) {
+      (bool ok,) = address(registry).staticcall(abi.encodeWithSelector(bytes4(keccak256(bytes(forbidden[i])))));
+      assertFalse(ok, string.concat('the registry answers a governance selector: ', forbidden[i]));
+    }
+  }
+
   // ── TRAP 3: removal must not exist ──────────────────────────────────────────────────────
 
   function test_ThereIsNoRemovalPath() public {

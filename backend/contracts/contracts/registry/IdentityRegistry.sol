@@ -53,7 +53,7 @@ import {HolderStateKeeper} from '../holder/HolderStateKeeper.sol';
  *    bind that `dg1Hash` to that `holderRoot`.
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  *
- * NON-UPGRADEABLE and UNOWNED, for the same reasons RevocationRegistry is: an upgradeable identity
+ * NON-UPGRADEABLE and UNOWNED, for the reasons the RevocationRegistry it replaces was: an upgradeable identity
  * gate is a mutable one with extra steps.
  */
 contract IdentityRegistry {
@@ -110,6 +110,7 @@ contract IdentityRegistry {
   error ZeroPredicate();
   error UnknownPredicate(bytes32 predicate);
   error NoPredicates();
+  error DuplicatePredicate(bytes32 predicate);
   error ZeroAddress();
 
   constructor(
@@ -138,6 +139,10 @@ contract IdentityRegistry {
       // Trap 2: zero is the CLEAN sentinel, so admitting it as a predicate would let a revocation
       // write the clean state. Rejected at deploy rather than only at call time.
       if (predicates_[i] == bytes32(0)) revert ZeroPredicate();
+      // A duplicate would pass silently - `isPredicate` is idempotent - while pushing the same
+      // value twice into `_predicates`, so the published set would misreport itself forever. It is
+      // deploy-time-only and immutable, so there is no way to correct it afterwards.
+      if (isPredicate[predicates_[i]]) revert DuplicatePredicate(predicates_[i]);
       isPredicate[predicates_[i]] = true;
       _predicates.push(predicates_[i]);
     }
@@ -238,7 +243,7 @@ contract IdentityRegistry {
    * EXPIRY IS REQUIRED HERE (trap 1). This tree carries revocations, so an unbounded-age root would
    * let a revoked identity prove the clean state against a pre-revocation root forever. Note this
    * tree changes on EVERY registration, not only on revocations, so roots churn far faster than
-   * RevocationRegistry's - MAX_ROOT_AGE is time-based, so that is a matter of more stored roots,
+   * the revocation-only registry this replaces - MAX_ROOT_AGE is time-based, so that is a matter of more stored roots,
    * not of correctness.
    */
   function isValidRoot(bytes32 root_) public view returns (bool) {

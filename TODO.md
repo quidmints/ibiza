@@ -1683,6 +1683,48 @@ surfaced as an unexplained proof rejection.
 Withdrawal: **24,812 ACIR opcodes, down from 43,772 (-43%)**, proving on-chain at 7 public inputs
 against a root produced by the real registry from three genuine escrow registrations.
 
+### 2.13v DELETION PASS - and it found a REGRESSION I had introduced
+
+Seven files removed: `IdentityAspRegistry.sol`, `RevocationRegistry.sol`, both their interfaces,
+both their test suites, and the wallet's `postman/identityAsp.ts`. All superseded by the single
+identity tree. 255/255 forge, tsc clean, client ABI check clean.
+
+**COVERAGE WAS MAPPED CASE BY CASE BEFORE DELETING, NOT ASSUMED.** Comparing
+`RevocationRegistry.t.sol`'s 13 tests against `IdentityRegistry.t.sol`'s showed seven already had
+equivalents (CannotRevokeTwice -> RevokeIsMonotone, StrangerCannotRevoke ->
+RevokeRevertsForNonController, StaleRootStopsBeingValid -> ASupersededCleanRootExpires,
+RootThatNeverExisted -> UnknownRootIsRejected, UnknownPredicateIsUncitable ->
+RevokeRejectsAnUnknownPredicate, NoRemove -> ThereIsNoRemovalPath, LatestRootNeverExpires ->
+LatestRootIsAlwaysValidHoweverOld). **Six did not, and were ported.** Deleting the file without them
+would have silently narrowed coverage.
+
+**THE REGRESSION.** `RevocationRegistry` REJECTED duplicate predicates at deploy;
+**`IdentityRegistry` did not** - I never carried that guard across. A duplicate passes silently,
+because `isPredicate` is idempotent, while pushing the same value twice into `_predicates`, so the
+published set misreports itself. It is deploy-time-only and immutable, so there is no correcting it
+afterwards. Guard added, and `test_ConstructorRejectsDuplicatePredicates` VERIFIED to fail without
+it. Found ONLY because the deletion was done by mapping coverage rather than by checking that the
+build still passed.
+
+*(To be clear about the name: a PREDICATE is a REASON for revocation - `keccak256('OFAC_SDN')`,
+`keccak256('DOC_INVALID')` - fixed in a closed set at deploy. Nothing to do with duplicate
+IDENTITIES, which are a separate guard: `registered[commitment]` plus the SMT's own
+`KeyAlreadyExists`, both already tested.)*
+
+**Also ported:** empty predicate set, all three zero-address cases, the leaf VALUE actually
+recording the predicate (auditable from committed state, not just the event log), revoking moving
+the root, and the absence of any governance selector.
+
+**`DeployLib`'s salts named deleted contracts** - live code, not comments. Replaced with
+`IDENTITY_REGISTRY_SALT` and `ESCROW_VERIFIER_SALT`; the pairwise-distinctness test still covers all
+eight. Comments that asserted the deleted contracts still exist were corrected; comments that
+reference them as HISTORY were left, since they record why a guard exists.
+
+**The ABI checker earned its keep again**: after deletion it reported `@contract IdentityRegistry is
+AMBIGUOUS - 2 artifacts`, a stale artifact from the moved source. `forge clean && forge build`, as
+its own message suggests, cleared it. That ambiguity guard was added precisely so a moved contract
+could not silently resolve against an old ABI.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

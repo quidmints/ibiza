@@ -5,7 +5,7 @@ import {Test} from 'forge-std/Test.sol';
 import {SparseMerkleTree} from '@solarity/solidity-lib/libs/data-structures/SparseMerkleTree.sol';
 import {PoseidonUnit2L, PoseidonUnit3L} from '../../contracts/libraries/Poseidon.sol';
 
-// Drives solarity's SMT directly with the same hashers RevocationRegistry uses.
+// Drives solarity's SMT directly with the same hashers IdentityRegistry uses.
 contract SolaritySmtHarness {
   using SparseMerkleTree for SparseMerkleTree.Bytes32SMT;
 
@@ -86,7 +86,7 @@ contract SmtCompatTest is Test {
  * pp/src/smt.nr already proves the CIRCUIT handles value 0 soundly - an absent key cannot be
  * claimed present, and a revoked leaf cannot claim 0. That says nothing about whether the ON-CHAIN
  * tree builds the same shape for a zero value. `add(key, 0)` is a case no caller had ever exercised
- * here: RevocationRegistry only ever adds a NON-ZERO predicate. If solarity special-cased a zero
+ * here: the revocation-only registry this replaced only ever added a NON-ZERO predicate. If solarity special-cased a zero
  * value - skipping the write, or collapsing the leaf toward an empty node - the registry root and
  * the circuit's root would silently diverge and EVERY withdrawal would fail with no diagnostic
  * pointing at the cause.

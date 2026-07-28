@@ -46,8 +46,8 @@ contract DeployLibTest is Test {
       DeployLib.COMPLEX_POOL_SALT,
       DeployLib.WITHDRAWAL_VERIFIER_SALT,
       DeployLib.RAGEQUIT_VERIFIER_SALT,
-      DeployLib.ASP_REGISTRY_SALT,
-      DeployLib.REVOCATION_REGISTRY_SALT
+      DeployLib.IDENTITY_REGISTRY_SALT,
+      DeployLib.ESCROW_VERIFIER_SALT
     ];
     for (uint256 i = 0; i < salts.length; i++) {
       for (uint256 j = i + 1; j < salts.length; j++) {

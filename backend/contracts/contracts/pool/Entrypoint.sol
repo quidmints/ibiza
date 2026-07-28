@@ -60,7 +60,8 @@ contract Entrypoint is
   mapping(IERC20 _asset => AssetConfig _config) public assetConfig;
 
   /*
-   * THE ASP TREE NO LONGER LIVES HERE. It moved to contracts/registry/IdentityAspRegistry.sol,
+   * THE ASP TREE NO LONGER LIVES HERE. It moved out (sec. 2.5a) and has since been superseded
+   * entirely by contracts/registry/IdentityRegistry.sol - the single identity tree,
    * which is NON-UPGRADEABLE and unowned - see TODO.md sec. 2.5a. Keeping it in this contract made
    * the append-only claim untrue in practice: `_authorizeUpgrade` is onlyRole(_OWNER_ROLE), so the
    * owner could upgrade this implementation and rewrite the membership set at will. PrivacyPool now

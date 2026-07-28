@@ -15,8 +15,8 @@
 //
 // PUBLIC SIGNAL ORDER IS PINNED by ProofLib and must not be reordered:
 //   [0] new_commitment          [4] state_tree_depth
-//   [1] existing_nullifier_hash [5] asp_root
-//   [2] withdrawn_value         [6] asp_tree_depth
+//   [1] existing_nullifier_hash [5] identity_root
+//   [2] withdrawn_value         [6] context
 //   [3] state_root              [7] context
 
 import {
@@ -28,8 +28,7 @@ import {
 } from "./notes";
 import { RecoveredNote } from "./discovery";
 import { StateTree, MAX_TREE_DEPTH, FIELD } from "./stateTree";
-import { IdentityAspTree } from "../postman/identityAsp";
-import { RevocationWitness, REVOCATION_TREE_DEPTH } from "./revocation";
+import { IdentityWitness, IDENTITY_TREE_DEPTH } from "./identityProof";
 import { babyJub, Poseidon } from "@iden3/js-crypto";
 
 /** The circuit range-checks `value`, `withdrawn_value` and `value - withdrawn_value` to 128 bits
@@ -45,24 +44,23 @@ export interface WithdrawWitnessParams {
   stateLeafIndex: bigint;
   /** Rebuilt + root-verified via loadStateTree(). */
   stateTree: StateTree;
-  /** Rebuilt via loadIdentityAspTree(). */
-  aspTree: IdentityAspTree;
+
   /** Seed-derived master keys — the change note MUST be derived from these to stay recoverable. */
   masterKeys: MasterKeys;
   /** The withdrawer's identity scalar, from the enclave-rooted seed. */
-  skIdentity: bigint;
   /** How much to withdraw. The remainder carries into the change note. */
   withdrawnValue: bigint;
   /** From buildRelayedWithdrawal()/buildSelfWithdrawal() in ./relay. */
   context: bigint;
   /**
-   * Non-inclusion witness for the revocation registry, from fetchNonRevocationWitness() in
-   * ./revocation. Omit ONLY when the registry has revoked nobody: a freshly deployed registry has
-   * root 0 and an all-zero witness proves absence for every key (pp/src/smt.nr's
-   * test_exclusion_against_the_empty_tree pins that). Passing a hand-built witness here is how a
-   * proof silently becomes unprovable, so prefer the fetch.
+   * Inclusion witness for the identity registry, from fetchIdentityWitness() in ./identityProof.
+   * REQUIRED - unlike the old revocation witness there is no meaningful empty-tree default, because
+   * an unregistered identity has nothing to include and simply cannot withdraw.
    */
-  revocation?: RevocationWitness;
+  identity: IdentityWitness;
+
+  /** The escrowed revocation secret. Its Poseidon commitment is the registry key. */
+  revocationSecret: bigint;
   /**
    * Which withdrawal this is FOR THIS LABEL, in the wallet's derivation convention.
    *
@@ -116,30 +114,21 @@ export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawW
     note,
     stateLeafIndex,
     stateTree,
-    aspTree,
     masterKeys,
-    skIdentity,
+    identity,
+    revocationSecret,
     withdrawnValue,
     context,
     withdrawalIndex,
   } = params;
 
-  // Empty-registry default: root 0, "the slot is empty", no siblings. Correct only because the
-  // revocation tree is a sparse trie whose empty root is 0 - see this field's doc comment.
-  const revocation: RevocationWitness = params.revocation ?? {
-    revocationRoot: 0n,
-    oldKey: 0n,
-    oldValue: 0n,
-    isOld0: 1n,
-    siblings: new Array(REVOCATION_TREE_DEPTH).fill(0n),
-  };
-
-  if (revocation.siblings.length !== REVOCATION_TREE_DEPTH) {
+  if (identity.siblings.length !== IDENTITY_TREE_DEPTH) {
     throw new Error(
-      `buildWithdrawalWitness: revocation witness has ${revocation.siblings.length} siblings, ` +
-        `circuit expects ${REVOCATION_TREE_DEPTH}`,
+      `buildWithdrawalWitness: identity witness has ${identity.siblings.length} siblings, ` +
+        `but the circuit is fixed at ${IDENTITY_TREE_DEPTH}. Pad or regenerate both together.`,
     );
   }
+
 
   // ── Value conservation, checked before anything expensive ──────────────────────────────────
   if (note.spent) throw new Error("buildWithdrawalWitness: note is already spent");
@@ -156,17 +145,11 @@ export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawW
     throw new Error("buildWithdrawalWitness: context must be a nonzero BN254 field element");
   }
 
-  // ── Identity: derive holderRoot from skIdentity and check it is actually an ASP member ─────
-  // Poseidon(babyJub.mulPointEScalar(Base8, sk)) — the same derivation as the circuit's
-  // holder_root.nr::extract_pk_identity_hash and as RarimeUtils.getProfileKey, which is what makes
-  // this cross-check meaningful rather than decorative. Catching a wrong sk_identity HERE turns an
-  // unexplained proof failure into a named error.
-  //
-  // Computed inline from @iden3/js-crypto (a direct wallet dependency, and the SAME primitive
-  // getProfileKey uses) rather than importing the SDK: this module is pure arithmetic, and pulling
-  // in an RN package would make it unloadable outside React Native - which is exactly what
-  // tools/build-withdrawal-fixture.js needs it to be.
-  const holderRoot = holderRootFromSk(skIdentity);
+  // ── Identity: derive the registry key from the escrowed secret ──────────────────────────────
+  // The key is Poseidon(revocation_secret) - the SAME value escrow_envelope committed to and
+  // IdentityRegistry stored. sk_identity is NOT used here at all any more: identity is proven ONCE,
+  // at escrow. See TODO.md sec. 2.13k.
+  const commitment = Poseidon.hash([revocationSecret]);
 
   // ── State-tree membership ───────────────────────────────────────────────────────────────────
   const stateProof = stateTree.proof(stateLeafIndex, MAX_TREE_DEPTH);
@@ -178,8 +161,6 @@ export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawW
     );
   }
 
-  // ── ASP membership ──────────────────────────────────────────────────────────────────────────
-  const aspProof = aspTree.proof(holderRoot, MAX_TREE_DEPTH);
 
   // ── Change note ─────────────────────────────────────────────────────────────────────────────
   const newValue = note.value - withdrawnValue;
@@ -206,10 +187,8 @@ export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawW
     withdrawnValue,
     stateProof.root,
     BigInt(stateProof.depth),
-    aspTree.root,
-    BigInt(aspProof.depth),
+    identity.identityRoot,
     context,
-    revocation.revocationRoot,
   ];
 
   const dec = (v: bigint) => v.toString(10);
@@ -221,10 +200,8 @@ export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawW
     withdrawn_value: dec(withdrawnValue),
     state_root: dec(stateProof.root),
     state_tree_depth: dec(BigInt(stateProof.depth)),
-    asp_root: dec(aspTree.root),
-    asp_tree_depth: dec(BigInt(aspProof.depth)),
+    identity_root: dec(identity.identityRoot),
     context: dec(context),
-    revocation_root: dec(revocation.revocationRoot),
     // private — existing note
     value: dec(note.value),
     label: dec(note.label),
@@ -235,15 +212,10 @@ export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawW
     // private — change note
     out_nullifier: dec(changeNote.nullifier),
     out_secret: dec(changeNote.secret),
-    // private — identity ASP
-    sk_identity: dec(skIdentity),
-    asp_leaf_index: dec(aspProof.leafIndex),
-    asp_siblings: aspProof.siblings.map(dec),
-    // private - revocation non-inclusion
-    revocation_old_key: dec(revocation.oldKey),
-    revocation_old_value: dec(revocation.oldValue),
-    revocation_is_old0: dec(revocation.isOld0),
-    revocation_siblings: revocation.siblings.map(dec),
+    // private - identity clearance. ONE witness where there were two: the escrowed secret and an
+    // inclusion path proving its commitment sits in the registry carrying the CLEAN status.
+    revocation_secret: dec(revocationSecret),
+    identity_siblings: identity.siblings.map(dec),
   };
 
   return { inputs, pubSignals, changeNote, newCommitment };

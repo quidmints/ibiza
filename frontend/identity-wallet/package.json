@@ -24,7 +24,6 @@
     "@peculiar/x509": "^2.0.0",
     "@rarimo/rarime-rn-sdk": "github:quidmints/rarime-rn-sdk#main",
     "@zk-kit/lean-imt": "2.2.5",
-    "@zk-kit/smt": "1.0.2",
     "asn1js": "^3.0.10",
     "axios": "^1.18.1",
     "ethers": "^6.17.0",

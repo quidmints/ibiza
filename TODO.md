@@ -1387,47 +1387,37 @@ leaf hash.
 `sk_identity`), regenerated fixtures + verifier, `ProofLib`/`PrivacyPool`/`IState` public-input
 changes (9 -> 7), and the wallet. The contract half is what landed here.
 
-### 2.13o The merge's blocker is resolved: a VALIDATED JS/TS sparse Merkle tree
+### 2.13o REVERTED: the JS sparse Merkle tree. ASK THE CONTRACT (user, 2026-07-28)
 
-The single-tree rewrite stalled on something not anticipated when it was sequenced: **there is no
-TS/JS SparseMerkleTree anywhere in this repo.** `revocation.ts` only CONSUMES proofs from the
-contract via `getProof`. The fixture generator builds its trees in JavaScript, so it could not
-produce an identity-tree witness, and without fixtures five pool suites cannot pass.
+I hit the merge's blocker - no TS/JS SparseMerkleTree exists in this repo - by ADDING one
+(`@zk-kit/smt` + `postman/identityTree.ts`), then wrote a three-way validation
+(`tools/check-identity-tree.js`) against circomlibjs, solarity and the Noir gadget to manage the
+divergence risk. All 8 checks passed. **All of it is removed.**
 
-**Resolved with `@zk-kit/smt` 1.0.2** - same family as the `@zk-kit/lean-imt` already depended on,
-with Poseidon (@iden3/js-crypto) injected as its pluggable hash. NOT hand-rolled, for the reason
-identityAsp.ts gives: the reference implementation is more trustworthy than a second independent
-implementation of the same algorithm.
+**`revocation.ts` had already decided this, in a header I did not read before writing the mirror:**
 
-**VALIDATED AGAINST THREE INDEPENDENT REFERENCES BEFORE ANY WITNESS IS BUILT ON IT**
-(`tools/check-identity-tree.js`, 8 checks, all passing). This mattered more than a usual dependency
-check: a sparse Merkle tree that is subtly wrong - reversed siblings, a different empty-node
-convention, a leaf hash off by one field - still produces PLAUSIBLE-LOOKING proofs that simply
-verify against nothing, on-chain, with no diagnostic pointing back at the builder.
+> NO LOCAL TREE MIRROR, DELIBERATELY. stateTree.ts and identityAsp.ts both rebuild their trees
+> off-chain because those are LeanIMTs whose contracts expose only a root - a membership path cannot
+> be read out of contract storage, so the wallet has no choice. The revocation registry is
+> different: it is a `@solarity` SparseMerkleTree, and `getProof(key)` is a VIEW FUNCTION that
+> returns the whole witness. Rebuilding it locally would mean writing a second implementation of a
+> sparse trie and keeping it byte-compatible forever, for no benefit. Asking the contract is both
+> less code and IMPOSSIBLE TO DRIFT.
 
-1. **ROOT vs circomlibjs** - `{1:11, 2:22, 7:77, 9:99}` reproduces `pp/src/smt.nr::REF_ROOT` exactly.
-2. **ROOT vs @solarity ON-CHAIN for a ZERO value** - a single `5 -> 0` leaf gives the same root
-   `test/registry/SmtCompat.t.sol` asserts the real registry produces. This is the case NOTHING had
-   exercised before the merged design, since RevocationRegistry only ever added a non-zero predicate.
-3. **SIBLING ORDERING vs the Noir gadget** - the proof for key 7 matches
-   `pp/src/smt.nr::ref_siblings_key7()` element-for-element. A REVERSED array would look equally
-   plausible and verify against nothing.
+The validation passing did not make the mirror worth keeping - it was managing a risk that asking
+the contract does not have. `getProof` is a view function on the identity registry too.
 
-Plus: a zero-valued leaf is distinguishable from an empty tree, revocation moves the root, and the
-revoked root equals the circuit's own leaf hash.
+**`pp/identityProof.ts` replaces `pp/revocation.ts`**, fetching the INCLUSION witness from
+`IdentityRegistry.getProof` and distinguishing each failure where the diagnostic still exists: not
+registered (post the escrow envelope first), REVOKED under a named predicate, tree/mapping
+disagreement (a contract bug), path deeper than the circuit. `withdrawWitness.ts` now takes that
+witness plus `revocationSecret` and drops `skIdentity`/`aspTree` entirely - the assembler's 17
+emitted input names match the circuit's parameters exactly.
 
-**Written as a standalone script, not a jest test, because the wallet package has NO test runner
-configured** - this would have been its first test file, and a test that cannot run is not a test.
-`tools/check-client-abis.py` is the established precedent for verification that must actually
-execute.
-
-`postman/identityTree.ts` wraps it and REFUSES to emit an unusable witness: it throws for an
-unregistered commitment (rather than silently returning a non-membership proof), throws for a
-REVOKED one naming the predicate, rejects a zero predicate on revoke, and errors if the path
-outgrows the circuit depth instead of truncating.
-
-**Remaining for the 43%:** `withdrawWitness.ts`, the fixture generator, regenerated fixtures and
-verifier, the five pool suites, and the wallet's `revocation.ts` (now superseded by the merged tree).
+**Consequence for fixtures:** the generator cannot build the tree in JS either, so it must obtain
+the witness the same way - from a deployed registry. A forge script that deploys IdentityRegistry,
+registers, calls `getProof` and writes the witness is the remaining piece, and it makes the fixture
+provably consistent with the real contract rather than with a second implementation of it.
 
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 

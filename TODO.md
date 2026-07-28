@@ -1725,6 +1725,55 @@ AMBIGUOUS - 2 artifacts`, a stale artifact from the moved source. `forge clean &
 its own message suggests, cleared it. That ambiguity guard was added precisely so a moved contract
 could not silently resolve against an old ABI.
 
+### 2.13w A SECOND REGRESSION, and the process gap that hid it (user, 2026-07-29)
+
+*"deal with all of these regressions and duplicates, act on your justification"*.
+
+**THE PROCESS GAP FIRST, because it is the reusable lesson.** I mapped `RevocationRegistry.t.sol`'s
+coverage test by test before deleting it - and then deleted `IdentityAspRegistry.t.sol` in the SAME
+commit without doing that at all. Same deletion, same risk, one file checked and one not. Recovering
+the deleted file from git and mapping its 19 tests found what the build could not.
+
+**REGRESSION: ERC-7812 EVIDENCE ANCHORING WAS SILENTLY DROPPED.** `IdentityAspRegistry` anchored
+EVERY root as an evidence statement (`EVIDENCE_REGISTRY.addStatement`). `IdentityRegistry` had no
+evidence registry at all - I never carried it across, and nothing failed, because anchoring is a
+side effect no other test observed. Anchoring is what makes a root EXTERNALLY ATTESTABLE rather than
+merely stored: another contract, or another chain, can verify a root existed without trusting this
+contract's own getters. Every other root in this fusion is published that way, so the identity tree
+had become the silent exception.
+
+RESTORED, with a correction the old design would have got wrong here: the statement key is keyed on
+a monotone `rootSequence`, NOT on tree size. A REVOCATION moves the root WITHOUT adding a leaf, so a
+size-derived key would collide on the second anchor - and `TestEvidenceRegistry` reverts on a
+duplicate key, so it would have taken the whole revocation transaction with it.
+
+**Also restored:** the zero-commitment and out-of-field leaf checks. The commitment comes from a
+verified proof binding it to a Poseidon output, so neither is reachable - but the previous registry
+checked its leaves, and dropping the check leaves that reasoning implicit in a contract that cannot
+be upgraded to add it back.
+
+Four tests added, covering both writers: registration anchors, REVOCATION anchors, each root gets a
+distinct statement key, and a zero evidence registry is refused at deploy.
+
+### 2.13x Acting on the justification: two entry points, one library
+
+I justified writing `tools/build-e2e-fixture.js` as a separate script - correctly, since
+`WithdrawEndToEnd.t.sol` names that exact path and folding it into the other generator as a flag
+would leave the reference pointing at nothing. But I then left the two scripts carrying the same
+mnemonic, the same escrow secret, the same identity-witness loader with its degeneracy check, the
+same wallet-module loader and the same TOML writer. A change to any of them had to be made twice or
+silently drift.
+
+`tools/lib/fixture-common.js` now holds all of it. The entry points stay separate; the logic does
+not.
+
+**VERIFIED BEHAVIOUR-PRESERVING, not assumed:** all four generated witnesses - baseline, wallet, e2e
+withdrawal and e2e ragequit - are BYTE-IDENTICAL after the refactor (`git diff` empty on every
+Prover.toml). A refactor of fixture generators is exactly where a silent change would go unnoticed,
+since the fixtures are only read by proofs that would then fail somewhere else entirely.
+
+259 forge, 84 pp, tsc clean, ABI check clean.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

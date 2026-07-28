@@ -31,6 +31,7 @@
  */
 const path = require('path');
 const fs = require('fs');
+const common = require('./lib/fixture-common');
 
 const argv = process.argv;
 const arg = (name, dflt) => {
@@ -44,25 +45,16 @@ const need = (name) => {
 };
 
 const BUILD = path.resolve(arg('build', path.join(__dirname, '..', 'frontend', 'identity-wallet', 'build')));
-if (!fs.existsSync(BUILD)) {
-  console.error(`No compiled wallet modules at ${BUILD}. Run the tsc step in this file's header.`);
-  process.exit(1);
-}
 
-const { masterKeysFromMnemonic, depositSecrets, commitment, precommitment, nullifierHash } =
-  require(path.join(BUILD, 'pp/notes.js'));
-const { StateTree } = require(path.join(BUILD, 'pp/stateTree.js'));
+const { masterKeysFromMnemonic, depositSecrets, commitment, precommitment, nullifierHash,
+        StateTree, buildWithdrawalWitness } = common.loadWallet(BUILD);
 const { solidityPackedKeccak256 } = require(path.join(
   __dirname, '..', 'frontend', 'identity-wallet', 'node_modules', 'ethers',
 ));
-const { buildWithdrawalWitness } = require(path.join(BUILD, 'pp/withdrawWitness.js'));
 
-const MNEMONIC = 'test test test test test test test test test test test junk';
-const keys = masterKeysFromMnemonic(MNEMONIC);
+const keys = masterKeysFromMnemonic(common.MNEMONIC);
 
-// escrow0's revocation secret - its Poseidon commitment IS the identity tree key the emitted
-// witness proves inclusion for. Must match tools/build-escrow-fixtures.js.
-const REVOCATION_SECRET = 987654321n;
+const REVOCATION_SECRET = common.REVOCATION_SECRET;
 
 const SCOPE = need('scope');
 
@@ -115,15 +107,7 @@ const CONTEXT = need('context');
 const VALUE = need('value');
 const WITHDRAWN = need('withdrawn');
 
-const IDENTITY_WITNESS = path.join(
-  __dirname, '..', 'backend', 'contracts', 'test', 'fixtures', 'identity_witness.json',
-);
-if (!fs.existsSync(IDENTITY_WITNESS)) {
-  console.error('No identity witness. Run: forge test --match-test test_EmitIdentityWitnessFixture');
-  process.exit(1);
-}
-const iw = JSON.parse(fs.readFileSync(IDENTITY_WITNESS, 'utf8'));
-const identity = { identityRoot: BigInt(iw.root), siblings: iw.siblings.map((x) => BigInt(x)) };
+const identity = common.loadIdentityWitness();
 
 if (identity.identityRoot !== IDENTITY_ROOT) {
   throw new Error(
@@ -168,12 +152,8 @@ eq(w.pubSignals[5], IDENTITY_ROOT, 'identity_root disagrees with the chain');
 eq(w.pubSignals[6], CONTEXT, 'context disagrees with the chain');
 if (w.pubSignals[4] === 0n) throw new Error('DEGENERATE: state tree depth 0, no sibling hashed');
 
-const toml = Object.entries(w.inputs).map(([k, v]) =>
-  Array.isArray(v) ? `${k} = [${v.map((x) => `"${x}"`).join(', ')}]` : `${k} = "${v}"`
-).join('\n') + '\n';
 const out = path.join(__dirname, '..', 'backend', 'circuits', 'withdraw_identity', 'Prover.e2e.toml');
-fs.writeFileSync(out, toml);
+common.writeProverToml(out, w.inputs);
 
 console.log('e2e witness written. Public signals:');
-['new_commitment', 'existing_nullifier_hash', 'withdrawn_value', 'state_root', 'state_tree_depth',
- 'identity_root', 'context'].forEach((n, i) => console.log(`  [${i}] ${n} = ${w.pubSignals[i]}`));
+common.logPublicSignals(w.pubSignals);

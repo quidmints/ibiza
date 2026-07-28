@@ -44,6 +44,7 @@ contract TestEvidenceRegistry {
 contract IdentityRegistryTest is Test {
   IdentityRegistry internal registry;
   HolderStateKeeperMock internal sk;
+  TestEvidenceRegistry internal evidence;
 
   bytes32 internal constant ICAO = 0x2c50ce3aa92bc3dd0351a89970b02630415547ea83c487befbc8b1795ea90c45;
   uint256 internal constant MAX_ROOT_AGE = 1 days;
@@ -69,7 +70,8 @@ contract IdentityRegistryTest is Test {
     PoseidonSMTMock certs = PoseidonSMTMock(_proxy(address(new PoseidonSMTMock())));
     sk = HolderStateKeeperMock(_proxy(address(new HolderStateKeeperMock())));
 
-    TestEvidenceRegistry ev = new TestEvidenceRegistry();
+    evidence = new TestEvidenceRegistry();
+    TestEvidenceRegistry ev = evidence;
     smt.__PoseidonSMT_init(address(sk), address(ev), 80);
     certs.__PoseidonSMT_init(address(sk), address(ev), 80);
     sk.__StateKeeper_init(address(0xA11CE), address(smt), address(certs), ICAO);
@@ -89,6 +91,7 @@ contract IdentityRegistryTest is Test {
       address(new EscrowEnvelopeHonkVerifier()),
       address(sk),
       CONTROLLER,
+      address(ev),
       CONTROLLER_KEY_X,
       CONTROLLER_KEY_Y,
       IDENTITY_TREE_DEPTH,
@@ -275,7 +278,7 @@ contract IdentityRegistryTest is Test {
     // even when the guard is working - a false failure that hides a working guard.
     address verifier_ = address(new EscrowEnvelopeHonkVerifier());
     try new IdentityRegistry(
-      verifier_, address(sk), CONTROLLER, CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
+      verifier_, address(sk), CONTROLLER, address(evidence), CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
     ) {
       fail('a zero predicate was accepted at deploy - revocation could write the CLEAN state');
     } catch {}
@@ -372,7 +375,7 @@ contract IdentityRegistryTest is Test {
 
     address verifier_ = address(new EscrowEnvelopeHonkVerifier());
     try new IdentityRegistry(
-      verifier_, address(sk), CONTROLLER, CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
+      verifier_, address(sk), CONTROLLER, address(evidence), CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
     ) {
       fail('a duplicate predicate was accepted - the published set would misreport itself forever');
     } catch {}
@@ -382,7 +385,7 @@ contract IdentityRegistryTest is Test {
     bytes32[] memory preds = new bytes32[](0);
     address verifier_ = address(new EscrowEnvelopeHonkVerifier());
     try new IdentityRegistry(
-      verifier_, address(sk), CONTROLLER, CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
+      verifier_, address(sk), CONTROLLER, address(evidence), CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
     ) {
       fail('a registry with NO predicates was accepted - no revocation could ever cite a reason');
     } catch {}
@@ -394,15 +397,15 @@ contract IdentityRegistryTest is Test {
     address verifier_ = address(new EscrowEnvelopeHonkVerifier());
 
     try new IdentityRegistry(
-      address(0), address(sk), CONTROLLER, CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
+      address(0), address(sk), CONTROLLER, address(evidence), CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
     ) { fail('a zero verifier was accepted'); } catch {}
 
     try new IdentityRegistry(
-      verifier_, address(0), CONTROLLER, CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
+      verifier_, address(0), CONTROLLER, address(evidence), CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
     ) { fail('a zero state keeper was accepted'); } catch {}
 
     try new IdentityRegistry(
-      verifier_, address(sk), address(0), CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
+      verifier_, address(sk), address(0), address(evidence), CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
     ) { fail('a zero controller was accepted - nobody could ever revoke'); } catch {}
   }
 
@@ -443,6 +446,70 @@ contract IdentityRegistryTest is Test {
       (bool ok,) = address(registry).staticcall(abi.encodeWithSelector(bytes4(keccak256(bytes(forbidden[i])))));
       assertFalse(ok, string.concat('the registry answers a governance selector: ', forbidden[i]));
     }
+  }
+
+  // ── ERC-7812 anchoring: RESTORED after the merge dropped it ─────────────────────────────
+  //
+  // IdentityAspRegistry anchored every root as an evidence statement. The merge lost that by
+  // OMISSION - not by decision - and it was found only by mapping the deleted suite's coverage test
+  // by test after the file was already gone. These are the tests that would have caught it.
+  //
+  // Anchoring is what makes a root externally attestable rather than merely stored: another
+  // contract, or another chain, can verify a root existed without trusting this contract's getters.
+
+  function _statementFor(uint256 sequence_) internal view returns (bytes32) {
+    bytes32 key = bytes32(
+      uint256(keccak256(abi.encodePacked('PP_IDENTITY_ROOT', address(registry), sequence_)))
+        % 21_888_242_871_839_275_222_246_405_745_257_275_088_548_364_400_416_034_343_698_204_186_575_808_495_617
+    );
+    return evidence.statements(keccak256(abi.encodePacked(address(registry), key)));
+  }
+
+  function test_RegistrationAnchorsItsRoot() public {
+    _plantDocument();
+    registry.register(_proof(), _publicInputs());
+
+    assertEq(_statementFor(0), registry.root(), 'the registration root was not anchored as evidence');
+    assertEq(registry.rootSequence(), 1);
+  }
+
+  /// A REVOCATION moves the root without adding a leaf, so it must be anchored too. Keying the
+  /// statement on tree SIZE - the obvious choice, and what the old registry used - would collide
+  /// here, because size does not change on a revocation.
+  function test_RevocationAlsoAnchorsItsRoot() public {
+    _plantDocument();
+    registry.register(_proof(), _publicInputs());
+    bytes32 afterRegister = registry.root();
+
+    vm.prank(CONTROLLER);
+    registry.revoke(_publicInputs()[3], PREDICATE_SANCTIONS);
+
+    assertEq(_statementFor(1), registry.root(), 'the revocation root was not anchored');
+    assertTrue(registry.root() != afterRegister, 'revocation did not move the root');
+    assertEq(registry.rootSequence(), 2);
+  }
+
+  /// Distinct keys per root. TestEvidenceRegistry reverts on a duplicate key, so a colliding
+  /// derivation would make the SECOND anchor revert and take the whole transaction with it.
+  function test_EachRootGetsADistinctStatementKey() public {
+    _plantDocument();
+    registry.register(_proof(), _publicInputs());
+
+    vm.prank(CONTROLLER);
+    registry.revoke(_publicInputs()[3], PREDICATE_SANCTIONS);
+
+    assertTrue(_statementFor(0) != _statementFor(1), 'two roots share one statement key');
+    assertTrue(_statementFor(0) != bytes32(0) && _statementFor(1) != bytes32(0), 'a root went unanchored');
+  }
+
+  function test_ConstructorRejectsAZeroEvidenceRegistry() public {
+    bytes32[] memory preds = new bytes32[](1);
+    preds[0] = PREDICATE_SANCTIONS;
+    address verifier_ = address(new EscrowEnvelopeHonkVerifier());
+
+    try new IdentityRegistry(
+      verifier_, address(sk), CONTROLLER, address(0), CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, MAX_ROOT_AGE, preds
+    ) { fail('a zero evidence registry was accepted - no root would ever be attestable'); } catch {}
   }
 
   // ── TRAP 3: removal must not exist ──────────────────────────────────────────────────────

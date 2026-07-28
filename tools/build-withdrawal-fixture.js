@@ -51,6 +51,7 @@
  */
 const path = require('path');
 const fs = require('fs');
+const common = require('./lib/fixture-common');
 
 const argIdx = process.argv.indexOf('--build');
 const BUILD = argIdx > -1 ? path.resolve(process.argv[argIdx + 1]) : path.join(__dirname, 'build');
@@ -59,8 +60,8 @@ if (!fs.existsSync(BUILD)) {
   process.exit(1);
 }
 
-const { masterKeysFromMnemonic, depositSecrets, commitment, nullifierHash } = require(path.join(BUILD, 'pp/notes.js'));
-const { StateTree } = require(path.join(BUILD, 'pp/stateTree.js'));
+const { masterKeysFromMnemonic, depositSecrets, commitment, nullifierHash, StateTree, buildWithdrawalWitness } =
+  common.loadWallet(BUILD);
 /*
  * The identity witness is READ FROM DISK, not built here.
  *
@@ -73,10 +74,6 @@ const { StateTree } = require(path.join(BUILD, 'pp/stateTree.js'));
  *
  *   forge test --match-test test_EmitIdentityWitnessFixture
  */
-const IDENTITY_WITNESS = path.join(
-  __dirname, '..', 'backend', 'contracts', 'test', 'fixtures', 'identity_witness.json',
-);
-const { buildWithdrawalWitness } = require(path.join(BUILD, 'pp/withdrawWitness.js'));
 // holderRoot derivation comes from the ASSEMBLER ITSELF (holderRootFromSk), not a local copy and
 // not the SDK. The ASP tree is keyed by this value, so the tree-builder and the circuit must agree
 // exactly; exporting one function is what stops a second implementation drifting. It also keeps
@@ -84,38 +81,16 @@ const { buildWithdrawalWitness } = require(path.join(BUILD, 'pp/withdrawWitness.
 // expo, which cannot load outside RN.
 const { holderRootFromSk } = require(path.join(BUILD, 'pp/withdrawWitness.js'));
 
-// Foundry's standard test mnemonic. Nothing here guards value; it must simply be fixed.
-const MNEMONIC = 'test test test test test test test test test test test junk';
+const { MNEMONIC, REVOCATION_SECRET } = common;
 const keys = masterKeysFromMnemonic(MNEMONIC);
+const identity = common.loadIdentityWitness();
 
 // Pinned to pp/src/identity_asp.nr's published vector. FIXED, never random - these witnesses become
 // committed fixtures, so a random value would make them unreproducible.
 const SK_IDENTITY = 1234n;
 const HOLDER_ROOT = holderRootFromSk(SK_IDENTITY);
 
-// escrow0's revocation secret. Its Poseidon commitment IS the identity tree's key, so this MUST be
-// the secret behind the commitment the emitted witness proves inclusion for - see
-// tools/build-escrow-fixtures.js.
-const REVOCATION_SECRET = 987654321n;
 
-if (!fs.existsSync(IDENTITY_WITNESS)) {
-  console.error(
-    `No identity witness at ${IDENTITY_WITNESS}.\n` +
-    'Run:  forge test --match-test test_EmitIdentityWitnessFixture',
-  );
-  process.exit(1);
-}
-const iw = JSON.parse(fs.readFileSync(IDENTITY_WITNESS, 'utf8'));
-const identity = {
-  identityRoot: BigInt(iw.root),
-  siblings: iw.siblings.map((x) => BigInt(x)),
-};
-if (identity.siblings.every((x) => x === 0n)) {
-  throw new Error(
-    'identity witness is DEGENERATE - every sibling is zero, so no sibling would ever be hashed. ' +
-    'The emitter must register more than one identity.',
-  );
-}
 
 const CONTEXT = 42_424_242n;
 const CIRCUIT_DIR = path.join(__dirname, '..', 'backend', 'circuits', 'withdraw_identity');

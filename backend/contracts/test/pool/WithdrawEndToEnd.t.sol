@@ -198,7 +198,7 @@ contract WithdrawEndToEndTest is Test {
     bytes32[] memory preds = new bytes32[](1);
     preds[0] = keccak256('predicate.document.not-current');
     identityRegistry = new IdentityRegistry(
-      address(new EscrowEnvelopeHonkVerifier()), address(stateKeeper), postman,
+      address(new EscrowEnvelopeHonkVerifier()), address(stateKeeper), postman, address(registry),
       CONTROLLER_KEY_X, CONTROLLER_KEY_Y, IDENTITY_TREE_DEPTH, 1 hours, preds
     );
 

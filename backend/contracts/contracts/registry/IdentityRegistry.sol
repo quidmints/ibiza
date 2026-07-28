@@ -5,6 +5,8 @@ import {SparseMerkleTree} from '@solarity/solidity-lib/libs/data-structures/Spar
 import {PoseidonUnit2L, PoseidonUnit3L} from '../libraries/Poseidon.sol';
 import {INoirVerifier} from '../interfaces/verifiers/INoirVerifier.sol';
 import {HolderStateKeeper} from '../holder/HolderStateKeeper.sol';
+import {IEvidenceRegistry} from '@rarimo/evidence-registry/interfaces/IEvidenceRegistry.sol';
+import {Constants} from '../pool/lib/Constants.sol';
 
 /**
  * @title IdentityRegistry
@@ -84,6 +86,21 @@ contract IdentityRegistry {
 
   uint256 public immutable MAX_ROOT_AGE;
 
+  /// ERC-7812 evidence registry. EVERY root is anchored here as a statement, exactly as the
+  /// IdentityAspRegistry this replaces did.
+  ///
+  /// RESTORED, NOT NEW. The merge dropped this by omission rather than by decision - a regression
+  /// found only by mapping the deleted suite's coverage test by test. Anchoring is what makes a
+  /// root externally attestable rather than merely stored: another contract, or another chain, can
+  /// verify a root existed at a point in time without trusting this contract's own getters. It is
+  /// how every other root in this fusion is published, so silently exempting the identity tree
+  /// would have made it the odd one out with nothing recording why.
+  IEvidenceRegistry public immutable EVIDENCE_REGISTRY;
+
+  /// Monotone counter keying each anchored statement. Not the tree size: revocations change the
+  /// root WITHOUT adding a leaf, and they must be anchored too, so a size-derived key would collide.
+  uint256 public rootSequence;
+
   SparseMerkleTree.Bytes32SMT private _tree;
 
   mapping(bytes32 _root => uint256 _createdAt) public rootCreatedAt;
@@ -112,20 +129,24 @@ contract IdentityRegistry {
   error NoPredicates();
   error DuplicatePredicate(bytes32 predicate);
   error ZeroAddress();
+  error CommitmentOutOfField(bytes32 commitment);
+  error ZeroCommitment();
 
   constructor(
     address escrowVerifier_,
     address stateKeeper_,
     address controller_,
+    address evidenceRegistry_,
     uint256 controllerKeyX_,
     uint256 controllerKeyY_,
     uint32 treeHeight_,
     uint256 maxRootAge_,
     bytes32[] memory predicates_
   ) {
-    if (escrowVerifier_ == address(0) || stateKeeper_ == address(0) || controller_ == address(0)) {
-      revert ZeroAddress();
-    }
+    if (
+      escrowVerifier_ == address(0) || stateKeeper_ == address(0) || controller_ == address(0)
+        || evidenceRegistry_ == address(0)
+    ) revert ZeroAddress();
     if (predicates_.length == 0) revert NoPredicates();
 
     ESCROW_VERIFIER = INoirVerifier(escrowVerifier_);
@@ -134,6 +155,7 @@ contract IdentityRegistry {
     CONTROLLER_KEY_X = controllerKeyX_;
     CONTROLLER_KEY_Y = controllerKeyY_;
     MAX_ROOT_AGE = maxRootAge_;
+    EVIDENCE_REGISTRY = IEvidenceRegistry(evidenceRegistry_);
 
     for (uint256 i = 0; i < predicates_.length; i++) {
       // Trap 2: zero is the CLEAN sentinel, so admitting it as a predicate would let a revocation
@@ -171,6 +193,14 @@ contract IdentityRegistry {
     if (!ESCROW_VERIFIER.verify(proof_, publicInputs_)) revert BadProof();
 
     bytes32 commitment_ = publicInputs_[PUB_COMMITMENT];
+
+    // Defence in depth, carried over from the registry this replaces. The commitment comes from a
+    // VERIFIED proof binding it to `Poseidon(revocation_secret)`, so a Poseidon output is already a
+    // field element and zero is negligible - but the previous registry checked its leaves and
+    // dropping the check silently would leave the reasoning implicit in a contract that cannot be
+    // upgraded to add it back.
+    if (commitment_ == bytes32(0)) revert ZeroCommitment();
+    if (uint256(commitment_) >= Constants.SNARK_SCALAR_FIELD) revert CommitmentOutOfField(commitment_);
     bytes32 holderRoot_ = publicInputs_[PUB_HOLDER_ROOT];
     bytes32 dg1Hash_ = publicInputs_[PUB_DG1_HASH];
 
@@ -192,8 +222,7 @@ contract IdentityRegistry {
     // matches what the Noir gadget computes (test/registry/SmtCompat.t.sol).
     _tree.add(commitment_, bytes32(0));
 
-    root_ = _tree.getRoot();
-    rootCreatedAt[root_] = block.timestamp;
+    root_ = _anchorRoot();
 
     uint256[5] memory sealed_;
     for (uint256 i = 0; i < 5; i++) {
@@ -223,10 +252,25 @@ contract IdentityRegistry {
     // tree records WHY, not merely that, an identity was revoked.
     _tree.update(commitment_, predicate_);
 
-    root_ = _tree.getRoot();
-    rootCreatedAt[root_] = block.timestamp;
+    root_ = _anchorRoot();
 
     emit IdentityRevoked(commitment_, predicate_, root_);
+  }
+
+  /// Record the new root and anchor it as ERC-7812 evidence. Called by BOTH writers - a revocation
+  /// moves the root just as a registration does, and an unanchored root would be invisible to
+  /// anything verifying against the evidence registry.
+  function _anchorRoot() internal returns (bytes32 root_) {
+    root_ = _tree.getRoot();
+    rootCreatedAt[root_] = block.timestamp;
+    EVIDENCE_REGISTRY.addStatement(_statementKey(rootSequence++), root_);
+  }
+
+  function _statementKey(uint256 sequence_) internal view returns (bytes32) {
+    return bytes32(
+      uint256(keccak256(abi.encodePacked('PP_IDENTITY_ROOT', address(this), sequence_)))
+        % Constants.SNARK_SCALAR_FIELD
+    );
   }
 
   function root() external view returns (bytes32) {

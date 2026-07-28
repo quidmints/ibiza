@@ -982,6 +982,50 @@ is unchanged by any of this.
 **Open:** epoch length, and whether the escrow record is required before the FIRST withdrawal or
 before the first deposit.
 
+### 2.13e CORRECTION: the epoch was redundant, and the blacklist is the REVOCATION REGISTRY
+
+Supersedes the epoch-based parts of §2.13c/§2.13d. Both were challenged by the user on efficiency
+grounds and both were wrong; recorded here rather than silently edited, because the REASON generalises.
+
+**The epoch bought nothing.** The pseudonym `P` is a PRIVATE circuit input and never appears
+on-chain, so there is nothing to track across withdrawals and therefore nothing to rotate for. The
+rotation was imported from anonymous-credential revocation, where pseudonyms ARE revealed — that is
+the premise that makes rotation necessary, and it does not hold here. Root freshness was ALREADY
+solved by `RevocationRegistry`'s `MAX_ROOT_AGE` + always-valid-latest, so the epoch was a second
+notion of time doing the first one's job. Drop it: `P = Poseidon(s)`, published when it changes.
+
+*(This is the third mechanism imported from a context whose premise does not hold here — after the
+revocation root policy borrowed from the ASP's inclusion semantics, and the accumulator option that
+never asked who computes the witness. The failure mode is reusing a mechanism without re-checking
+its premise, and it is worth a deliberate check on anything else borrowed wholesale.)*
+
+**THE BIGGER ONE: the identity blacklist and the revocation registry are the SAME OBJECT.**
+`RevocationRegistry` already holds "identities that may not withdraw", proven by exclusion at depth
+20. The blacklist being designed is that tree with a different leaf derivation. Building both would
+have duplicated two contracts, two roots, two public inputs and two witness paths for one job.
+§2.13's blacklist IS §2.5's revocation registry made CONFIDENTIAL — leaves become `Poseidon(s)`
+instead of `holder_root`, which is exactly the secrecy upgrade and nothing more.
+
+**Second merge, from the user's observation that ONE authority writes both lists:** the tainted-label
+entries belong in that same tree — `Poseidon(s)` keys persons, `Poseidon(s, label)` keys flagged
+deposits, distinct preimages so they cannot collide. One contract, one root, one validity check.
+Still two exclusion PATHS (~7,895 opcodes); it is the contract/root duplication that goes.
+
+**Checked and clean:** root expiry must NOT extend to the registered set — it is an INCLUSION tree,
+where old roots have FEWER members and are therefore safe. Only exclusion trees need expiry.
+Registered-set inclusion and the escrow binding are already ONE proof, since the leaf is
+`Poseidon(holder_root, Poseidon(s))`.
+
+**Resulting shape** — two trees beyond PP's state tree, no epoch, both identity and label screening
+live, everything failing open:
+
+| gate | tree | key |
+|---|---|---|
+| note exists, unspent | state (LeanIMT) | commitment |
+| registered + escrowed | registered mirror (inclusion) | `Poseidon(holder_root, Poseidon(s))` |
+| person not listed | exclusion tree | `Poseidon(s)` |
+| deposit not flagged | SAME exclusion tree | `Poseidon(s, label)` |
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

@@ -2179,6 +2179,71 @@ trusted party. Concretely:
 lender there may be no complainant. The mechanism is sound and the plaintiff is missing - so the
 servicer role above is a PREREQUISITE for this to mean anything, not an optimisation.
 
+### 2.17b DISTRIBUTOR, NOT ORIGINATOR - and the minimum viable trustless configuration
+
+**1. DISTRIBUTOR-ONLY IS THE VIABLE STRUCTURE, and it fixes what §2.17 broke.** If the pool BUYS
+loans rather than writing them, the party who knows the property is the ORIGINATOR, and they are
+contractually on the hook for it. The pool never needs to know which building it is; it needs the
+originator's representations and a first-loss position. That is originate-to-distribute, i.e. how
+RMBS has always worked, and it restores every role §2.17 found missing without inventing anything:
+the originator appraises, verifies title, services, and investigates - because they eat the first
+loss if they got it wrong.
+
+**2. MINIMUM VIABLE CONFIGURATION.** "Trustless" cannot mean "no accountable party" for a loan
+against an off-chain asset - the asset's existence and value are facts no oracle can settle
+honestly. So the minimum is not zero trusted parties; it is:
+
+> EXACTLY ONE accountable party per loan, whose accountability is COLLATERALISED ON-CHAIN rather
+> than merely actionable in court.
+
+Concretely:
+- The originator posts FIRST-LOSS CAPITAL into the pool before their loans are funded.
+- A loan that defaults for TITLE DEFECT slashes that capital automatically - no complaint, no
+  plaintiff, no court in the loop. **That is what §2.17's missing-plaintiff problem needed**: the
+  trigger becomes mechanical rather than adversarial.
+- Courts become the BACKSTOP for losses exceeding first-loss, not the primary mechanism.
+- Everything else the protocol already enforces: title uniqueness, licensed attestation, LTV/DTI,
+  payment and default timing.
+
+The pool's residual trust reduces to "the originator's first-loss is sized correctly", which is a
+NUMBER that can be audited and adjusted, rather than "someone will sue on our behalf", which is a
+hope. That is the honest floor - not trustless, but trust that is bounded, collateralised, and
+priced.
+
+### 2.17c MAXIMALLY ANONYMOUS OWNERSHIP ATTESTATION - buildable from what exists
+
+The question: a CRE-verified notary proves someone owns a property, revealing NEITHER the owner NOR
+the notary. Fully answerable with primitives already built and tested here.
+
+**THE STATEMENT.** "There exists a notary N and an owner O such that N is in the currently active
+notary set, N controls that identity, and N attests that O owns property P."
+
+**PUBLIC:** the notary-set root (CRE-anchored), `propertyKey` (opaque), `ownerCommitment` (opaque),
+a notary nullifier, and the sealed envelope. **PRIVATE:** which notary, which owner, which property.
+
+**THE CIRCUIT, entirely from existing gadgets:**
+1. `notary_root = extract_pk_identity_hash(sk_notary)` - proves CONTROL of the notary identity.
+   (`pp/src/holder_root.nr`, already differential-tested.)
+2. `notary_root` is INCLUDED in the CRE-anchored active-notary snapshot - a Merkle inclusion whose
+   path is PRIVATE, so the set is public and the member is not. (`pp/src/smt.nr` or `lean_imt.nr`,
+   both already used exactly this way for identities.)
+3. `ownerCommitment == Poseidon(owner_holder_root, propertyKey)` - binds THIS owner to THIS property,
+   with the owner's identity never appearing. Same shape as `title_holder`, which lets the owner
+   later prove ownership themselves with the circuit that already exists.
+4. `notary_nullifier == Poseidon(sk_notary, propertyKey)` - deterministic per (notary, property).
+   Makes double-attestation on one property DETECTABLE without revealing who, and gives a
+   rate-limiting handle. This is the epoch-pseudonym trick from §2.13e, third use.
+5. The sealed envelope from `pp/src/envelope.nr` seals `notary_root` to the k-of-n guardian
+   threshold key - so §2.17b's automatic slashing has a mechanical trigger, and guardians can open
+   WHO attested only on a stated predicate.
+
+**COST, estimable from measured neighbours:** two scalar multiplications (~11.8k opcodes each) for
+the identity derivation and the envelope, one Merkle inclusion (~7.9k-11.9k depending on depth), and
+a handful of Poseidons. Roughly 35-40k ACIR opcodes - the same order as `escrow_envelope`'s measured
+38,874, and one-time per attestation rather than per transaction.
+
+**NOT BUILT.** Every component exists and is tested; this is composition, not new cryptography.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

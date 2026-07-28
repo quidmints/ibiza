@@ -1114,6 +1114,37 @@ range check is needed.
 everywhere" is wanted only for the EXCLUSION tree's predicate slot (§2.13f), and that tree is
 ALREADY a SparseMerkleTree.
 
+### 2.13h Step 3 was ALREADY DONE; step 4's ladder landed, and the r=0 degeneracy is now measured
+
+**Step 3 (predicate into the SMT value slot) needed no work — it already exists.**
+`RevocationRegistry.revoke` does `_tree.add(holderRoot_, predicate_)`, with a comment saying exactly
+why: "the tree records not just that an identity was revoked but under which rule - auditable after
+the fact without trusting the event log." My §2.13f claim that "the value slot is currently wasted,
+always 0" came from reading the CIRCUIT's exclusion call - which passes 0 because exclusion does not
+use a value - and generalising to the contract without opening it. The user's concern that an event
+is not enough was already answered by the code.
+
+**Step 4, part one: `mul_point` (arbitrary-base scalar multiplication) landed in pp/src/jubjub.nr.**
+This was the ONLY primitive the hashed-ElGamal envelope was missing - sealing to the controller's
+key needs `r*PK`, not just `r*G`. `priv_to_pub` now DELEGATES to it rather than carrying a second
+copy of the same 254-iteration ladder.
+
+*Safety of touching `priv_to_pub`, which defines `holder_root`:* the ACIR is BYTE-IDENTICAL after the
+refactor - `withdraw_identity` measures 43,772 opcodes before and after - so no verifier key changes
+and nothing needs redeploying. Differential vectors against @iden3/js-crypto (base 7*G, four
+scalars including a full-width one) plus `test_priv_to_pub_agrees_with_mul_point` pin the delegation.
+
+**THE r=0 DEGENERACY IS NOW MEASURED, NOT ASSUMED.** `mul_point(P, 0)` returns **(0,0)**, NOT the
+curve identity (0,1) - this ladder uses (0,0) as its empty-accumulator sentinel, and (0,0) does not
+satisfy the curve equation at all. The test was written asserting (0,1) and FAILED, which is how the
+real value was established.
+
+That makes the `r != 0` guard concrete: with r=0 the shared secret is (0,0) for EVERY controller key,
+so the mask `Poseidon2([0,0])` is a public constant and `C2 = s + mask` discloses the sealed
+revocation secret to anyone who looks. Base-independent, so the leak is universal rather than
+key-specific. Both facts are asserted in
+`test_mul_point_by_zero_returns_the_sentinel_not_the_identity`.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

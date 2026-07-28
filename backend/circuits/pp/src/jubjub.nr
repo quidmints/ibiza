@@ -15,28 +15,42 @@
 //
 // This file has ZERO imports, which is what made the extraction clean.
 
+/**
+ * Scalar multiplication by an ARBITRARY base point.
+ *
+ * `priv_to_pub` is this same double-and-add ladder with the generator hardcoded; it now delegates
+ * here rather than carrying a second copy of a 254-iteration loop. The ALGORITHM is unchanged, so
+ * the "byte-identical to rarime's noir_dl_lib" property above still holds where it matters - the
+ * VALUES. `test_priv_to_pub_matches_babyjub` and `test_priv_to_pub_agrees_with_mul_point` below pin
+ * that, so a divergence introduced here cannot pass silently.
+ *
+ * NEEDED FOR HASHED ELGAMAL (TODO.md sec. 2.13d): sealing the revocation secret to the controller's
+ * key requires `r*PK` for a published `PK`, not just `r*G`. That is the ONLY primitive the envelope
+ * scheme was missing.
+ */
+pub fn mul_point(base_x: Field, base_y: Field, scalar: Field) -> (Field, Field) {
+    let bits: [u1; 254] = scalar.to_be_bits::<254>();
+
+    let mut result_x = base_x * (bits[0] as Field);
+    let mut result_y = base_y * (bits[0] as Field);
+
+    for i in 1..254 {
+        let tmp_double = add_zero(result_x, result_y, result_x, result_y);
+
+        let tmp_add = add_zero(tmp_double.0, tmp_double.1, base_x * (bits[i] as Field), base_y * (bits[i] as Field));
+
+        result_x = tmp_add.0;
+        result_y = tmp_add.1;
+    }
+
+    (result_x, result_y)
+}
+
 pub fn priv_to_pub(priv: Field) -> (Field, Field){
     let base_x = 5299619240641551281634865583518297030282874472190772894086521144482721001553;
     let base_y = 16950150798460657717958625567821834550301663161624707787222815936182638968203;
 
-    let priv_bits: [u1; 254] = priv.to_be_bits::<254>();
-
-    let mut result_x = base_x * (priv_bits[0] as Field);
-    let mut result_y = base_y * (priv_bits[0] as Field);
-
-    for i in 1..254{
-        let tmp_double = add_zero(result_x, result_y, result_x, result_y);
-
-        let tmp_add = add_zero(tmp_double.0, tmp_double.1, base_x * (priv_bits[i] as Field), base_y * (priv_bits[i] as Field));
-
-        result_x = tmp_add.0;
-        result_y = tmp_add.1;
-
-    }
-
-
-    (result_x, result_y)
-
+    mul_point(base_x, base_y, priv)
 }
 
 pub fn add (x1: Field, y1: Field, x2: Field, y2: Field) -> (Field, Field){
@@ -142,6 +156,94 @@ fn test_priv_to_pub_is_deterministic() {
     let b = priv_to_pub(1234);
     assert(a.0 == b.0, "priv_to_pub is not deterministic in x");
     assert(a.1 == b.1, "priv_to_pub is not deterministic in y");
+}
+
+/*
+ * mul_point differential vectors, generated with the SAME @iden3/js-crypto babyJub the wallet uses:
+ *   const P = babyJub.mulPointEScalar(babyJub.Base8, 7n);
+ *   babyJub.mulPointEScalar(P, k);
+ * The base here is 7*G - deliberately NOT the generator, since the whole point of this function is
+ * the arbitrary-base case that `priv_to_pub` cannot exercise.
+ */
+global P7_X: Field =
+    20092560661213339045022877747484245238324772779820628739268223482659246842641;
+global P7_Y: Field =
+    12112450042127193446189577552007703839818242727902437791835414514847797088033;
+
+#[test]
+fn test_mul_point_arbitrary_base_matches_babyjub() {
+    // k = 1 must return the base unchanged.
+    let (x1, y1) = mul_point(P7_X, P7_Y, 1);
+    assert(x1 == P7_X, "mul_point k=1 changed x");
+    assert(y1 == P7_Y, "mul_point k=1 changed y");
+
+    let (x2, y2) = mul_point(P7_X, P7_Y, 2);
+    assert(
+        x2 == 6271573312546148160329629673815240458676221818610765478794395550121752710497,
+        "mul_point k=2 x disagrees with @iden3/js-crypto",
+    );
+    assert(
+        y2 == 20729133862440981855920571719405839551572203482913253618619962546642052100217,
+        "mul_point k=2 y disagrees with @iden3/js-crypto",
+    );
+
+    let (x3, y3) = mul_point(P7_X, P7_Y, 1234);
+    assert(
+        x3 == 2619422398913205517721050840173764742879764528778505985725959064167656990051,
+        "mul_point k=1234 x disagrees with @iden3/js-crypto",
+    );
+    assert(
+        y3 == 16242328633187437272560829965814618299556668067593458319733392253491992277345,
+        "mul_point k=1234 y disagrees with @iden3/js-crypto",
+    );
+
+    // A full-width scalar - the size an ElGamal ephemeral actually is, not a toy value.
+    let (x4, y4) = mul_point(
+        P7_X,
+        P7_Y,
+        287325206580568373396753082727527032974277810276511506339905121597618812140,
+    );
+    assert(
+        x4 == 3513951964870253406393337057243839718706719782505248549705257732269741494284,
+        "mul_point full-width x disagrees with @iden3/js-crypto",
+    );
+    assert(
+        y4 == 14992476063324944445699325667800157043043257911372429918067253830783895370779,
+        "mul_point full-width y disagrees with @iden3/js-crypto",
+    );
+}
+
+#[test]
+fn test_priv_to_pub_agrees_with_mul_point() {
+    // priv_to_pub now DELEGATES to mul_point, so this pins the refactor: if the generalised ladder
+    // ever diverges from the hardcoded-generator one, holder_root forks across circuit / contract /
+    // wallet, which is the exact failure this file's header warns about.
+    let a = priv_to_pub(1234);
+    let b = mul_point(BASE8_X, BASE8_Y, 1234);
+    assert(a.0 == b.0, "priv_to_pub and mul_point disagree in x");
+    assert(a.1 == b.1, "priv_to_pub and mul_point disagree in y");
+}
+
+#[test]
+fn test_mul_point_by_zero_returns_the_sentinel_not_the_identity() {
+    // A zero scalar returns (0,0), NOT the curve identity (0,1). This ladder uses (0,0) as the
+    // "empty accumulator" sentinel - that is what `add_zero`'s is_zero correction exists for - and
+    // (0,0) does not even satisfy the curve equation (a*0 + 0 == 1 + d*0 is 0 == 1, false).
+    //
+    // ASSERTED BECAUSE IT IS THE EXACT DEGENERACY THE ENVELOPE'S `r != 0` GUARD REJECTS
+    // (TODO.md sec. 2.13d). With r = 0 the hashed-ElGamal shared secret is mul_point(PK, 0) =
+    // (0,0) for EVERY controller key, so the mask Poseidon2([0,0]) is a public constant and
+    // C2 = s + mask discloses the sealed revocation secret to anyone who looks. This test was
+    // written asserting (0,1) and FAILED, which is how the real value was established rather than
+    // assumed - the guard is protecting against something now measured, not imagined.
+    let (x, y) = mul_point(P7_X, P7_Y, 0);
+    assert(x == 0, "mul_point k=0 x is not the sentinel");
+    assert(y == 0, "mul_point k=0 y is not the sentinel");
+
+    // And it is base-independent, which is what makes the leak universal rather than key-specific.
+    let (gx, gy) = mul_point(BASE8_X, BASE8_Y, 0);
+    assert(gx == 0, "mul_point k=0 over G x is not the sentinel");
+    assert(gy == 0, "mul_point k=0 over G y is not the sentinel");
 }
 
 #[test]

@@ -124,14 +124,13 @@ interface IPrivacyPool is IState {
   /**
    * @notice Thrown when providing an unknown or outdated ASP root
    */
-  error IncorrectASPRoot();
+  error InvalidIdentityRoot();
 
   /// @notice Thrown at construction if the ASP registry address is zero - the pool would have no
   ///         membership set to check against.
-  error ZeroAspRegistry();
 
   /// @notice Thrown at construction if the revocation registry address is zero.
-  error ZeroRevocationRegistry();
+  error ZeroIdentityRegistry();
 
   /// @notice Thrown when the proof's revocation root is not one the registry currently accepts.
   error InvalidRevocationRoot();

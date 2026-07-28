@@ -20,8 +20,7 @@ import {PoseidonT4} from 'poseidon/PoseidonT4.sol';
 
 import {Constants} from './lib/Constants.sol';
 import {ProofLib} from './lib/ProofLib.sol';
-import {IIdentityAspRegistry} from '../interfaces/registry/IIdentityAspRegistry.sol';
-import {IRevocationRegistry} from '../interfaces/registry/IRevocationRegistry.sol';
+import {IIdentityRegistry} from '../interfaces/registry/IIdentityRegistry.sol';
 
 import {IPrivacyPool} from 'interfaces/IPrivacyPool.sol';
 
@@ -52,39 +51,29 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     }
 
     // Check the tree depth signals are less than the max tree depth
-    if (_proof.stateTreeDepth() > MAX_TREE_DEPTH || _proof.ASPTreeDepth() > MAX_TREE_DEPTH) revert InvalidTreeDepth();
+    if (_proof.stateTreeDepth() > MAX_TREE_DEPTH) revert InvalidTreeDepth();
 
     // Check the state root is known
     if (!_isKnownRoot(_proof.stateRoot())) revert UnknownStateRoot();
 
-    // Check the ASP root is one the Entrypoint has ever computed.
+    // ONE identity check, where there used to be two (TODO.md sec. 2.13k). The proof shows the
+    // withdrawer's escrow commitment is present in the registry carrying the CLEAN status - which
+    // is simultaneously "registered" and "not revoked", because a revoked leaf holds its predicate
+    // as the value and can no longer prove 0.
     //
-    // This deliberately accepts ANY historical root, where upstream required equality with the
-    // single latest active one. That equality check was the mechanism by which an ASP operator
-    // could retroactively kill an existing member's private exit: publish a root omitting them and,
-    // once it activated, their withdrawal proof matched nothing - forcing `ragequit`, which pays
-    // out to the original depositor and destroys the unlinkability the deposit bought. See
-    // TODO.md sec. 2.13.
+    // `isValidRoot`, NOT "is known". The old ASP check deliberately accepted ANY historical root,
+    // which was safe for a pure INCLUSION tree: an append-only tree's historical membership is a
+    // strict subset of the current one, so an old root can only ever under-approve. THAT REASONING
+    // NO LONGER APPLIES. This tree also carries revocations, and an old root has FEWER of those, so
+    // honouring one indefinitely would let a revoked identity prove the clean state forever. The
+    // registry therefore expires superseded roots while keeping the LATEST valid regardless of age,
+    // so controller inaction still cannot block a withdrawal.
     //
-    // Accepting historical roots is safe ONLY because `Entrypoint` now maintains the ASP tree
-    // on-chain and append-only, so a historical root's membership set is a strict subset of the
-    // current one. It would NOT have been safe under the old design, where a root was an arbitrary
-    // operator-supplied snapshot: honouring old roots there would have re-admitted everyone ever
-    // removed and made removal a global no-op. The same reasoning already justifies `_isKnownRoot`
-    // accepting 64 historical state roots on the line above.
     // Asked of the REGISTRY, not the Entrypoint. Routing this through the Entrypoint - even as a
-    // pass-through - would preserve the exact hole this split closes: the Entrypoint is
-    // upgradeable by OWNER_ROLE, so an upgraded one could simply lie about which roots are
-    // genuine. See TODO.md sec. 2.5a.
-    if (!ASP_REGISTRY.isKnownAspRoot(_proof.ASPRoot())) revert IncorrectASPRoot();
-
-    // The proof shows the withdrawer is ABSENT from the revocation registry at this root; the
-    // circuit cannot know which roots the registry genuinely had, so the pool checks that here.
-    // isValidRoot - not "is known" - because a revocation tree proves NON-inclusion: an older root
-    // has FEWER revocations, so honouring one indefinitely would let a revoked identity prove
-    // absence forever. The registry expires superseded roots while keeping the LATEST valid
-    // regardless of age, so attester inaction can never block a withdrawal. See TODO.md sec. 2.5a.
-    if (!REVOCATION_REGISTRY.isValidRoot(bytes32(_proof.revocationRoot()))) revert InvalidRevocationRoot();
+    // pass-through - would preserve the exact hole that split closes: the Entrypoint is upgradeable
+    // by OWNER_ROLE, so an upgraded one could simply lie about which roots are genuine. See
+    // TODO.md sec. 2.5a.
+    if (!IDENTITY_REGISTRY.isValidRoot(bytes32(_proof.identityRoot()))) revert InvalidIdentityRoot();
     _;
   }
 
@@ -113,27 +102,20 @@ abstract contract PrivacyPool is State, IPrivacyPool {
    * @param _ragequitVerifier Address of the Groth16 verifier for ragequit proofs
    * @param _asset Address of the pool asset
    */
-  /// @notice The append-only identity ASP tree. NON-UPGRADEABLE and referenced directly, so no
-  ///         upgradeable contract sits between this pool and the membership set it trusts.
-  IIdentityAspRegistry public immutable ASP_REGISTRY;
-
-  /// @notice Append-only revocation list. NON-UPGRADEABLE and unowned, like the ASP registry, and
-  ///         referenced directly for the same reason: nothing upgradeable may sit between this pool
+  /// @notice The single identity tree: registration AND revocation status in one place.
+  ///         NON-UPGRADEABLE and referenced directly, so nothing upgradeable sits between this pool
   ///         and a set that can block a withdrawal.
-  IRevocationRegistry public immutable REVOCATION_REGISTRY;
+  IIdentityRegistry public immutable IDENTITY_REGISTRY;
 
   constructor(
     address _entrypoint,
     address _withdrawalVerifier,
     address _ragequitVerifier,
     address _asset,
-    address _aspRegistry,
-    address _revocationRegistry
+    address _identityRegistry
   ) State(_asset, _entrypoint, _withdrawalVerifier, _ragequitVerifier) {
-    if (_aspRegistry == address(0)) revert ZeroAspRegistry();
-    if (_revocationRegistry == address(0)) revert ZeroRevocationRegistry();
-    ASP_REGISTRY = IIdentityAspRegistry(_aspRegistry);
-    REVOCATION_REGISTRY = IRevocationRegistry(_revocationRegistry);
+    if (_identityRegistry == address(0)) revert ZeroIdentityRegistry();
+    IDENTITY_REGISTRY = IIdentityRegistry(_identityRegistry);
   }
 
   /*///////////////////////////////////////////////////////////////

@@ -42,54 +42,51 @@ jurisdiction-agnostic; only registry endpoints and legal enforcement are local.
 
 ## 2. Implementation: approach, activities, and milestones *(1000 max)*
 
-**Status.** The core is built and tested, not audited. There are 263 passing contract tests, 84
-circuit tests, and real zero-knowledge proofs verified on-chain through generated Solidity verifiers
-— not mocks. What remains is external review, then contact with reality.
+**Status.** The core is built and tested, not audited: 269 passing contract tests, 84 circuit tests,
+and real zero-knowledge proofs verified on-chain through generated verifiers, not mocks. What remains
+is external review, then contact with reality.
 
 **What exists.** Four Noir/UltraHonk circuits (withdrawal, ragequit, escrow, passport registration);
-the identity registry, privacy pool, entrypoint and title ledger contracts; and a React Native
-wallet holding one BIP39 seed in the device secure enclave, from which every other key is derived.
+the identity registry, privacy pool, entrypoint and title ledger contracts; and a wallet holding one
+BIP39 seed in the device secure enclave, from which every other key derives.
 
 ### Milestone 1 — Security audit (the gate for everything else)
 
 Nothing goes near a real user before independent review. The scope, in descending order of risk:
 
 **Circuits.** A soundness bug here is silent and total — a wrong constraint lets an attacker mint
-value or bypass identity while every test passes. `withdraw_identity` (value conservation, note
-membership, identity clearance), `escrow_envelope` (the ElGamal sealing that makes an identity
-revocable), `ragequit` (the escape hatch), and the passport registration circuits inherited from
-rarime.
+value or bypass identity while every test passes. `withdraw_identity`, `escrow_envelope` (the
+sealing that makes an identity revocable), `ragequit`, and the inherited passport circuits.
 
 **The identity registry.** Its guarantees are the product: registration is permissionless and cannot
-be refused; exclusion requires an affirmative, rule-citing act; a stale root expires so a revocation
-cannot be evaded, while the newest root never expires so inaction cannot block anyone. Each is a
-property an auditor should try to break.
+be refused; exclusion requires an affirmative, rule-citing act; a stale root expires so revocation
+cannot be evaded, while the newest never expires so inaction cannot block anyone. Each is a property
+an auditor should try to break.
 
-**The pool.** Deposit/withdraw accounting, nullifier handling, the change-note path, and ragequit
-payouts — the parts inherited from Privacy Pools plus our modifications to them.
+**The pool.** Deposit/withdraw accounting, nullifier handling, the change-note path and ragequit
+payouts — inherited from Privacy Pools, plus our modifications.
 
-**Key management.** Seed derivation, enclave storage, and the biometric gate. A weakness here loses
-funds regardless of how good the circuits are.
-
-**The four generated verifiers**, checked against the circuits they claim to verify.
+**Key management.** Seed derivation, enclave storage, the biometric gate — a weakness here loses
+funds regardless of the circuits. **The four generated verifiers**, against the circuits they claim
+to verify.
 
 We will additionally commission a review of the trust model itself — not "is the code correct" but
 "who can do what to whom", which is where this class of system usually fails.
 
 ### Milestone 2 — Hardware bring-up
 
-The wallet cannot presently run on our development machines (the identity SDK ships device-only
-binaries), and NFC passport reading is not implemented at all. This milestone: implement NFC chip
-reading against real passports from several issuing states, verify the enclave-backed key path on
-physical devices, and confirm that a proof generated on a phone verifies on-chain. Passports vary in
-ways specifications do not capture, so this needs real documents, not test vectors.
+The wallet cannot run on our development machines (the identity SDK ships device-only binaries), and
+NFC passport reading is not implemented at all. This milestone implements NFC chip reading against
+real passports from several issuing states, verifies the enclave-backed key path on physical
+devices, and confirms a phone-generated proof verifies on-chain. Passports vary in ways
+specifications do not capture, so this needs real documents, not test vectors.
 
 ### Milestone 3 — Closed pilot on testnet
 
 A small cohort of consenting users, no real value at risk. Full round trip: scan a passport,
-register, deposit, withdraw to a fresh address, and confirm the withdrawal cannot be linked to the
-deposit by an observer holding the full chain. We measure proving time and failure modes on
-mid-range devices, not flagships — the population that most needs this does not carry new hardware.
+register, deposit, withdraw to a fresh address, and confirm an observer holding the whole chain
+cannot link the two. We measure proving time on mid-range devices, not flagships — the population
+that most needs this does not carry new hardware.
 
 ### Milestone 4 — Property, capital, and lending
 
@@ -99,37 +96,53 @@ every node must independently fetch and produce a byte-identical result before a
 so a notary's licence status rests on consensus rather than on any single operator's assertion — plus
 the lien and mortgage lifecycle.
 
-It also integrates the capital layer: our existing dollar pool, whose reserves are diversified and
-whose redemption schedule is a maturity ladder rather than an at-will promise. That matters for
-mortgage underwriting specifically — a mortgage is a long-duration asset, and funding it from
-capital that can be withdrawn instantly is the mismatch that breaks lenders. Matching the two is
-what lets the pool underwrite a loan whose term is measured in years.
+It also integrates the capital layer: our dollar pool, with diversified reserves and a redemption
+schedule that is a maturity ladder rather than an at-will promise. That matters for mortgages
+specifically — a mortgage is long-duration, and funding one from capital withdrawable on demand is
+the mismatch that breaks lenders. Loans are collateralised by the titles above, the property
+identified only by an opaque pseudonym, so the pool verifies a lien is unique and unencumbered
+without learning which building it is. **The legal machinery has to work, or none of the rest matters** — a foreclosure unenforceable in a
+real court is a loan nobody funds, so this milestone is as much legal as technical. Two things make
+it tractable. The enforcement path already exists as public institutions — judicial
+process servers, state auction platforms, licensed appraisers — and the protocol interfaces with
+them rather than replacing them. And at origination the borrower executes an irrevocable assignment
+of the deed, held in escrow; that instrument lets a lender enforce on default without the borrower's
+later cooperation, and it is a form the courts already recognise rather than a novel construct we
+ask a judge to accept.
 
-Loans are collateralised by the titles above, with the property identified only by an opaque
-pseudonym, so the pool can verify a lien is unique and unencumbered without learning which building
-it is. This requires legal review in the target jurisdiction, because a foreclosure that cannot be
-enforced in a real court is a loan nobody will fund.
+**Accountability without exposure.** A fraudulent attestation injures the lenders who underwrote
+against it as much as the owner, and both must be able to act — but notaries can be targeted for
+serving a system like this, so their participation must not be public. Same construction as
+elsewhere in the protocol: a notary proves in zero knowledge that they are one of the licensed
+notaries without revealing which, and their attestation carries an encrypted identity a quorum of
+legal guardians can open **only** on a fraud finding. Normal operation reveals nothing; misconduct
+is attributable. And privacy from the public is not privacy from a counterparty — a lender learns
+which property they appraised — so the party that lost money holds its evidence.
+
+We will not claim this part is finished. Legal counsel per jurisdiction is budgeted, and where the
+assignment instrument proves unenforceable we would ship the identity and title layers without the
+lending layer rather than pretend otherwise.
 
 ### Milestone 5 — Field testing
 
 The first deployment with real value, deliberately small and reversible. What we need for it:
 
 - **Audit remediation complete**, with fixes re-reviewed.
-- **Devices and documents** — a range of Android and iOS handsets, and passports from multiple
-  issuing states, since MRZ layouts and chip behaviour differ.
-- **A pilot cohort** recruited through partners already trusted by the users, with informed consent
-  about residual risk and a documented exit path.
+- **Devices and documents** — Android and iOS handsets, and passports from multiple issuing states,
+  since MRZ layouts and chip behaviour differ.
+- **A pilot cohort** recruited through partners the users already trust, with informed consent about
+  residual risk and a documented exit path.
 - **Legal counsel** in the target jurisdiction for the enforcement layer.
-- **Monitoring that does not itself surveil** — we need to know the system works without collecting
-  the data the system exists to protect. This is a design constraint on our own telemetry.
-- **A rollback plan.** The ragequit path already guarantees any depositor can exit unilaterally
-  without permission, which is what makes a pilot ethically defensible.
+- **Monitoring that does not itself surveil** — we must know the system works without collecting the
+  data it exists to protect. That is a constraint on our own telemetry.
+- **A rollback plan.** Any depositor can already exit unilaterally without permission, which is what
+  makes a pilot ethically defensible.
 
-**Sequencing.** Milestones 2 and 4 can proceed in parallel; both depend on 1. Field testing depends
-on all of them. We would rather delay than field an unaudited system to users whose exposure is
-measured in liberty rather than money.
+**Sequencing.** Milestones 2 and 4 run in parallel; both depend on 1, and field testing on all of
+them. We would rather delay than field an unaudited system to users whose exposure is measured in
+liberty rather than money.
 
-*(≈840 words)*
+*(≈995 words)*
 
 ---
 

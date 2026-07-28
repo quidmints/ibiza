@@ -2018,6 +2018,52 @@ discloses the commitment, it is a private SMT key - but their PARTICIPATION beco
 Mitigation: a notary should register a SEPARATE identity for their professional role. The system
 already supports many identities per person, so this is operational guidance, not new machinery.
 
+### 2.16a CORRECTION: notaries can be TARGETED - anonymous attestation, conditional accountability
+
+§2.16 answered "how do we hold a notary to account without unmasking them" with: a notary's identity
+is ALREADY public by profession, so attribution discloses nothing new. **That is wrong under the
+threat model that actually matters here** (user, 2026-07-29): notaries can be targeted.
+
+**THE DISTINCTION I MISSED.** It is public that Jane Doe is a notary - her name and office are on the
+state register. It must NOT be public that Jane Doe attested titles IN THIS SYSTEM. In a hostile
+jurisdiction the second fact is the dangerous one, and the current design publishes it: `holderRoot`
+is bound on-chain and every action names the signing key.
+
+**THE FIX, and it needs no new primitives - both already exist here:**
+
+1. **ANONYMOUS SET MEMBERSHIP.** The notary proves in zero knowledge "I am one of the currently
+   active notaries" - a Merkle inclusion against the CRE-anchored snapshot - WITHOUT revealing which.
+   Exactly the proof shape the identity registry already performs, applied to the notary set.
+   `_requireActiveNotary` currently takes a public `address notary_` and a plaintext Merkle proof;
+   that becomes a ZK proof over the same root.
+
+2. **CONDITIONAL DEANONYMISATION via the SEALED ENVELOPE we already built.** The attestation carries
+   a hashed-ElGamal envelope sealing the notary's identity to a k-of-n legal guardian set, opened
+   ONLY on a fraud finding. `pp/src/envelope.nr` does this today for revocation secrets; the
+   difference is only what is sealed and who holds the key.
+
+**THIS IS THE SPEC'S OWN PATTERN.** §5 Option B specifies threshold ElGamal with decentralised legal
+guardian nodes releasing shares on a default. Same machinery, applied to notary identity rather than
+the power of attorney - so it is one mechanism serving two purposes, not a new dependency.
+
+**IT ALSO DISSOLVES THE SECOND-IDENTITY WORKAROUND** (§2.16's "a notary should register a separate
+identity"). That was treating a symptom, and only for notaries. If the notary never publishes
+`holderRoot` at all, there is no `holderRoot` -> commitment link to leak, and no separate identity to
+maintain. One fix, both problems.
+
+**THE UNDERLYING LEAK IS NOT NOTARY-SPECIFIC, and this is the part worth acting on separately.**
+`IdentityRegistry.register` carries BOTH `holder_root` and `commitment` as public inputs, so EVERY
+user's identity is publicly linked to their pool commitment in calldata. Their ACTIVITY stays hidden
+- a withdrawal never discloses the commitment - but PARTICIPATION is visible for everyone, not just
+notaries. The clean fix is the same shape again: prove the document binding by INCLUSION in a
+committed tree rather than by publishing the identifiers. `StateKeeper` already maintains a
+`PoseidonSMT` (`registrationSmt`), so the structure exists; what is missing is putting the document
+bindings in it and proving against its root.
+
+**NOT BUILT.** Recorded with the design settled, because the current `bindNotaryIdentity` /
+`_requireActiveNotary` shape is publicly identifying and should not be deployed to anyone who can be
+targeted for it.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

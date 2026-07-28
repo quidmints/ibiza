@@ -8,6 +8,8 @@ import {IEvidenceRegistry} from '@rarimo/evidence-registry/interfaces/IEvidenceR
 
 import {TitleLedger} from '../../contracts/title/TitleLedger.sol';
 import {RegistrySourceAnchor} from '../../contracts/registry/RegistrySourceAnchor.sol';
+import {HolderStateKeeperMock} from '../../contracts/mock/holder/HolderStateKeeperMock.sol';
+import {PoseidonSMTMock} from '../../contracts/mock/state/PoseidonSMTMock.sol';
 import {NoirVerifierMock} from '../../contracts/mock/verifiers/NoirVerifierMock.sol';
 import {TitleHolderHonkVerifier} from '../../contracts/title/TitleHolderHonkVerifier.sol';
 
@@ -39,6 +41,17 @@ contract MockEvidenceRegistry is IEvidenceRegistry {
   }
 }
 
+/// OZ 5.6.1 rejects an ERC1967Proxy built with EMPTY init data; the state-keeper and SMT mocks are
+/// deploy-then-initialize, so they need a proxy that opts back into it. Same helper as the other
+/// suites that drive HolderStateKeeper directly.
+contract UnsafeTestProxy is ERC1967Proxy {
+  constructor(address impl) ERC1967Proxy(impl, '') {}
+
+  function _unsafeAllowUninitialized() internal pure override returns (bool) {
+    return true;
+  }
+}
+
 contract TitleLedgerTest is Test {
   TitleLedger internal ledger;
   RegistrySourceAnchor internal registry;
@@ -57,6 +70,11 @@ contract TitleLedgerTest is Test {
   bytes32 internal decoyLeaf;
   bytes32[] internal notaryProof; // sibling(s) needed to prove notaryDataHash against the active root
 
+  HolderStateKeeperMock internal stateKeeper;
+
+  /// The notary's identity. A notary is a passport holder in this system before they are a notary.
+  bytes32 internal constant NOTARY_HOLDER_ROOT = keccak256('notary-jane-doe-holder-root');
+
   function setUp() public {
     notary = vm.addr(NOTARY_PK);
     otherSigner = vm.addr(OTHER_PK);
@@ -71,10 +89,30 @@ contract TitleLedgerTest is Test {
     vm.prank(admin);
     registry.grantRole(postmanRole, postman);
 
+    // The notary is a REGISTERED IDENTITY, so the ledger needs the state keeper that holds
+    // documents - a notary with no current document cannot act, which is what makes them revocable
+    // like every other user.
+    PoseidonSMTMock smt = PoseidonSMTMock(address(new UnsafeTestProxy(address(new PoseidonSMTMock()))));
+    PoseidonSMTMock certs = PoseidonSMTMock(address(new UnsafeTestProxy(address(new PoseidonSMTMock()))));
+    stateKeeper = HolderStateKeeperMock(address(new UnsafeTestProxy(address(new HolderStateKeeperMock()))));
+    MockEvidenceRegistry ev = new MockEvidenceRegistry();
+    smt.__PoseidonSMT_init(address(stateKeeper), address(ev), 80);
+    certs.__PoseidonSMT_init(address(stateKeeper), address(ev), 80);
+    stateKeeper.__StateKeeper_init(admin, address(smt), address(certs), bytes32(uint256(1)));
+
+    string[] memory skKeys = new string[](1);
+    skKeys[0] = 'title';
+    address[] memory skVals = new address[](1);
+    skVals[0] = address(this);
+    stateKeeper.mockAddRegistrations(skKeys, skVals);
+    stateKeeper.addDocument(
+      bytes32(uint256(0xD0C)), keccak256('notary-dg1'), NOTARY_HOLDER_ROOT, stateKeeper.DOC_PASSPORT(), 1, 0
+    );
+
     titleHolderVerifier = new NoirVerifierMock();
     TitleLedger ledgerImpl = new TitleLedger();
     bytes memory ledgerInit =
-      abi.encodeCall(TitleLedger.initialize, (address(registry), address(titleHolderVerifier), admin));
+      abi.encodeCall(TitleLedger.initialize, (address(registry), address(titleHolderVerifier), address(stateKeeper), admin));
     ledger = TitleLedger(address(new ERC1967Proxy(address(ledgerImpl), ledgerInit)));
 
     // A real 2-leaf snapshot: notaryDataHash + one decoy, strictly ascending as
@@ -96,7 +134,7 @@ contract TitleLedgerTest is Test {
     notaryProof[0] = (a == leaf0) ? leaf1 : leaf0; // the OTHER leaf is notaryDataHash's sibling
 
     vm.prank(postman);
-    ledger.bindNotaryAddress(notary, notaryDataHash);
+    ledger.bindNotaryIdentity(NOTARY_HOLDER_ROOT, notaryDataHash, notary);
   }
 
   function _mintMessage(
@@ -158,21 +196,81 @@ contract TitleLedgerTest is Test {
 
   function test_initialize_revertsOnZeroNotaryRegistry() public {
     TitleLedger impl = new TitleLedger();
-    bytes memory init = abi.encodeCall(TitleLedger.initialize, (address(0), address(titleHolderVerifier), admin));
+    bytes memory init = abi.encodeCall(TitleLedger.initialize, (address(0), address(titleHolderVerifier), address(stateKeeper), admin));
     vm.expectRevert(TitleLedger.ZeroAddress.selector);
     new ERC1967Proxy(address(impl), init);
   }
 
   function test_initialize_revertsOnZeroVerifier() public {
     TitleLedger impl = new TitleLedger();
-    bytes memory init = abi.encodeCall(TitleLedger.initialize, (address(registry), address(0), admin));
+    bytes memory init = abi.encodeCall(TitleLedger.initialize, (address(registry), address(0), address(stateKeeper), admin));
     vm.expectRevert(TitleLedger.ZeroAddress.selector);
     new ERC1967Proxy(address(impl), init);
   }
 
+  function test_initialize_revertsOnZeroStateKeeper() public {
+    TitleLedger impl = new TitleLedger();
+    bytes memory init =
+      abi.encodeCall(TitleLedger.initialize, (address(registry), address(titleHolderVerifier), address(0), admin));
+    vm.expectRevert(TitleLedger.ZeroAddress.selector);
+    new ERC1967Proxy(address(impl), init);
+  }
+
+  // ── sec. 2.13l: a notary is a REGISTERED IDENTITY, and therefore revocable ────────────────
+
+  /// THE POINT OF THE CHANGE. An address has no passport to expire and no document to invalidate,
+  /// so a notary bound to a bare keypair was the only participant in this system who could not be
+  /// revoked. Keyed by holderRoot, revoking their document stops them acting - by exactly the
+  /// mechanism that covers every other user.
+  function test_aNotaryWhoseDocumentIsRevokedCannotAct() public {
+    // Sanity: they can act right now.
+    _mintValidTitle(keccak256('holder'));
+
+    stateKeeper.revokeDocument(bytes32(uint256(0xD0C)));
+    assertEq(stateKeeper.getActiveDocumentCount(NOTARY_HOLDER_ROOT), 0, 'the document is still current');
+
+    bytes32 key = _propertyKey(keccak256('9 Elsewhere Rd'));
+    bytes32 jurisdiction = keccak256('UA');
+    bytes memory sig = _sign(NOTARY_PK, _mintMessage(key, jurisdiction, 0));
+
+    vm.expectRevert(TitleLedger.NotaryIdentityHasNoCurrentDocument.selector);
+    ledger.mintTitle(key, jurisdiction, 0, REGISTRY_ID, notary, notaryProof, sig, keccak256('h'));
+  }
+
+  /// Binding must refuse an identity that holds no current document - a notary is a passport holder
+  /// in this system BEFORE they are a notary.
+  function test_bindNotaryIdentity_refusesAnIdentityWithNoDocument() public {
+    vm.prank(postman);
+    vm.expectRevert(TitleLedger.NotaryIdentityHasNoCurrentDocument.selector);
+    ledger.bindNotaryIdentity(keccak256('nobody'), notaryDataHash, address(0xBEEF));
+  }
+
+  /// Losing NOTARY status and losing IDENTITY status are DIFFERENT EVENTS, which is why they are
+  /// checked separately. This identity's document is perfectly current - it is their registry entry
+  /// that is not in the active snapshot, so they are a valid person and not a valid notary.
+  function test_aValidIdentityWithNoRegistryEntryIsNotANotary() public {
+    bytes32 otherHolder = keccak256('other-holder');
+    stateKeeper.addDocument(
+      bytes32(uint256(0xD0D)), keccak256('other-dg1'), otherHolder, stateKeeper.DOC_PASSPORT(), 2, 0
+    );
+    vm.prank(postman);
+    ledger.bindNotaryIdentity(otherHolder, keccak256('not in any snapshot'), otherSigner);
+
+    // The identity check passes - they hold a current document...
+    assertEq(stateKeeper.getActiveDocumentCount(otherHolder), 1, 'the document should be current');
+
+    // ...and the NOTARY check still refuses them.
+    bytes32 key = _propertyKey(keccak256('11 Nowhere Ave'));
+    bytes32 jurisdiction = keccak256('UA');
+    bytes memory sig = _sign(OTHER_PK, _mintMessage(key, jurisdiction, 0));
+
+    vm.expectRevert(TitleLedger.NotaryNotActive.selector);
+    ledger.mintTitle(key, jurisdiction, 0, REGISTRY_ID, otherSigner, notaryProof, sig, keccak256('h'));
+  }
+
   function test_initialize_cannotBeCalledTwice() public {
     vm.expectRevert();
-    ledger.initialize(address(registry), address(titleHolderVerifier), admin);
+    ledger.initialize(address(registry), address(titleHolderVerifier), address(stateKeeper), admin);
   }
 
   function test_upgradeToAndCall_revertsForNonOwner() public {
@@ -181,11 +279,11 @@ contract TitleLedgerTest is Test {
     ledger.upgradeToAndCall(address(newImpl), '');
   }
 
-  // ── bindNotaryAddress ───────────────────────────────────────────────────────────────────
+  // ── bindNotaryIdentity ──────────────────────────────────────────────────────────────────
 
-  function test_bindNotaryAddress_revertsForNonPostman() public {
+  function test_bindNotaryIdentity_revertsForNonPostman() public {
     vm.expectRevert(TitleLedger.OnlyRegistryPostman.selector);
-    ledger.bindNotaryAddress(notary, notaryDataHash);
+    ledger.bindNotaryIdentity(NOTARY_HOLDER_ROOT, notaryDataHash, notary);
   }
 
   // ── mintTitle ───────────────────────────────────────────────────────────────────────────

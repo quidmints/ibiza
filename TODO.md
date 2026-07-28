@@ -1916,6 +1916,45 @@ Mitigations to design in, not assume:
 **NOT YET BUILT.** Recorded now because it changes §2.15's stated approach and because the timelock
 is the kind of thing that is hard to add after a mechanism is depended upon.
 
+### 2.13l-DONE A notary is a REGISTERED IDENTITY, and therefore revocable
+
+Closes the structural half of §2.13l, informed by §2.15's correction that a notary is a regular user
+whose status comes from CRE attestation rather than from holding any protocol key. 267 forge tests.
+
+**THE DEFECT.** `address notary` plus `notaryDataHash[address]`, bound by the registry postman.
+`TitleLedger`'s own header already called this an OPEN GAP - "this address really is that notary"
+was asserted, not proven. Worse than unproven: **an address has no passport to expire, no document
+to invalidate and no status to lose, so a notary was the ONLY participant in this system who could
+not be revoked.**
+
+**NOW: keyed by `holderRoot`.** Two independent facts, deliberately kept apart because they fail
+independently:
+- `notaryDataHashOf[holderRoot]` - WHICH registry entry the identity claims, proven against the
+  CRE-anchored active snapshot. Notary-ness comes from the official register.
+- `notaryIdentityOf[signingKey]` - which key acts for that identity, so an action needs no fresh
+  zero-knowledge proof per signature.
+
+`_requireActiveNotary` now checks THREE things: the key is bound; the identity **still holds a
+current document**; and the registry entry is in the active snapshot. Losing notary status and
+losing identity status are different events, so collapsing them into one flag somebody must remember
+to clear would be the bug.
+
+**DELIBERATELY NOT KEYED ON THE POOL COMMITMENT**, which is this system's other identity handle and
+would have made the revocation check trivial. That value is a notary's PRIVATE key into the shielded
+pool; publishing it to gain revocability would link their public professional role to their private
+financial identity - buying one property by destroying the one the pool exists to provide.
+`holderRoot` is already public in registration events, so it costs nothing.
+
+**THE REMAINING GAP, narrowed and still stated.** Binding is still postman-gated: "this holderRoot
+really is that notary" is asserted. It is now much narrower - the subject is a real, registered,
+revocable identity rather than an anonymous keypair, and the registry entry itself is CRE-attested -
+but closing it fully needs the notary to prove control of `holderRoot` at bind time, which needs a
+circuit that does not exist yet.
+
+**Tests:** a notary whose document is revoked stops being able to act; binding refuses an identity
+with no current document; and a VALID identity whose registry entry is absent from the snapshot is a
+valid person but not a valid notary - the two checks failing separately, as designed.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

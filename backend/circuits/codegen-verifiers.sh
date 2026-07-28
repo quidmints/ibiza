@@ -146,9 +146,9 @@ TARGETS=(
   "withdraw_identity:${CONTRACTS_DIR}/pool/verifiers/WithdrawalHonkVerifier.sol:WithdrawalHonkVerifier:9"
   "title_holder:${CONTRACTS_DIR}/title/TitleHolderHonkVerifier.sol:TitleHolderHonkVerifier:2"
   "ragequit:${CONTRACTS_DIR}/pool/verifiers/RagequitHonkVerifier.sol:RagequitHonkVerifier:4"
-  # 8 public inputs: controller_x/y, holder_root, commitment, c1_x/y, sealed_secret,
-  # sealed_document. Miscounting here silently produces a verifier that rejects every proof.
-  "escrow_envelope:${CONTRACTS_DIR}/registry/verifiers/EscrowEnvelopeHonkVerifier.sol:EscrowEnvelopeHonkVerifier:8"
+  # 12 public inputs: controller_x/y, holder_root, commitment, dg1_hash, c1_x/y, sealed[5].
+  # Miscounting here silently produces a fixture the verifier rejects for the wrong reason.
+  "escrow_envelope:${CONTRACTS_DIR}/registry/verifiers/EscrowEnvelopeHonkVerifier.sol:EscrowEnvelopeHonkVerifier:12"
 )
 
 for target in "${TARGETS[@]}"; do

@@ -1188,6 +1188,52 @@ registrations to a person across passports; that needs the DG1 bytes re-hashed i
 them to the proof-bound `dg1Hash`, whose cost has NOT been measured. Sealing more fields is nearly
 free (one shared secret, ~8 opcodes per extra mask); re-hashing DG1 is the unknown.
 
+### 2.13j The FULL DG1 is sealed - measured, and two claims in §2.13i were wrong
+
+**Closes §2.13f's attribution requirement and §2.13i's one open item.** The envelope now carries the
+entire authenticated MRZ, not a caller-supplied placeholder field.
+
+**Why the whole MRZ and not a digest.** A person may hold several passports under different names,
+and ICAO 9303 defines no field linking two states' documents for one person, so the controller must
+perform that attribution itself - which it can only do from the ACTUAL MRZ (name, date of birth,
+nationality, document number). A hash lets it VERIFY a guess but never FORM one. So the MRZ rides
+inside the envelope: opaque on-chain, readable only by the controller, bound by `dg1_hash` to the
+same bytes registration already pinned.
+
+**MEASURED - it looked expensive and is not:**
+
+| | ACIR opcodes |
+|---|---|
+| sealing 4 fields, no binding | 25,146 |
+| + sha256 binding over 95 bytes | 25,542 (**+396**) |
+| escrow_envelope, single placeholder attribute | 37,384 |
+| escrow_envelope, full sealed MRZ | **38,874** (+1,490, +4%) |
+
+sha256 costs only 396 ACIR opcodes because it is a BLACKBOX gadget, not unrolled arithmetic (Brillig
+opcodes go 26 -> 611). Extra sealed fields are ~8 opcodes each, since ONE shared secret covers the
+whole payload. One-time and off the hot path.
+
+**TWO CLAIMS IN §2.13i WERE WRONG, both about the EIP-170 incident:**
+1. "It has 8 public inputs, more than any other circuit here" - `withdraw_identity` has NINE.
+2. "each public input costs runtime code", implying input count drove the overflow. MEASURED across
+   all four verifiers: TitleHolder (2 inputs) 24,491; Ragequit (4) 24,489; Withdrawal (9) 24,491;
+   EscrowEnvelope (12) 24,491. **Verifier size is essentially FLAT in public-input count.** The
+   25,503-byte overflow was caused ENTIRELY by the missing `optimizer_runs = 1` scoping. Going from
+   8 to 12 public inputs moved the size by ONE byte.
+
+**The digest-packing convention is copied deliberately, not cleaned up.** `register_identity_light`
+skips `digest[0]` and reads the remaining 31 bytes big-endian. The obvious `digest[0..31]` yields a
+DIFFERENT field, so `dg1_hash` would not equal the `dg1Hash` that
+`RegistrationSimple._verifyNoirZKProof` binds and that `HolderStateKeeper` now stores as the
+document anti-replay key (§2.13f). The escrow would bind the MRZ to a value nothing else agrees
+with, and no test outside the escrow circuit would catch it.
+
+**Test hardening:** the forge test now READS both the proof and a committed `escrow_envelope.public`
+fixture, and asserts the named constants MATCH the fixture rather than being the source of truth.
+Hand-transcribing twelve 77-digit field elements was the obvious place for this test to rot - a typo
+would have failed for a reason unrelated to the verifier. 5 tests: real proof verifies, fixture is
+the documented witness, all 12 inputs binding, sealed slots pairwise distinct, malformed rejected.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

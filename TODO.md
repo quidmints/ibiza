@@ -2244,6 +2244,70 @@ a handful of Poseidons. Roughly 35-40k ACIR opcodes - the same order as `escrow_
 
 **NOT BUILT.** Every component exists and is tested; this is composition, not new cryptography.
 
+### 2.17d THE 30% RATE, what "priced" means, and the KICKBACK ATTACK (user, 2026-07-29)
+
+**1. WOULD BUYING LOANS FIX THE ~30% RATE? MOSTLY NOT, AND WE MUST NOT CLAIM IT DOES.**
+
+An Iranian mortgage rate near 30% is overwhelmingly INFLATION, not intermediary margin. Nominal
+rates track a price level running at similar magnitude, so 30% nominal may be NEGATIVE in real terms.
+Distribution widens the funding base and can compress the SPREAD - the intermediary's cut, and the
+risk premium charged for opacity - but no capital structure deflates a currency.
+
+The three honest levers, and their costs:
+- **Compress the spread.** Real, but it is basis points against tens of percent. Do not present a
+  spread improvement as a rate improvement.
+- **Change the unit of account** to hard currency at 4.5-5%, per the spec's Model A. The nominal
+  number collapses - and the borrower now earns rial and owes dollars. A devaluation turns a
+  serviceable loan into a default machine. **This moves risk onto the least able party to bear it**,
+  and presenting it as a cheaper mortgage would be dishonest.
+- **CPI-indexed IRR**, also in the spec. The honest structure: the rate tracks the price level, so
+  the REAL rate is low and the borrower is not exposed to devaluation beyond their own income's.
+  The nominal number stays high and that is CORRECT, not a failure.
+
+**The claim we can defend: a lower REAL rate and access for people banks will not serve.** Not a
+lower nominal number.
+
+**2. WHAT "BOUNDED, COLLATERALISED, PRICED" MEANS - concretely.**
+- **Bounded**: the maximum loss from one accountable party's failure is a KNOWN NUMBER - their
+  first-loss capital - rather than open-ended.
+- **Collateralised**: that number is capital locked on-chain, not a promise to pay later.
+- **Priced**: the residual risk beyond it is charged for in the rate, so the pool is compensated
+  rather than surprised.
+
+If an originator posts 10% first-loss against their book, the pool's exposure to their misconduct
+starts only beyond 10%, and that 10% is auditable on-chain. That is the whole content of the phrase.
+
+**3. THE KICKBACK ATTACK, and it defeats stake by construction.**
+
+A notary bribed enough does not care about losing a stake. If a fraudulent title extracts 100 and the
+stake is 10, they take the bribe. **Any stake small enough to be postable is small enough to be
+outbid**, so slashing is not a defence against a bribed professional. This is the correct objection
+and it is why §2.16 concluded no crypto stake for notaries - not as an omission but as a conclusion.
+
+**I MUST BE PRECISE ABOUT WHO POSTS WHAT, because §2.17b blurred it:**
+- The **ORIGINATOR** posts first-loss capital. That works: an originator is a business with capital,
+  a book of repeat business, and losses that scale with their own portfolio.
+- The **NOTARY** posts NOTHING. Their bond is their LICENCE and their LIBERTY - a struck-off notary
+  loses their lifetime professional income, and fraud and bribery are crimes. That is worth orders
+  of magnitude more than any postable stake, and it does not capital-gate a professional role.
+
+**What actually defends against notary collusion:**
+- **DETECTION is independent of the protocol** - the owner sees the unauthorised entry in the STATE
+  cadastre (spec §2.2 Tier 1). A bribed notary cannot suppress that; it is the government's register,
+  not ours.
+- **ATTRIBUTION** via the guardian-opened envelope, naming them.
+- **CONSEQUENCE** is licence loss and prosecution, not slashing.
+- **SEPARATION OF ROLES**: the notary and the originator MUST be distinct parties, so fraud requires
+  collusion between two accountable actors rather than one. If a deployment lets them be the same
+  entity, that is a design error and should be prevented in the contract, not the documentation.
+
+**AND THE HONEST RESIDUAL: collusion between a notary and a borrower is not solved by cryptography.**
+No proof system establishes that an off-chain document describes a real building. Real markets do not
+solve this cryptographically either - they BUY TITLE INSURANCE against exactly this, and price it.
+That is what "priced" should point at for this risk class, and a deployment without either title
+insurance or an originator first-loss deep enough to stand in for it is under-capitalised regardless
+of how good the circuits are.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

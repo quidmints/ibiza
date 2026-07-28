@@ -65,8 +65,8 @@ requires an affirmative, rule-citing act; a stale root expires so revocation can
 the newest never expires so inaction cannot block anyone. Each is a property an auditor should try
 to break.
 
-**The pool and the treasury.** Deposit/withdraw accounting, nullifier handling, the change-note path
-and ragequit payouts; and on the capital side, reserve accounting and the redemption ladder.
+**The pool and treasury.** Deposit/withdraw accounting, nullifier handling, the change-note path and
+ragequit payouts; and on the capital side, reserve accounting and the redemption ladder.
 
 **Key management.** Seed derivation, enclave storage, the biometric gate — a weakness here loses
 funds regardless of the circuits. **The four generated verifiers**, against the circuits they claim
@@ -77,27 +77,30 @@ do what to whom", which is where this class of system usually fails.
 
 ### Milestone 2 — Deploy
 
-Both repositories to mainnet: the identity, pool and title contracts, and the treasury backing them.
-Deployment is not only contracts, and we will not pretend otherwise — **the wallet's device path is
-the gating item.** The identity SDK ships device-only binaries, so it cannot run on our development
-machines, and NFC passport reading is not implemented. A deployed contract nobody can reach is not
-deployed. This milestone completes NFC reading against real passports from several issuing states,
-verifies the enclave-backed key path on physical hardware, and confirms a phone-generated proof
-verifies on-chain. Passports vary in ways specifications do not capture, so this needs real
-documents, not test vectors.
+Both repositories to mainnet: identity, pool and title contracts, and the treasury behind them.
+Deployment is not only contracts — **the wallet's device path is the gating item.** The identity SDK
+ships device-only binaries so it cannot run on our development machines, and NFC passport reading is
+not implemented. A deployed contract nobody can reach is not deployed. This milestone completes NFC
+reading against real passports, verifies the enclave key path on physical hardware, and confirms a
+phone-generated proof verifies on-chain. Passports vary in ways specifications do not capture, so
+this needs real documents, not test vectors.
 
 ### Milestone 3 — Proving it works in practice
 
 A small consenting cohort, real passports, value starting near zero and rising only as it holds.
 Full round trip: scan, register, deposit, withdraw to a fresh address, and confirm an observer
-holding the whole chain cannot link the two. We measure proving time on mid-range devices, not
+holding the whole chain cannot link the two. Proving time is measured on mid-range devices, not
 flagships — the population that most needs this does not carry new hardware.
 
-What that requires, concretely: **devices and documents** from multiple issuing states, since MRZ
-layouts and chip behaviour differ; **a cohort** recruited through partners users already trust, with
-informed consent and a documented exit; **monitoring that does not itself surveil**, a real
-constraint on our own telemetry; and a **rollback plan** — any depositor can already exit
-unilaterally without permission, which is what makes a pilot ethically defensible.
+**This is field work, and it is the half no code replaces:** sourcing and vetting originators,
+engaging notaries, retaining legal counsel, and recruiting a cohort through partners those users
+already trust. It is relationship and legal work done in-country, and it is where most of this
+funding goes.
+
+Concretely it requires **devices and documents** from multiple issuing states, since MRZ layouts and
+chip behaviour differ; **informed consent** and a documented exit for every participant; **monitoring
+that does not itself surveil**, a real constraint on our own telemetry; and a **rollback plan** — any
+depositor can already exit unilaterally, which is what makes a pilot ethically defensible.
 
 ### Milestone 4 — Title and lending
 
@@ -199,6 +202,11 @@ configuration exercise plus legal review — not a second codebase. We designed 
 being asked to generalise beyond a single country, and it is the difference between a tool for one
 population and infrastructure for many.
 
+**Capital scales independently of any of this.** Funding capacity grows by adding reserves or
+liquidity, needing no protocol change and no permission, and the reserves are diversified so capacity
+is not gated on a single asset's depth. The constraint on lending volume is originator capacity and
+first-loss capital, not anything technical.
+
 **Operationally**, there is no server to scale. The chain and the user's device do the work.
 
 *(≈250 words)*
@@ -210,26 +218,30 @@ population and infrastructure for many.
 **What can be blocked, honestly.** Network access to the chain, app-store distribution, and the
 official registry portals the property layer reads. We do not claim otherwise.
 
-**What cannot.** The system has no server to seize and no operator to coerce into blocking a user.
-Registration is permissionless by construction: there is no approval step, so there is nothing an
-authority can instruct anyone to withhold. Exclusion is *fail-open* — an operator who is pressured
-into inaction blocks nobody, because the newest state stays valid indefinitely. This is deliberate
-and it is the property most systems get backwards: we made "do nothing" the safe default rather than
-the censoring one.
+**What cannot.** No server to seize, no operator to coerce. Registration is permissionless by
+construction — no approval step means nothing an authority can instruct anyone to withhold. And
+exclusion is *fail-open*: an operator pressured into inaction blocks nobody, because the newest state
+stays valid indefinitely. That is the property most systems get backwards; we made "do nothing" the
+safe default rather than the censoring one.
 
-Nobody can be retroactively removed. In the system we started from, an operator could publish a new
-membership set omitting someone and silently strip their ability to exit privately. We removed that:
-exclusion requires an affirmative act citing a stated reason, recorded permanently.
+Nobody can be retroactively removed. In the system we started from, an operator could publish a
+membership set omitting someone and silently strip their private exit. Exclusion now requires an
+affirmative act citing a stated reason, recorded permanently.
 
-**Mitigations for what can be blocked.** Chain access via any RPC endpoint, including
-user-supplied ones, over ordinary HTTPS that is expensive to distinguish from other traffic;
-distribution outside app stores by direct install, which Android permits; and — critically — an
-unconditional escape hatch: any depositor can always recover their funds without anyone's
-permission, so a blocked user is never a trapped one.
+**Mitigations for what can be blocked.** Chain access via any RPC endpoint, including user-supplied
+ones, over ordinary HTTPS expensive to distinguish from other traffic; distribution outside app
+stores by direct install, which Android permits; and — critically — an unconditional escape hatch:
+any depositor can always recover their funds without anyone's permission, so a blocked user is never
+a trapped one.
 
-**The residual risk we cannot engineer away** is coercion of the individual. A phone can be seized
-and a person compelled to unlock it. We reduce blast radius — biometric gating, no plaintext
-identity on-chain — but we do not pretend to solve it.
+**Blocking the registry portals degrades the system rather than stopping it.** Identity and the
+shielded pool read no government endpoint — only the passport chip in the user's hand and the chain.
+Just the title and lending layer consults the cadastre, so cutting that access costs property
+functions while leaving private identity and transfer intact. That layering is deliberate.
+
+**The residual we cannot engineer away** is coercion of the individual: a phone can be seized and a
+person compelled to unlock it. We reduce blast radius — biometric gating, no plaintext identity
+on-chain — but do not pretend to solve it.
 
 *(≈280 words)*
 
@@ -238,27 +250,33 @@ identity on-chain — but we do not pretend to solve it.
 ## 6. User security measures *(300 max)*
 
 **Nothing identifying is published.** On-chain values are commitments and opaque pseudonyms. Where a
-naive design would store a hash of something guessable — a property address, an identity — we
-treated that as a live vulnerability, because low-entropy inputs are brute-forceable from public
-records. Those are now keyed pseudonyms that resist a dictionary attack.
+naive design would store a hash of something guessable — a property address — we treated that as a
+live vulnerability, since low-entropy inputs are brute-forceable from public records. Those are now
+keyed pseudonyms resisting a dictionary attack.
 
-**One secret, held in hardware.** A single seed lives in the device secure enclave behind biometric
+**One secret, in hardware.** A single seed lives in the device secure enclave behind biometric
 authentication; every other key derives from it. Availability is checked explicitly and the wallet
-*fails closed* — it refuses to store the seed rather than silently falling back to weaker storage.
+*fails closed* — refusing to store the seed rather than silently falling back to weaker storage.
 
 **No note storage to lose or leak.** Spending secrets are derived, not stored, so a compromised
-backup discloses nothing extra and a lost device costs nothing beyond the seed.
+backup discloses nothing extra.
 
-**An unconditional exit.** Any depositor can always withdraw their own funds without permission from
-any operator. It costs them unlinkability, and that trade is theirs to make, not ours.
+**An unconditional exit.** Any depositor can withdraw their own funds without any operator's
+permission. It costs them unlinkability — a trade that is theirs to make, not ours.
 
 **Assumptions stated rather than hidden.** The identity check tells you someone holds a genuine
-passport — not that they are trustworthy. A person may hold several passports, which limits what
-identity-based exclusion can achieve, and we document that rather than implying completeness.
+passport — not that they are trustworthy. A person may hold several passports, limiting what
+identity-based exclusion achieves.
 
-**Verification over assertion.** Testing is adversarial: we check that a guard fails when removed,
-not merely that the suite is green. Several real defects were caught precisely this way, including
-one where a test had silently stopped testing anything.
+**A known limitation we disclose rather than discover later:** registering publishes a link between
+an identity and its pool handle, so *participation* is visible even though *activity* is not — a
+withdrawal never reveals which handle it belongs to. Anyone can see that a person joined; nobody can
+see what they did, or connect a deposit to a withdrawal. We are closing this by proving membership
+against a committed tree instead of publishing identifiers.
+
+**Verification over assertion.** Testing is adversarial: we check a guard fails when removed, not
+merely that the suite is green. Several real defects were caught this way, including a test that had
+silently stopped testing anything.
 
 **Audit before users.** No real value until independent review is complete and remediated.
 
@@ -290,8 +308,10 @@ maintain, and impossible to drift.
 **Reuse across subsystems.** The same pseudonym primitive serves identity revocation and property
 uniqueness. One mechanism audited once, used twice.
 
-**Grant funds go to audit, devices, and legal review** — the things that genuinely cannot be done
-without money.
+**Grant funds go to audit, field work, devices and legal review** — the things that genuinely cannot
+be done without money. Field work dominates after audit: sourcing originators and notaries, counsel
+per jurisdiction, and cohort recruitment are people-time in-country, not engineering. We spend
+nothing on marketing and issue no token.
 
 *(≈260 words)*
 

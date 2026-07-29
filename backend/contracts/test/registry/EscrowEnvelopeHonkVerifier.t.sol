@@ -34,7 +34,11 @@ import {INoirVerifier} from '../../contracts/interfaces/verifiers/INoirVerifier.
  *     for EVERY controller key, making the mask a public constant and the sealed payload readable
  *     by anyone - see pp/src/envelope.nr::test_zero_ephemeral_would_have_leaked_the_payload.
  *   - `sk_identity` reuses pp/src/identity_asp.nr's published vector.
- *   - The DG1 is a full 95-byte TD3 layout carrying a real MRZ, not zeros.
+ *   - The DG1 is a full 95-byte TD1 layout carrying a real MRZ, not zeros. TD1, NOT TD3: 95 bytes
+ *     is the ID-CARD layout (3 MRZ lines x 30 chars + a 5-byte header). A passport booklet is TD3,
+ *     2 x 44 chars, and its DG1 is 93 bytes - a different circuit entirely. See TODO.md sec. 2.18j;
+ *     this fixture carries a passport-style MRZ inside a TD1-sized buffer, which is fine as a test
+ *     vector because nothing here parses the MRZ, and misleading if read as a real document.
  *
  * EIP-170: 24,491 bytes with `optimizer_runs = 1` scoped to it in foundry.toml, leaving 85 bytes.
  * WITHOUT that scoping it compiled to 25,503 and was undeployable. Note the cause was the OPTIMIZER

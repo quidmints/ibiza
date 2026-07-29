@@ -2820,6 +2820,57 @@ SA byte layouts with the offsets `DG1_SHIFT`/`EC_SHIFT` expect), sign it, and bu
 containing that DSC key. Then the whole path is testable end-to-end with no real document. That is
 the next concrete piece of work, and it is a fixture-generation problem rather than a protocol one.
 
+### 2.18j THE LIVE PATH IS BUILT FOR ID CARDS, AND EVERY DOCUMENT WE WROTE SAYS PASSPORT
+
+Found while checking whether escrow's hardcoded `DG1_LEN = 95` can accept a real document. It can -
+just not the document we keep claiming.
+
+**THE TWO ICAO LAYOUTS ARE DIFFERENT LENGTHS AND NEED DIFFERENT CIRCUITS:**
+- **TD3**, the passport booklet: 2 MRZ lines x 44 chars -> DG1 of **93** bytes.
+- **TD1**, the ID card: 3 MRZ lines x 30 chars -> DG1 of **95** bytes.
+
+**WHERE EACH CIRCUIT SITS**, measured across the repo:
+
+| circuit | DG1 | layout |
+|---|---|---|
+| `query_identity` | 93 | TD3 |
+| `query_identity_td1` | 95 | TD1 |
+| `register_identity` (full, permissionless) | 93 | TD3 |
+| `register_identity_light_td1` (live path) | 95 | TD1 |
+| `escrow_envelope` | 95 | TD1 |
+
+**SO THE LIVE PATH IS TD1 END TO END, AND THE PERMISSIONLESS PATH IS TD3 END TO END. They cannot
+interoperate at all**: a document registered through `register_identity` (93) can never be escrowed,
+because escrow computes `dgCommit` over 95 bytes and the SMT inclusion would fail. That is a second,
+independent reason sec. 2.18g's build needs a length decision before any contract is written.
+
+**AND THE WALLET CONFIRMS IT.** `Rarime.ts:404` selects `register_light_<hashLength>` from the
+UPSTREAM rarime SDK, not from our bundled assets - and every URL in that SDK's registry is under
+`storage.googleapis.com/rarimo-store/passport-zk-circuits-noir/**id_cards**/`:
+`query_identity_td1.json`, `register_lite_256.json`, and so on. The wallet is wired to the ID-CARD
+circuit family. Our own TD3 `query_identity` is built and bundled by nothing.
+
+**THE CODE IS COHERENT; THE PROSE IS NOT.** Everything says "passport": FUNDING-APPLICATION.md ("the
+passport chip", "real passports", "passports from several issuing states"), the contract NatSpec,
+this repo's own headers - while the shipped path reads national ID cards.
+`HolderStateKeeper` already has both `DOC_PASSPORT` and `DOC_NATIONAL_ID`, so the DESIGN always
+contemplated both; only the circuit wiring picked one.
+
+**THIS IS A MILESTONE-3 SURPRISE CAUGHT EARLY.** "Test with real passports from several issuing
+states" would have failed at the first scan, and the cause - a 93-byte DG1 meeting a 95-byte circuit
+- names nothing about passports at all.
+
+**IT IS ALSO NOT AN ARCHITECTURE PROBLEM.** Supporting booklets means pointing at the passport
+circuit family upstream publishes alongside `id_cards/`, plus a 93-byte `escrow_envelope` variant.
+Config and one circuit variant, not a redesign. **The decision to take first is which document the
+product is actually for** - and for Iran that is worth asking properly, since the smart national ID
+(*kart-e melli-ye hushmand*) is far more widely held than a passport, and a passport is exactly the
+document a person under pressure is most likely to be denied or have confiscated.
+
+**ALSO CORRECTED:** `EscrowEnvelopeHonkVerifier.t.sol` described its fixture as "a full 95-byte TD3
+layout". 95 is TD1. The fixture is a passport-style MRZ inside a TD1-sized buffer - harmless as a
+test vector, since nothing parses the MRZ, and actively misleading read as a real document.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

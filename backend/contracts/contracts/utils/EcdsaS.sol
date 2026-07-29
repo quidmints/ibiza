@@ -70,6 +70,25 @@ library EcdsaS {
         return out_;
     }
 
+    /**
+     * @notice The same rule for a curve whose order fits a `uint256`.
+     *
+     * SHARED RATHER THAN COPIED. `CECDSA256Signer` and `PECDSASHA1Authenticator` both need it, and
+     * the root-validity rule earlier today (TODO.md sec. 2.18o) is the argument against writing it
+     * twice: it was duplicated three ways, so fixing one copy left two live.
+     *
+     * `s_ < n_` is not redundant - a signature made under a DIFFERENT curve can carry an `s` larger
+     * than this order, and `n_ - s_` would underflow. Such a signature is invalid here anyway, so it
+     * is returned untouched for the verifier to reject.
+     */
+    function normalizeScalar(uint256 s_, uint256 n_) internal pure returns (uint256) {
+        if (s_ > n_ / 2 && s_ < n_) {
+            return n_ - s_;
+        }
+
+        return s_;
+    }
+
     /// @dev Big-endian `a < b` for equal-length arrays.
     function _lt(bytes memory a_, bytes memory b_) private pure returns (bool) {
         for (uint256 i = 0; i < a_.length; ++i) {

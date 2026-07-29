@@ -3432,11 +3432,21 @@ outright - and a second genuine LOW-s signature from the same key proves the nor
 the already-canonical half alone. Verified by removal: without the rewrite the genuine high-s
 signature is rejected again.
 
-**STILL OPEN: `CECDSA384Signer` AND `CECDSA512Signer` HAVE THE IDENTICAL DEFECT.** `ECDSA384.sol`
-and `ECDSA512.sol` carry the same restriction (checked). They are unfixed because their curve orders
-are `bytes` rather than `uint256`, so the same rewrite needs a big-endian bignum subtraction rather
-than one line. Same fix, more plumbing - and until it lands, brainpoolP384r1 and brainpoolP512r1
-CSCAs are refused at the same ~50% rate.
+**A SECOND SITE, FOUND BY CONTINUING: `PECDSASHA1Authenticator`.** ECDSA Active Authentication over
+brainpoolP256r1 handed the signature straight to the same library, so **roughly half of all genuine
+AA responses were refused** too. Fixed and tested with real high-s and low-s vectors from one key.
+
+**AND THE RULE IS NOW SHARED, not copied.** `EcdsaS.normalizeScalar` holds the `uint256` form once;
+`CECDSA256Signer` and `PECDSASHA1Authenticator` both call it, and the `bytes` form serves 384/512.
+That is the sec. 2.18q lesson applied before it could bite: I had already written the scalar rule
+twice today. **Verified the same way - ONE edit to the shared rule now fails both call sites**,
+where before it would have fixed one and left the other silently broken.
+
+**RESOLVED: `CECDSA384Signer` AND `CECDSA512Signer` HAD THE IDENTICAL DEFECT.** `ECDSA384.sol`
+and `ECDSA512.sol` carry the same restriction (checked). Fixed via `EcdsaS.normalize`, the
+big-endian bignum form - `2s` compared against `n` rather than materialising `n/2`, since every
+curve order here is odd and a rounding mistake shifts the boundary by one in a way no
+random-signature test would reliably catch. Both tested with genuine high-s and low-s vectors.
 
 ### 2.18w FORGERY INVENTORY - every circuit, every prover-chosen anchor
 
@@ -3545,6 +3555,40 @@ Verified by removal: deleting both checks re-accepts the two bad frames and noth
 digest is recovered from the same decryption it is checked against, so exploiting the missing frame
 needs a fixpoint an attacker cannot simply construct. What it removes is an unenforced invariant in
 security code - the kind that becomes exploitable when someone later changes something else.
+
+### 2.18z OPEN DECISION, NOT A TASK: WHICH DOCUMENT IS THE PRODUCT FOR?
+
+Recorded as a decision because it is one, and it is not mine to guess. Everything else on the
+enrolment path is either done or blocked on data; this is blocked on a choice.
+
+**THE FACT:** the live path is TD1 end to end (`register_identity_light_td1` and `escrow_envelope`
+at `DG1_LEN = 95`) and the permissionless path is TD3 end to end (`register_identity` at 93).
+**They cannot interoperate** - a document registered through one can never be escrowed by the other,
+because `dgCommit` is computed over a different number of bytes and the SMT inclusion fails
+(sec. 2.18j, sec. 2.18r).
+
+**THE TWO OPTIONS, and they are not symmetric:**
+
+1. **A 95-byte `register_identity` variant (TD1 / ID CARD).** Matches what the wallet reads today -
+   the vendored rarime SDK's circuit registry points exclusively at `.../id_cards/`. Smaller change.
+   For Iran specifically the smart national ID (*kart-e melli-ye hushmand*) is far more widely held
+   than a passport, **and a passport is precisely the document a person under pressure is most
+   likely to be refused, have confiscated, or be unable to renew.**
+2. **A 93-byte `escrow_envelope` variant (TD3 / PASSPORT BOOKLET).** Matches every word of prose we
+   have written - the application, the NatSpec, the milestones all say "passport" - and is what
+   crosses borders and what a foreign court recognises.
+
+**WHY IT CANNOT BE DEFERRED INDEFINITELY:** `registerDocumentViaIcao` is built, guarded and tested,
+and today it registers documents that CANNOT REACH THE POOL. That is stated at the function, but a
+correct-looking entry point that silently goes nowhere is exactly the shape of thing that gets used.
+
+**NOTE THE OPTIONS ARE NOT EXCLUSIVE** - both variants can exist, at the cost of a second verifier
+contract (~24.5 kB) and a second fixture pipeline. If the answer is "both", say so, because it
+changes the sequencing rather than just the target.
+
+**MY RECOMMENDATION, for what it is worth:** option 1. It matches the code that already runs, it
+matches the wallet, and it serves the document more people actually hold - and the prose is cheaper
+to correct than the circuits.
 
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 

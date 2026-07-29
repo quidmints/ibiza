@@ -3,6 +3,8 @@ pragma solidity ^0.8.21;
 
 import {SHA1} from "../../utils/SHA1.sol";
 
+import {EcdsaS} from "../../utils/EcdsaS.sol";
+
 import {ECDSA256, EC256} from "@solarity/solidity-lib/libs/crypto/ECDSA256.sol";
 
 contract PECDSASHA1Authenticator {
@@ -32,7 +34,15 @@ contract PECDSASHA1Authenticator {
     ) external view returns (bool) {
         uint256 message_ = uint256(uint160(challenge.sha1()));
 
-        bytes memory signature_ = abi.encodePacked(r, s);
+        // LOW-s, for the same reason as CECDSA256Signer (TODO.md sec. 2.18v): the library accepts
+        // only the lower half, passports do not normalise, and nothing here keys on signature bytes
+        // - so without this roughly half of all genuine ECDSA active-authentication responses are
+        // refused. Rewriting is sound: (r, s) and (r, n - s) are the two representations of one
+        // signature.
+        bytes memory signature_ = abi.encodePacked(
+            r,
+            EcdsaS.normalizeScalar(s, _brainpoolP256r1CurveParams.n)
+        );
         bytes memory pubKey_ = abi.encodePacked(x, y);
 
         return _brainpoolP256r1CurveParams.verify(bytes32(message_), signature_, pubKey_);

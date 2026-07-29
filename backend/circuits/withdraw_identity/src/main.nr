@@ -64,6 +64,14 @@ fn main(
     // which enforces MAX_ROOT_AGE - REQUIRED here, because this tree carries revocations and an
     // unbounded-age root would let a revoked identity prove the clean state forever.
     identity_root: pub Field,
+    // UNCONSTRAINED IN-CIRCUIT ON PURPOSE - the BINDING is what it is for, not a computation.
+    // `context` carries keccak256(abi.encode(withdrawal, SCOPE)) % SNARK_SCALAR_FIELD: the
+    // recipient, the fee, the processooor, the pool. Nothing else in this circuit names who gets
+    // paid, so without it a valid withdrawal proof could be lifted out of the mempool and
+    // re-submitted against a different recipient. There is nothing to CHECK here - the value's
+    // meaning lives entirely in data only the contract holds, so PrivacyPool.validWithdrawal
+    // recomputes it and compares. What the circuit owes is that the proof COMMITS to whatever was
+    // passed, which `pub` gives in the transcript whether or not a gate reads it.
     context: pub Field,
     // The existing note being spent.
     value: Field,
@@ -83,6 +91,12 @@ fn main(
     // Inclusion witness for the identity registry, straight from its own getProof().
     identity_siblings: [Field; IDENTITY_TREE_DEPTH],
 ) {
+    // Says "no gate reads this, and that is intended" in code rather than in a comment. Without it
+    // the compiler warns `unused variable context` on every build, and a warning that is expected
+    // forever is a warning nobody reads - so the day a public input goes unused BY ACCIDENT, the
+    // diagnostic that would have caught it is already background noise. Costs no constraints.
+    let _ = context;
+
     // 1. Existing note: reconstruct its commitment + nullifier hash, and prove membership in the
     // PP state tree at `state_root`. `state_tree_depth` is a public signal (contract-selectable,
     // capped at MAX_TREE_DEPTH=32 on-chain, see State.sol) taken directly as the actual depth - a

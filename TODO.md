@@ -3875,12 +3875,43 @@ reason - the same trap as a bare `expectRevert()`, and I have already written on
 assert makes the wrong-secret test stop failing, deleting the nullifier assert makes the false-hash
 test stop failing. Each targets its own guard.
 
-**AND THE COMPILER FOUND SOMETHING:** `context` is an UNUSED public input - unconstrained in-circuit,
-a pure pass-through. That is safe, but only because `PrivacyPool.sol:49` independently recomputes
-`keccak256(abi.encode(withdrawal, SCOPE)) % SNARK_SCALAR_FIELD` and reverts `ContextMismatch`.
-Checked rather than trusted to the comment. A public input the circuit ignores is only as good as
-the contract that re-derives it, and if that check were ever dropped the binding between a proof and
-its recipient would vanish silently.
+**AND THE COMPILER FOUND SOMETHING** - which turned out to be a naming problem, not a dead input.
+*"we cant have unused things. what couldve been the use of it"* (user, 2026-07-29). Fair question, and
+the answer is that `context` is the single most load-bearing signal in the circuit's public I/O.
+
+**WHAT IT IS FOR.** `context` carries `keccak256(abi.encode(withdrawal, SCOPE)) % SNARK_SCALAR_FIELD`
+- the recipient, the fee, the processooor, the pool. **Nothing else in this circuit names who gets
+paid.** `new_commitment`, `withdrawn_value`, the roots, the nullifier hash - a proof of all of those
+is equally a valid proof for ANY recipient. So without `context` a withdrawal proof sitting in the
+mempool could be copied by anyone, re-submitted with themselves as `processooor`, and the money would
+follow. `context` is what makes a proof about one withdrawal instead of about an amount.
+
+**WHY NOTHING CONSTRAINS IT, AND WHY THAT IS RIGHT.** There is nothing to check in-circuit. The
+value's meaning lives entirely in data only the contract holds - the `Withdrawal` struct and `SCOPE`
+are not circuit inputs and could not be without hashing keccak inside a Poseidon circuit for no gain.
+What the circuit owes is not a computation but a COMMITMENT: that the proof is bound to whatever
+value was passed. `pub` delivers exactly that, in the transcript, gate or no gate. Then
+`PrivacyPool.validWithdrawal` recomputes the hash from the real withdrawal data and reverts
+`ContextMismatch` on disagreement. The division of labour is deliberate: the circuit binds, the
+contract interprets.
+
+**PROVEN, NOT ARGUED.** sec. 2.12 inferred the binding from `publicInputsSize == 8`, which is evidence
+about the verification key rather than about behaviour. `WithdrawalHonkVerifier.t.sol` now tampers
+this signal on TWO real proofs - `test_RejectsTamperedContext`, `test_RejectsTamperedWalletContext` -
+and both are rejected by the verifier itself, before any contract-level comparison. Had Noir optimised
+an ungated public input away, those tests would pass tampering through and fail.
+
+**WHAT CHANGED.** `let _ = context;` in the body, plus the reasoning at the parameter. No constraints
+(24,812 opcodes before and after; both real proofs still verify, so the ACIR is byte-identical). The
+point is the warning: `unused variable context` fired on every build, and a warning that is expected
+forever is a warning nobody reads - so the day a public input goes unused BY ACCIDENT, the diagnostic
+that would have caught it is already background noise. Silencing it deliberately keeps the channel
+clean.
+
+**THE RESIDUAL RISK IS THE CONTRACT'S, AND IT IS REAL.** The binding is worthless if the recomputation
+is ever removed: the proof would still commit to `context`, but nobody would check that the committed
+value describes THIS withdrawal. That is a `PrivacyPool` invariant, not a circuit one, and it is why
+the check's existence is pinned here rather than left to a comment.
 
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 

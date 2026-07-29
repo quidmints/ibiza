@@ -10,3 +10,4 @@ authors = [""]
 # `asp_root`/`asp_tree_depth` slots MEAN changes (identity tree instead of label tree).
 [dependencies]
 pp = { path = "../pp" }
+poseidon = { tag = "v0.2.0", git = "https://github.com/noir-lang/poseidon" }

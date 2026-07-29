@@ -3843,6 +3843,45 @@ replayed under a different identity; and `PNOAADispatcher` accepts ONLY an empty
 its entire security, since returning true regardless would let a document that supports AA skip it
 by claiming not to.
 
+### 2.18ah THE WITHDRAWAL CIRCUIT HAD ZERO TESTS - the one that spends money
+
+Surveyed circuit coverage looking for work with no external requirement. `pp` has 84 tests and
+`noir_dl_lib` 63, but **`withdraw_identity` had NONE**, and neither did `title_holder`,
+`query_identity` or `register_identity_light_td1`.
+
+**THE PIECES WERE TESTED; THE COMPOSITION WAS NOT.** `commitment_hasher`, `lean_imt_inclusion`,
+`smt_verifier_full` and `secret_commitment` all have their own vectors in `pp`. What nothing
+exercised was `main` - and a wiring error there (two `Field` arguments swapped, a check reading the
+wrong variable) is invisible to every unit test in `pp` and still produces a circuit that proves and
+verifies perfectly.
+
+**NO EXTERNAL DATA WAS EVER NEEDED, which is the uncomfortable part.** A single-leaf LeanIMT has
+root == leaf by its carry-up rule, and a single-leaf SMT root is `Poseidon(key, value, 1)` - so a
+complete valid witness is constructible in-circuit with no fixture, phone or document. **The absence
+of tests was a choice, not a constraint**, and it sat behind the most security-critical circuit in
+the repo for the whole project.
+
+**FIVE TESTS:** a consistent withdrawal proves; a WRONG revocation secret cannot withdraw (the
+identity gate - the registry key is derived from the secret precisely so a prover cannot name a
+clean identity, all of which are public in the tree); withdrawing more than the note holds fails
+(the 128-bit range check exists so the subtraction cannot wrap the field and mint a balance); a
+false nullifier hash cannot prove (single-spend); and withdrawing the ENTIRE note is ALLOWED, which
+is asserted because a range check written slightly wrong would reject exactly that case and leave a
+user unable to empty a note.
+
+**THE NEGATIVES ARE VERIFIED, NOT ASSUMED.** `#[test(should_fail)]` passes if the test fails for ANY
+reason - the same trap as a bare `expectRevert()`, and I have already written one vacuous test today
+(sec. 2.18ag). So each negative was checked by REMOVING the guard it targets: deleting the identity
+assert makes the wrong-secret test stop failing, deleting the nullifier assert makes the false-hash
+test stop failing. Each targets its own guard.
+
+**AND THE COMPILER FOUND SOMETHING:** `context` is an UNUSED public input - unconstrained in-circuit,
+a pure pass-through. That is safe, but only because `PrivacyPool.sol:49` independently recomputes
+`keccak256(abi.encode(withdrawal, SCOPE)) % SNARK_SCALAR_FIELD` and reverts `ContextMismatch`.
+Checked rather than trusted to the comment. A public input the circuit ignores is only as good as
+the contract that re-derives it, and if that check were ever dropped the binding between a proof and
+its recipient would vanish silently.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

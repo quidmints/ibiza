@@ -130,3 +130,120 @@ fn main(
     );
     assert(cleared == 1, "identity is unregistered or revoked, or the inclusion witness is invalid");
 }
+
+// =================================================================================================
+// THE FIRST TESTS THIS CIRCUIT HAS EVER HAD (TODO.md sec. 2.18ah).
+//
+// It had ZERO. `pp` covers the pieces - `commitment_hasher`, `lean_imt_inclusion`,
+// `smt_verifier_full`, `secret_commitment` all have their own vectors - but nothing exercised the
+// COMPOSITION, and the composition is where the money is. A wiring error here (arguments swapped
+// between two Field parameters, a check reading the wrong variable) is invisible to every unit test
+// in `pp` and would still produce a circuit that proves and verifies.
+//
+// NO EXTERNAL DATA IS NEEDED, which is why the absence of tests was a choice rather than a
+// constraint. A single-leaf LeanIMT has root == leaf by its carry-up rule, and a single-leaf SMT
+// root is just `Poseidon(key, value, 1)` - so a complete, valid witness is constructible in-circuit
+// with no fixture, no phone and no document.
+// =================================================================================================
+mod wiring_tests {
+    use super::{IDENTITY_TREE_DEPTH, main, STATUS_CLEAN};
+    use pp::commitment::commitment_hasher;
+    use pp::envelope::secret_commitment;
+    use poseidon::poseidon::PoseidonHasher;
+    use std::hash::Hasher;
+
+    global VALUE: Field = 100;
+    global LABEL: Field = 20;
+    global NULLIFIER: Field = 30;
+    global SECRET: Field = 40;
+    global OUT_NULLIFIER: Field = 31;
+    global OUT_SECRET: Field = 41;
+    global REVOCATION_SECRET: Field = 987654321;
+    global WITHDRAWN: Field = 30;
+    global CONTEXT: Field = 42424242;
+
+    /// The identity registry's root for a tree holding exactly `commitment -> STATUS_CLEAN`.
+    /// Mirrors `smt_hash1`, which pp keeps private: Poseidon(key, value, 1).
+    fn single_leaf_identity_root(commitment: Field) -> Field {
+        let mut hasher = PoseidonHasher::default();
+        hasher.write(commitment);
+        hasher.write(STATUS_CLEAN);
+        hasher.write(1);
+        hasher.finish()
+    }
+
+    /// Drive `main` with a fully consistent witness, allowing individual fields to be perturbed.
+    fn run(
+        value: Field,
+        withdrawn: Field,
+        revocation_secret: Field,
+        nullifier_hash_override: Field,
+        use_override: bool,
+    ) {
+        let existing = commitment_hasher(value, LABEL, NULLIFIER, SECRET);
+        let out = commitment_hasher(value - withdrawn, LABEL, OUT_NULLIFIER, OUT_SECRET);
+        let identity_root = single_leaf_identity_root(secret_commitment(REVOCATION_SECRET));
+
+        let nullifier_hash = if use_override {
+            nullifier_hash_override
+        } else {
+            existing.nullifier_hash
+        };
+
+        main(
+            out.commitment,
+            nullifier_hash,
+            withdrawn,
+            existing.commitment, // single-leaf LeanIMT: root == leaf
+            0,                   // depth 0
+            identity_root,
+            CONTEXT,
+            value,
+            LABEL,
+            NULLIFIER,
+            SECRET,
+            0,
+            [0; 32],
+            OUT_NULLIFIER,
+            OUT_SECRET,
+            revocation_secret,
+            [0; IDENTITY_TREE_DEPTH],
+        );
+    }
+
+    /// The baseline. If this ever fails, every negative test below is meaningless.
+    #[test]
+    fn test_a_consistent_withdrawal_proves() {
+        run(VALUE, WITHDRAWN, REVOCATION_SECRET, 0, false);
+    }
+
+    /// THE IDENTITY GATE. Knowing the escrowed secret is the whole of it - the registry key is
+    /// DERIVED from the secret, never supplied, so a prover who does not know it cannot name a
+    /// clean identity and withdraw as them. Every commitment in that tree is public.
+    #[test(should_fail)]
+    fn test_a_wrong_revocation_secret_cannot_withdraw() {
+        run(VALUE, WITHDRAWN, REVOCATION_SECRET + 1, 0, false);
+    }
+
+    /// VALUE CONSERVATION. Withdrawing more than the note holds must not prove: the subtraction is
+    /// range-checked to 128 bits precisely so it cannot wrap the field and mint a balance.
+    #[test(should_fail)]
+    fn test_cannot_withdraw_more_than_the_note_holds() {
+        run(VALUE, VALUE + 1, REVOCATION_SECRET, 0, false);
+    }
+
+    /// The nullifier hash is what makes a note single-spend. If a false one proved, the same note
+    /// could be spent repeatedly under different nullifier hashes.
+    #[test(should_fail)]
+    fn test_a_false_nullifier_hash_cannot_prove() {
+        run(VALUE, WITHDRAWN, REVOCATION_SECRET, 12345, true);
+    }
+
+    /// Withdrawing the whole note is legitimate - the change note is simply worth zero. Asserting
+    /// it because a range check written slightly wrong would reject exactly this case, and a user
+    /// who could never empty a note would be quietly stuck.
+    #[test]
+    fn test_withdrawing_the_entire_note_is_allowed() {
+        run(VALUE, VALUE, REVOCATION_SECRET, 0, false);
+    }
+}

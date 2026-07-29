@@ -2968,6 +2968,11 @@ assert it reverts on the root rather than on the proof. **The test that carries 
 now; only the happy path waits.** That is the opposite of the usual arrangement, and it is the right
 way round - the guard is what protects users, and it is the half we can prove.
 
+**THE STANDING CAVEAT FOR THIS TODO:** everything sec. 2.18w's table guarantees is downstream of
+someone publishing the right list. `changeICAOMasterTreeRoot` is `onlyOwner`, so **that is a trust
+assumption and not a proof**, and it stays one until the root is anchored through CRE consensus.
+Worth re-reading before anyone treats the forgery inventory as closed.
+
 **WHAT STILL NEEDS DOING, AND IT IS NOT A FIXTURE:** obtain the ICAO master list (the PKD publishes
 CSCA certificates; several states publish their own), build the depth-80 tree with the same leaf
 convention `extract_pk_hash` uses, and get that root on-chain. Anchoring it through CRE consensus
@@ -3111,6 +3116,12 @@ past the end of the array and returned it successfully. Explicit bound added, wi
 - **`docType`** - fixed to `DOC_PASSPORT`; `register_identity` IS the passport circuit.
 - **`notAfter`** - fixed to 0. Nothing in the proof attests an expiry, so accepting one would record
   a caller's claim about themselves as though it were established.
+
+**CARRIED FORWARD ON THIS TODO:** the happy path cannot be exercised until a real document exists,
+so **the `icao_root` check is proven only by its negative test** - and the CSCA master root it
+ultimately rests on is OWNER-SET (sec. 2.18h), which is a trust assumption, not a proof. Neither is
+a reason to delay the rest; both are reasons not to read the guard table in sec. 2.18w as an
+all-clear.
 
 **THE ROOT IS CHECKED BEFORE THE PROOF**, which is what makes any of this testable now: the negative
 tests hand it arbitrary bytes and assert it reverts on the root, never reaching the verifier. Order
@@ -3475,6 +3486,36 @@ checks all looked present and were all resting on one function that said yes.
 - The **CSCA master root itself is owner-set** (sec. 2.18h). Every guarantee above is downstream of
   someone publishing the right list; that is a trust assumption, not a proof, and the application
   now says so.
+
+### 2.18x THE DSC-ADMISSION PATH IS NOW COVERED END TO END - and what is NOT on it
+
+Closing thread A (sec. 2.18l's reinstated task). Everything `registerCertificate` touches now has
+tests, and all three signers had defects (sec. 2.18s, 2.18u, 2.18v).
+
+**COVERED:** `CRSAPSSSigner`, `CRSASigner` (all three hash branches), `CECDSA256/384/512Signer`
+(both s-halves per curve), `X509` parsing, and now `CRSADispatcher` - the wrapper that reads a DSC's
+key and expiry out of CSCA-signed attributes and derives the `certificateKey` that becomes a
+`certificatesSmt` leaf. The dispatcher tests specifically pin that sec. 2.18m's bounds hold THROUGH
+the wrapper, not only when X509 is called directly, since the offsets are caller-supplied and the
+CSCA signature never covers them.
+
+**MY OWN TEST REPEATED THE BUG IT WAS WRITTEN FOR.** The first expiry-bounds test used offset 18 on
+a 30-byte array - which is exactly IN bounds - and it "passed" because the ASCII conversion
+underflowed on a zero byte. The same accident sec. 2.18m found in the library, reproduced in the
+test written to guard against it, and only caught because the revert REASON was wrong rather than
+the outcome. **A test asserting `expectRevert()` with no reason string would have sailed through.**
+
+**NOT ON OUR PATH, checked rather than assumed:** `PRSASHAAuthenticator` and
+`PECDSASHA1Authenticator` implement Active Authentication (ISO 9796-2 message recovery), reached
+only through `Registration2`'s `passportDispatchers`. **Our `register_identity` variant has
+`DG15_LEN = 0` - no AA at all** - so they are unreachable from the enrolment path being built.
+Recorded so nobody re-audits them under the impression they gate something.
+
+For completeness on the one that looked most similar: `PRSASHAAuthenticator` compares a digest
+recovered FROM the decryption against a hash over the recovered message, so the sec. 2.18u forgery
+does not transfer - an attacker would need the recovered message and its own hash to agree, a
+fixpoint rather than a free choice. It does omit the ISO 9796-2 header/trailer validation, which
+would be worth fixing if it ever became reachable.
 
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 

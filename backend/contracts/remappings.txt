@@ -10,4 +10,3 @@ poseidon/=lib/poseidon-solidity/
 lean-imt/=lib/lean-imt/
 interfaces/=contracts/pool/interfaces/
 solady/=lib/solady/
-SPV/=lib/SPV/evm/src/

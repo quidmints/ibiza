@@ -3275,6 +3275,17 @@ denying enrolment to everyone holding a document signed under those keys. On a p
 argument is that nobody can be refused, an arbitrary 50% refusal rate is close to the worst
 available failure.
 
+**IT WAS FAIL-CLOSED, AND THAT IS WORTH BEING PRECISE ABOUT** *(user: "coin flip doesnt sound
+secure")*. The coin flip governed AVAILABILITY, not soundness. `sigBits_` sets how many leading bits
+of DB must be zero; enumerating all 256 possible last bytes, the buggy value is **never larger** than
+the correct 7 - it is either exactly right (129 of 256) or SMALLER, meaning a STRICTER mask
+demanding more zero bits. So the defect could only ever **reject a valid signature**, never accept an
+invalid one.
+
+That makes it a censorship failure rather than a forgery risk - which on this project is still
+severe, since arbitrary 50% refusal is precisely the outcome the design exists to prevent, but it
+means no forged certificate could have entered `certificatesSmt` through it.
+
 **IT WOULD NOT HAVE BEEN CAUGHT LATER EITHER.** A single test vector has a 50% chance of picking a
 working key, and the failure looks like "invalid signature" - indistinguishable from a genuinely bad
 certificate. The committed vector is deliberately one that ends 0x41.
@@ -3288,6 +3299,41 @@ passed, which is the signature of "the implementation is wrong", not "the vector
 broken verifier usually fails OPEN, accepting everything. Confirming the vector against two
 independent implementations before touching the contract is what turned a puzzling red test into a
 located bug, and is why the expectation was never adjusted to match the code.
+
+### 2.18t UNUSED-LIB AUDIT: one remapping was an open door to breaking a stated invariant
+
+*(user: "make sure there are no unused libs")* Scanned every import in `contracts/` against actual
+use, and every remapping against the tree.
+
+**THREE GENUINELY DEAD IMPORTS, REMOVED:** `ECDSA` in `Entrypoint.sol`, `IVerifier` in
+`IState.sol` (it survived only inside a comment), `ERC1967Proxy` in `Registration2Mock.sol`.
+
+**ONE THAT LOOKS DEAD AND MUST NOT BE TOUCHED.** `contracts/mock/Helper.sol` declares NO contract -
+it is nothing but three imports, and every symbol is unused in the only sense a linter can see. Its
+job is to pull `EvidenceDB`, `EvidenceRegistry` and `ERC1967Proxy` into the compilation unit so
+Forge emits their ARTIFACTS, which tests and deploy scripts then deploy by name. Delete them and the
+artifacts vanish, surfacing far away as "artifact not found". Now says so in the file, because it is
+precisely the thing someone tidying imports would remove.
+
+**`solady` LOOKED UNUSED AND IS LOAD-BEARING.** Zero references from `contracts/` or `test/` - but
+`lib/solidity-lib` imports it in four places including `RSASSAPSS.sol`, whose `LibBit.clz` is the
+line sec. 2.18s just fixed. A grep over our own tree would have justified deleting the library the
+certificate chain depends on. Exactly what the standing rule about never asserting absence from a
+grep exists for.
+
+**AND THE ONE THAT MATTERED: `SPV/=lib/SPV/evm/src/`, REMOVED.** It resolved nothing - ibiza imports
+from it nowhere - and that is not an accident of tidiness: the stated invariant is **"SPV coupling is
+one-way; SPV's repo must contain zero references to PP; ibiza declares local interface stubs
+instead"**, and ibiza does exactly that (`contracts/pool/spv/ISpvVenue.sol` declares `ISpvVogue`
+locally; `SpvTreasuryAdapter` holds the Vogue address as an immutable).
+
+So the remapping was a live path to `import ... from "SPV/..."` - one line away from turning a
+documented one-way coupling into a compile-time dependency on a sibling repo, silently. **Removing
+it makes the invariant enforced by the build rather than by discipline**, which is the same move as
+sec. 2.18q: stop relying on everyone remembering.
+
+The `lib/SPV` submodule itself is left alone - that is a separate decision, and it has uses (running
+SPV's own suite) that a remapping does not.
 
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 

@@ -3,7 +3,6 @@ pragma solidity 0.8.28;
 
 import {IEntrypoint} from 'interfaces/IEntrypoint.sol';
 
-import {IVerifier} from 'interfaces/IVerifier.sol';
 import {INoirVerifier} from '../../interfaces/verifiers/INoirVerifier.sol';
 
 /**

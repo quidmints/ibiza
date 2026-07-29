@@ -31,7 +31,6 @@ import {ProofLib} from './lib/ProofLib.sol';
 import {IEntrypoint} from 'interfaces/IEntrypoint.sol';
 import {IPrivacyPool} from 'interfaces/IPrivacyPool.sol';
 import {IEvidenceRegistry} from '@rarimo/evidence-registry/interfaces/IEvidenceRegistry.sol';
-import {ECDSA} from '@oz/utils/cryptography/ECDSA.sol';
 
 /**
  * @title Entrypoint

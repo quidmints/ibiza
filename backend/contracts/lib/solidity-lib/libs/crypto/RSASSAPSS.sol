@@ -123,6 +123,14 @@ library RSASSAPSS {
             // keys, every signature independently confirmed valid by openssl and by a pure-Python
             // RSASSA-PSS implementation: last byte 0x41 -> rejected; 0x85, 0x99, 0xeb, 0xff ->
             // accepted. See TODO.md sec. 2.18s and test/certificate/CRSAPSSSigner.t.sol.
+            //
+            // THE BUG WAS FAIL-CLOSED, which is the one piece of good news and worth stating so
+            // nobody re-derives it in a panic. `sigBits_` masks how many leading bits of DB must be
+            // zero; enumerating all 256 possible last bytes, the wrong value is NEVER larger than
+            // the correct 7 - it is either exactly right (129 of 256) or SMALLER, i.e. a stricter
+            // mask demanding more zero bits. So the defect could only ever reject a valid
+            // signature; it could not accept an invalid one. An availability failure, not a
+            // soundness one.
             uint256 leadingBits_ = LibBit.clz(uint256(uint8(n_[0])) << 248);
             uint256 sigBits_ = (sigBytes_ * 8 - leadingBits_ - 1) & 7;
 

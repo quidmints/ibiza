@@ -3144,6 +3144,45 @@ Fixed with an explicit existence check (`supersededAt_ != 0 && ...`), and pinned
 it, the latest root staying valid however old, and a superseded root expiring on schedule. Verified
 by removal.
 
+**THEN GREPPED THE PATTERN AND FOUND TWO MORE COPIES** *(user: "keep looking for latent defects
+along adjacent lines")*. The identical expression, in two contracts that each guard proofs and
+neither of which had a single test:
+
+- **`L1RegistrationState.isRootValid`** - the L1 state `RegistrationSMT` extends.
+- **`RegistrationSMTReplicator.isRootValid`** - the **L2 MIRROR**, and the worst of the three. This
+  contract exists to run on a rollup, and **a chain counting from a low timestamp is its ordinary
+  deployment target, not an exotic case.** Every proof consumed against a replicated root on a young
+  L2 would have been guarded by a check that returned true for anything.
+
+Both fixed the same way, and pinned by `test/state/RootValidityCopies.t.sol` - ten tests, the
+un-warped case for each, plus latest-never-expires and superseded-does. Verified by removing both
+existence checks: exactly the two un-warped tests fail, which is the signature of the defect.
+
+**THREE COPIES IS THE FINDING, NOT THE BUG.** The expression was duplicated rather than shared, so
+fixing one left two live. `IPoseidonSMT` is the interface all three answer to; the validity RULE
+lives in none of them.
+
+### 2.18p ADJACENT-LINE SWEEP: what the pattern is, and where it did NOT appear
+
+The three defects in sec. 2.18m-2.18o share one shape: **a guard that holds because of a fact about
+the world rather than because the code says so.**
+
+- X509 key read - safe only while offsets happened to be small.
+- X509 expiration read - "safe because Solidity bounds-checks", and on inspection the real stopper
+  was an unrelated `byte - 48` underflow that would NOT have fired on ASCII digits.
+- `isRootValid` x3 - safe only while `block.timestamp > 1 hour`.
+
+**CHECKED ALONG THE SAME LINES AND FOUND THESE ALREADY SOUND**, recorded so the sweep is not
+repeated:
+- `Bytes2Poseidon.hash512/hash1024` - explicit `assert(length >= n)`. Deliberate, not incidental.
+- `StateKeeper.removeCertificate` - permissionless, but requires the certificate be genuinely
+  expired, so the open `revokeCertificate` is not a griefing vector.
+- `X509._checkPrefix` - reads `offset - prefixLength`, which underflows and reverts on 0.8.x for a
+  too-small offset. Bounded by the language in a way that cannot be rewritten away, unlike the
+  indexed read two functions down.
+- `PoseidonSMT.getRootTimestamp` (added in sec. 2.18e) - returns 0 for an unknown root, and its only
+  consumer compares `<= lastDocumentInvalidationAt`, so an unknown root fails CLOSED.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

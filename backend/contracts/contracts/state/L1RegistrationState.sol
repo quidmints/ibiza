@@ -61,12 +61,28 @@ contract L1RegistrationState is Initializable, AMultiOwnable, UUPSUpgradeable {
         return latestRoot == root_;
     }
 
+    /**
+     * @notice Checks if the root is valid.
+     *
+     * A ROOT THIS CONTRACT HAS NEVER HELD MUST BE INVALID, and saying so needs the existence check
+     * below. An unrecorded root maps to 0, so the age test alone reads as
+     * `0 + ROOT_VALIDITY > block.timestamp` - TRUE for every invented root while `block.timestamp`
+     * is under ROOT_VALIDITY. Live chains are far past that, which is the only reason this was ever
+     * safe: a fact about the world, not something the code states. Third copy of the same defect
+     * (TODO.md sec. 2.18o); every one of them guards a proof.
+     */
     function isRootValid(bytes32 root_) external view virtual returns (bool) {
         if (root_ == bytes32(0)) {
             return false;
         }
 
-        return isRootLatest(root_) || roots[root_] + ROOT_VALIDITY > block.timestamp;
+        if (isRootLatest(root_)) {
+            return true;
+        }
+
+        uint256 transitionedAt_ = roots[root_];
+
+        return transitionedAt_ != 0 && transitionedAt_ + ROOT_VALIDITY > block.timestamp;
     }
 
     // solhint-disable-next-line no-empty-blocks

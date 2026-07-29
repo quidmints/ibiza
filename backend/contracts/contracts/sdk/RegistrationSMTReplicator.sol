@@ -136,7 +136,17 @@ contract RegistrationSMTReplicator is IPoseidonSMT, AMultiOwnable, UUPSUpgradeab
             return false;
         }
 
-        return isRootLatest(root_) || _roots[root_] + ROOT_VALIDITY > block.timestamp;
+        if (isRootLatest(root_)) {
+            return true;
+        }
+
+        // See L1RegistrationState.isRootValid - an unrecorded root maps to 0, so without this the
+        // age test accepts ANY invented root until an hour past the epoch. It matters more here
+        // than anywhere: this contract is the L2 mirror, so a chain whose timestamps start low is
+        // exactly the deployment target (TODO.md sec. 2.18o).
+        uint256 transitionedAt_ = _roots[root_];
+
+        return transitionedAt_ != 0 && transitionedAt_ + ROOT_VALIDITY > block.timestamp;
     }
 
     /*

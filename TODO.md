@@ -2568,6 +2568,55 @@ presented as such or not at all.
 gives lending a full milestone. The honest version leads with identity and title, and treats lending
 as explicitly conditional. Correcting it.
 
+### 2.21 I OVER-CORRECTED. Two of §2.20's breaks do not hold (user, 2026-07-29)
+
+*"what do you mean by conditional, not promised?"* - fair, because "conditional" was hedging rather
+than analysis. Re-examining §2.20's six breaks, two of them are wrong.
+
+**BREAK 3 WAS A CATEGORY ERROR.** I called the state-visible encumbrance a privacy failure. **A lien
+is SUPPOSED to be public.** Public notice is what makes it enforceable against third parties - a
+secret lien binds nobody and is worthless as security. Hiding it would destroy its legal function,
+not protect anyone.
+
+So the privacy claim for lending was never "nobody knows there is a mortgage". It is:
+- the FUNDERS are private (QUI holders are not disclosed),
+- the borrower's OTHER financial activity is private (the pool),
+- the property-to-titleId mapping is private from the public (`propertyKey`),
+- and the lien is public in the cadastre, AS LIENS MUST BE.
+
+That is coherent and narrower than "private mortgages" implies - which is a labelling problem, not a
+design one.
+
+**BREAK 2 IS SOLVABLE AND WE ALREADY HAVE THE SOLUTION.** "A pool cannot hold a lien, so a legal
+entity must" - yes, and **that entity is a special-purpose vehicle**. It is what the sibling
+repository is named after. A nominee holding security on behalf of note-holders is standard finance,
+not an unsolved problem. It remains a real single point of failure and should be stated as one, but
+"unsolved" was wrong.
+
+**BREAK 1 STANDS AND IS THE REAL CONSTRAINT.** Valuation still needs an independent, competent,
+accountable party, and the borrower cannot be it. Tractable via attested appraisers (same CRE pattern
+as notaries) or public auction comparables - real work, not a blocker.
+
+**BREAKS 4, 5, 6 STAND.** FX risk has no natural holder; "trustless" is inaccurate; sanctions
+exposure is existential and non-technical.
+
+**THE HONEST POSITION IS BETWEEN MY TWO ANSWERS.** Lending is harder than §2.17 said and less
+impossible than §2.20 said. Oscillating between them was worse than either. Concretely: valuation and
+nominee are ENGINEERING AND LEGAL WORK; FX and sanctions are BUSINESS RISKS that no design resolves.
+
+### 2.21a "OTHERWISE WE JUST ENABLE SPECIALISED VOTING?" - no, and the real answer is stronger
+
+If title never carries a loan, what is it for? Not merely property-weighted voting.
+
+**IT IS AN INDEPENDENT EVIDENTIARY RECORD OF OWNERSHIP THAT THE STATE CANNOT RETROACTIVELY ALTER.**
+Our record derives FROM the cadastre - notary attestation plus Tier 2 verification - so it is a
+notarised snapshot of what the official register said at a moment in time, held somewhere the issuer
+cannot revise. Where property confiscation and register manipulation against disfavoured groups are
+real, that is not a lesser use case than lending; it may be the more important one, and it needs no
+valuation, no nominee, no FX and no counterparty.
+
+Property-weighted voting is then a downstream application of the same proof, not the point of it.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

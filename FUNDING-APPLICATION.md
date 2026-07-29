@@ -4,49 +4,61 @@
 > re-checked after editing. Claims are deliberately conservative — what is built is described as
 > built, what is not is described as not.
 
+**Source code** (both repositories ship with this application):
+- Identity, privacy pool and title layer — <https://github.com/quidmints/ibiza>
+- Treasury and reserve protocol — <https://github.com/quidmints/SPV>
+
+**Prior deployment of the identity base, in Iran:** Rarime's Freedom Tool — the passport
+zero-knowledge stack this work forks — was used by Iranian dissidents (IranUnchained, TCT e.V.) to
+run anonymous protest votes against the 2024 presidential election, verifying eligibility from
+biometric passports scanned locally, with nothing transmitted to a server.
+<https://alexablockchain.com/iranian-voting-app-to-protest-presidential-election/>
+
 ---
 
 ## 1. Short description of the proposed project *(300 max)*
 
-We have built infrastructure that lets people prove who they are, and what they own, without
-disclosing either publicly. The code ships with this application; the funding is to prove it works
-in practice.
+We have built infrastructure letting people prove who they are, and what they own, without
+disclosing either publicly. The code ships with this application; the funding proves it works in
+practice.
 
-The work joins two mature open-source systems. Privacy Pools (0xbow) is a shielded pool: deposit and
-later withdraw unlinkably, while proving your funds came from a screened set. Rarime provides
-passport-based identity — a phone reads an ICAO passport chip and proves the document is genuine,
-revealing nothing about its holder.
+It joins two open-source systems. Privacy Pools (0xbow) is a shielded pool: deposit and later
+withdraw unlinkably, proving funds came from a screened set. Rarime provides passport identity — a
+phone reads an ICAO chip and proves the document genuine, revealing nothing about its holder.
 
 Each has a gap. Privacy Pools screens *money*, by chain-analysis heuristics that taint funds by
-association. Rarime proves *personhood* but has no financial layer. We merged them, so a withdrawal
-proves the honest property — that the withdrawer is a real, admitted person — not
-guilt-by-association about where their money has been.
+association; Rarime proves *personhood* but has no financial layer. We merged them, so a withdrawal
+proves the honest property — the withdrawer is a real, admitted person — not guilt-by-association
+about where their money has been.
 
 On that base we built what the merge exposed as missing: an identity registry where exclusion is
-*fail-open* (an operator who does nothing cannot block anyone), where nobody can be retroactively
-removed, and where a person's status is proved in a single zero-knowledge inclusion proof. We then
-extended it to real property — a title ledger where ownership is provable but the property is not
-publicly identifiable, and where the same parcel cannot be titled or mortgaged twice.
+*fail-open*, so an operator who does nothing blocks nobody; where no one can be retroactively
+removed; and where status is proved in one zero-knowledge inclusion proof. We extended it to
+property — ownership provable, the property not publicly identifiable, the same parcel never titled
+twice.
 
-The third component supplies the money: a duration-matched dollar pool with diversified reserves,
-underwriting mortgages against those titles. Payment, default and discharge are contract logic, not
-an institution's discretion — so access to credit does not depend on a bank's willingness to serve
-you.
+Private identity, private title, private transfer: that is the deliverable. None needs a
+counterparty, a valuation, or court enforcement — which is why all three work today.
 
-The users are people who must transact, borrow against property, or prove identity under governments
-treating financial surveillance as an instrument of control. The cryptography is
-jurisdiction-agnostic; only registry endpoints and enforcement are local.
+A fourth — lending against those titles from a duration-matched dollar pool — is conditional, not
+promised. It needs an independent valuation, an entity able to hold a lien, and an encumbrance
+registered where the state can see it. Cryptography removes none of those, and we do not claim it
+does.
 
-*(≈298 words)*
+Users are people who must transact, hold property, or prove identity under governments treating
+financial surveillance as control. The cryptography is jurisdiction-agnostic; only registry
+endpoints and enforcement are local.
+
+*(≈299 words)*
 
 ---
 
 ## 2. Implementation: approach, activities, and milestones *(1000 max)*
 
-**The code is written and shipping. This funding is to prove it works in practice.** It is built and
-tested — 269 contract tests, 84 circuit tests, and real zero-knowledge proofs verified on-chain
-through generated verifiers, not mocks — but it has not been audited, never met a real passport, and
-holds no real value. Those three gaps are what the milestones close, in that order.
+**The code is written and shipping; this funding proves it works in practice.** It is built and
+tested — 269 contract tests, 84 circuit tests, real zero-knowledge proofs verified on-chain through
+generated verifiers, not mocks — but unaudited, never having met a real passport, holding no real
+value. Those three gaps are what the milestones close, in order.
 
 **What ships:** four Noir/UltraHonk circuits (withdrawal, ragequit, escrow, registration); the
 identity registry, privacy pool, entrypoint and title ledger; the dollar pool that funds against
@@ -65,47 +77,46 @@ requires an affirmative, rule-citing act; a stale root expires so revocation can
 the newest never expires so inaction cannot block anyone. Each is a property an auditor should try
 to break.
 
-**The pool and treasury.** Deposit/withdraw accounting, nullifier handling, the change-note path and
-ragequit payouts; and on the capital side, reserve accounting and the redemption ladder.
+**The pool and treasury.** Deposit/withdraw accounting, nullifier handling, the change-note path,
+ragequit payouts, reserve accounting and the redemption ladder.
 
 **Key management.** Seed derivation, enclave storage, the biometric gate — a weakness here loses
-funds regardless of the circuits. **The four generated verifiers**, against the circuits they claim
-to verify.
+funds regardless of the circuits. **The generated verifiers**, against the circuits they claim to
+verify.
 
-We will also review the trust model itself — not "is the code correct" but "who can do what to
-whom", where this class of system usually fails.
+We will also review the trust model — not "is the code correct" but "who can do what to whom",
+where this class of system usually fails.
 
 ### Milestone 2 — Deploy
 
 Both repositories to mainnet: identity, pool and title contracts, and the treasury behind them.
 Deployment is not only contracts — **the wallet's device path is the gating item.** The identity SDK
-ships device-only binaries so it cannot run on our development machines, and NFC passport reading is
-not implemented. A deployed contract nobody can reach is not deployed. This milestone completes NFC
-reading against real passports, verifies the enclave key path on physical hardware, and confirms a
+ships device-only binaries so it cannot run on our machines, and NFC passport reading is not
+implemented. A deployed contract nobody can reach is not deployed. This milestone completes NFC
+reading against real passports, verifies the enclave key path on hardware, and confirms a
 phone-generated proof verifies on-chain. Passports vary in ways specifications do not capture, so
 this needs real documents, not test vectors.
 
 ### Milestone 3 — Proving it works in practice
 
 A small consenting cohort, real passports, value starting near zero and rising only as it holds.
-Full round trip: scan, register, deposit, withdraw to a fresh address, and confirm an observer
-holding the whole chain cannot link the two. Proving time is measured on mid-range devices, not
-flagships — the population that most needs this does not carry new hardware.
+Full round trip: scan, register, deposit, withdraw to a fresh address, and confirm an observer with
+the whole chain cannot link the two. Proving time is measured on mid-range devices — the population
+that most needs this does not carry flagships.
 
-**This is field work, and it is the half no code replaces:** sourcing and vetting originators,
-engaging notaries, retaining legal counsel, and recruiting a cohort through partners those users
-already trust. It is relationship and legal work done in-country, and it is where most of this
-funding goes.
+**This is field work, the half no code replaces:** engaging notaries, retaining counsel, recruiting a
+cohort through partners those users already trust. Relationship and legal work done in-country, and
+where most of this funding goes.
 
-Concretely it requires **devices and documents** from multiple issuing states, since MRZ layouts and
-chip behaviour differ; **informed consent** and a documented exit for every participant; **monitoring
-that does not itself surveil**, a real constraint on our own telemetry; and a **rollback plan** — any
-depositor can already exit unilaterally, which is what makes a pilot ethically defensible.
+It requires **devices and documents** from multiple issuing states, since MRZ layouts and chip
+behaviour differ; **informed consent** and a documented exit per participant; **monitoring that does
+not itself surveil**; and a **rollback plan** — any depositor can already exit unilaterally, which is
+what makes a pilot ethically defensible.
 
 ### Milestone 4 — Title and lending
 
 The title ledger exists; the registry bridge does not. Iran's cadastre (*Sabt-e Asnad va Amlak*,
-سازمان ثبت) already exposes tiered access we build on rather than replace:
+سازمان ثبت) exposes tiered access we build on rather than replace:
 
 - **Tier 1, the owner** — *Sabt-e Man* (my.ssaa.ir): every parcel and encumbrance under their
   national ID (*Kārt-e Melli*, کد ملی).
@@ -114,35 +125,43 @@ The title ledger exists; the registry bridge does not. Iran's cadastre (*Sabt-e 
 - **Tier 3, licensed notaries** (*Sardaftar*, سردفتر) — ssar.ir: query encumbrances (*Bāzdāsht*,
   بازداشت), register mortgages, execute binding transfers.
 
-**That division decides the design.** Anyone can verify a deed, so no lender need trust a notary's
-word about a property. What only a notary can do is *make a lien legally exist* — a mortgage
-registered by anyone else is void. So we prove notary licensing on-chain by indexing the official
-register through a decentralised oracle network where every node must return byte-identical data:
-the narrow claim that the party executing the registration was entitled to. Deed truth comes from
-Tier 2, independently. Fraud detection then needs no accuser — a notary either registered the lien
-or did not, and an oracle re-query catches a missing encumbrance from state data, identifying nobody.
+**That division decides the design.** Anyone can verify a deed, so nobody need trust a notary's word
+about a property. What only a notary can do is *make a lien legally exist* — one registered by anyone
+else is void. So we prove notary licensing on-chain by indexing the official register through a
+decentralised oracle network where every node returns byte-identical data: the narrow claim that
+whoever executed the registration was entitled to. Deed truth comes from Tier 2, independently. Fraud
+detection then needs no accuser — an oracle re-query catches a missing encumbrance from state data,
+identifying nobody.
 
 **Notaries can be targeted for serving a system like this**, so their participation stays private: a
 notary proves in zero knowledge that they are one of the licensed set without revealing which, and
 their attestation carries an encrypted identity a quorum of legal guardians can open **only** on a
 proven discrepancy.
 
-**We distribute, we do not originate.** Loans are written by locally licensed institutions — proven
-real through their financial regulator's public register, the same oracle pattern, a separate source
-— who verify the deed, appraise, underwrite and service. They post first-loss capital, slashed
-automatically on a title defect. No party vouches for another: three independent state registers,
-each attested separately. Our dollar pool then funds the loan, its redemption schedule a maturity
-ladder, because a mortgage is long-duration and funding one from capital withdrawable on demand is
-the mismatch that breaks lenders.
+**Lending is a separate question and we treat it as one.** Everything above stands alone and is what
+we ask to be funded to prove. Lending against those titles is specified but carries three
+dependencies cryptography does not remove, and we would rather name them than meet them in front of
+users.
 
-Foreclosure interfaces with existing institutions — *Ejra-ye Ahkam* (اجرای احکام) via adliran.ir,
-*Mozāyedeh* (مزایده) auctions via setadiran.ir — and at origination the borrower executes an
-irrevocable assignment (*Vekālat-nāmeh-ye Belā-'Azl*, وکالت‌نامه بلاعزل) held in escrow, a form the
-courts already recognise. Legal counsel per jurisdiction is budgeted; where that instrument proves
-unenforceable, or no originator will partner, we ship identity and title without lending rather than
-pretend otherwise.
+*Valuation.* Someone independent must value the property. The borrower supplies the input and gains
+by inflating it, so their equity is not self-verifying protection. This is the binding constraint;
+the tractable form is attesting a licensed appraiser's registration as we attest notaries, or reading
+public auction comparables.
 
-*(≈1000 words)*
+*Standing.* A pool cannot hold a lien — a legal entity must, on its behalf, and that entity is a
+single point of failure with no cryptographic mitigation.
+
+*Visibility.* A mortgage requires an encumbrance registered in the cadastre, so the state knows the
+property, owner and lien. We can hide who funded a loan, not that a person mortgaged a property, and
+will not present it as private.
+
+Foreclosure would use existing institutions — *Ejra-ye Ahkam* (اجرای احکام) via adliran.ir,
+*Mozāyedeh* (مزایده) via setadiran.ir — with an irrevocable assignment
+(*Vekālat-nāmeh-ye Belā-'Azl*, وکالت‌نامه بلاعزل) executed at origination, a form courts recognise.
+**If those dependencies do not resolve we ship identity and title without lending.** They are the
+product; lending is the hypothesis.
+
+*(1000 words)*
 
 ---
 
@@ -152,31 +171,30 @@ pretend otherwise.
 enclaves. Identity follows ICAO 9303, so the trust root is the issuing state's signature, not
 anything we control.
 
-**Capacity.** The system is built and tested, which is the strongest evidence we can build it. Along
-the way we found and fixed subtle defects — a proof binding to an unconstrained field, stale roots
-that would have let revocation be evaded, a commitment scheme that hid the property while permitting
-the same parcel to be titled twice. That record of finding our own errors matters more than a claim
-of correctness.
+**Capacity.** The system is built and tested, the strongest evidence we can build it. We found and
+fixed subtle defects along the way — a proof binding to an unconstrained field, stale roots letting
+revocation be evaded, a commitment hiding the property while permitting the same parcel to be titled
+twice. Finding our own errors matters more than claiming correctness. **The identity base is
+field-proven in this exact jurisdiction:** the passport stack we fork ran anonymous Iranian protest
+voting (link above), so passport scanning by users at risk is demonstrated, not hypothetical.
 
-**Dependencies.** The proving toolchain and passport standard, both stable and open; the
-jurisdiction's registry portals, outside our control; and, for lending only, a licensed originator
-willing to partner.
+**Dependencies.** The proving toolchain and passport standard, both stable and open; and the
+jurisdiction's registry portals, outside our control.
 
-**Risks and mitigation.** *No originator partners with us* — the likeliest reason lending never
-ships, and a business problem rather than a technical one; mitigated by scoping identity and title to
+**Risks and mitigation.** *Lending's dependencies do not resolve* — independent valuation, an entity
+able to hold a lien, and a state-visible encumbrance; mitigated by scoping identity and title to
 stand alone, since provable private ownership is useful without anyone lending against it. *Portal
 changes break the scrapers* — versioned workflows with a timelock, so an update is visible before it
 takes effect. *Registry access withdrawn* — local integration sits behind an interface, so a
-jurisdiction is configuration, not a fork. *Proving too slow* — measured on mid-range devices in the
-pilot; the withdrawal circuit is already 43% smaller. *A soundness bug* — why audit is first. *Key
-loss* — every key derives from one enclave-held seed, and notes are re-derivable by scanning.
+jurisdiction is configuration, not a fork. *Proving too slow* — measured on mid-range devices; the
+withdrawal circuit is already 43% smaller. *A soundness bug* — why audit is first. *Key loss* — every
+key derives from one enclave-held seed, and notes are re-derivable by scanning.
 
-**One bound we state rather than hide.** All three registers are the state's own: strong against
-private fraud — a bribed notary, a fake originator, a forged deed — and worth nothing against a state
-fabricating credentials. We protect privacy *from* the state, not the protocol's integrity
-*against* it.
+**One bound we state rather than hide.** The registers are the state's own: strong against private
+fraud — a bribed notary, a forged deed — and worth nothing against a state fabricating credentials.
+We protect privacy *from* the state, not the protocol's integrity *against* it.
 
-*(≈298 words)*
+*(≈299 words)*
 
 ---
 
@@ -280,7 +298,7 @@ silently stopped testing anything.
 
 **Audit before users.** No real value until independent review is complete and remediated.
 
-*(≈298 words)*
+*(≈299 words)*
 
 ---
 

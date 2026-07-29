@@ -2462,6 +2462,48 @@ ONE-TIME registration path, never the withdrawal hot path. That is the right pla
 `registrationSmt.isRootValid` instead of `holderOfDocumentHash`, three escrow fixtures and the
 verifier regenerated, tests updated.
 
+### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
+
+*"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated
+plainly it contradicts itself:
+
+- If an originator HAS capital to post first-loss, **they do not need our pool** - they could lend it
+  directly. The premise of this project is that capital is scarce and sanctioned.
+- If they DO NOT have capital, they cannot post first-loss, and the accountability mechanism I built
+  the whole structure on does not exist.
+- And bearing first-loss for an origination fee is a bad trade for them regardless. We were asking
+  someone to take most of the risk for a fraction of the return.
+
+I imported RMBS structure because the problem LOOKED like "the pool has no counterparty with
+knowledge", without asking whether a mortgage already contains its own answer. It does.
+
+**THE BORROWER IS THE ACCOUNTABLE PARTY, AND ALWAYS WAS.** A mortgage is over-collateralised BY
+CONSTRUCTION. At 70% LTV the borrower holds 30% equity - **that IS the first-loss position**, posted
+in the asset itself rather than in someone else's balance sheet. They know the property because they
+own it. They are legally bound because they executed the irrevocable assignment
+(*Vekālat-nāmeh-ye Belā-'Azl*) at origination. Nothing needs to be invented.
+
+**WHAT ACTUALLY REMAINS, and it is much smaller:**
+- **Title verification** - Tier 2 *Tasdiq-e Asalat*, which ANYONE can perform and a CRE workflow can
+  attest. No originator required.
+- **Lien creation** - Tier 3, the one thing only a notary can do. Already designed.
+- **Servicing** - payments are on-chain and the schedule is contract logic; this is largely automated
+  rather than a role.
+- **Foreclosure** - the named vendors, already in the spec.
+- **APPRAISAL - the genuinely missing role.** Someone must value the property, and the protocol
+  cannot. Options, in order of preference: CRE-attest a licensed appraiser's registration exactly as
+  for notaries; use auction comparables from *setadiran.ir*, which is public data an oracle can read;
+  or set LTV conservatively enough that appraisal error is absorbed by the borrower's equity.
+
+**THIS DELETES THE RISK I FLAGGED AS MOST LIKELY TO KILL LENDING.** §2.17e called "no originator will
+partner with us" the single most likely reason the lending layer never ships. That risk is now GONE,
+because the model no longer requires one. What replaces it is a smaller and more tractable problem:
+attesting an appraisal.
+
+**FUNDING-APPLICATION.md MUST BE CORRECTED** - it currently presents the distributor/originator model
+in Milestone 4 and names originator sourcing as a budgeted field-work activity and a headline risk.
+Both are now wrong.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

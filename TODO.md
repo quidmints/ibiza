@@ -2421,6 +2421,47 @@ what this system claims. It defends the user's PRIVACY from the state. It does n
 protocol's INTEGRITY from the state, and no amount of cryptography over state-issued credentials
 would.
 
+### 2.18 ELIMINATING THE PARTICIPATION LEAK - verified design, every piece already exists
+
+*"try to eliminate leaks. this needs to be as trustless as possible"* (user, 2026-07-29).
+
+**THE LEAK.** `IdentityRegistry.register` publishes `holder_root`, `commitment` AND `dg1_hash` as
+public inputs, so calldata links every user's IDENTITY to their POOL HANDLE. Activity stays private -
+a withdrawal never discloses the commitment, it is a private SMT key - but PARTICIPATION is public
+for everyone. It also makes `holderOfDocumentHash(dg1_hash)` a second path to the same link. This is
+the largest privacy defect in our own code and it affects every user, not just notaries.
+
+**THE FIX: prove the document binding by INCLUSION, publish no identifier.** The identifiers exist
+only so the contract can check `holderOfDocumentHash(dg1Hash) == holderRoot` - the scarcity link
+(§2.13n trap 5). Prove that inside the circuit instead and nothing needs publishing.
+
+**EVERY PIECE ALREADY EXISTS - checked, not assumed:**
+1. **The committed tree is already there.** `HolderStateKeeper._bindDocument` writes
+   `Poseidon(documentKey, holderRoot) -> Poseidon(dgCommit, seq, timestamp)` into
+   `StateKeeper.registrationSmt`. We do not need to build or populate anything.
+2. **Hashers are compatible.** `PoseidonSMT` uses `PoseidonUnit2L`/`PoseidonUnit3L` - the exact pair
+   `SmtCompat.t.sol` already proved byte-identical to the Noir gadget.
+3. **Root policy already correct.** `PoseidonSMT.isRootValid` = latest OR within `ROOT_VALIDITY`
+   (1 hour), the same always-valid-latest shape as the identity registry. And for an INCLUSION tree
+   old roots are SAFE anyway (fewer members), so this is strictly more than needed.
+4. **Soundness comes from `dgCommit`, which IS proof-bound.** `documentKey` is NOT constrained by any
+   proof (§2.13f), so proving inclusion on the INDEX alone would be weak. But the leaf VALUE contains
+   `dgCommit = extract_dg1_commitment(dg1, sk_identity)` - derived from the holder's OWN secret. An
+   attacker cannot produce a valid `dgCommit` for someone else's leaf without their `sk_identity`, so
+   inclusion plus a re-derived `dgCommit` is sound even though the index is not.
+
+**NEW PUBLIC INPUTS:** `controller_x/y`, `commitment`, `registration_root`, `c1_x/y`, `sealed[5]`.
+**GONE:** `holder_root`, `dg1_hash`. `registration_root` is shared by EVERY user, so it identifies
+nobody.
+
+**MEASURED: 28,302 ACIR opcodes** for the private binding (identity derivation + `dgCommit` +
+depth-32 inclusion). The escrow circuit goes roughly 38,874 -> ~52-55k, about +38%, and it is the
+ONE-TIME registration path, never the withdrawal hot path. That is the right place to spend it.
+
+**NOT YET BUILT.** Requires: escrow circuit rewrite, `IdentityRegistry.register` checking
+`registrationSmt.isRootValid` instead of `holderOfDocumentHash`, three escrow fixtures and the
+verifier regenerated, tests updated.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

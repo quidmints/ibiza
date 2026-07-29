@@ -139,7 +139,7 @@ contract WithdrawEndToEndTest is EscrowFixtureBase {
   }
 
   /// escrow_envelope's public-input layout. `holder_root` (2) and `dg1_hash` (4) are GONE since
-  /// TODO.md sec. 2.18 - both were per-person identifiers published in registration calldata.
+  /// sec. 2.18 - both were per-person identifiers published in registration calldata.
   uint256 internal constant ESCROW_PUBLIC_INPUT_COUNT = 11;
   uint256 internal constant ESCROW_PUB_COMMITMENT = 2;
 
@@ -163,7 +163,7 @@ contract WithdrawEndToEndTest is EscrowFixtureBase {
   /// in registration order or content shows up as a STALE FIXTURE rather than as an unexplained
   /// proof rejection. Cross-checked against the live registry in test_WalletMirrorsMatchTheChain.
   ///
-  /// MOVED WITH THE COMMITMENT DERIVATION (TODO.md sec. 2.18a): the tree is keyed on
+  /// MOVED WITH THE COMMITMENT DERIVATION (sec. 2.18a): the tree is keyed on
   /// `Poseidon(revocation_secret)` and that secret is now derived from `sk_identity` rather than
   /// chosen, so every leaf key changed. The state root and context above did NOT move, which is
   /// the check that this was a key-derivation change and not a deployment-order one.
@@ -377,7 +377,7 @@ contract WithdrawEndToEndTest is EscrowFixtureBase {
   }
 
   /*
-   * ═══ THE NEGATIVE INVARIANT (TODO.md sec. 2.5) ═══
+   * ═══ THE NEGATIVE INVARIANT (sec. 2.5) ═══
    *
    * "A revocation is valid only if it cites a provable predicate from a closed set, AND THAT IS THE
    * ONLY WAY TO BLOCK A WITHDRAWAL." The second clause is a claim about the WHOLE withdrawal path,

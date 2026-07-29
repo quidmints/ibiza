@@ -7,7 +7,7 @@
 // Proving is `NoirCircuitParams.fromName('withdraw_identity').proveHonk(...)` from
 // @rarimo/rarime-rn-sdk, with the circuit registered by src/sdk/circuits.ts. That path is
 // ANDROID-ONLY: the SDK's Android native module implements proveHonk (RnNoirModule.kt,
-// proofType = "honk") but iOS hardcodes proof_type: "plonk". See TODO.md sec. 2.1a.
+// proofType = "honk") but iOS hardcodes proof_type: "plonk". See sec. 2.1a.
 //
 // Keeping assembly separate from proving is not a workaround, it is the right seam anyway: the
 // witness is backend-agnostic, so it is testable TODAY against a Forge fixture with no device, no
@@ -148,7 +148,7 @@ export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawW
   // ── Identity: derive the registry key from the escrowed secret ──────────────────────────────
   // The key is Poseidon(revocation_secret) - the SAME value escrow_envelope committed to and
   // IdentityRegistry stored. sk_identity is NOT used here at all any more: identity is proven ONCE,
-  // at escrow. See TODO.md sec. 2.13k.
+  // at escrow. See sec. 2.13k.
   const commitment = Poseidon.hash([revocationSecret]);
 
   // ── State-tree membership ───────────────────────────────────────────────────────────────────

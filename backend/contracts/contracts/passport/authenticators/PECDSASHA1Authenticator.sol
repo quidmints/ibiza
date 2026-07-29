@@ -34,7 +34,7 @@ contract PECDSASHA1Authenticator {
     ) external view returns (bool) {
         uint256 message_ = uint256(uint160(challenge.sha1()));
 
-        // LOW-s, for the same reason as CECDSA256Signer (TODO.md sec. 2.18v): the library accepts
+        // LOW-s, for the same reason as CECDSA256Signer (sec. 2.18v): the library accepts
         // only the lower half, passports do not normalise, and nothing here keys on signature bytes
         // - so without this roughly half of all genuine ECDSA active-authentication responses are
         // refused. Rewriting is sound: (r, s) and (r, n - s) are the two representations of one

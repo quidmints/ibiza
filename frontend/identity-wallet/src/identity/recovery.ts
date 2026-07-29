@@ -15,7 +15,7 @@
 //
 // WHY NOT AN MPC / SOCIAL-RECOVERY SDK (Web3Auth, Turnkey, Privy, Para). Every one of them puts a
 // share on somebody's server, and most gate recovery behind Google or Apple sign-in — which is
-// exactly the deniable-refusal lever this whole project exists to remove (TODO.md sec. 2.22c), and
+// exactly the deniable-refusal lever this whole project exists to remove (sec. 2.22c), and
 // a US-operated dependency for the users least able to afford one. It would contradict the
 // no-infrastructure and censorship-resistance claims directly. So: a backup the USER holds,
 // readable by nobody without their passphrase, and no party to ask.

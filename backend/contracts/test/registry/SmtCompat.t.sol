@@ -78,7 +78,7 @@ contract SmtCompatTest is Test {
 }
 
 /*
- * MERGED-TREE INTEGRATION (TODO.md sec. 2.13k/2.13m).
+ * MERGED-TREE INTEGRATION (sec. 2.13k/2.13m).
  *
  * The single identity tree encodes STATUS IN THE VALUE: `commitment -> 0` is registered-and-clean,
  * `commitment -> predicate` is revoked, and a withdrawal proves INCLUSION WITH VALUE 0.

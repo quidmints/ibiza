@@ -5,7 +5,7 @@ import {Test} from 'forge-std/Test.sol';
 import {CRSASigner} from '../../contracts/certificate/signers/CRSASigner.sol';
 
 /*
- * CRSASigner ACCEPTS A SIGNATURE NOBODY SIGNED (TODO.md sec. 2.18u).
+ * CRSASigner ACCEPTS A SIGNATURE NOBODY SIGNED (sec. 2.18u).
  *
  * `verifyICAOSignature` decrypts with the public exponent and compares only the LAST 32 bytes of
  * the result against sha256(attributes). It never checks the PKCS#1 v1.5 padding - not the

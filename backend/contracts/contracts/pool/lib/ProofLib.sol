@@ -18,7 +18,7 @@ library ProofLib {
    * @dev Withdrawal is identity-based-ASP (backend/circuits/withdraw_identity), Noir/Honk-proved,
    * NOT Groth16 - see State.sol's WITHDRAWAL_VERIFIER (INoirVerifier). `proof` is the serialized
    * Honk proof (`bb prove_ultra_keccak_honk` output); `pubSignals` is SEVEN slots as of the single
-   * identity tree (TODO.md sec. 2.13k) - `ASPRoot` + `revocationRoot` collapsed into one
+   * identity tree (sec. 2.13k) - `ASPRoot` + `revocationRoot` collapsed into one
    * `identityRoot`, and `ASPTreeDepth` disappeared with the LeanIMT identity tree, since the SMT's
    * depth is fixed. Converted to `bytes32[]` only at the verifier-call boundary (`publicInputsBytes32`) since
    * INoirVerifier.verify expects `bytes32[] calldata`, matching every other Noir verifier call in
@@ -155,7 +155,7 @@ library ProofLib {
   /**
    * @notice Honk proof + public signals for ragequit verification.
    * @dev PORTED FROM GROTH16 2026-07-27. Upstream shipped this as Groth16 with a CommitmentVerifier
-   *      but no circuit source, so no proof could be produced at all (TODO.md sec. 2.5b). Rebuilt as
+   *      but no circuit source, so no proof could be produced at all (sec. 2.5b). Rebuilt as
    *      a Noir circuit so the fusion keeps ONE proving stack; the 4 public signals and their order
    *      are unchanged, so every accessor below still reads the same slot.
    * @dev The public signals array must match the order of public inputs/outputs in the circuit

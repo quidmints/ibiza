@@ -1,6 +1,6 @@
 // Identity-based withdraw circuit.
 //
-// ONE IDENTITY TREE, AND NO sk_identity (TODO.md sec. 2.13k). This circuit previously proved TWO
+// ONE IDENTITY TREE, AND NO sk_identity (sec. 2.13k). This circuit previously proved TWO
 // separate things about identity: inclusion of `holder_root` in an ASP tree, and non-inclusion of
 // that same value in a separate revocation tree. Both collapse into a SINGLE INCLUSION PROOF once
 // status lives in the leaf VALUE: `commitment -> 0` means registered and clean, and a non-zero
@@ -149,7 +149,7 @@ fn main(
 }
 
 // =================================================================================================
-// THE FIRST TESTS THIS CIRCUIT HAS EVER HAD (TODO.md sec. 2.18ah).
+// THE FIRST TESTS THIS CIRCUIT HAS EVER HAD (sec. 2.18ah).
 //
 // It had ZERO. `pp` covers the pieces - `commitment_hasher`, `lean_imt_inclusion`,
 // `smt_verifier_full`, `secret_commitment` all have their own vectors - but nothing exercised the

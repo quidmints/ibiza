@@ -27,7 +27,7 @@ library X509 {
         // That made this function safe BY ACCIDENT OF STYLE - it is safe because of how the bytes
         // happen to be read, not because anything says so, and a later rewrite to `unsafeCopy` for
         // gas (exactly what `extractPublicKey` does two functions down, where the missing check WAS
-        // a live out-of-bounds read - TODO.md sec. 2.18m) would silently remove the protection.
+        // a live out-of-bounds read - sec. 2.18m) would silently remove the protection.
         //
         // `expirationOffset` is a caller-supplied field of `Registration2.Certificate` and is NOT
         // covered by the CSCA signature over the attributes, so it is unauthenticated input.
@@ -82,7 +82,7 @@ library X509 {
         // whose other arguments (`icaoMember.publicKey`, `icaoMember.signature`) are also theirs.
         // The result goes to `StateKeeper.addCertificate` and lands in `certificatesSmt`, the tree
         // `register_identity` proves membership in, so an attacker-controlled key admitted there
-        // would let them sign their own SODs and enrol fabricated identities. See TODO.md 2.18m.
+        // would let them sign their own SODs and enrol fabricated identities. See sec. 2.18m.
         require(
             keyOffset_ + keyLength_ <= x509SignedAttributes_.length,
             "X509: key runs past the signed attributes"

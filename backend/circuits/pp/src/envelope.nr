@@ -1,6 +1,6 @@
 // Sealed envelope: hashed ElGamal over Baby Jubjub, for escrowing the revocation secret.
 //
-// WHAT THIS IS FOR (TODO.md sec. 2.13c-f). The blacklist's CONTENTS must stay confidential, but a
+// WHAT THIS IS FOR (sec. 2.13c-f). The blacklist's CONTENTS must stay confidential, but a
 // non-inclusion proof needs a PUBLIC set to build a path against. That is resolved by publishing a
 // set whose ENTRIES are opaque: each listed identity appears as `Poseidon(s)` for a per-identity
 // revocation secret `s`. Anyone can prove absence; nobody but the controller can tell WHO is

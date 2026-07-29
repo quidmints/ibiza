@@ -26,7 +26,7 @@ contract X509Harness {
 }
 
 /*
- * X509 parses the certificate bytes that gate EVERY DSC admission (TODO.md sec. 2.18l).
+ * X509 parses the certificate bytes that gate EVERY DSC admission (sec. 2.18l).
  *
  * WHY THIS SUITE EXISTS. `Registration2.registerCertificate` is permissionless by design: anyone may
  * present a CSCA-signed DSC and have its key added to `certificatesSmt`, which is the tree

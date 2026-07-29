@@ -47,7 +47,7 @@ contract PRSASHAAuthenticator is Initializable {
         }
 
         /*
-         * THE ISO 9796-2 FRAME IS CHECKED, not skipped (TODO.md sec. 2.18y).
+         * THE ISO 9796-2 FRAME IS CHECKED, not skipped (sec. 2.18y).
          *
          * This function used to advance past `decipher_[0]` and strip the trailer WITHOUT LOOKING AT
          * EITHER, recovering `M1` from whatever lay between. The header nibble and the trailer are

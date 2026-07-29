@@ -162,7 +162,7 @@ contract Registration2 is Initializable, UUPSUpgradeable {
      *         transition, same `certificatesRoot_` check - the proving system is the only difference.
      *
      * WHICH STACK OWNS WHAT, stated here because two entrypoints sitting side by side is precisely
-     * what makes it ambiguous (TODO.md sec. 2.18aj):
+     * what makes it ambiguous (sec. 2.18aj):
      *
      *   - `registerCertificate` / `revokeCertificate` - NEITHER STACK. DSC admission is gated by a
      *     CSCA SIGNATURE, not a ZK proof. Every piece of certificate hardening (X509 bounds

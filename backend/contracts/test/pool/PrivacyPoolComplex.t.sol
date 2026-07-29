@@ -66,7 +66,7 @@ contract PrivacyPoolComplexTest is Test {
 
   /// @notice The constructor wiring nothing else exercises - the identity registry and the asset.
   /// @dev ONE registry where there were two: the ASP tree and the revocation list merged into a
-  ///      single identity tree, with status carried in the leaf value (TODO.md sec. 2.13k).
+  ///      single identity tree, with status carried in the leaf value (sec. 2.13k).
   function test_ConstructorWiresAssetAndRegistry() public view {
     assertEq(pool.ASSET(), address(token));
     assertEq(address(pool.IDENTITY_REGISTRY()), address(entrypoint));

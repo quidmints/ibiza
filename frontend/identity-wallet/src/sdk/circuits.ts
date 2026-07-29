@@ -29,7 +29,7 @@ import { NoirCircuitParams, registerNoirCircuit } from "@rarimo/rarime-rn-sdk";
  * would fail as a generic 404.
  *
  * BOTH ARE ULTRAHONK, so they must be proven with `proveHonk()`, never `prove()` - and proveHonk is
- * ANDROID-ONLY (iOS's RnNoirModule.swift hardcodes proof_type: "plonk"). See TODO.md sec. 2.1a.
+ * ANDROID-ONLY (iOS's RnNoirModule.swift hardcodes proof_type: "plonk"). See sec. 2.1a.
  * `pub_signals_count` is recorded for completeness but is NOT used on the Honk path: proveHonk
  * returns the raw proof without slicing public signals out, and the caller already holds them
  * (`buildWithdrawalWitness` returns `pubSignals`).

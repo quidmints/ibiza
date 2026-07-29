@@ -38,7 +38,7 @@ contract CRSASigner is ICertificateSigner, Initializable {
     /**
      * @notice Verifies ICAO member RSA signature of the X509 certificate SA.
      *
-     * @dev THE FULL PKCS#1 v1.5 ENCODING IS CHECKED, not just the trailing hash (TODO.md 2.18u).
+     * @dev THE FULL PKCS#1 v1.5 ENCODING IS CHECKED, not just the trailing hash (sec. 2.18u).
      *
      * This function used to decrypt and compare ONLY the last 20/32/64 bytes against the digest,
      * ignoring everything to their left. That is not a weakness with a low exponent, it is a

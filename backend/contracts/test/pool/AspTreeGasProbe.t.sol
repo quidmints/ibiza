@@ -5,7 +5,7 @@ import {Test} from 'forge-std/Test.sol';
 import {InternalLeanIMT, LeanIMTData} from 'lean-imt/InternalLeanIMT.sol';
 
 /*
- * TODO.md sec. 2A Phase 1b feasibility probe.
+ * sec. 2A Phase 1b feasibility probe.
  *
  * Phase 1b moves ASP admission from operator-pushed roots to on-chain incremental insertion, which
  * is what makes the tree append-only BY CONSTRUCTION and removes the postman's ability to drop a

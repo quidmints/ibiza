@@ -7,7 +7,7 @@ use crate::not_passports_zk_circuits::{extract_dg1_commitment, extract_pk_identi
 /// FIRST rather than truncating the last. Any other packing - including the obvious
 /// `digest[0..31]` - yields a DIFFERENT field element.
 ///
-/// EXTRACTED SO THERE IS EXACTLY ONE COPY (TODO.md sec. 2.18i). `dg1Hash` is the anti-replay key
+/// EXTRACTED SO THERE IS EXACTLY ONE COPY (sec. 2.18i). `dg1Hash` is the anti-replay key
 /// that makes a physical document bindable to exactly one holder, so two registration paths that
 /// pack it differently would let the SAME passport bind TWICE under two holder roots - destroying
 /// the document scarcity the whole identity blacklist rests on. Every path that emits a `dg1Hash`

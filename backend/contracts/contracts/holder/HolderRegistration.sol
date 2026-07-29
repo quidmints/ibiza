@@ -32,7 +32,7 @@ contract HolderRegistration is RegistrationSimple {
     event DocumentRenewedVia(bytes32 indexed holderRoot, bytes32 oldDocumentKey, bytes32 newDocumentKey);
 
     /*
-     * ── THE PERMISSIONLESS PATH (TODO.md sec. 2.18g/2.18l/2.18n) ────────────────────────────────
+     * ── THE PERMISSIONLESS PATH (sec. 2.18g/2.18l/2.18n) ────────────────────────────────
      *
      * Every OTHER entry point on this contract requires a backend signer's signature, so enrolment
      * can be withheld from one person by whoever holds that key. `registerDocumentViaIcao` takes no
@@ -96,7 +96,7 @@ contract HolderRegistration is RegistrationSimple {
      *   be recording a claim the caller made about themselves as though it were established.
      *
      * ────────────────────────────────────────────────────────────────────────────────────────
-     * THE VERIFIER MUST BE THE TD1 ONE (TODO.md sec. 2.18j / 2.18z / 2.18ac).
+     * THE VERIFIER MUST BE THE TD1 ONE (sec. 2.18j / 2.18z / 2.18ac).
      *
      * `register_identity` is TD3 - a passport booklet, DG1 of 93 bytes - while `escrow_envelope`
      * computes `dgCommit` over **95**, the TD1 / ID-card layout the live signer path and the
@@ -125,7 +125,7 @@ contract HolderRegistration is RegistrationSimple {
         );
 
         /*
-         * THE ENTIRE SECURITY OF THIS PATH IS THIS CHECK (TODO.md sec. 2.18k).
+         * THE ENTIRE SECURITY OF THIS PATH IS THIS CHECK (sec. 2.18k).
          *
          * `register_identity` proves the document's signer key is in a tree with the root the
          * PROVER supplied. That is vacuous on its own - rarime's own witness generator builds a

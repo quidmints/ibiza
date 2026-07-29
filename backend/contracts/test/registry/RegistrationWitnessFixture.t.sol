@@ -6,7 +6,7 @@ import {EscrowFixtureBase} from './EscrowFixtureBase.sol';
 import {PoseidonSMT} from '../../contracts/state/PoseidonSMT.sol';
 
 /*
- * EMITS the registrationSmt inclusion witness that escrow_envelope proves against (TODO.md 2.18).
+ * EMITS the registrationSmt inclusion witness that escrow_envelope proves against (sec. 2.18).
  *
  * WHY THIS LIVES IN ITS OWN FILE, apart from IdentityRegistry.t.sol where the other fixture emitter
  * sits. IT MUST RUN BEFORE ANY ESCROW PROOF EXISTS. The escrow circuit takes the witness emitted

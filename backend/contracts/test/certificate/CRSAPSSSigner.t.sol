@@ -5,7 +5,7 @@ import {Test} from 'forge-std/Test.sol';
 import {CRSAPSSSigner} from '../../contracts/certificate/signers/CRSAPSSSigner.sol';
 
 /*
- * THE FIRST TEST OF THE ICAO SIGNATURE PATH (TODO.md sec. 2.18l).
+ * THE FIRST TEST OF THE ICAO SIGNATURE PATH (sec. 2.18l).
  *
  * `Registration2.registerCertificate` admits a DSC into `certificatesSmt` - the tree
  * `register_identity` proves membership in - only after this contract verifies a CSCA's signature
@@ -28,7 +28,7 @@ import {CRSAPSSSigner} from '../../contracts/certificate/signers/CRSAPSSSigner.s
  * NO PASSPORT NEEDED. This half of the chain is signature verification, nothing more - which is why
  * it can be tested today while the enrolment path it feeds still waits on a real document.
  *
- * WRITING THIS TEST FOUND A BUG IN @solarity/solidity-lib (TODO.md sec. 2.18s). `RSASSAPSS._pss`
+ * WRITING THIS TEST FOUND A BUG IN @solarity/solidity-lib (sec. 2.18s). `RSASSAPSS._pss`
  * read the modulus's LAST byte to count leading zero bits, where a big-endian modulus keeps its
  * most significant byte FIRST - so `sigBits_` was wrong whenever that last byte was under 0x80, and
  * roughly HALF of all valid signatures were rejected, chosen by an irrelevant property of the key.

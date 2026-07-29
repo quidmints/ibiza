@@ -5,7 +5,7 @@ import {Test} from 'forge-std/Test.sol';
 import {CECDSA256Signer} from '../../contracts/certificate/signers/CECDSA256Signer.sol';
 
 /*
- * The ECDSA half of the CSCA signature path (TODO.md sec. 2.18v).
+ * The ECDSA half of the CSCA signature path (sec. 2.18v).
  *
  * sec. 2.18s found a byte-order bug in the RSA-PSS signer and sec. 2.18u a forgery in the PKCS#1
  * v1.5 one - both in code nothing had ever exercised. The ECDSA signers were in the same state, so

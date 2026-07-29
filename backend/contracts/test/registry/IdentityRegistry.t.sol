@@ -7,7 +7,7 @@ import {EscrowEnvelopeHonkVerifier} from '../../contracts/registry/verifiers/Esc
 import {EscrowFixtureBase} from './EscrowFixtureBase.sol';
 
 /*
- * TODO.md sec. 2.13k/2.13m - the SINGLE identity tree, and every trap the merge creates.
+ * sec. 2.13k/2.13m - the SINGLE identity tree, and every trap the merge creates.
  *
  * This suite drives the REAL escrow proof through the REAL verifier into the REAL state keeper.
  * Nothing here is mocked except the state keeper's registration gate, which is opened to this test
@@ -25,7 +25,7 @@ contract IdentityRegistryTest is EscrowFixtureBase {
   uint256 internal constant MAX_ROOT_AGE = 1 days;
 
   /// escrow_envelope's public-input layout, mirroring IdentityRegistry's own constants. `holder_root`
-  /// and `dg1_hash` used to sit at 2 and 4 and are GONE (TODO.md sec. 2.18) - they linked every
+  /// and `dg1_hash` used to sit at 2 and 4 and are GONE (sec. 2.18) - they linked every
   /// user's identity to their pool handle in registration calldata.
   uint256 internal constant PUBLIC_INPUT_COUNT = 11;
   uint256 internal constant PUB_CONTROLLER_X = 0;
@@ -98,7 +98,7 @@ contract IdentityRegistryTest is EscrowFixtureBase {
    *
    * This replaces `_plantDocument`, which bound one document with `dgCommit = 111` and a documentKey
    * of its own invention. That worked while the contract only checked `holderOfDocumentHash`; since
-   * TODO.md sec. 2.18 the proof carries an SMT INCLUSION of the document's leaf, so a placeholder
+   * sec. 2.18 the proof carries an SMT INCLUSION of the document's leaf, so a placeholder
    * commitment - or binding the documents in a different order, or at a different timestamp -
    * yields a different root and the proof no longer verifies. All three are bound because all three
    * are in the tree the witness was emitted from.
@@ -184,7 +184,7 @@ contract IdentityRegistryTest is EscrowFixtureBase {
   }
 
   /*
-   * A CANCELLED PASSPORT CANNOT REGISTER AN IDENTITY (TODO.md sec. 2.18b).
+   * A CANCELLED PASSPORT CANNOT REGISTER AN IDENTITY (sec. 2.18b).
    *
    * Revoking a document overwrites its leaf VALUE, so roots created afterwards exclude it - but the
    * PRE-revocation root still proves it current, and `PoseidonSMT.isRootValid` kept accepting that
@@ -251,7 +251,7 @@ contract IdentityRegistryTest is EscrowFixtureBase {
   }
 
   /*
-   * TRAP 6: A REVOKED IDENTITY CANNOT COME BACK (TODO.md sec. 2.18a).
+   * TRAP 6: A REVOKED IDENTITY CANNOT COME BACK (sec. 2.18a).
    *
    * This is the test the old design could not have passed. While the escrowed secret was freely
    * chosen, anyone revoked could escrow a FRESH secret against the same passport, land a DIFFERENT

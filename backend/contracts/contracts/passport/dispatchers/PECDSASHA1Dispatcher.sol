@@ -24,7 +24,7 @@ contract PECDSASHA1Dispatcher is IPassportDispatcher, Initializable {
         bytes memory passportSignature_,
         bytes memory passportPublicKey_
     ) external view returns (bool) {
-        // BOUNDS BEFORE THE RAW READS (TODO.md sec. 2.18ag). The four `mload`s below take fixed
+        // BOUNDS BEFORE THE RAW READS (sec. 2.18ag). The four `mload`s below take fixed
         // offsets into caller-supplied arrays without consulting their lengths, so a short signature
         // or key silently pulls ADJACENT MEMORY into `r/s/x/y` - the same shape as the X509
         // out-of-bounds read in sec. 2.18m.

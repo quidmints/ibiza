@@ -60,7 +60,7 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     // Check the state root is known
     if (!_isKnownRoot(_proof.stateRoot())) revert UnknownStateRoot();
 
-    // ONE identity check, where there used to be two (TODO.md sec. 2.13k). The proof shows the
+    // ONE identity check, where there used to be two (sec. 2.13k). The proof shows the
     // withdrawer's escrow commitment is present in the registry carrying the CLEAN status - which
     // is simultaneously "registered" and "not revoked", because a revoked leaf holds its predicate
     // as the value and can no longer prove 0.
@@ -76,7 +76,7 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     // Asked of the REGISTRY, not the Entrypoint. Routing this through the Entrypoint - even as a
     // pass-through - would preserve the exact hole that split closes: the Entrypoint is upgradeable
     // by OWNER_ROLE, so an upgraded one could simply lie about which roots are genuine. See
-    // TODO.md sec. 2.5a.
+    // sec. 2.5a.
     if (!IDENTITY_REGISTRY.isValidRoot(bytes32(_proof.identityRoot()))) revert InvalidIdentityRoot();
     _;
   }
@@ -90,7 +90,7 @@ abstract contract PrivacyPool is State, IPrivacyPool {
    *      readable error and `withdraw` uses it as the value actually handed to the verifier; if
    *      those were written out separately, a change to `SCOPE` or to the encoding would only have
    *      to miss one of them for the diagnostic to start contradicting the check that matters.
-   *      This is the same lesson as RootValidity (TODO.md sec. 2.18o), where the rule was written
+   *      This is the same lesson as RootValidity (sec. 2.18o), where the rule was written
    *      three times and all three copies carried the same defect.
    */
   function _contextFor(Withdrawal memory _withdrawal) internal view returns (uint256) {

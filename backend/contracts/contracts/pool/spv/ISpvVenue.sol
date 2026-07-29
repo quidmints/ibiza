@@ -10,7 +10,7 @@ pragma solidity 0.8.28;
 // SPV is now also present as a pinned git submodule at backend/contracts/lib/SPV (tracking its
 // `main`), for reference only — nothing here imports it, and this file must stay a standalone
 // declaration so the reverse-coupling property holds. SPV commits daily: RE-VERIFY these signatures
-// immediately before wiring real addresses, per TODO.md §2.10.
+// immediately before wiring real addresses, per §2.10.
 
 /// @notice The subset of SPV's Vogue.sol PP calls — a plain, permissionless ERC-4626-shaped ETH LP
 /// interface (confirmed: no `onlyUs`, no allowlist gate on these two functions).
@@ -30,7 +30,7 @@ interface ISpvVogue {
 /// mint" without qualification, which wrongly implied any token is accepted. `Basket.mint` enforces
 /// a hard, deploy-time-fixed whitelist of the basket stables (checked via `Aux.toIndex` /
 /// `aux.tokens`) — an arbitrary ERC20 reverts. Confirm the intended token is in that set before
-/// wiring this up; see TODO.md §2.10.
+/// wiring this up; see §2.10.
 interface ISpvBasket {
     function mint(
         address pledge,

@@ -5,7 +5,7 @@ pragma solidity ^0.8.21;
  * @title RootValidity
  * @notice The single definition of "is this Merkle root still acceptable to prove against".
  *
- * WHY THIS LIBRARY EXISTS (TODO.md sec. 2.18o). The rule was written out three separate times -
+ * WHY THIS LIBRARY EXISTS (sec. 2.18o). The rule was written out three separate times -
  * `PoseidonSMT`, `L1RegistrationState`, `RegistrationSMTReplicator` - and all three carried the
  * same defect: an unrecorded root maps to 0, so `0 + validity > block.timestamp` returned TRUE for
  * every invented root until an hour past the epoch. Fixing one left two live, and the copy that

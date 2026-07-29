@@ -48,7 +48,7 @@ contract SmtEvidence {
 }
 
 /*
- * THE PRESENTATION PATH'S ROOT CHECK (TODO.md sec. 2.18ae).
+ * THE PRESENTATION PATH'S ROOT CHECK (sec. 2.18ae).
  *
  * `AQueryProofExecutor.execute*` take `registrationRoot_` FROM THE CALLER and feed it into the
  * public signals a `query_identity` proof is verified against. That is the sec. 2.18k vacuity shape:

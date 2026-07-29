@@ -24,7 +24,7 @@ contract UnsafeSmtProxy is ERC1967Proxy {
 
 /*
  * `isRootValid` is the guard under EVERY proof-consuming root check in this system
- * (TODO.md sec. 2.18o): IdentityRegistry.register, HolderRegistration.registerDocumentViaIcao,
+ * (sec. 2.18o): IdentityRegistry.register, HolderRegistration.registerDocumentViaIcao,
  * and Registration2's certificate gate all reduce to it.
  *
  * IT USED TO ACCEPT ROOTS THE TREE HAD NEVER HELD. `_roots[unknown]` is 0, so

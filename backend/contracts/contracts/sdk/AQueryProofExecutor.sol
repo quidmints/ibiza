@@ -14,7 +14,7 @@ import {INoirVerifier} from "../interfaces/verifiers/INoirVerifier.sol";
  * @notice An abstract contract providing a framework for verifying ZK proofs related to user queries,
  * supporting both Circom (Groth16) and Noir systems.
  *
- * @dev DUAL-STACK BY MIGRATION, NOT BY DESIGN (TODO.md sec. 2.18aj). `executeNoir` is the preferred
+ * @dev DUAL-STACK BY MIGRATION, NOT BY DESIGN (sec. 2.18aj). `executeNoir` is the preferred
  *      path; `execute` is the Circom/Groth16 predecessor, kept while six passport profiles still
  *      lack a Noir verifier. Note the POOL is already single-stack - both `PrivacyPool` verifiers
  *      are `INoirVerifier` and no Groth16 remains there - so "are we on one stack yet?" has

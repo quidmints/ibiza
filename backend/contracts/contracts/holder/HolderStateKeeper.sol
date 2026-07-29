@@ -91,7 +91,7 @@ contract HolderStateKeeper is StateKeeper {
      *         proxy layout is unaffected.
      *
      * WHY THIS EXISTS. `_usedDocumentHash` records THAT a document hash was consumed but not BY
-     * WHOM, which is enough for anti-replay and not enough for escrow (TODO.md sec. 2.13k). The
+     * WHOM, which is enough for anti-replay and not enough for escrow (sec. 2.13k). The
      * escrow circuit proves an MRZ hashes to `dg1Hash` and that `holder_root` derives from
      * `sk_identity` - it does NOT and CANNOT prove the passport is genuine, because the ICAO
      * signature chain is checked during REGISTRATION, not escrow. Without this lookup a caller
@@ -109,7 +109,7 @@ contract HolderStateKeeper is StateKeeper {
      * created afterwards excludes it - but roots created BEFORE still prove it current, and
      * `PoseidonSMT.isRootValid` keeps accepting those for the rest of ROOT_VALIDITY (one hour).
      * A cancelled passport could therefore still register a pool identity for up to an hour
-     * (TODO.md sec. 2.18b). A consumer that requires the root it was given to be at least as new as
+     * (sec. 2.18b). A consumer that requires the root it was given to be at least as new as
      * this timestamp closes that, and nothing else on this contract exposes the information: the
      * SMT records WHEN each root appeared but not WHY, and `_documents` is keyed by a document key
      * a caller proving in zero knowledge deliberately never reveals.

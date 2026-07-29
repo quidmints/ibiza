@@ -1,6 +1,6 @@
 //registerIdentity_3_160_3_3_336_200_NA
 //
-// THE FULL REGISTRATION CIRCUIT - the permissionless enrolment path (TODO.md sec. 2.18g/2.18h).
+// THE FULL REGISTRATION CIRCUIT - the permissionless enrolment path (sec. 2.18g/2.18h).
 //
 // Unlike `register_identity_light`, this verifies the ENTIRE ICAO chain in-circuit:
 //   1. DG1 hashes into EC, EC hashes into the signed attributes (the SOD chain)
@@ -10,7 +10,7 @@
 // path cannot be refused to one person, because nothing about it is per-person.
 //
 // ============================================================================================
-// READ THIS BEFORE WRITING THE CONSUMING CONTRACT (TODO.md sec. 2.18k).
+// READ THIS BEFORE WRITING THE CONSUMING CONTRACT (sec. 2.18k).
 //
 // STEP 3 IS VACUOUS UNLESS THE CONTRACT PINS `icao_root`. The tree is proven against whatever root
 // the PROVER supplies, and rarime's own witness generator supplies a fake one:

@@ -5,7 +5,7 @@
 // yourself". That path requires the recipient address to already hold ETH for gas — and funding a
 // fresh address is exactly the linking transaction the pool exists to prevent. Without a relayer
 // the privacy model does not close end-to-end: you either withdraw to an address you funded
-// (linked), or you cannot withdraw at all. See TODO.md sec. 2.20.
+// (linked), or you cannot withdraw at all. See sec. 2.20.
 //
 // WHAT STOPS A RELAYER STEALING. `PrivacyPool.validWithdrawal` requires
 //   proof.context == keccak256(abi.encode(withdrawal, SCOPE)) % SNARK_SCALAR_FIELD

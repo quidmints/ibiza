@@ -5,7 +5,7 @@ import {Test} from 'forge-std/Test.sol';
 import {CRSADispatcher} from '../../contracts/certificate/dispatchers/CRSADispatcher.sol';
 
 /*
- * The dispatcher wiring on the DSC-admission path (TODO.md sec. 2.18x).
+ * The dispatcher wiring on the DSC-admission path (sec. 2.18x).
  *
  * `Registration2.registerCertificate` reads a DSC's public key and expiry out of CSCA-signed
  * attributes through this contract, then derives the `certificateKey` that becomes a leaf of

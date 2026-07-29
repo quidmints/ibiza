@@ -14,7 +14,7 @@
 //   • `noir.aar` ships only an `arm64-v8a` slice, so an x86 emulator cannot prove either.
 //   • The trusted setup is downloaded on first use and is ~large; `ensureTrustedSetup` exposes
 //     that as an explicit, progress-reportable step rather than a hidden stall inside prove.
-// See TODO.md sec. 1b / sec. 2.1a. Every claim here is reasoned from the code, NOT measured — no
+// See sec. 1b / sec. 2.1a. Every claim here is reasoned from the code, NOT measured — no
 // device has ever run this path.
 
 import { NoirCircuitParams } from "@rarimo/rarime-rn-sdk";
@@ -40,7 +40,7 @@ export interface ProveProgress {
  * Barretenberg's SRS is a universal curve-level KZG setup shared across its proof systems rather
  * than Plonk-specific, so this SHOULD be correct despite the name, but that is an argument and not
  * a measurement. If device proving fails, this is the first thing to check; the fix would be a
- * Honk-specific SRS download. See TODO.md sec. 2.1a(b).
+ * Honk-specific SRS download. See sec. 2.1a(b).
  */
 export async function ensureTrustedSetup(
   onProgress?: (p: ProveProgress) => void,

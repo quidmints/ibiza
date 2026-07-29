@@ -5,7 +5,7 @@
 // Importing them dragged the ENTIRE ~16k-line passport-verification library - sigver, big_curve,
 // bignum, all the ECDSA curve machinery - into every PP circuit, none of which PP uses. That made
 // the PP circuits hostage to migrating a library they do not need (527 compile errors on modern
-// nargo, none of them in PP's own code). See TODO.md.
+// nargo, none of them in PP's own code).
 //
 // DO NOT "clean up" or re-derive this. `priv_to_pub` defines `holder_root`, the durable identity
 // commitment that HolderStateKeeper anchors on-chain and the wallet computes as `profileKey`. Any
@@ -24,7 +24,7 @@
  * VALUES. `test_priv_to_pub_matches_babyjub` and `test_priv_to_pub_agrees_with_mul_point` below pin
  * that, so a divergence introduced here cannot pass silently.
  *
- * NEEDED FOR HASHED ELGAMAL (TODO.md sec. 2.13d): sealing the revocation secret to the controller's
+ * NEEDED FOR HASHED ELGAMAL (sec. 2.13d): sealing the revocation secret to the controller's
  * key requires `r*PK` for a published `PK`, not just `r*G`. That is the ONLY primitive the envelope
  * scheme was missing.
  */
@@ -231,7 +231,7 @@ fn test_mul_point_by_zero_returns_the_sentinel_not_the_identity() {
     // (0,0) does not even satisfy the curve equation (a*0 + 0 == 1 + d*0 is 0 == 1, false).
     //
     // ASSERTED BECAUSE IT IS THE EXACT DEGENERACY THE ENVELOPE'S `r != 0` GUARD REJECTS
-    // (TODO.md sec. 2.13d). With r = 0 the hashed-ElGamal shared secret is mul_point(PK, 0) =
+    // (sec. 2.13d). With r = 0 the hashed-ElGamal shared secret is mul_point(PK, 0) =
     // (0,0) for EVERY controller key, so the mask Poseidon2([0,0]) is a public constant and
     // C2 = s + mask discloses the sealed revocation secret to anyone who looks. This test was
     // written asserting (0,1) and FAILED, which is how the real value was established rather than

@@ -5,7 +5,7 @@ import {Test} from 'forge-std/Test.sol';
 import {PublicSignalsBuilder} from '../../contracts/sdk/lib/PublicSignalsBuilder.sol';
 
 /*
- * THE SLOT MAP BETWEEN THE BUILDER AND THE CIRCUIT (TODO.md sec. 2.18af).
+ * THE SLOT MAP BETWEEN THE BUILDER AND THE CIRCUIT (sec. 2.18af).
  *
  * `PublicSignalsBuilder` assembles the 23 public signals a `query_identity` proof is verified
  * against. **Their ORDER is a contract with the circuit and nothing enforced it.** A field written

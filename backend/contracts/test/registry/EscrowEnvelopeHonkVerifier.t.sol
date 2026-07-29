@@ -6,7 +6,7 @@ import {EscrowEnvelopeHonkVerifier} from '../../contracts/registry/verifiers/Esc
 import {INoirVerifier} from '../../contracts/interfaces/verifiers/INoirVerifier.sol';
 
 /*
- * TODO.md sec. 2.13d/2.13f - on-chain verification of a REAL escrow_envelope proof.
+ * sec. 2.13d/2.13f - on-chain verification of a REAL escrow_envelope proof.
  *
  * WHY THIS EXISTS given no registry contract consumes this verifier yet. A generated verifier that
  * has never accepted a real proof is a liability, not an asset: when the registry lands and a proof
@@ -36,7 +36,7 @@ import {INoirVerifier} from '../../contracts/interfaces/verifiers/INoirVerifier.
  *   - `sk_identity` reuses pp/src/identity_asp.nr's published vector.
  *   - The DG1 is a full 95-byte TD1 layout carrying a real MRZ, not zeros. TD1, NOT TD3: 95 bytes
  *     is the ID-CARD layout (3 MRZ lines x 30 chars + a 5-byte header). A passport booklet is TD3,
- *     2 x 44 chars, and its DG1 is 93 bytes - a different circuit entirely. See TODO.md sec. 2.18j;
+ *     2 x 44 chars, and its DG1 is 93 bytes - a different circuit entirely. See sec. 2.18j;
  *     this fixture carries a passport-style MRZ inside a TD1-sized buffer, which is fine as a test
  *     vector because nothing here parses the MRZ, and misleading if read as a real document.
  *
@@ -50,7 +50,7 @@ import {INoirVerifier} from '../../contracts/interfaces/verifiers/INoirVerifier.
 contract EscrowEnvelopeHonkVerifierTest is Test {
   INoirVerifier internal verifier;
 
-  /// WAS 12. `holder_root` (slot 2) and `dg1_hash` (slot 4) were removed in TODO.md sec. 2.18:
+  /// WAS 12. `holder_root` (slot 2) and `dg1_hash` (slot 4) were removed in sec. 2.18:
   /// both were per-person identifiers, so registration calldata linked every user's identity to
   /// their pool handle. What replaced them is `registration_root`, which every user shares.
   uint256 internal constant PUBLIC_INPUT_COUNT = 11;

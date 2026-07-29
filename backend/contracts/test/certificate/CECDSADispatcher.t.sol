@@ -5,7 +5,7 @@ import {Test} from 'forge-std/Test.sol';
 import {CECDSADispatcher} from '../../contracts/certificate/dispatchers/CECDSADispatcher.sol';
 
 /*
- * The ECDSA dispatcher on the DSC-admission path (TODO.md sec. 2.18x).
+ * The ECDSA dispatcher on the DSC-admission path (sec. 2.18x).
  *
  * Shares `AbstractCDispatcher`'s extraction with the RSA one, but derives the certificate key
  * DIFFERENTLY: `Bytes2Poseidon.hash512` for keys under 128 bytes and `hash1024` at or above. That
@@ -48,7 +48,7 @@ contract CECDSADispatcherTest is Test {
     }
 
     /*
-     * THE TOP BYTE OF EACH 32-BYTE COORDINATE IS DISCARDED, DELIBERATELY (TODO.md sec. 2.18ab).
+     * THE TOP BYTE OF EACH 32-BYTE COORDINATE IS DISCARDED, DELIBERATELY (sec. 2.18ab).
      *
      * `Bytes2Poseidon.hash512/hash1024` reduce each 32-byte word `% 2 ** 248`, dropping its most
      * significant byte so the value fits a BN254 field element. The CIRCUIT does the same: the

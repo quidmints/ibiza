@@ -140,7 +140,7 @@ contract HolderRegistrationTest is Test {
     }
 
     /*
-     * ── THE ENROLMENT GATE, PINNED (TODO.md sec. 2.18g) ──────────────────────────────────────
+     * ── THE ENROLMENT GATE, PINNED (sec. 2.18g) ──────────────────────────────────────
      *
      * EVERY path into the holder tree on this contract requires a BACKEND SIGNER'S SIGNATURE, so
      * enrolment can be withheld by whoever holds that key. That contradicts the property the
@@ -190,7 +190,7 @@ contract HolderRegistrationTest is Test {
     }
 
     /*
-     * ── THE PERMISSIONLESS PATH (TODO.md sec. 2.18n) ──────────────────────────────────────────
+     * ── THE PERMISSIONLESS PATH (sec. 2.18n) ──────────────────────────────────────────
      *
      * WHY EVERY TEST HERE IS A NEGATIVE ONE, and why that is the right way round.
      *

@@ -6,7 +6,7 @@ pragma solidity ^0.8.21;
  * @notice Rewrites an ECDSA `s` into the lower half of the curve order, for curves whose order is
  *         held as big-endian `bytes` rather than a `uint256`.
  *
- * WHY THIS EXISTS (TODO.md sec. 2.18v). `ECDSA256/384/512` accept only low-s - "signatures only
+ * WHY THIS EXISTS (sec. 2.18v). `ECDSA256/384/512` accept only low-s - "signatures only
  * from the lower part of the curve are accepted". That is correct for TRANSACTIONS, where a
  * malleated copy would be a second valid transaction, and wrong for verifying someone else's X.509
  * signature: nothing in certificate admission keys on signature bytes, so malleability buys an
@@ -74,7 +74,7 @@ library EcdsaS {
      * @notice The same rule for a curve whose order fits a `uint256`.
      *
      * SHARED RATHER THAN COPIED. `CECDSA256Signer` and `PECDSASHA1Authenticator` both need it, and
-     * the root-validity rule earlier today (TODO.md sec. 2.18o) is the argument against writing it
+     * the root-validity rule earlier today (sec. 2.18o) is the argument against writing it
      * twice: it was duplicated three ways, so fixing one copy left two live.
      *
      * `s_ < n_` is not redundant - a signature made under a DIFFERENT curve can carry an `s` larger

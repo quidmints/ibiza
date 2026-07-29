@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 /**
  * @title IIdentityRegistry
- * @notice The single identity tree a withdrawal proves clearance against (TODO.md sec. 2.13k).
+ * @notice The single identity tree a withdrawal proves clearance against (sec. 2.13k).
  * @dev Only the root check is needed by the pool. Deliberately narrow: the pool must not be able to
  *      write to the registry, and a wider interface would invite it.
  */

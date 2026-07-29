@@ -7,7 +7,7 @@ import {INoirVerifier} from '../../contracts/interfaces/verifiers/INoirVerifier.
 import {ProofLib} from '../../contracts/pool/lib/ProofLib.sol';
 
 /*
- * TODO.md §2A Phase 0 - the baseline this project had been missing.
+ * §2A Phase 0 - the baseline this project had been missing.
  *
  * Before this, `withdraw_identity`'s verifier was generated and compiled but had NEVER verified a
  * real proof (§2.12 said so explicitly). That made it impossible to attribute a future failure:
@@ -57,7 +57,7 @@ contract WithdrawalHonkVerifierTest is Test {
   uint256 internal constant STATE_ROOT =
     4344985332480040079471765000069393836362873940320599351794913073184699413871;
   uint256 internal constant STATE_TREE_DEPTH = 3;
-  /// CHANGED WITH THE COMMITMENT DERIVATION (TODO.md sec. 2.18a). The identity tree is keyed on
+  /// CHANGED WITH THE COMMITMENT DERIVATION (sec. 2.18a). The identity tree is keyed on
   /// `Poseidon(revocation_secret)`, and the secret is now DERIVED from `sk_identity` rather than
   /// chosen - so every leaf key moved, and with them the root. The other five signals are unchanged,
   /// which is the check that this was a key-derivation change and not something broader.
@@ -129,7 +129,7 @@ contract WithdrawalHonkVerifierTest is Test {
   }
 
   /*
-   * THE SUBSTITUTION ITSELF, which is what actually enforces the binding (TODO.md sec. 2.18ah).
+   * THE SUBSTITUTION ITSELF, which is what actually enforces the binding (sec. 2.18ah).
    *
    * The test above tampers the proof struct - it shows the transcript is bound, but a caller does
    * not get to hand `PrivacyPool` a struct and have its context believed. `withdraw` ignores
@@ -185,7 +185,7 @@ contract WithdrawalHonkVerifierTest is Test {
 
   /*
    * ─────────────────────────────────────────────────────────────────────────────────────────────
-   * WALLET-PRODUCED WITNESS (TODO.md sec. 2.1, landed 2026-07-27).
+   * WALLET-PRODUCED WITNESS (sec. 2.1, landed 2026-07-27).
    *
    * Everything above proves the VERIFIER works. This proves the WALLET works: the witness below
    * was assembled by frontend/identity-wallet/src/pp/withdrawWitness.ts from a note discovered

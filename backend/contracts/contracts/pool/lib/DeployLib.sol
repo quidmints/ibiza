@@ -10,7 +10,7 @@ pragma solidity 0.8.28;
  * - Entrypoint (as an UUPS proxy)
  * - Simple Privacy Pool (for native assets)
  * - Complex Privacy Pool (for ERC20 tokens)
- * - Ragequit verifier (Honk since 2026-07-27 - see TODO.md sec. 2.5b)
+ * - Ragequit verifier (Honk since 2026-07-27 - see sec. 2.5b)
  * - Withdrawal verifier (Honk)
  *
  * Each component can be deployed with a deterministic address based on these predefined salts.
@@ -28,8 +28,8 @@ library DeployLib {
   bytes11 internal constant RAGEQUIT_VERIFIER_SALT = bytes11(keccak256(abi.encodePacked('RagequitVerifier_1')));
   /// @dev The two registries PrivacyPool now holds directly (sec. 2.5a) - both NON-UPGRADEABLE, so
   ///      their addresses are fixed at deploy and worth pinning deterministically like the rest.
-  /// The single identity tree - registration AND revocation status in one contract (TODO.md
-  /// sec. 2.13k). Replaces the separate ASP and revocation registry salts, which named contracts
+  /// The single identity tree - registration AND revocation status in one contract
+  /// (sec. 2.13k). Replaces the separate ASP and revocation registry salts, which named contracts
   /// that no longer exist.
   bytes11 internal constant IDENTITY_REGISTRY_SALT = bytes11(keccak256(abi.encodePacked('IdentityRegistry_1')));
   bytes11 internal constant ESCROW_VERIFIER_SALT = bytes11(keccak256(abi.encodePacked('EscrowEnvelopeVerifier_1')));

@@ -11,7 +11,7 @@ import {Constants} from '../pool/lib/Constants.sol';
 
 /**
  * @title IdentityRegistry
- * @notice The SINGLE identity tree (TODO.md sec. 2.13k). Key is the escrow commitment; the VALUE
+ * @notice The SINGLE identity tree (sec. 2.13k). Key is the escrow commitment; the VALUE
  *         carries status: `0` = registered and clean, non-zero = the revocation predicate.
  *
  * WHY ONE TREE AND NOT TWO. A withdrawal used to prove ASP inclusion of `holder_root` AND
@@ -51,7 +51,7 @@ import {Constants} from '../pool/lib/Constants.sol';
  *    `escrow_envelope` proves knowledge of an MRZ and of the `sk_identity` it belongs to. It CANNOT
  *    prove the document is genuine - that is registration's job.
  *
- *    AND ON OUR PATH REGISTRATION DOES NOT DO IT ON-CHAIN EITHER (TODO.md sec. 2.18g).
+ *    AND ON OUR PATH REGISTRATION DOES NOT DO IT ON-CHAIN EITHER (sec. 2.18g).
  *    `RegistrationSimple`, which `HolderRegistration` follows, verifies a backend signer's
  *    signature and a Noir proof over DG1 - not the ICAO certificate chain. The trust root for "this
  *    is a genuine passport" is therefore OUR SIGNER KEY, not the issuing state's signature.
@@ -79,7 +79,7 @@ contract IdentityRegistry {
 
   /// Public-input layout of `escrow_envelope`. Order is pinned by the circuit's `main` signature;
   /// a mismatch here reads the wrong field while the proof still verifies.
-  /// `holder_root` AND `dg1_hash` USED TO SIT AT 2 AND 4 (TODO.md sec. 2.18). Both were per-person
+  /// `holder_root` AND `dg1_hash` USED TO SIT AT 2 AND 4 (sec. 2.18). Both were per-person
   /// identifiers, so registration calldata linked every user's identity to their pool handle -
   /// their activity stayed private, their PARTICIPATION did not. They are gone, replaced by
   /// `registration_root`, which every user of the system shares.
@@ -204,7 +204,7 @@ contract IdentityRegistry {
    * @dev Gated by a proof, never by a role - an approval step would hand back the
    *      censorship-by-inaction lever this whole design removes.
    *
-   * THE HONEST SCOPE OF THAT CLAIM (TODO.md sec. 2.18g). It is true of THIS function and false of
+   * THE HONEST SCOPE OF THAT CLAIM (sec. 2.18g). It is true of THIS function and false of
    * the system as it currently stands. Registering here requires the document to already sit in
    * `registrationSmt`, and the only contract that writes it - `HolderRegistration` - requires a
    * BACKEND SIGNER'S SIGNATURE on every entry point. So the approval step still exists; it is one
@@ -244,7 +244,7 @@ contract IdentityRegistry {
     // `PoseidonSMT.isRootValid` = latest OR within ROOT_VALIDITY (1 hour). That alone left a real
     // hole: revoking a document overwrites its leaf VALUE, so roots created BEFORE the revocation
     // still prove it CURRENT - and stay valid for the rest of the hour. A cancelled passport could
-    // register a pool identity for up to an hour after being cancelled (TODO.md sec. 2.18b).
+    // register a pool identity for up to an hour after being cancelled (sec. 2.18b).
     //
     // So the root must ALSO be no older than the last time any document stopped being current. A
     // pre-invalidation root is now rejected outright instead of lingering.

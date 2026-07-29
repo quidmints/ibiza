@@ -1,7 +1,7 @@
 //registerIdentity_3_160_3_3_336_200_NA_td1
 //
 // THE TD1 (ID-CARD) FULL REGISTRATION CIRCUIT - the permissionless enrolment path at the length the
-// rest of the live system actually uses (TODO.md sec. 2.18j / 2.18z).
+// rest of the live system actually uses (sec. 2.18j / 2.18z).
 //
 // WHY THIS EXISTS. `register_identity` is TD3: a passport booklet, `DG1_LEN = 93`. Everything else
 // on the live path is TD1 at 95 - `register_identity_light_td1`, `escrow_envelope`, and the wallet,

@@ -420,7 +420,7 @@ fn test_exclusion_against_empty_tree_any_key() {
 }
 
 /*
- * MERGED-TREE SOUNDNESS (TODO.md sec. 2.13k).
+ * MERGED-TREE SOUNDNESS (sec. 2.13k).
  *
  * The single identity tree encodes STATUS IN THE VALUE: `commitment -> 0` means registered and
  * clean, `commitment -> predicate` means revoked. A withdrawal proves INCLUSION with value 0. That

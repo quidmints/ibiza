@@ -199,7 +199,7 @@ contract PrivacyPoolSimpleTest is Test {
   }
 
   /// The identity gate: slot 5 is now `identityRoot`, checked against IdentityRegistry.isValidRoot
-  /// rather than the old ASP root equality. One registry where there were two (TODO.md sec. 2.13k).
+  /// rather than the old ASP root equality. One registry where there were two (sec. 2.13k).
   function test_withdraw_revertsOnInvalidIdentityRoot() public {
     (IPrivacyPool.Withdrawal memory w, ProofLib.WithdrawProof memory p) = _validWithdrawProof(0.4 ether);
     p.pubSignals[5] = p.pubSignals[5] + 1; // no longer a root the registry ever had

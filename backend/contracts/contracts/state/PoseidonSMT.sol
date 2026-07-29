@@ -114,7 +114,7 @@ contract PoseidonSMT is Initializable, UUPSUpgradeable {
     /**
      * @notice Check if the SMT root is valid. Zero root is always invalid and latest root is always a valid one.
      * @dev The rule itself lives in {RootValidity} - see that library for why it is shared rather
-     *      than written out here (TODO.md sec. 2.18o).
+     *      than written out here (sec. 2.18o).
      */
     function isRootValid(bytes32 root_) external view virtual returns (bool) {
         return RootValidity.isValid(root_, isRootLatest(root_), _roots[root_], ROOT_VALIDITY);
@@ -133,7 +133,7 @@ contract PoseidonSMT is Initializable, UUPSUpgradeable {
      * ADDED so a consumer can require a root be no older than some event of its own, which
      * `isRootValid` cannot express - it only answers "within ROOT_VALIDITY". IdentityRegistry needs
      * exactly that: a root superseded at or before a document revocation still proves that document
-     * CURRENT, and would otherwise stay usable for the rest of the window (TODO.md sec. 2.18b).
+     * CURRENT, and would otherwise stay usable for the rest of the window (sec. 2.18b).
      *
      * A VIEW ONLY - no new storage, so the proxy layout is untouched.
      */

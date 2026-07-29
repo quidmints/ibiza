@@ -59,7 +59,7 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
          * DETERMINISTIC KEYED PSEUDONYM for the property: `PRF(registryKey, legalDescriptionHash)`.
          * Opaque here; this contract never sees the document.
          *
-         * WHO COMPUTES IT IS UNRESOLVED - see TODO.md sec. 2.16b. An earlier revision said "computed
+         * WHO COMPUTES IT IS UNRESOLVED - see sec. 2.16b. An earlier revision said "computed
          * off-chain by the notary"; that is WRONG and has been removed rather than left to mislead.
          * A notary holds no protocol key and performs no protocol computation - their status is
          * attested, not trusted. No party in the current design holds `registryKey`, which means the
@@ -80,7 +80,7 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
          * knows the document - they attest to it - so holding the key grants them nothing they did
          * not have.
          *
-         * SAME PRIMITIVE AS THE IDENTITY REGISTRY'S revocation pseudonyms (TODO.md sec. 2.13e), for
+         * SAME PRIMITIVE AS THE IDENTITY REGISTRY'S revocation pseudonyms (sec. 2.13e), for
          * the same reason and with the same trade: a public set of opaque, deterministic values.
          *
          * It also removes the salt's custody failure. A lost salt makes a commitment permanently
@@ -134,7 +134,7 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
     // process described above), but it does mean there is exactly ONE trust assumption in this
     // whole mechanism (whoever the registry's postman is), not two.
     /**
-     * A NOTARY IS A REGISTERED IDENTITY, not an address (TODO.md sec. 2.13l / sec. 2.15).
+     * A NOTARY IS A REGISTERED IDENTITY, not an address (sec. 2.13l / sec. 2.15).
      *
      * Two independent facts, deliberately kept apart:
      *   `notaryDataHashOf`  - WHICH registry entry this identity claims, proven against the

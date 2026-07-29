@@ -12,7 +12,7 @@ import {PoseidonSMT} from '../../contracts/state/PoseidonSMT.sol';
 /*
  * The state keeper and the bound documents that every escrow_envelope fixture is proven against.
  *
- * WHY A SHARED BASE. Since TODO.md sec. 2.18 the escrow circuit proves SMT INCLUSION of the
+ * WHY A SHARED BASE. Since sec. 2.18 the escrow circuit proves SMT INCLUSION of the
  * document's leaf, so a proof only verifies against the exact registration tree it was built
  * against - same documents, same dgCommits, same binding TIMESTAMP, in the same order. Two suites
  * need that tree: RegistrationWitnessFixture.t.sol, which EMITS the witness, and

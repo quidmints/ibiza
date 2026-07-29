@@ -9,7 +9,7 @@ import {PNOAADispatcher} from '../../contracts/passport/dispatchers/PNOAADispatc
 import {PECDSASHA1Authenticator} from '../../contracts/passport/authenticators/PECDSASHA1Authenticator.sol';
 
 /*
- * The passport dispatchers (TODO.md sec. 2.18ag).
+ * The passport dispatchers (sec. 2.18ag).
  *
  * UNREACHABLE TODAY, tested anyway, for the reason sec. 2.18y gives: Active Authentication needs
  * DG15 and our `register_identity` variant is built with `DG15_LEN = 0`, so "unreachable" is a
@@ -70,7 +70,7 @@ contract PassportDispatchersTest is Test {
      * still has to satisfy ECDSA verification, and garbage does not, so `authenticate` returns
      * false either way. **They pass with the guard and without it** - the precise vacuity this
      * project keeps finding elsewhere, written here by accident and left documented rather than
-     * dressed up (TODO.md sec. 2.18ag).
+     * dressed up (sec. 2.18ag).
      *
      * What they DO pin is that the refusal is explicit and independent of surrounding memory. What
      * would genuinely prove the guard is a case where the adjacent bytes form a VERIFYING tuple,

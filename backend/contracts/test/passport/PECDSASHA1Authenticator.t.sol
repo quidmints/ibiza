@@ -5,7 +5,7 @@ import {Test} from 'forge-std/Test.sol';
 import {PECDSASHA1Authenticator} from '../../contracts/passport/authenticators/PECDSASHA1Authenticator.sol';
 
 /*
- * ECDSA Active Authentication over brainpoolP256r1 (TODO.md sec. 2.18v, second site).
+ * ECDSA Active Authentication over brainpoolP256r1 (sec. 2.18v, second site).
  *
  * This contract had the SAME low-s defect as the certificate signers: it handed the signature
  * straight to a library that accepts only the lower half of the curve, while passports do not

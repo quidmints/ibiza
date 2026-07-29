@@ -16,7 +16,7 @@ contract UnsafeRootProxy is ERC1967Proxy {
 }
 
 /*
- * THE OTHER TWO COPIES of the root-validity defect (TODO.md sec. 2.18o).
+ * THE OTHER TWO COPIES of the root-validity defect (sec. 2.18o).
  *
  * `PoseidonSMT.isRootValid` accepted roots the tree had never held, because an unrecorded root maps
  * to 0 and `0 + ROOT_VALIDITY > block.timestamp` is TRUE until an hour past the epoch. Grepping the

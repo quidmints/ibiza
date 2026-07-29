@@ -108,7 +108,7 @@ interface IState {
   /**
    * @notice Returns the configured Noir/Honk verifier for ragequits
    * @dev Honk since 2026-07-27. Upstream shipped a Groth16 CommitmentVerifier with no circuit
-   *      source, so no ragequit proof could be produced at all - see TODO.md sec. 2.5b.
+   *      source, so no ragequit proof could be produced at all - see sec. 2.5b.
    * @return _verifier The verifier contract
    */
   function RAGEQUIT_VERIFIER() external view returns (INoirVerifier _verifier);

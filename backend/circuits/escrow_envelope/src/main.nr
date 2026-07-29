@@ -10,14 +10,14 @@
 // withhold. That is deliberate - an attested escrow would hand back the censorship-by-inaction
 // lever the blacklist design exists to remove.
 //
-// TRUE OF THIS CIRCUIT, NOT YET OF THE SYSTEM (TODO.md sec. 2.18g). Escrowing requires a document
+// TRUE OF THIS CIRCUIT, NOT YET OF THE SYSTEM (sec. 2.18g). Escrowing requires a document
 // already bound in `registrationSmt`, and the only contract that binds one - `HolderRegistration` -
 // demands a BACKEND SIGNER'S SIGNATURE on every entry point. The approval step was moved upstream,
 // not removed. `Registration2.registerViaNoir` is the signature-free path already in the repo, and
 // nothing yet routes it into the holder tree.
 //
 // ---------------------------------------------------------------------------------------------
-// WHAT THIS CIRCUIT PUBLISHES, AND WHY THAT CHANGED (TODO.md sec. 2.18)
+// WHAT THIS CIRCUIT PUBLISHES, AND WHY THAT CHANGED (sec. 2.18)
 //
 // IT USED TO PUBLISH `holder_root` AND `dg1_hash`. Both are per-person identifiers, so registration
 // calldata linked every user's IDENTITY to their POOL HANDLE, permanently and for everyone. Their
@@ -31,7 +31,7 @@
 // value shared by every user of the system, so it names nobody.
 //
 // SOUNDNESS COMES FROM THE LEAF VALUE, NOT THE INDEX. `document_key` is a caller-supplied field
-// that no proof constrains (TODO.md sec. 2.13f), so inclusion at an index alone would be weak - a
+// that no proof constrains (sec. 2.13f), so inclusion at an index alone would be weak - a
 // prover could point at somebody else's leaf. But the leaf VALUE is
 // `Poseidon(dgCommit, seq, timestamp)`, and `dgCommit = extract_dg1_commitment(dg1, sk_identity)`
 // is derived from the holder's OWN secret. Reproducing a stranger's leaf value would require their
@@ -45,7 +45,7 @@
 // `Poseidon1(SUPERSEDED)`, which no `Poseidon3(dgCommit, seq, timestamp)` reconstruction equals.
 //
 // ---------------------------------------------------------------------------------------------
-// WHY THE REVOCATION SECRET IS DERIVED AND NO LONGER CHOSEN (TODO.md sec. 2.18a)
+// WHY THE REVOCATION SECRET IS DERIVED AND NO LONGER CHOSEN (sec. 2.18a)
 //
 // `IdentityRegistry` guards on `registered[commitment]` and NOTHING ELSE - it has no per-holder
 // guard. While the secret was free, a revoked user could escrow a FRESH secret against the SAME
@@ -63,7 +63,7 @@
 // FREE re-registration of the SAME identity, which needed no second passport at all.
 //
 // ---------------------------------------------------------------------------------------------
-// WHY THE WHOLE DG1 IS SEALED, NOT A DIGEST (TODO.md sec. 2.13f). A person may hold several
+// WHY THE WHOLE DG1 IS SEALED, NOT A DIGEST (sec. 2.13f). A person may hold several
 // passports under different names, and nothing in ICAO 9303 links two states' documents for one
 // person. The controller therefore has to do that attribution itself, which it can only do from the
 // ACTUAL MRZ - name, date of birth, nationality, document number. A hash would let it verify a
@@ -90,7 +90,7 @@ use std::hash::Hasher;
 /// circuit's own output rather than against a value this file computed.
 ///
 /// A TD3/93-byte escrow variant is still needed if the full `register_identity` path is ever wired
-/// up - see TODO.md.
+/// up - see.
 global DG1_LEN: u32 = 95;
 /// Bytes packed per field element. 31 keeps every packed value below the BN254 modulus.
 global BYTES_PER_FIELD: u32 = 31;
@@ -100,7 +100,7 @@ global DG1_WORDS: u32 = 4;
 global PAYLOAD_LEN: u32 = 5;
 /// Height of `StateKeeper.registrationSmt`.
 ///
-/// 80, NOT 32. An earlier estimate in TODO.md sec. 2.18 sized this inclusion at depth 32 - the
+/// 80, NOT 32. An earlier estimate in sec. 2.18 sized this inclusion at depth 32 - the
 /// IDENTITY registry's height - and undercounted the cost as a result. The registration tree is a
 /// rarime `PoseidonSMT` initialised at 80 everywhere it is deployed, and `query_identity` already
 /// takes `siblings: [Field; 80]`. A mismatch here does not fail loudly: `smt_level_ins` asserts the

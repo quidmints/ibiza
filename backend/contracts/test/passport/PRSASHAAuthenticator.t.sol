@@ -5,7 +5,7 @@ import {Test} from 'forge-std/Test.sol';
 import {PRSASHAAuthenticator} from '../../contracts/passport/authenticators/PRSASHAAuthenticator.sol';
 
 /*
- * Active Authentication, ISO/IEC 9796-2 Scheme 1 (TODO.md sec. 2.18y).
+ * Active Authentication, ISO/IEC 9796-2 Scheme 1 (sec. 2.18y).
  *
  * NOT CURRENTLY REACHABLE: AA needs DG15, and our `register_identity` variant is built with
  * `DG15_LEN = 0`. Tested and fixed anyway, because "unreachable" here is not a property of the

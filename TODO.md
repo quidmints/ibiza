@@ -3308,12 +3308,28 @@ use, and every remapping against the tree.
 **THREE GENUINELY DEAD IMPORTS, REMOVED:** `ECDSA` in `Entrypoint.sol`, `IVerifier` in
 `IState.sol` (it survived only inside a comment), `ERC1967Proxy` in `Registration2Mock.sol`.
 
-**ONE THAT LOOKS DEAD AND MUST NOT BE TOUCHED.** `contracts/mock/Helper.sol` declares NO contract -
-it is nothing but three imports, and every symbol is unused in the only sense a linter can see. Its
-job is to pull `EvidenceDB`, `EvidenceRegistry` and `ERC1967Proxy` into the compilation unit so
-Forge emits their ARTIFACTS, which tests and deploy scripts then deploy by name. Delete them and the
-artifacts vanish, surfacing far away as "artifact not found". Now says so in the file, because it is
-precisely the thing someone tidying imports would remove.
+**ONE I DEFENDED WITHOUT CHECKING, THEN DELETED** *(user: "why leave it if it's entirely dead? try
+doing it and see what happens")*. `contracts/mock/Helper.sol` declared NO contract - nothing but
+three imports. I claimed it was the artifact-forcing pattern, kept it, and wrote a comment saying
+"tests and deployment scripts deploy them by name".
+
+**I MADE THAT UP.** It is a plausible pattern and it was NOT what was happening here. Deleting the
+file and rebuilding settles it in two lines:
+
+- the artifacts DO disappear (`out/EvidenceDB.sol`, `out/EvidenceRegistry.sol` gone), so the
+  mechanism was real;
+- and **nothing cares**: 310/310 tests pass, the build is clean, client ABIs check out.
+
+There is no `script/`, no `deploy/`, no hardhat config, and no `deployCode`/`vm.getCode` anywhere in
+the repo. Every test that needs an evidence registry declares its OWN local mock
+(`MockEvidenceRegistry`, `TestEvidenceRegistry`, `SmtEvidenceRegistry`) or imports the INTERFACE.
+The file forced artifacts no consumer exists for. Deleted.
+
+**THE LESSON IS THE POINT, NOT THE FILE.** I invented a justification for keeping dead code because
+the pattern was familiar, and wrote it into a comment where it would have been believed by the next
+reader - the same failure this section keeps finding in inherited code, committed by me in the same
+sitting. **"Try deleting it and see" is a two-minute experiment and it beats a plausible story every
+time.**
 
 **`solady` LOOKED UNUSED AND IS LOAD-BEARING.** Zero references from `contracts/` or `test/` - but
 `lib/solidity-lib` imports it in four places including `RSASSAPSS.sol`, whose `LibBit.clz` is the

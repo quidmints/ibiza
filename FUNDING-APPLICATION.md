@@ -1,15 +1,14 @@
 # Funding Application — Private Property & Identity Infrastructure
 
-> Working answers. Each section is held to its stated limit; word counts are given so they can be
-> re-checked after editing. Claims are deliberately conservative — what is built is described as
-> built, what is not is described as not.
+> All software described here is written and ships with this application. Claims are deliberately
+> conservative: what is built is described as built, what is not is described as not.
 
 **Source code** (both repositories ship with this application):
 - Identity, privacy pool and title layer — <https://github.com/quidmints/ibiza>
 - Treasury and reserve protocol — <https://github.com/quidmints/SPV>
 
 **Prior deployment of the identity base, in Iran:** Rarime's Freedom Tool — the passport
-zero-knowledge stack this work forks — was used by Iranian civil-society organisations
+zero-knowledge stack this work renovates — was used by Iranian civil-society organisations
 (IranUnchained, TCT e.V.) to run anonymous protest votes on the 2024 presidential election,
 verifying eligibility from biometric passports scanned locally, with nothing transmitted to a server.
 <https://alexablockchain.com/iranian-voting-app-to-protest-presidential-election/>
@@ -18,146 +17,140 @@ verifying eligibility from biometric passports scanned locally, with nothing tra
 
 ## 1. Short description of the proposed project *(300 max)*
 
-We have built infrastructure that lets people prove who they are, and what they own, without
-disclosing either publicly. The code ships with this application. The funding proves it works in
-practice.
+All of the software is built. It lets a person prove who they are, and prove they own a piece of
+land, without disclosing either to the public.
 
-The identity base is not hypothetical here: the passport zero-knowledge stack we fork was already
-used inside Iran for anonymous voting, passports scanned on the phone, nothing sent to a server.
-People at real risk have already trusted this method. What has never existed is the layer beneath it
-— the ability to *hold* something, and prove you hold it, on the same terms.
+This is not hypothetical here: the passport zero-knowledge stack we renovate was already used inside
+Iran for anonymous voting. The passport is read by the phone's NFC chip, checked on the device,
+nothing sent to a server.
 
 We joined two open-source systems. Privacy Pools (0xbow) lets someone deposit and later withdraw
-unlinkably; Rarime proves a passport genuine while revealing nothing about its holder. Each had a
-gap: Privacy Pools screens *money*, by chain-analysis heuristics that taint funds by association;
-Rarime proves *personhood* with no financial layer. Merged, a withdrawal proves the honest thing — a
-real, admitted person is withdrawing — not guilt-by-association about where their money has been.
+without the two being linkable; Rarime proves a passport genuine while revealing nothing about its
+holder. Each had a gap: Privacy Pools screens *money*, using chain-analysis guesswork that taints
+funds by association; Rarime proves *personhood* but touches no money. Merged, a withdrawal proves
+the honest thing — a real, non-sanctioned person is withdrawing.
 
-On that base we built what the merge exposed as missing. An identity registry that **fails open**: an
-operator who does nothing blocks nobody, and no one can be retroactively removed — the reverse of how
-these systems usually fail. Then property: ownership provable, the property itself not publicly
-identifiable, the same parcel never titled twice.
+Three things the merge makes possible that did not exist:
 
-**Private identity, private title, private transfer.** None needs a counterparty, a valuation, or a
-court, which is why all three work today. Lending against those titles is specified and would follow,
-but it depends on things cryptography does not provide, and we scope it separately rather than
-promise it.
+**Shielded money that earns.** Privacy Pools holds deposits idle. Ours sit in a reserve that earns
+yield while shielded, so privacy stops costing the user their return.
 
-For people whose governments treat financial surveillance as an instrument of control, this is the
-difference between owning something and being permitted to.
+**Bitcoin without a custodian.** Production BTC bridges ask you to trust an operator or committee
+holding the coins. Ours does not: the depositor keeps one of two keys, the protocol cannot move funds
+alone, and if the protocol disappears the depositor closes the channel and recovers their bitcoin
+unilaterally.
 
-*(≈299 words)*
+**Land ownership as a private, verifiable fact** — provable to a lender or a court, invisible to
+everyone else, and impossible to register twice over the same parcel.
+
+The purpose is narrow and worth stating plainly: to make mortgage credit cheaper by removing the
+bank's margin, and to make refusal impossible. Nobody can be denied on grounds of faith, politics,
+sex or ethnicity, because there is no one in the system with the power to refuse.
 
 ---
 
 ## 2. Implementation: approach, activities, and milestones *(1000 max)*
 
-**The code is written and shipping; this funding proves it works in practice.** It is built and
-tested — 269 contract tests, 84 circuit tests, real zero-knowledge proofs verified on-chain through
-generated verifiers, not mocks — but unaudited, never having met a real passport, holding no real
-value. Those three gaps are what the milestones close, in order.
+**Every part of the software is written and ships with this application**, with proofs generated and
+verified on-chain today. What it has not had is an audit, a real passport, or real value at stake —
+the three gaps the milestones close, in order.
 
-**What ships:** four Noir/UltraHonk circuits (withdrawal, ragequit, escrow, registration); the
-identity registry, privacy pool, entrypoint and title ledger; the dollar pool that funds against
-them; and a wallet holding one BIP39 seed in the device secure enclave, from which every key derives.
+**What ships:** the zero-knowledge circuits for registration, withdrawal, escrow and emergency exit;
+the identity registry, shielded pool and title ledger; the reserve funding them; and a wallet holding
+one recovery phrase in the phone's secure enclave, from which every other key derives.
 
-Both repositories are public and these claims are checkable today: clone either, run the suites,
-regenerate the proof fixtures from committed scripts. Nothing here asks to be taken on trust that
-could instead be run.
+One engineering decision underpins the rest. The two systems we merged proved things in incompatible
+ways; we rebuilt both onto a single proving system, so identity, money and title are verified by one
+stack — one toolchain to keep current, one surface to audit, rather than several that must agree.
+
+Both repositories are public and these claims are checkable: clone either, run the suites, regenerate
+the proof fixtures from committed scripts.
 
 ### Milestone 1 — Audit
 
-Nothing reaches a real user before independent review. Scope, by descending risk:
+Nothing reaches a real user before independent review. By descending risk:
 
-**Circuits.** A soundness bug here is silent and total — a wrong constraint lets an attacker mint
-value or bypass identity while every test passes. `withdraw_identity`, `escrow_envelope`,
-`ragequit`, and the inherited passport circuits.
+**The circuits.** A flaw here is silent and total: one wrong constraint lets an attacker create value
+or bypass identity while every test still passes.
 
-**The identity registry.** Its guarantees are the product: registration cannot be refused; exclusion
-requires an affirmative, rule-citing act; a stale root expires so revocation cannot be evaded, while
-the newest never expires so inaction cannot block anyone. Each is a property an auditor should try
-to break.
+**The identity registry**, whose guarantees are the product — registration cannot be refused,
+exclusion demands an affirmative act citing a rule, and a stale record expires so revocation cannot
+be outrun, while the newest never expires so inaction blocks nobody.
 
-**The pool and treasury.** Deposit/withdraw accounting, nullifier handling, the change-note path,
-ragequit payouts, reserve accounting and the redemption ladder.
+**The money.** Deposit and withdrawal accounting, double-spend prevention, and the reserve's
+redemption schedule.
 
-**Key management.** Seed derivation, enclave storage, the biometric gate — a weakness here loses
-funds regardless of the circuits. **The generated verifiers**, against the circuits they claim to
-verify.
+**Key handling.** How the recovery phrase is derived, stored and unlocked — a weakness here loses
+funds however good the circuits are.
 
-We will also review the trust model — not "is the code correct" but "who can do what to whom",
-where this class of system usually fails.
+We will also commission a review of who can do what to whom — where systems of this kind fail more
+often than in their arithmetic.
 
 ### Milestone 2 — Deploy
 
-Both repositories to mainnet: identity, pool and title contracts, and the treasury behind them.
-Deployment is not only contracts — **the wallet's device path is the gating item.** The identity SDK
-ships device-only binaries so it cannot run on our machines, and NFC passport reading is not
-implemented. A deployed contract nobody can reach is not deployed. This milestone completes NFC
-reading against real passports, verifies the enclave key path on hardware, and confirms a
-phone-generated proof verifies on-chain. Passports vary in ways specifications do not capture, so
-this needs real documents, not test vectors.
+Both repositories to mainnet. **The gating item is not the contracts but the phone:** the identity
+libraries run only on a device, and passport NFC reading is the one piece still to write. A contract
+nobody can reach is not deployed. This milestone finishes NFC reading, proves the key path works on
+real hardware, and confirms a proof generated on a phone verifies on-chain.
 
 ### Milestone 3 — Proving it works in practice
 
-A small consenting cohort, real passports, value starting near zero and rising only as it holds.
-Full round trip: scan, register, deposit, withdraw to a fresh address, and confirm an observer with
-the whole chain cannot link the two. Proving time is measured on mid-range devices — the population
-that most needs this does not carry flagships.
+A small consenting group, real passports, value starting near zero and rising only as it holds. The
+full round trip: scan, register, deposit, withdraw to a fresh address, and confirm someone holding
+the entire chain cannot connect the two. Timings are taken on mid-range phones, since the people who
+most need this do not carry new ones.
 
-**This is field work, the half no code replaces:** engaging notaries, retaining counsel, recruiting a
-cohort through partners those users already trust. Relationship and legal work done in-country, and
-where most of this funding goes.
-
-It requires **devices and documents** from multiple issuing states, since MRZ layouts and chip
-behaviour differ; **informed consent** and a documented exit per participant; **monitoring that does
-not itself surveil**; and a **rollback plan** — any depositor can already exit unilaterally, which is
-what makes a pilot ethically defensible.
+**This is field work** — engaging notaries, retaining counsel, recruiting through partners those
+users already trust — done in-country, and where most of this funding goes. It needs passports from
+several issuing states, because chip behaviour and data layouts differ in ways the standard does not
+capture.
 
 ### Milestone 4 — Title and lending
 
-The title ledger exists; the registry bridge does not. Iran's cadastre (*Sabt-e Asnad va Amlak*,
-سازمان ثبت) exposes tiered access we build on rather than replace:
+The title ledger exists; the bridge to the land registry does not. Iran's Deeds and Properties
+Organisation (*Sazman-e Sabt*, سازمان ثبت) grants three levels of access, each doing a job the others
+cannot:
 
-- **Tier 1, the owner** — *Sabt-e Man* (my.ssaa.ir): every parcel and encumbrance under their
-  national ID (*Kārt-e Melli*, کد ملی).
-- **Tier 2, lenders and public** — *Tasdiq-e Asalat* (تصدیق اصالت), deed authenticity from the
-  18-digit *Shenaseh Yekta* plus the owner's national ID.
-- **Tier 3, licensed notaries** (*Sardaftar*, سردفتر) — ssar.ir: query encumbrances (*Bāzdāsht*,
-  بازداشت), register mortgages, execute binding transfers.
+- **The owner**, via *Sabt-e Man* (my.ssaa.ir), sees every parcel and charge recorded against their
+  ID number (*kod-e melli*, کد ملی) — the only way to *discover* a charge nobody disclosed.
+- **Anyone** can confirm a named deed is genuine (*Tasdiq-e Asalat*, تصدیق اصالت) from its 18-digit
+  identifier and the owner's ID number.
+- **A licensed notary** (*Sardaftar*, سردفتر), via ssar.ir and nobody else, can register a mortgage
+  or execute a transfer.
 
-**That division decides the design.** Anyone can verify a deed, so nobody need trust a notary's word
-about a property. What only a notary can do is *make a lien legally exist* — one registered by anyone
-else is void. So we prove notary licensing on-chain by indexing the official register through a
-decentralised oracle network where every node returns byte-identical data: the narrow claim that
-whoever executed the registration was entitled to. Deed truth comes from Tier 2, independently. Fraud
-detection then needs no accuser — an oracle re-query catches a missing encumbrance from state data,
-identifying nobody.
+**That division decides the design.** Since anyone can confirm a deed, nobody need take a notary's
+word about a property. What only a notary can do is *make a mortgage legally exist* — one registered
+by anyone else is void, and whoever holds it holds nothing. So the single fact we prove on-chain is
+that whoever registered it was licensed at the time, by indexing the official register through a
+decentralised oracle network where every node must return byte-identical data.
 
-**Notaries can be targeted for serving a system like this**, so their participation stays private: a
-notary proves in zero knowledge that they are one of the licensed set without revealing which, and
-their attestation carries an encrypted identity a quorum of legal guardians can open **only** on a
-proven discrepancy.
+It also gives fraud detection with no accuser: a notary either registered the charge or did not, the
+registry says which, and a re-query catches a missing one automatically, identifying nobody.
 
-**Lending is scoped separately, deliberately.** Everything above stands alone. Lending adds one
-dependency cryptography cannot supply: an **independent valuation**. The borrower provides the input
-and gains by inflating it, so their own equity is not self-verifying — the tractable form is
-attesting a licensed appraiser's registration exactly as we attest notaries, or reading public
-auction comparables. A lien also needs a legal holder, which is a special-purpose vehicle, standard
-finance rather than an open problem.
+**Notaries can be punished for serving a system like this**, so which notary acted is never published:
+they prove they are one of the licensed set without revealing which, and their identity travels
+encrypted, openable only by a quorum of legal custodians and only against a proven discrepancy.
 
-Foreclosure would use existing institutions — *Ejra-ye Ahkam* (اجرای احکام) via adliran.ir,
-*Mozāyedeh* (مزایده) via setadiran.ir — with an irrevocable assignment
-(*Vekālat-nāmeh-ye Belā-'Azl*, وکالت‌نامه بلاعزل) executed at origination, a form courts recognise.
-**If valuation cannot be made independent, we ship identity and title without lending.** Those are
-the product; lending is the extension.
+**We fund loans; we do not write them.** That choice is why the rate can fall. A bank's rate carries
+its cost of capital, its branches and its shareholders' return; here the capital comes from whoever
+holds a share of the reserve, anywhere, and the only margin is what servicing costs. It also removes
+the place where refusal happens. A bank chooses whom to serve, and people are refused for their
+faith, politics, sex or name. A protocol holding no such discretion cannot.
 
-**What each milestone delivers:** 1 — an audit report and remediated code. 2 — live contracts and a
-wallet that reads a real passport. 3 — measured evidence that a person can register, transact and
-exit unlinkably on a mid-range phone. 4 — a title provably issued by a licensed notary, with the
-property undisclosed.
+Lending needs one thing cryptography cannot supply: an **independent valuation**. The borrower
+provides the figure and gains by inflating it, so their own stake does not verify itself. The
+tractable form is attesting a licensed valuer as we attest notaries, or reading public auction
+results. The mortgage also needs a legal holder — an ordinary special-purpose vehicle.
 
-*(1000 words)*
+Foreclosure would use existing institutions — judicial enforcement (*Ejra-ye Ahkam*, اجرای احکام) and
+public auction (*Mozāyedeh*, مزایده) — with an irrevocable assignment
+(*Vekālat-nāmeh-ye Belā-'Azl*, وکالت‌نامه بلاعزل) signed at the start, a form the courts recognise.
+**If valuation cannot be made independent, we ship identity and title without lending.**
+
+**Delivered at each stage:** an audit report and the fixes; live contracts and a wallet reading a
+real passport; measured evidence a person can register, transact and leave unconnected; and a title
+provably registered by a licensed notary, the property undisclosed.
+
 
 ---
 
@@ -190,7 +183,6 @@ key derives from one enclave-held seed, and notes are re-derivable by scanning.
 fraud — a bribed notary, a forged deed — and worth nothing against a state fabricating credentials.
 We protect privacy *from* the state, not the protocol's integrity *against* it.
 
-*(≈299 words)*
 
 ---
 
@@ -209,155 +201,152 @@ for roughly four billion identities, which is not the binding constraint.
 is bounded by circuit size, which is why we measure every change in constraints rather than
 estimating. This also scales with hardware improving over time, in our favour.
 
-**Jurisdictional scaling is the real question.** Identity, title and lien logic are
-jurisdiction-agnostic. What is local is narrow: the registry endpoints, the deed schema, and the
-enforcement vendors. These sit behind interfaces so that supporting a second country is a
-configuration exercise plus legal review — not a second codebase. We designed it this way after
-being asked to generalise beyond a single country, and it is the difference between a tool for one
-population and infrastructure for many.
+**Jurisdictional scaling is the real question.** Identity, title and mortgage logic are the same
+everywhere. What is local is narrow — the registry endpoints, the deed format, the enforcement
+institutions — and sits behind interfaces, so a second country is configuration plus legal review
+rather than a second codebase.
 
-**Capital scales independently of any of this.** Funding capacity grows by adding reserves or
-liquidity — no protocol change, no permission — and diversified reserves mean capacity is not gated
-on a single asset's depth. What bounds lending volume is the supply of independently valued
-properties, not anything technical.
+**Every user brings their own capacity.** Proofs are made on the person's phone and checked by the
+chain, so there is no shared component that saturates: a thousandth user costs the same as the first.
+The reserve grows by adding deposits, needing no protocol change and nobody's permission, and its
+assets are diversified so capacity is not gated on the depth of any single one. What limits lending
+volume is the supply of independently valued properties, not anything technical.
 
-**Operationally**, there is no server to scale. The chain and the user's device do the work.
-
-*(≈293 words)*
 
 ---
 
 ## 5. Resilience to censorship *(300 max)*
 
-**What can be blocked, honestly.** Network access to the chain, app-store distribution, and the
-official registry portals the property layer reads. We do not claim otherwise.
+**What can be blocked.** Network access to the chain, app-store distribution, and the government
+registries the property layer reads.
 
-**What cannot.** No server to seize, no operator to coerce. Registration is permissionless by
-construction — no approval step means nothing an authority can instruct anyone to withhold. And
-exclusion is *fail-open*: an operator pressured into inaction blocks nobody, because the newest state
-stays valid indefinitely. That is the property most systems get backwards; we made "do nothing" the
-safe default rather than the censoring one.
+**What cannot.** No server to seize, no operator to coerce. Registration has no approval step, so
+nothing can be ordered withheld, and exclusion **fails open** — someone pressured into inaction
+blocks nobody, because the newest state stays valid indefinitely. Most systems get this backwards;
+here doing nothing is the safe default, not the censoring one.
 
-Nobody can be retroactively removed. In the system we started from, an operator could publish a
-membership set omitting someone and silently strip their private exit. Exclusion now requires an
-affirmative act citing a stated reason, recorded permanently.
+Nor can anyone be removed after the fact. In the system we started from, an operator could publish a
+membership list quietly omitting someone; exclusion now demands an affirmative act citing a stated
+reason, recorded permanently.
 
-**Mitigations for what can be blocked.** Chain access via any RPC endpoint, including user-supplied
-ones, over ordinary HTTPS expensive to distinguish from other traffic; distribution outside app
-stores by direct install, which Android permits; and — critically — an unconditional escape hatch:
-any depositor can always recover their funds without anyone's permission, so a blocked user is never
-a trapped one.
+Chain access runs over ordinary HTTPS to any endpoint, including one the user supplies, and is
+costly to tell apart from other web traffic.
 
-**Blocking the registry portals degrades the system rather than stopping it.** Identity and the
-shielded pool read no government endpoint — only the passport chip in the user's hand and the chain.
-Just the title and lending layer consults the cadastre, so cutting that access costs property
-functions while leaving private identity and transfer intact. That layering is deliberate.
+**Distribution was a design decision.** We built the wallet in React Native because it compiles to a
+standard Android package that installs from a file — sideloaded, passed between phones, or sent over
+a messaging app, with no store, no account and no list of who downloaded it. A store can be ordered
+to delist; a file cannot be recalled once it has spread.
 
-**The residual we cannot engineer away** is coercion of the individual: a phone can be seized and a
-person compelled to unlock it. We reduce blast radius — biometric gating, no plaintext identity
-on-chain — but do not pretend to solve it.
+A user cut off entirely is still not trapped: they can reclaim their deposit directly from the
+contract (section 6).
 
-*(≈291 words)*
+**Blocking the government registries degrades the system rather than stopping it.** Identity and the
+shielded pool read no state endpoint — only the passport chip and the chain. Only the property layer
+consults the registry, so cutting it costs property functions while leaving identity and private
+transfer intact.
+
+**What we cannot engineer away** is coercion: a phone can be seized and its holder compelled to
+unlock it. Biometric gating and holding no identity in the clear limit the damage without solving
+it.
 
 ---
 
 ## 6. User security measures *(300 max)*
 
-**Nothing identifying is published.** On-chain values are commitments and opaque pseudonyms. Where a
-naive design would store a hash of something guessable — a property address — we treated that as a
-live vulnerability, since low-entropy inputs are brute-forceable from public records. Those are now
-keyed pseudonyms resisting a dictionary attack.
+**Nothing identifying is published.** Where an obvious design would store a fingerprint of a street
+address, we treated that as a live vulnerability: anyone could take addresses from public records,
+fingerprint each and find the match. Those values are now disguised in a way that cannot be
+searched.
 
-**One secret, in hardware.** A single seed lives in the device secure enclave behind biometric
-authentication; every other key derives from it. Availability is checked explicitly and the wallet
-*fails closed* — refusing to store the seed rather than silently falling back to weaker storage.
+**One secret, in hardware.** A single recovery phrase lives in the phone's secure enclave behind
+biometric unlock, and every other key derives from it. If the enclave is unavailable the wallet
+refuses to store it rather than quietly falling back to weaker storage.
 
-**No note storage to lose or leak.** Spending secrets are derived, not stored, so a compromised
-backup discloses nothing extra.
+**Nothing else to lose.** Spending keys are derived from that phrase rather than stored, so a stolen
+backup reveals nothing further.
 
-**An unconditional exit.** Any depositor can withdraw their own funds without any operator's
-permission. It costs them unlinkability — a trade that is theirs to make, not ours.
+**A guaranteed way out.** Whoever made a deposit can always reclaim it directly from the contract
+with the key on their own phone — no approval, no operator, nothing working but the chain. The cost
+is that this one action publicly links the deposit to whoever reclaims it, which ordinary withdrawal
+never does. Nobody can make that trade on the user's behalf.
 
-**Assumptions stated rather than hidden.** The identity check tells you someone holds a genuine
-passport — not that they are trustworthy. A person may hold several passports, limiting what
-identity-based exclusion achieves.
+**Assumptions stated, not hidden.** The check proves someone holds a genuine passport, not that they
+are trustworthy — and a person may hold several, limiting what excluding an identity achieves.
 
-**A known limitation we disclose rather than discover later:** registering publishes a link between
-an identity and its pool handle, so *participation* is visible even though *activity* is not — a
-withdrawal never reveals which handle it belongs to. Anyone can see that a person joined; nobody can
-see what they did, or connect a deposit to a withdrawal. We are closing this by proving membership
-against a committed tree instead of publishing identifiers.
+**A limitation we disclose rather than let an auditor find:** registering publicly links a person to
+their pool account, so it is visible that someone joined — never what they did, nor which deposit
+belongs to which withdrawal. We are closing it so even joining is unobservable.
 
-**Verification over assertion.** Testing is adversarial: we check a guard fails when removed, not
-merely that the suite is green. Several real defects were caught this way, including a test that had
-silently stopped testing anything.
+**Verification over assertion.** We test by deleting a safeguard and confirming the test then fails,
+rather than trusting a green result. That caught several real defects, including a test that had
+quietly stopped checking anything.
 
-**Audit before users.** No real value until independent review is complete and remediated.
+**Audit first.** No real value at stake until independent review is complete and its findings
+fixed.
 
-*(≈299 words)*
 
 ---
 
 ## 7. Keeping costs low *(300 max)*
 
-**No infrastructure to run.** There is no backend, no database, and no server holding user data —
-which removes both the largest recurring cost and the largest liability. The chain provides
-availability; the user's device does the computation.
+**No infrastructure to run.** No backend, no database, no server holding user data — removing both
+the largest recurring cost and the largest liability. Ethereum provides availability; the phone does
+only what it must.
 
-**Optimise what recurs, accept what does not.** Every circuit change is measured in constraints, and
-we reject changes that add cost to the frequently-used path even when they look elegant. The
-withdrawal path is 43% cheaper than it was; a proposed change to the identity structure was
-*cancelled* on measurement when it turned out to cost 12% more for a cosmetic gain. One-time
-registration cost we accept, because it is paid once per user rather than once per transaction.
+**Optimise what recurs, accept what does not.** Every change is measured, and we reject those adding
+cost to the frequently-used path however elegant they look: withdrawal is 43% cheaper than it was,
+and one proposed redesign was cancelled on measurement when it proved 12% more expensive for a
+cosmetic gain. One-time registration cost we accept, since it is paid once per person rather than
+once per transaction.
 
-**On-chain gas is the user's cost, so it is our problem.** Deployment fits within contract size
-limits with the optimiser scoped only where needed. Verification cost is bounded by proof size,
-which is constant for this proving system regardless of circuit complexity.
+**Transaction fees are the user's cost, so they are our problem.** Verification cost is fixed by proof
+size, which stays constant here however complex the underlying computation.
 
-**Build on maintained open source.** We did not write our own proving system, sparse Merkle tree, or
-passport parser — we use audited or widely-used implementations and test against them differentially.
-Where we briefly wrote our own tree, we deleted it and asked the chain instead: less code to
-maintain, and impossible to drift.
+**Build on maintained open source.** We wrote no proving system, data structure or passport parser of
+our own, using established implementations and testing against them. Where we did briefly write our
+own, we deleted it and asked the chain instead — less to maintain, and impossible to drift out of
+agreement.
 
-**Reuse across subsystems.** The same pseudonym primitive serves identity revocation and property
-uniqueness. One mechanism audited once, used twice.
+**One mechanism, two uses.** Blocking a sanctioned person and stopping a property being mortgaged
+twice sound unrelated, but both reduce to publishing a list of disguised identifiers that anyone can
+check against without learning what they stand for. We built that once and use it for both — half
+the code, and one thing for an auditor to examine rather than two.
 
 **Grant funds go to audit, field work, devices and legal review** — what genuinely cannot be done
 without money. Field work dominates after audit: engaging notaries, counsel per jurisdiction, and
-cohort recruitment are people-time in-country, not engineering. We spend nothing on marketing and
-issue no token.
+cohort recruitment are people-time in-country, not engineering.
 
-*(≈281 words)*
 
 ---
 
 ## 8. Maintenance beyond the funding cycle *(300 max)*
 
-**Low structural maintenance burden.** No servers means no operational cost floor: if funding stops,
-the deployed contracts keep working and users keep control of their funds. The escape hatch means
-nobody is stranded even in total project abandonment — which we consider a requirement, not a
-feature.
+**Nothing to keep running.** With no servers there is no cost floor: if funding stops, the deployed
+contracts continue and users keep control of their money. Even if the project is abandoned outright,
+nobody is stranded — the direct reclaim in section 6 needs no one but the user.
 
-**Documented to be handed over.** The codebase records not just what it does but *why*, including
-the mistakes: decisions that were reversed and the measurement that reversed them, guards that exist
-because a specific failure was found, and errors made and corrected. A maintainer who has never met
-us can see the reasoning, which is what makes a project survivable after its authors leave. This is
-already the working practice, not a plan.
+**Documented to be handed over.** The codebase records not only what it does but why — decisions that
+were reversed and the measurement that reversed them, safeguards that exist because a specific
+failure was found. Someone who never met us can follow the reasoning. This is already the working
+practice, not a plan.
 
 **Open source, on maintained dependencies.** The proving toolchain and identity libraries are
-actively developed by others; our contribution is the layer joining them. Defects we find in
-upstream we push upstream — we have already contributed fixes back.
+actively developed by others; our contribution is the layer joining them, and defects we find there
+we have already contributed back.
 
-**Narrow local surface.** Jurisdiction-specific integration is deliberately isolated, so the part
-most likely to break — a government portal changing — is the part cheapest to repair, and can be
-repaired by someone local without touching the cryptography.
 
-**Sustainability path.** The treasury earns yield on its reserves whether or not a single mortgage is
-written, and that revenue — not lending — is what funds maintenance. Lending would add to it. We do
-not plan to depend on repeated grant cycles: grant funding is for what cannot be self-funded,
-principally security audit.
 
-**Realistic commitment.** We will not claim indefinite stewardship. What we commit to is leaving the
-system in a state where someone else can take it on.
+**A narrow surface to maintain.** Everything jurisdiction-specific is isolated in one place, so the
+component most likely to break — a government portal changing its format — is also the cheapest to
+repair, and repairable locally without touching any cryptography.
 
-*(≈291 words)*
+**How it pays for itself.** The reserve earns a return whether or not a single mortgage is ever
+written, and that — not lending — is what funds maintenance. We do not plan to depend on repeated
+grants: this funding is for what cannot be self-funded, principally the audit.
+
+**What happens if we stop.** The contracts are not upgradeable and have no administrator, so they
+keep running with nobody at the controls; deposits, withdrawals and existing titles are unaffected by
+our absence. The only work that genuinely recurs is updating the readers when a government portal
+changes its format — a self-contained task, in one place, that a local developer can do without
+touching the cryptography.
+

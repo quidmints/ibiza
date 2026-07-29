@@ -95,6 +95,22 @@ contract HolderRegistration is RegistrationSimple {
      * - **`notAfter`** - fixed to 0. Nothing in the proof attests an expiry, so accepting one would
      *   be recording a claim the caller made about themselves as though it were established.
      *
+     * ────────────────────────────────────────────────────────────────────────────────────────
+     * INCOMPLETE END TO END, AND THE GAP IS A DOCUMENT LENGTH (TODO.md sec. 2.18j/2.18r).
+     *
+     * `register_identity` is the TD3 circuit - a passport booklet, DG1 of 93 bytes. `escrow_envelope`
+     * computes `dgCommit` over **95** bytes, the TD1 / ID-card layout, because that is what the live
+     * signer path and the wallet's upstream circuits use. A document registered HERE therefore
+     * produces a `registrationSmt` leaf that escrow can never reproduce, so it can never obtain a
+     * pool identity.
+     *
+     * So this function is correct and its guards are tested, and the path it belongs to does not yet
+     * reach the pool. The missing piece is one length decision - either a 93-byte escrow variant or
+     * a 95-byte registration variant - NOT more logic here. Recorded rather than papered over,
+     * because a caller who registered through this today would get a document that silently goes
+     * nowhere.
+     * ────────────────────────────────────────────────────────────────────────────────────────
+     *
      * THE ROOT IS CHECKED BEFORE THE PROOF IS VERIFIED, deliberately (sec. 2.18k). Two reasons.
      * A Honk verification costs hundreds of thousands of gas and a root lookup is one call, so the
      * cheap check goes first. And more importantly it is what makes the guard TESTABLE AT ALL

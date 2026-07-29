@@ -3207,6 +3207,88 @@ briefly AND only if it existed.
 Contract sizes unchanged in substance - `PoseidonSMT` 10,055 bytes, `L1RegistrationState` 4,572,
 both far under EIP-170. Client ABIs re-checked.
 
+### 2.18r MY OWN MISTAKE: I BUILT THE ENTRY POINT ON THE WRONG SIDE OF sec. 2.18j
+
+*(user: "did you fix the mistake?")* The `isRootValid` defect was fixed and shared (2.18o/2.18q).
+This is a different one, and it is mine, made in the same turn that built `registerDocumentViaIcao`.
+
+**THE ENTRY POINT REGISTERS DOCUMENTS THAT CAN NEVER REACH THE POOL.** It pins the
+`register_identity` verifier - TD3, `DG1_LEN = 93`. `escrow_envelope` computes `dgCommit` over
+**95** bytes. A leaf written by this path can never be reproduced by escrow, so the identity can
+never be registered and the deposit never shielded.
+
+**sec. 2.18j RECORDED EXACTLY THIS AND I BUILT ON IT ANYWAY**, which is the part worth keeping:
+knowing an incompatibility and then not checking which side of it you are standing on is a
+distinct failure from not knowing. The guards are right, the tests are real, and the path is inert.
+
+**THE FIX IS ONE DECISION, NOT MORE CODE**, and it is the same decision sec. 2.18j asked for:
+- a **93-byte `escrow_envelope` variant**, so booklets work end to end; or
+- a **95-byte `register_identity` variant**, so the permissionless path matches the live TD1 path
+  and the wallet's upstream `id_cards` circuits.
+
+The second is the smaller move and matches what the wallet actually reads today. **Neither can be
+VERIFIED end to end without a witness** (sec. 2.18k), so I have not manufactured a circuit variant
+whose SOD parameters nothing can check - that would be the unexercised-verifier mistake in another
+costume. What IS verifiable today, and should come with either variant, is the cross-path agreement
+test from sec. 2.18i: `dg1_hash` must match `register_identity_light` at the SAME length.
+
+Noted at the function itself, not only here, so a caller-facing NatSpec says the path does not yet
+reach the pool.
+
+### 2.18s A BUG IN @solarity/solidity-lib: HALF OF ALL VALID RSA-PSS SIGNATURES WERE REJECTED
+
+Thread A of the three open threads was "get the certificate dispatchers under test". Writing the
+first one found this.
+
+**`RSASSAPSS._pss` READ THE WRONG END OF THE MODULUS.**
+
+```solidity
+uint256 leadingBits_ = LibBit.clz(uint256(uint8(n_[n_.length - 1])) << 248);
+uint256 sigBits_ = (sigBytes_ * 8 - leadingBits_ - 1) & 7;
+```
+
+`n_` is BIG-ENDIAN - `_rsa` hands it straight to the modexp precompile, which requires that - so the
+most significant byte is `n_[0]`. Reading `n_[n_.length - 1]` counts leading zeros off the LEAST
+significant byte. `sigBits_` is `emBits & 7`, used to mask the leftmost byte of DB, so a wrong value
+fails the encoding check on a perfectly valid signature.
+
+**IT IS A COIN FLIP PER KEY.** `leadingBits_` comes out 0 - the correct answer for any well-formed
+RSA modulus - only when that last byte happens to be >= 0x80.
+
+**MEASURED, NOT INFERRED.** Five 2048-bit keys from openssl, every signature independently confirmed
+valid by openssl AND by a pure-Python RSASSA-PSS verifier written for the purpose (trailer, PS
+padding, salt recovery and H' comparison all checked separately):
+
+| modulus last byte | before fix | after fix |
+|---|---|---|
+| 0x41 | **rejected** | accepted |
+| 0x85 | accepted | accepted |
+| 0x99 | accepted | accepted |
+| 0xeb | accepted | accepted |
+| 0xff | accepted | accepted |
+
+**WHAT IT WOULD HAVE COST US.** `CRSAPSSSigner.verifyICAOSignature` is the gate on
+`Registration2.registerCertificate`, which is the ONLY way a DSC enters `certificatesSmt` - the tree
+`register_identity` proves membership in (sec. 2.18l). So **roughly half of all legitimate CSCA
+certificates would have been rejected**, permanently and for no discoverable reason, silently
+denying enrolment to everyone holding a document signed under those keys. On a project whose entire
+argument is that nobody can be refused, an arbitrary 50% refusal rate is close to the worst
+available failure.
+
+**IT WOULD NOT HAVE BEEN CAUGHT LATER EITHER.** A single test vector has a 50% chance of picking a
+working key, and the failure looks like "invalid signature" - indistinguishable from a genuinely bad
+certificate. The committed vector is deliberately one that ends 0x41.
+
+**FIXED IN PLACE.** `lib/solidity-lib` is vendored into this repo as tracked files rather than a
+submodule, so it is ours to correct; the change is `n_[0]` with a comment recording why. Worth
+reporting upstream - it affects every consumer of `RSASSAPSS`, not just us.
+
+**THE DIAGNOSIS PATH IS THE REUSABLE PART.** The positive test failed while all four negative tests
+passed, which is the signature of "the implementation is wrong", not "the vector is wrong" - a
+broken verifier usually fails OPEN, accepting everything. Confirming the vector against two
+independent implementations before touching the contract is what turned a puzzling red test into a
+located bug, and is why the expectation was never adjusted to match the code.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

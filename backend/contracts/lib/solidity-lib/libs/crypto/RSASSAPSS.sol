@@ -113,7 +113,17 @@ library RSASSAPSS {
             uint256 hashLength_ = params_.hashLength;
             uint256 saltLength_ = params_.saltLength;
             uint256 sigBytes_ = n_.length;
-            uint256 leadingBits_ = LibBit.clz(uint256(uint8(n_[n_.length - 1])) << 248);
+            // n_[0], NOT n_[n_.length - 1]. The modulus is BIG-ENDIAN - `_rsa` hands it straight
+            // to the modexp precompile, which requires that - so its most significant byte is the
+            // FIRST one. Counting leading zero bits off the LAST byte reads the least significant
+            // end and yields a `sigBits_` that is wrong whenever that byte happens to be < 0x80.
+            //
+            // The effect was to reject roughly HALF of all valid RSASSA-PSS signatures, chosen by
+            // an irrelevant property of the key. Measured with five openssl-generated 2048-bit
+            // keys, every signature independently confirmed valid by openssl and by a pure-Python
+            // RSASSA-PSS implementation: last byte 0x41 -> rejected; 0x85, 0x99, 0xeb, 0xff ->
+            // accepted. See TODO.md sec. 2.18s and test/certificate/CRSAPSSSigner.t.sol.
+            uint256 leadingBits_ = LibBit.clz(uint256(uint8(n_[0])) << 248);
             uint256 sigBits_ = (sigBytes_ * 8 - leadingBits_ - 1) & 7;
 
             assert(message_.length < 2 ** 61);

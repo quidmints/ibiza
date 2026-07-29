@@ -2945,12 +2945,29 @@ does the former proves the happy path and nothing else. **Mandatory alongside it
 proof carrying a DIFFERENT `icao_root` is REJECTED** - that is the one asserting the property, and
 it is the one that would fail if the contract's check were dropped.
 
-**WHAT THIS UNBLOCKS.** A witness needs no real passport: `{dg1, dg15, sod}` plus a synthetic
-CSCA/DSC is enough, and rarime's own generator proves the ICAO half is already synthetic. The
-remaining work is constructing a conforming SOD - CMS SignedData whose signed attributes carry the
-EC hash at `EC_SHIFT` and whose EC carries the DG1 hash at `DG1_SHIFT`. For the committed
-`registerIdentity_3_160_3_3_336_200_NA` variant those are 42 and 25, with `DG_HASH_TYPE`/`HASH_TYPE`
-of 20 (SHA-1 for the SOD's internal DG hashing) and `SIG_TYPE` 3.
+**DECISION: WE DO NOT FAKE THE ROOT** *(user, 2026-07-29: "we cannot fake it. we must avoid the
+trap.")*. Not in a fixture, not behind a flag, not "temporarily". A fake root is one
+`changeICAOMasterTreeRoot` call away from production, and the failure it produces - forged documents
+admitted as genuine - is silent and total. The real ICAO master list is published; building the tree
+from it is work, not a research problem.
+
+**THE HONEST CONSEQUENCE: THE POSITIVE PATH CANNOT BE TESTED UNTIL A REAL DOCUMENT EXISTS.** A valid
+proof needs a SOD signed by a DSC whose key is genuinely in that list, and no synthetic keypair can
+be. That waits for milestone 3, and pretending otherwise is precisely the trap.
+
+**BUT THE GUARD ITSELF IS TESTABLE TODAY, and the ordering is what makes it so.** Check `icao_root`
+against `StateKeeper.icaoMasterTreeMerkleRoot()` **BEFORE** verifying the Honk proof - the same
+ordering sec. 2.18e settled on for `UnknownRegistrationRoot`, and for the same reason. Then the
+negative test needs no valid proof at all: hand it arbitrary bytes with a wrong `icao_root` and
+assert it reverts on the root rather than on the proof. **The test that carries the property runs
+now; only the happy path waits.** That is the opposite of the usual arrangement, and it is the right
+way round - the guard is what protects users, and it is the half we can prove.
+
+**WHAT STILL NEEDS DOING, AND IT IS NOT A FIXTURE:** obtain the ICAO master list (the PKD publishes
+CSCA certificates; several states publish their own), build the depth-80 tree with the same leaf
+convention `extract_pk_hash` uses, and get that root on-chain. Anchoring it through CRE consensus
+rather than an owner setter (sec. 2.18h) then removes the last discretionary lever in one move -
+these are the same piece of work, not two.
 
 **NOTE THE SOD's SHA-1 IS NOT OUR `dg1_hash`.** `DG_HASH_TYPE = 20` governs the DG hashes INSIDE the
 SOD; sec. 2.18i's `dg1_hash` output is sha256 over DG1 and matches the light path. Two different

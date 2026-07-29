@@ -153,34 +153,34 @@ proven-licensed notary, property undisclosed.
 
 ---
 
-## 3. Technical feasibility *(300/300 words)*
+## 3. Technical feasibility *(298/300 words)*
 
-**Technologies.** Noir/UltraHonk circuits; Solidity verification; React Native with platform secure
-enclaves. Identity follows ICAO 9303, so the trust root can be the issuing state's signature rather
-than anything we control — today a key of ours attests it, which milestone 1 moves on-chain.
+**Technologies.** Noir/UltraHonk circuits; Solidity verification; React Native over the platform
+secure enclave. Identity follows ICAO 9303, so the trust root can be the issuing state's signature
+rather than anything we control — today a key of ours attests it, which milestone 1 moves on-chain.
 
-**Capacity.** The system is built and tested, the strongest evidence we can build it. We found and
-fixed subtle defects on the way — a proof binding to an unconstrained field, stale roots letting
-revocation be evaded, a commitment hiding the property while letting one parcel be titled twice.
-Finding our own errors matters more than claiming correctness. **The identity base is field-proven
-in this jurisdiction:** the passport stack we fork ran anonymous Iranian protest voting (link
-above), so scanning by users at risk is demonstrated, not hypothetical.
+**Capacity.** The system is built and tested — the strongest evidence we can build it. We found and
+fixed subtle defects on the way: a proof binding to an unconstrained field, stale roots letting
+revocation be evaded, one parcel titleable twice. Finding our own errors matters more than claiming
+correctness. **The identity base is field-proven here:** the stack we fork ran anonymous Iranian
+protest voting (link above), so scanning by users at risk is demonstrated.
 
-**Dependencies.** The proving toolchain and passport standard, both stable and open; registry
-portals outside our control.
+**Dependencies.** The proving toolchain and document standard, both stable and open; registry
+portals we do not control.
 
-**Risks and mitigation.** *Lending's dependencies do not resolve* — independent valuation, an entity
-able to hold a lien, a state-visible encumbrance; mitigated by scoping identity and title to stand
-alone, since provable private ownership is useful without anyone lending against it. *Portal changes
-break the scrapers* — versioned workflows with a timelock, so an update is visible before it takes
-effect. *Registry access withdrawn* — local integration sits behind an interface, so a jurisdiction
-is configuration, not a fork. *Proving too slow* — measured on mid-range devices; withdrawal is
-already 43% smaller. *A soundness bug* — why audit is first. *Key loss* — one seed derives every key,
-and notes are re-derivable by scanning.
+**Risks and mitigation.** *Lending's dependencies do not resolve* — valuation, an entity able to
+hold a lien, a state-visible encumbrance; mitigated by scoping identity and title to stand alone,
+since provable private ownership is useful without anyone lending on it. *Portal changes break
+the scrapers* — versioned workflows with a timelock, so updates are visible before taking effect.
+*Registry access withdrawn* — local integration sits behind an interface, so a jurisdiction is
+configuration, not a fork.
 
-**One bound we state rather than hide.** The registers are the state's own: strong against private
-fraud — a bribed notary, a forged deed — and worthless against a state fabricating credentials. We
-protect privacy *from* the state, not the protocol's integrity *against* it.
+**One bound we state rather than hide.** Both trust roots are the state's own: the property
+registers, and the signing keys that make a document genuine. Strong against private fraud — a
+bribed notary, a forged deed — and worthless against a state fabricating credentials. **That
+signing-key list is the one input we must get right and cannot prove right from inside:** a proof
+shows only that a document was signed by a key on the list it was handed. It comes from the
+official directory, pinned on-chain.
 
 
 ---
@@ -247,36 +247,36 @@ Biometric gating and no identity in the clear limit that without solving it.
 
 ---
 
-## 6. User security measures *(298/300 words)*
+## 6. User security measures *(284/300 words)*
 
 **Nothing identifying is published.** An obvious design would store a fingerprint of a street
-address; anyone could then fingerprint addresses from public records and find the match. Those
-values are disguised so they cannot be searched.
+address; anyone could fingerprint public records and find the match. Those values are disguised
+against search.
 
 **One secret, in hardware.** A single phrase sits in the phone's secure storage behind biometric
-unlock, and every other key derives from it — spending keys derived, never stored. If hardware
-backing cannot be confirmed, the wallet refuses to store it at all.
+unlock and every other key derives from it — spending keys derived, never stored. If hardware
+backing cannot be confirmed, the wallet refuses to store it.
 
 **The gap we disclose rather than let an auditor find: there is no recovery.** The phrase is
-generated on the device, never shown, and kept out of cloud backup — a lost phone is a lost identity
-and lost funds. Milestone 2 adds recovery that puts no key on anyone's server.
+generated on the device, never shown, kept out of cloud backup — a lost phone is a lost identity and
+lost funds. Milestone 2 adds recovery putting no key on anyone's server.
 
 **A guaranteed way out.** Whoever deposited can always reclaim directly from the contract with the
-key on their own phone — no approval, no operator, nothing working but the chain. The cost is that
-this action publicly links the deposit to whoever reclaims it. Nobody makes that trade for them.
+key on their own phone — no approval, no operator, nothing but the chain. The cost is that it
+publicly links the deposit to whoever reclaims it, a trade nobody makes for them.
 
-**Assumptions stated, not hidden.** The check proves someone holds a genuine passport, not that they
-are trustworthy — and a person may hold several, limiting what excluding one achieves.
+**Assumptions stated, not hidden.** The check proves someone holds a genuine document, not that
+they are trustworthy — and a person may hold several, limiting what excluding one achieves.
 
 **Joining is now unobservable.** Registration used to publish a person's identity beside their pool
-account, so it was visible that someone had joined. The proof now shows the passport is registered
-without naming it; the one value published is shared by everyone.
+account, so it was visible someone had joined. The proof now shows the document is registered
+without naming it; the one published value is shared by everyone.
 
-**Verification over assertion.** We test by deleting a safeguard and confirming the test then fails,
-rather than trusting a green result — which caught several real defects, including a test that had
-quietly stopped checking.
+**Verification over assertion.** We test by deleting a safeguard and confirming the test then
+fails rather than trusting a green result — which caught real defects, including two tests that had
+quietly stopped checking anything.
 
-**Audit first.** No real value at stake until independent review is complete and its findings are
+**Audit first.** No real value at stake until independent review is complete and its findings
 fixed.
 
 

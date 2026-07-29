@@ -4077,6 +4077,30 @@ and nothing would fail loudly.
 real SOD (sec. 2.18ad item 1). The parts that DON'T (`extract_dg1_commitment`) are already exercised
 by `register_identity_td1`'s two tests.
 
+**YES, THE UNTESTED SCOPE IS INHERITED - AND THAT IS PROVABLE, NOT AN EXCUSE.** *"are you telling me
+that rarimo upstream had untested scope that we inherited?"* (user, 2026-07-29). Checked at the fork
+commit `0762975`, which is the only honest way to answer it:
+
+| module | tests AT FORK | tests NOW | who |
+|---|---|---|---|
+| `rsa.nr` | 5 | 5 | rarime |
+| `rsa_pss.nr` | 5 | 5 | rarime |
+| `sha1/224/384.nr` | 2 each | 2 each | rarime |
+| `jubjub.nr` | 3 | 5 | rarime + 2 ours |
+| `smt.nr` | 1 | 11 | rarime + 10 ours |
+| `sha512.nr` | 0 | 2 | ours |
+| `lite.nr` | 0 | 1 | ours |
+| **`query.nr`** | **0** | **0** | **inherited, still open** |
+| **`not_passports_zk_circuits.nr`** | **0** | **0** | **inherited, needs a document** |
+
+**THE VENDORING DID NOT STRIP TESTS** - `rsa.nr` arrived carrying five. So `query.nr`'s zero is
+upstream's actual state, not an artifact of how the fork was taken. The same holds for the vendored
+crypto: `sigver` has 25 tests across 31 files, but `big_curve` has **1 across 17**.
+
+That is an explanation of PROVENANCE, not a defence. Inheriting an untested 883-line file that decides
+what a proof discloses makes it ours the moment we shipped it, and rarime having tested with real
+passports (their empirical claim) is not the same as having unit tests on the disclosure arithmetic.
+
 **CRE IS NOT A PREREQUISITE FOR ANY OF IT.** sec. 2.15a's scraper anchors the ACTIVE-NOTARY snapshot;
 it feeds `TitleLedger`'s notary side, not the passport query path. And even for `title_holder`, the
 circuit proves set membership against a root - where the root comes from is orthogonal to whether the

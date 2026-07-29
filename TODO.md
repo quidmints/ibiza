@@ -3038,6 +3038,45 @@ registration entry point checking `certificatesSmt.isRootValid` BEFORE proof ver
 negative test needs no valid proof; and anchor the CSCA root through CRE consensus to remove the
 last discretionary lever.
 
+### 2.18m OUT-OF-BOUNDS READ IN X509.extractPublicKey - found by testing what 2.18l reinstated
+
+sec. 2.18l put the certificate dispatchers back on the list because they gate every DSC admission.
+Writing their first tests found this in the library underneath them.
+
+**THE DEFECT.** `X509.extractPublicKey(sa, prefix, keyOffset_, keyLength_)`:
+- `_checkPrefix` validates only the bytes IMMEDIATELY BEFORE `keyOffset_`;
+- nothing checked that `keyOffset_ + keyLength_` stayed inside `sa`;
+- the copy is `MemoryUtils.unsafeCopy`, a raw identity-precompile memcpy - **no bounds check of any
+  kind**, it moves `size_` bytes from a pointer.
+
+So an offset near the end silently read **adjacent memory** into the extracted key. Demonstrated
+before fixing: a 32-byte key read from offset 64 of a 64-byte array returned successfully and
+contained none of the array's filler, and a 512-byte key was read out of 64 bytes of attributes.
+
+**WHY IT WAS REACHABLE RATHER THAN THEORETICAL.** `keyOffset` is a caller-supplied field of
+`Registration2.Certificate`, and the CSCA signature covers `signedAttributes` - **not the offsets**.
+So anyone holding ONE genuine CSCA-signed certificate could resubmit it with a different
+`keyOffset`, in a call whose other arguments (`icaoMember.publicKey`, `icaoMember.signature`) are
+also theirs and land in adjacent memory. The extracted value goes to `StateKeeper.addCertificate`
+and into `certificatesSmt` - **the tree `register_identity` proves membership in** (sec. 2.18l). A
+key an attacker controls, admitted there, lets them sign their own SODs and enrol fabricated
+identities through the permissionless path. That is the path sec. 2.18g exists to build.
+
+**THE FIX** is one require in `extractPublicKey`, with the boundary case (`keyOffset_ + keyLength_
+== length`, a key ending flush with the attributes) still accepted since that is ordinary.
+
+**VERIFIED BY REMOVAL:** deleting the require makes both regression tests fail with "did not revert
+as expected". Seven tests total, including a known-answer test for `extractExpirationTimestamp`
+against the worked example in X509's own doc comment - 2030-09-11 07:21:26 UTC = 1915341686, which
+the library computes correctly. **My first assertion for that was wrong and the contract was right**;
+recomputed rather than adjusted to match.
+
+**THE GENERAL SHAPE, worth carrying forward:** signatures cover CONTENT, not the OFFSETS used to
+read it. Anywhere a signed blob is parsed with caller-supplied indices, the indices are unauthenticated
+input even though the blob is authenticated. `Registration2.Certificate` carries `keyOffset` AND
+`expirationOffset`; the latter is read with Solidity indexing, which bounds-checks and reverts, so it
+was already safe - but only by accident of style, not by design.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

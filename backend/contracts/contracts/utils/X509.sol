@@ -56,6 +56,24 @@ library X509 {
     ) internal view returns (bytes memory x509Key_) {
         _checkPrefix(x509SignedAttributes_, checkPrefix_, keyOffset_);
 
+        // BOUNDS. `_checkPrefix` validates only the bytes immediately BEFORE `keyOffset_`, and the
+        // copy below is `MemoryUtils.unsafeCopy` - a raw identity-precompile memcpy with no bounds
+        // check of any kind. Without this line a `keyOffset_` near the end of the array silently
+        // reads ADJACENT MEMORY into the extracted key instead of reverting.
+        //
+        // THAT WAS REACHABLE, NOT THEORETICAL. `keyOffset` is a caller-supplied field of
+        // `Registration2.Certificate` and is NOT covered by the CSCA signature over
+        // `signedAttributes`, so anyone holding one genuine CSCA-signed certificate could resubmit
+        // it with a different offset and have a key read out of memory they influence - in a call
+        // whose other arguments (`icaoMember.publicKey`, `icaoMember.signature`) are also theirs.
+        // The result goes to `StateKeeper.addCertificate` and lands in `certificatesSmt`, the tree
+        // `register_identity` proves membership in, so an attacker-controlled key admitted there
+        // would let them sign their own SODs and enrol fabricated identities. See TODO.md 2.18m.
+        require(
+            keyOffset_ + keyLength_ <= x509SignedAttributes_.length,
+            "X509: key runs past the signed attributes"
+        );
+
         x509Key_ = new bytes(keyLength_);
 
         MemoryUtils.unsafeCopy(

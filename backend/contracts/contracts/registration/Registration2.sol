@@ -157,6 +157,24 @@ contract Registration2 is Initializable, UUPSUpgradeable {
         );
     }
 
+    /**
+     * @notice The Noir/Honk twin of `register`, and THE PREFERRED PATH. Same arguments, same state
+     *         transition, same `certificatesRoot_` check - the proving system is the only difference.
+     *
+     * WHICH STACK OWNS WHAT, stated here because two entrypoints sitting side by side is precisely
+     * what makes it ambiguous (TODO.md sec. 2.18aj):
+     *
+     *   - `registerCertificate` / `revokeCertificate` - NEITHER STACK. DSC admission is gated by a
+     *     CSCA SIGNATURE, not a ZK proof. Every piece of certificate hardening (X509 bounds
+     *     sec. 2.18m, PKCS#1 forgery sec. 2.18u, low-s sec. 2.18v) is independent of this choice.
+     *   - `registerViaNoir` / `reissueIdentityViaNoir` - Noir/Honk. 76 verifiers vendored under
+     *     `passport/verifiers2/noir/`.
+     *   - `register` / `reissueIdentity` - Circom/Groth16. 35 verifiers under
+     *     `passport/verifiers2/per-passport/`, of which 29 ALREADY have a Noir equivalent.
+     *
+     * This is a MIGRATION WITH SIX PROFILES LEFT, not a permanent dual-stack design. Do not add new
+     * Circom-only capability here - it would only have to be ported again.
+     */
     function registerViaNoir(
         bytes32 certificatesRoot_,
         uint256 identityKey_,

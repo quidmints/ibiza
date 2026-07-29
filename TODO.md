@@ -3974,6 +3974,61 @@ was genuinely dead rather than dead-looking.
 dual-stack (`execute` for Circom, `executeNoir` for Honk). "We got rid of Groth16" is true of the
 POOL and false of the identity stack, and the two are easy to conflate because both live here.
 
+### 2.18aj GOING FULLY HONK COSTS SIX PASSPORTS - the exact number, and what it buys
+
+*"how many different passports would we need to eventually be fully honk and what would that give
+us"* (user, 2026-07-29). Countable, so counted.
+
+**I FIRST ANSWERED THIS WRONG.** I said our Noir coverage was "three circuits" against 35 Circom
+profiles, and concluded convergence would need a re-validation programme against real documents from
+every issuer. That compared our OWN `backend/circuits/` against rarime's vendored verifiers. The repo
+also vendors **76 `NoirRegisterIdentity_*` verifiers** under `passport/verifiers2/noir/` - MORE
+profiles than the Circom set, including signature types (6, 7, 8, 23, 25, 26, 27, 28) and SHA-384
+that Circom never had. rarime already did most of this migration. Counting beat reasoning, and the
+reasoning had been confident.
+
+**THE ACTUAL GAP: 6 PROFILES.** 29 of the 35 Circom profiles already have a Noir twin. The orphans:
+
+| profile | hash | nearest Noir sibling |
+|---|---|---|
+| `1_160_3_4_576_200_NA` | SHA-1 | 1 sharing `1_160_3` |
+| `20_160_3_3_736_200_NA` | SHA-1 | 2 sharing `20_160_3` |
+| `4_160_3_3_336_216_1_1296_3_256` | SHA-1 | **0 - signature type 4 is unported entirely** |
+| `1_256_3_6_336_560_1_2744_4_256` | SHA-256 | 18 sharing `1_256_3` |
+| `14_256_3_4_336_64_1_1480_5_296` | SHA-256 | 3 sharing `14_256_3` |
+| `20_256_3_5_336_72_NA` | SHA-256 | 2 sharing `20_256_3` |
+
+**GENERATING the circuits needs ZERO passports** - five of the six differ from an existing Noir
+profile only in SOD layout offsets, which is a parameter change exactly like `register_identity_td1`
+(sec. 2.18ac), not new design. Only signature type 4 is genuinely unported. **VALIDATING them is what
+needs documents: one per profile, so SIX.** Three are SHA-1, i.e. legacy documents being phased out -
+drop those and it is **three**. Accept 29/35 (83%) coverage and it is **zero**.
+
+**WHAT IT BUYS, honestly ranked:**
+
+1. **NO PER-CIRCUIT TRUSTED SETUP.** This is the only argument that matters. Groth16 needs a ceremony
+   PER CIRCUIT - 35 of them, whose artifacts we did not produce, cannot audit, and would be trusting
+   rarime for. A compromised ceremony forges identities SILENTLY: fake registrations verify perfectly.
+   Honk needs only a universal SRS. For users whose alternative to this system is a sanctioned bank,
+   an unauditable ceremony is the wrong thing to ask them to trust.
+2. **One toolchain.** nargo/bb only - no circom/snarkjs in CI or the client bundle.
+3. **Deletes the dual entrypoints** - `register`, `reissueIdentity`, `_verifyCircomZKProof`,
+   `Groth16VerifierHelper`, and `AQueryProofExecutor.execute`. The ambiguity IS those pairs.
+4. **One audit surface** instead of two proving systems.
+
+**WHAT IT DOES NOT BUY: size.** The Circom verifiers are **420K**; the Noir set we are KEEPING is
+**11M**. Going fully Honk makes the repo bigger, not smaller. (An earlier note implying "13 MB of
+Groth16" conflated the two directories - the 13M is the whole `verifiers2` tree.)
+
+**THE POOL IS ALREADY DONE** (sec. 2.18ai), which is the source of the confusion: "are we on one
+stack?" is YES for the pool and NOT YET for identity. Ambiguity killed at the two places the split is
+visible - `Registration2.registerViaNoir` and `AQueryProofExecutor` now state which stack owns which
+entrypoint, that `registerCertificate` is signature-gated and belongs to NEITHER, and that new
+capability goes to the Noir side.
+
+**NOT SCHEDULED.** Six documents is a real dependency and blocks on the same thing sec. 2.18ad does.
+Revisit when a real card or passport exists; convergence is then deletion, not a port.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

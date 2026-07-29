@@ -139,6 +139,56 @@ contract HolderRegistrationTest is Test {
         return abi.encodePacked(r, s, v);
     }
 
+    /*
+     * ── THE ENROLMENT GATE, PINNED (TODO.md sec. 2.18g) ──────────────────────────────────────
+     *
+     * EVERY path into the holder tree on this contract requires a BACKEND SIGNER'S SIGNATURE, so
+     * enrolment can be withheld by whoever holds that key. That contradicts the property the
+     * identity registry downstream is built to provide - `IdentityRegistry.register` is
+     * permissionless, but it is unreachable for anyone who cannot first get a document bound here.
+     *
+     * THIS TEST EXISTS TO STOP THAT BEING FORGOTTEN. It asserts the CURRENT behaviour, which is the
+     * defect, so the gate is visible in the suite rather than only in a design note. When the
+     * permissionless path lands (an ICAO-verifying registration writing via `addDocument`, the
+     * machinery `Registration2` already has), this test should FAIL for the renamed reason and be
+     * rewritten to assert that a user with NO signature can still enrol. A green suite must not be
+     * able to coexist with both states.
+     *
+     * The proof is genuine in every case below; only the signature is absent or wrong.
+     */
+    function test_EnrolmentIsGatedByABackendSigner() public {
+        RegistrationSimple.Passport memory p =
+            _passport(111, bytes32(uint256(1)), bytes32(uint256(0xA0A0)), bytes32(0));
+
+        // A signature from a key that is not a registered signer - i.e. any user acting alone.
+        uint256 strangerPk = 0xDEAD01;
+        assertTrue(vm.addr(strangerPk) != SIGNER, 'the stranger must not be the signer');
+        bytes memory strangerSig = _sign(strangerPk, p);
+        bytes32 docType = sk.DOC_PASSPORT();
+
+        vm.expectRevert(bytes('HolderRegistration: caller is not a signer'));
+        reg.registerDocumentViaNoir(1, p, docType, 0, strangerSig, '');
+
+        // And the document is not bound, so nothing downstream can proceed: escrow requires an
+        // inclusion proof of this leaf, and IdentityRegistry.register requires that escrow.
+        assertEq(uint8(sk.getDocument(p.publicKey).status), 0, 'DocStatus.None expected');
+    }
+
+    /// The same gate on renewal, so a holder cannot refresh an expiring document unaided either.
+    function test_RenewalIsGatedByTheSameSigner() public {
+        RegistrationSimple.Passport memory p1 =
+            _passport(111, bytes32(uint256(1)), bytes32(uint256(0xA0A0)), bytes32(0));
+        bytes32 docType = sk.DOC_PASSPORT();
+        reg.registerDocumentViaNoir(1, p1, docType, 0, _sign(SIGNER_PK, p1), '');
+
+        RegistrationSimple.Passport memory p2 =
+            _passport(222, bytes32(uint256(2)), bytes32(uint256(0xB0B0)), bytes32(0));
+        bytes memory strangerSig = _sign(0xDEAD01, p2);
+
+        vm.expectRevert(bytes('HolderRegistration: caller is not a signer'));
+        reg.renewDocumentViaNoir(p1.publicKey, 1, p2, docType, 0, strangerSig, '');
+    }
+
     // ── registerDocumentViaNoir ────────────────────────────────────────────────────────────
 
     function test_registerDocumentViaNoir_succeeds() public {

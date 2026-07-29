@@ -2720,6 +2720,62 @@ question - who publishes the ICAO master list, and can THAT be withheld?
 **CLAIMS CORRECTED MEANWHILE**, rather than left standing while the build is pending:
 FUNDING-APPLICATION.md sec. 5 and sec. 6, `IdentityRegistry.sol`, `escrow_envelope/src/main.nr`.
 
+### 2.18h SCOPING THE PERMISSIONLESS PATH - much smaller than feared, and it RELOCATES the gate
+
+**THE DISPATCHERS ARE NOT NEEDED. `register_identity` VERIFIES THE WHOLE ICAO CHAIN IN-CIRCUIT.**
+Reading it settles sec. 2.18g's build estimate downward by a lot:
+1. `passport_verification_flow` - DG1 hashes into EC, EC into the signed attributes (the SOD chain)
+2. `verify_signature` - the DSC's RSA/ECDSA signature over those attributes, in-circuit
+3. `smt_verifier::<80>(icao_root, leaf, key, branches)` - the DSC public key's inclusion in the ICAO
+   master tree
+Returns `(dg15_pk_hash, passport_hash, dg1_commitment, sk_hash)` and passes `icao_root` through.
+
+So the contract needs only: verify the Honk proof, check `icao_root ==
+stateKeeper.icaoMasterTreeMerkleRoot()`, call `addDocument`. **No certificate dispatcher, no signer
+contract.** Those belong to the legacy Circom path (`Registration2.register`), which is why they had
+no tests - they are not on any road we are travelling. sec. 2.18g called them "the trustless path we
+are not on"; more precisely, they are ONE trustless path, and the Noir circuit is a shorter one.
+
+**THE GATE MOVES, IT DOES NOT VANISH - and the difference is the whole point.**
+`StateKeeper.changeICAOMasterTreeRoot` is `onlyOwner`. So:
+
+- **TODAY (signer gate):** per-user, per-registration. The signer can refuse YOU, specifically and
+  silently, and nobody else can tell it happened. **This is targeted, deniable discrimination** -
+  precisely the failure sec. 2.22c says the whole distributor argument exists to remove.
+- **AFTER (ICAO-root gate):** systemic and public. An owner can refuse EVERYONE by freezing the root
+  or never updating it. They CANNOT refuse one person, because the proof is self-service and the
+  root is global. A stale root is publicly observable.
+
+**Converting a targeted, invisible, per-person refusal into an all-or-nothing visible one is the
+property we actually need.** You cannot discriminate with an all-or-nothing lever. Claiming "no gate"
+would still be false, and I should not write that.
+
+**THE REMAINING STEP, for later:** anchor the ICAO root through the same CRE consensus pattern the
+notary registry uses (`ConsensusIdenticalAggregation`, every DON node fetching independently and
+agreeing byte-for-byte). That removes the owner's discretion over the root too. The ICAO master list
+is public data, so this is the same shape of problem as indexing the notary register.
+
+**A TRAP TO AVOID WHEN BUILDING IT - THE ANTI-REPLAY KEY DIFFERS BETWEEN THE TWO PATHS.**
+`HolderRegistration._replayKey` uses `dg1Hash`, which is what the LIGHT circuit returns. The full
+circuit returns `passport_hash` (over the SOD's signed attributes) and NOT `dg1_hash`. If the
+permissionless path keyed anti-replay on `passportHash` while the signer path keys on `dg1Hash`,
+**the same physical passport could be bound TWICE, under two different holder roots** - destroying
+the document-scarcity guarantee the whole identity blacklist rests on. That is the exact defect
+sec. 2.13n's `_replayKey` fix closed, reappearing through a second door.
+
+Fix: add `dg1_hash` as an extra public output of `register_identity`. The sha256 over DG1 is already
+computed inside `passport_verification_flow`, so it costs ~nothing beyond the output slot. Do NOT
+switch the light path to `passportHash` - it is not proof-bound there, which is what started this.
+
+**ALSO NOTE THE LENGTHS DIFFER.** `register_identity`'s main takes `[u8; 93]` (TD3) while our light
+path and `escrow_envelope` are 95 (TD1). A TD3-registered document could not be escrowed until the
+TD3 escrow variant already noted in `escrow_envelope/src/main.nr` exists. A TD1 variant of the full
+circuit is the smaller move.
+
+**BUILD ORDER:** dg1_hash output + TD1 variant of the full circuit -> Solidity verifier via
+codegen-verifiers.sh -> a signature-free entry point binding via `addDocument` -> tests -> then the
+CRE anchoring of the ICAO root as a separate piece.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

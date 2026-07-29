@@ -215,34 +215,35 @@ volume is the supply of independently valued properties, not anything technical.
 
 ---
 
-## 5. Resilience to censorship *(299/300 words)*
+## 5. Resilience to censorship *(300/300 words)*
 
 **What can be blocked** is network access to the chain, the registries the property layer reads,
 and one approval step we have not removed: enrolling a passport needs a signature from a key we
 hold, attesting the issuing state's certificate chain off-chain. That key could be ordered to
-withhold. Milestone 1 verifies the chain on-chain instead, using forked code we have not wired.
+refuse one person, invisibly. Milestone 1 verifies the chain inside the proof instead, turning
+refusal into an all-or-nothing act everybody can see.
 
 **After that step there is no gatekeeper.** No server to seize, no operator to coerce. Exclusion
 **fails open** — someone pressured into inaction blocks nobody, because the newest state stays valid
-indefinitely. Most systems get this backwards; here doing nothing is safe. Nor can anyone be quietly
-dropped: exclusion demands an affirmative act citing a reason, recorded permanently.
+indefinitely. Most systems get this backwards; here doing nothing is safe. Nor can anyone be dropped
+quietly: exclusion demands an act citing a reason, recorded permanently.
 
-Chain access runs over ordinary HTTPS to any endpoint the user supplies, hard to distinguish from
-other web traffic.
+Chain access runs over ordinary HTTPS to any endpoint the user supplies, hard to tell from other
+web traffic.
 
 **App-store delisting is among the weakest levers against us.** Sanctions already keep Google Play
 largely unavailable to Iranian users, so that market runs on local stores and direct installation —
-sideloading is the norm, not a habit we must teach. We chose React Native for that: it compiles to a
-standard Android package installable from a file, passed between phones or over a messaging app,
+sideloading is the norm, not a habit we must teach. React Native was chosen for that: it compiles to
+a standard Android package installable from a file, passed between phones or over a messaging app,
 with no store, no account, no record of who downloaded it. A store can be delisted; a file cannot.
-iOS lacks this path, so Android leads.
+iOS lacks this, so Android leads.
 
-**Blocking the registries degrades the system rather than stopping it.** Identity and the shielded
-pool read no state endpoint — only the passport chip and the chain — so cutting it costs property
-functions, leaving private transfer intact.
+**Blocking the registries degrades rather than stops the system.** Identity and the shielded pool
+read no state endpoint — only the passport chip and the chain — so cutting it costs property
+functions alone.
 
 **What we cannot engineer away** is coercion: a seized phone whose holder is made to unlock it.
-Biometric gating and holding no identity in the clear limit that, without solving it.
+Biometric gating and no identity in the clear limit that without solving it.
 
 ---
 

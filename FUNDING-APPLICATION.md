@@ -49,7 +49,7 @@ sex or ethnicity, because there is no one in the system with the power to refuse
 
 ---
 
-## 2. Implementation: approach, activities, and milestones *(999/1000 words)*
+## 2. Implementation: approach, activities, and milestones *(1000/1000 words)*
 
 **Every part of the software is written and ships with this application**, proving and verifying
 on-chain today. It has not had an audit, a real passport, or value at stake — the three gaps the
@@ -92,10 +92,10 @@ verifies on-chain.
 
 A small consenting group, real passports, value starting near zero and rising as it holds: scan,
 register, deposit, withdraw to a fresh address, and confirm nobody holding the whole chain can
-connect the two. Timings come from mid-range phones, not new ones.
+connect the two. Timings come from mid-range phones.
 
 **This is field work** — engaging notaries, retaining counsel, recruiting through partners users
-already trust — done in-country, where most of this funding goes. It needs passports from several
+already trust — done in-country, where most of this funding goes. It needs documents from several
 states, since chip behaviour differs beyond the standard.
 
 ### Milestone 4 — Title and lending
@@ -119,27 +119,27 @@ register through a decentralised oracle network where every node returns byte-id
 A *deed* cannot be checked that way, because the query names the owner. Run by a lender it exposes
 every applicant; run by the owner it discloses nothing — they supply details a government already
 holds. So the owner runs it on their own device and submits a proof: what reaches the chain is that
-a genuine deed exists, bound to identifiers naming neither person nor parcel.
+a genuine deed exists, bound to identifiers naming neither party nor parcel.
 
 **Notaries can be punished for serving a system like this**, so which notary acted is never
 published: they prove membership of the licensed set without naming a member, and their identity
-travels encrypted, openable by a quorum of custodians against a proven discrepancy.
+travels encrypted, openable by a quorum of custodians against a proven fault.
 
 **We fund loans; we do not write them — the central choice.** Writing a loan means judging a person,
 and whoever holds that judgment can refuse: on faith, politics, sex, name. A promise never to use it
 is worth only the promiser's freedom from pressure, so we do not take the power. The protocol lends
-against collateral checked mechanically, and mechanical checks cannot be aimed at a person.
+against collateral checked mechanically, and mechanical checks cannot be aimed at anyone.
 
-Two further levers go with it: originating needs a licence, so the system would run on permission
-that can be withdrawn; and an originator holds the borrower's file — data never collected cannot be
-compelled from us.
+**Two more reasons not to originate.** An originator needs a licence, so writing loans ourselves
+would put the system on permission that can be withdrawn. And an originator holds the borrower's
+file, which we would rather never hold: data never collected cannot be compelled from us.
 
-A cheaper rate follows, though less of one than disintermediation is usually claimed to give;
-section 7 sets out which parts of a bank's rate we actually remove and which we do not.
+A cheaper rate follows, though less than disintermediation is usually claimed to give; section 7
+sets out which parts of a bank's rate we remove and which we do not.
 
 Lending also needs what cryptography cannot supply: an **independent valuation**. The borrower
 provides the figure and gains by inflating it. The tractable form is attesting a licensed valuer as
-we attest notaries, or reading public auction results.
+we attest notaries, or reading auction results.
 
 Foreclosure uses existing institutions — judicial enforcement (*Ejra-ye Ahkam*, اجرای احکام) and
 public auction (*Mozāyedeh*, مزایده) — with irrevocable assignment
@@ -147,8 +147,8 @@ public auction (*Mozāyedeh*, مزایده) — with irrevocable assignment
 **If valuation cannot be made independent we ship identity and title without lending.**
 
 **Delivered:** an audit report and fixes; live contracts and a wallet reading a real passport;
-evidence a person can register, transact and leave unconnected; a title registered by a
-proven-licensed notary, property undisclosed.
+evidence a person can register, transact and leave unconnected; a title from a proven-licensed
+notary, property undisclosed.
 
 
 ---

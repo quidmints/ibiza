@@ -3351,6 +3351,46 @@ sec. 2.18q: stop relying on everyone remembering.
 The `lib/SPV` submodule itself is left alone - that is a separate decision, and it has uses (running
 SPV's own suite) that a remapping does not.
 
+### 2.18u SIGNATURE FORGERY IN CRSASigner - demonstrated, then fixed
+
+Continuing the dispatcher work after sec. 2.18s found a bug in the PSS signer. The PKCS#1 v1.5
+signer had a worse one.
+
+**IT COMPARED ONLY THE TRAILING HASH.** `verifyICAOSignature` decrypted with the public exponent and
+compared the LAST 20/32/64 bytes against the digest. It never checked the v1.5 frame - no
+`0x00 01 FF..FF 00`, no DigestInfo. **Everything left of the digest was ignored.**
+
+**WITH A LOW EXPONENT THAT IS NOT A WEAKNESS, IT IS A FORGERY.** Cubing is a bijection on odd
+residues mod 2^k, so for any target digest H one Hensel-lifts a root of `s^3 = H (mod 2^256)`. That
+`s` is ~255 bits, so `s^3` is ~765 bits - far under a 2048-bit modulus - and **modexp performs no
+reduction at all**, returning the plain cube whose last 32 bytes ARE H by construction.
+
+**BUILT AND COMMITTED, WITH NO PRIVATE KEY.** `test/certificate/CRSASignerForgery.t.sol` carries a
+value nobody signed which the old code accepted as a CSCA signature. e=3 is not exotic in X.509.
+
+**WHAT IT WOULD HAVE BOUGHT.** `Registration2.registerCertificate` verifies exactly this signature
+before admitting a DSC key to `certificatesSmt` - the tree `register_identity` proves membership in
+(sec. 2.18l). Forging it inserts a signer key of the attacker's choosing; from there they sign their
+own SODs and enrol fabricated identities through the permissionless path. **Unlike sec. 2.18s this
+one fails OPEN**: 2.18s could only refuse real people, this admits invented ones.
+
+**THE FIX** reconstructs the whole encoded message - `0x00 || 0x01 || 0xFF..FF || 0x00 ||
+DigestInfo || H` - and compares every byte, rather than walking the decryption looking for a
+separator. That parsing style is what produced Bleichenbacher's 2006 forgery, because it leaves the
+attacker room; a full reconstruction leaves nothing to choose.
+
+**VERIFICATION, INCLUDING WHAT IT DOES NOT SHOW.** Neutering `_checkPkcs1v15` re-accepts the forgery
+and a tampered genuine signature, so the fix as a whole is load-bearing. But removing any SINGLE
+clause - the frame, the 0xFF run, the separator, the DigestInfo - still rejects this forgery,
+because the forged cube is mostly leading zeros and several clauses catch it independently. **So the
+suite pins the fix, not each clause**; each guards a different family (frame -> left-side garbage,
+0xFF run -> short-PS variants, DigestInfo -> algorithm substitution) and demonstrating those needs
+forgeries this construction cannot produce. Said plainly rather than claimed.
+
+**AND THE FIX MUST NOT REJECT REAL SIGNATURES** - the failure sec. 2.18s nearly shipped. Genuine
+openssl signatures under BOTH e=3 and e=65537 verify, each confirmed by openssl before use, plus a
+tampered-signature negative so those are not passing for free.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

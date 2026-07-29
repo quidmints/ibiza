@@ -9,9 +9,9 @@
 - Treasury and reserve protocol — <https://github.com/quidmints/SPV>
 
 **Prior deployment of the identity base, in Iran:** Rarime's Freedom Tool — the passport
-zero-knowledge stack this work forks — was used by Iranian dissidents (IranUnchained, TCT e.V.) to
-run anonymous protest votes against the 2024 presidential election, verifying eligibility from
-biometric passports scanned locally, with nothing transmitted to a server.
+zero-knowledge stack this work forks — was used by Iranian civil-society organisations
+(IranUnchained, TCT e.V.) to run anonymous protest votes on the 2024 presidential election,
+verifying eligibility from biometric passports scanned locally, with nothing transmitted to a server.
 <https://alexablockchain.com/iranian-voting-app-to-protest-presidential-election/>
 
 ---

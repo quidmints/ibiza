@@ -56,7 +56,18 @@ pub fn date_is_less(date1: Field, date2: Field, current: Field) -> u1{
     verdict as u1
 }
 
-fn identity_state_verifier(
+/// Prove a document leaf is CURRENT in `registrationSmt`, at `root`.
+///
+/// MADE `pub` (it was private to this module) so `escrow_envelope` can reuse it instead of
+/// reconstructing the leaf itself. The layout - index `Poseidon(documentKey, holderRoot)`, value
+/// `Poseidon(dgCommit, seq, timestamp)` - is fixed by `HolderStateKeeper._bindDocument`, and a
+/// second hand-written copy of it would be free to drift from this one with nothing to notice.
+/// Publishing the existing function is the smaller change and the only one with no divergence risk.
+///
+/// PROVES CURRENT, NOT MERELY BOUND. `revokeDocument` and `renewDocument` overwrite the leaf VALUE
+/// with `Poseidon1(REVOKED)` / `Poseidon1(SUPERSEDED)`, which no `Poseidon3(dgCommit, seq,
+/// timestamp)` reconstruction can equal. So inclusion at this value is also a live-status check.
+pub fn identity_state_verifier(
     sk_identity: Field,
     pk_pass_hash: Field,
     dg_commit: Field,

@@ -43,111 +43,111 @@ unilaterally.
 **Land ownership as a private, verifiable fact** — provable to a lender or a court, invisible to
 everyone else, and impossible to register twice over the same parcel.
 
-The purpose is narrow and worth stating plainly: to make mortgage credit cheaper by removing the
-bank's margin, and to make refusal impossible. Nobody can be denied on grounds of faith, politics,
+The purpose is narrow and worth stating plainly: to strip a licensed intermediary's cost out of
+mortgage credit, and to make refusal impossible. Nobody can be denied on grounds of faith, politics,
 sex or ethnicity, because there is no one in the system with the power to refuse.
 
 ---
 
-## 2. Implementation: approach, activities, and milestones *(1000 max — 998 used)*
+## 2. Implementation: approach, activities, and milestones *(1000 max — 1000 used)*
 
 **Every part of the software is written and ships with this application**, proving and verifying
-on-chain today. It has not had an audit, a real passport, or real value at stake — the three gaps the
+on-chain today. It has not had an audit, a real passport, or value at stake — the three gaps the
 milestones close, in order.
 
 **What ships:** the zero-knowledge circuits for registration, withdrawal, escrow and emergency exit;
 the identity registry, shielded pool and title ledger; the reserve funding them; and a wallet deriving
-every key from one recovery phrase held in the phone's secure enclave.
+every key from one recovery phrase in the phone's secure enclave.
 
 One engineering decision underpins the rest: the two systems we merged proved things incompatibly, so
-we rebuilt both onto a single proving system. Identity, money and title are verified by one stack —
+we rebuilt both onto one proving system. Identity, money and title verify through a single stack —
 one toolchain to keep current, one surface to audit.
 
-Both repositories are public: clone either, run the suites, regenerate the proof fixtures from
-committed scripts.
+Both repositories are public: clone either, run the suites, regenerate the fixtures.
 
 ### Milestone 1 — Audit
 
 Nothing reaches a real user before independent review, by descending risk. **The circuits**, where a
 flaw is silent and total: one wrong constraint lets an attacker mint value or bypass identity while
-every test still passes. **The identity registry**, whose guarantees are the product — registration
+every test still passes. **The identity registry**, whose guarantees are the product: registration
 cannot be refused, exclusion demands an affirmative act citing a rule, and a stale record expires so
-revocation cannot be outrun while the newest never expires so inaction blocks nobody. **The money** —
-deposit and withdrawal accounting, double-spend prevention, the reserve's redemption schedule. And
+revocation cannot be outrun, while the newest never expires so inaction blocks nobody. **The money** —
+deposit and withdrawal accounting, double-spend prevention, the redemption schedule. And
 **key handling**, where a weakness loses funds however good the circuits are. We will also commission
-a review of who can do what to whom — where systems like this fail more often than in their
+a review of who can do what to whom — where such systems fail more often than in their
 arithmetic.
 
 ### Milestone 2 — Deploy
 
 Both repositories to mainnet. **The gating item is not the contracts but the phone:** the identity
 libraries run only on a device, and passport NFC reading is the one piece still to write — a contract
-nobody can reach is not deployed. This milestone finishes it and confirms a proof generated on real
-hardware verifies on-chain.
+nobody can reach is not deployed. This milestone finishes it and confirms a proof made on real hardware
+verifies on-chain.
 
 ### Milestone 3 — Proving it works in practice
 
 A small consenting group, real passports, value starting near zero and rising only as it holds: scan,
-register, deposit, withdraw to a fresh address, and confirm someone holding the whole chain cannot
-connect the two. Timings come from mid-range phones, since those who most need this do not carry new
-ones.
+register, deposit, withdraw to a fresh address, and confirm nobody holding the whole chain can
+connect the two. Timings come from mid-range phones, not new ones.
 
 **This is field work** — engaging notaries, retaining counsel, recruiting through partners users
 already trust — done in-country, where most of this funding goes. It needs passports from several
-issuing states, since chip behaviour differs in ways the standard does not capture.
+issuing states, since chip behaviour differs in ways the standard does not.
 
 ### Milestone 4 — Title and lending
 
 The title ledger exists; the bridge to the land registry does not. Iran's Deeds and Properties
 Organisation (*Sazman-e Sabt*, سازمان ثبت) grants three levels of access, each doing a job the others
-cannot — and that division decides where each of our checks has to run:
+cannot — and that division decides where each check runs:
 
 - **The owner**, via *Sabt-e Man* (my.ssaa.ir), sees every parcel and charge against their ID number
   (*kod-e melli*, کد ملی) — the only way to *discover* an undisclosed charge.
 - **Anyone** can confirm a named deed (*Tasdiq-e Asalat*, تصدیق اصالت) from its 18-digit identifier
-  and the owner's ID number.
-- **A licensed notary** (*Sardaftar*, سردفتر), via ssar.ir and nobody else, registers a mortgage or
-  executes a transfer.
+  and the owner's ID.
+- **A licensed notary** (*Sardaftar*, سردفتر), via ssar.ir alone, registers a mortgage or executes a
+  transfer.
 
 Only a notary can *make a mortgage legally exist* — one registered by anyone else is void. Whether a
-notary was licensed is a public fact about a public register, so we establish it by indexing that
-register through a decentralised oracle network where every node must return byte-identical data.
+notary is licensed is a public fact about a public register, so we index that register through a
+decentralised oracle network where every node must return byte-identical data.
 
-A *deed* cannot be checked the same way, because that query names the owner. Run by a lender it
-exposes every applicant; run by the owner it discloses nothing — they supply their own details to a
-government that already holds them. So the owner runs it on their own device and submits a proof of
-the answer: what reaches the chain is that a genuine deed exists, bound to identifiers revealing
-neither person nor parcel.
+A *deed* cannot be checked that way, because the query names the owner. Run by a lender it exposes
+every applicant; run by the owner it discloses nothing — they supply their own details to a
+government that already holds them. So the owner runs it on their own device and submits a proof:
+what reaches the chain is that a genuine deed exists, bound to identifiers naming neither
+person nor parcel.
 
 **Notaries can be punished for serving a system like this**, so which notary acted is never published:
-they prove membership of the licensed set without revealing which member, and their identity travels
-encrypted, openable only by a quorum of legal custodians against a proven discrepancy.
+they prove membership of the licensed set without naming a member, and their identity travels
+encrypted, openable only by a quorum of custodians against a proven discrepancy.
 
 **We fund loans; we do not write them — the central choice.** Writing a loan means judging a person,
-and whoever holds that judgment can refuse: on faith, politics, sex, name. A promise never to use the
-power is worth only the promiser's freedom from pressure, so we do not take the power. The protocol
-lends against collateral checked mechanically, and mechanical checks cannot be aimed at a person.
+and whoever holds that judgment can refuse: on faith, politics, sex, name. A promise never to use it
+is worth only the promiser's freedom from pressure, so we do not take the power. The protocol lends
+against collateral checked mechanically, and mechanical checks cannot be aimed at a person.
 
-Two further levers go with it: originating needs a licence in each country, so the system would run
-on permission that can be withdrawn, and an originator holds the borrower's file — data never
-collected cannot be compelled out of us.
+Two further levers go with it: originating needs a licence, so the system would run on permission
+that can be withdrawn; and an originator holds the borrower's file — data never collected cannot be
+compelled from us.
 
-The rate falls as a consequence. A bank's rate carries its cost of capital, branches and
-shareholders' return; here capital comes from whoever holds a share of the reserve and the only
-margin is servicing.
+**The rate falls, but less than "no bank margin" implies.** Banks fund on insured deposits, the
+cheapest money there is, and we cannot beat that. What genuinely goes is branch and underwriting
+overhead, the charter's capital charge, and the premium a licensed few command. And Iran's 30% is
+mostly currency: against inflation near 40% it is already negative in real terms, so hard-currency
+credit is cheaper in name only unless the borrower earns hard currency.
 
-Lending needs one thing cryptography cannot supply: an **independent valuation**. The borrower
+Lending also needs what cryptography cannot supply: an **independent valuation**. The borrower
 provides the figure and gains by inflating it. The tractable form is attesting a licensed valuer as
 we attest notaries, or reading public auction results.
 
-Foreclosure would use existing institutions — judicial enforcement (*Ejra-ye Ahkam*, اجرای احکام) and
+Foreclosure uses existing institutions — judicial enforcement (*Ejra-ye Ahkam*, اجرای احکام) and
 public auction (*Mozāyedeh*, مزایده) — with an irrevocable assignment
 (*Vekālat-nāmeh-ye Belā-'Azl*, وکالت‌نامه بلاعزل) signed at the start, a form courts recognise.
 **If valuation cannot be made independent we ship identity and title without lending.**
 
 **Delivered:** an audit report and fixes; live contracts and a wallet reading a real passport;
-evidence a person can register, transact and leave unconnected; a title provably registered by a
-licensed notary, the property undisclosed.
+evidence a person can register, transact and leave unconnected; a title registered by a proven-licensed
+notary, the property undisclosed.
 
 
 ---

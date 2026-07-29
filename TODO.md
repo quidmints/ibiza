@@ -2753,6 +2753,39 @@ and the reclaimed words went to the thing that paragraph never said: what the fa
 IS if nobody maintains the reader. **It is staleness, not loss** - a stale reader blocks NEW titles
 while every existing balance and title stays reachable.
 
+### 2.22e "DO WE ACTUALLY REMOVE THE BANK'S MARGIN?" - NO, AND THE DOC SAID WE DID
+
+*"do we actually remove the banks margin as the doc says?"* (user, 2026-07-29). We do not. Two
+sentences claimed it and both were wrong.
+
+**DECOMPOSE A BANK'S MORTGAGE RATE.** Cost of funds + operating cost + credit-loss provision +
+regulatory capital charge + profit. Against that:
+
+- **Cost of funds - WE ARE WORSE, NOT BETTER.** A bank funds itself on INSURED DEPOSITS, the
+  cheapest money in any economy. Our capital costs whatever its holders forgo elsewhere - the
+  reserve's own yield is the floor. This is the largest term in the rate and we lose on it.
+- **Operating cost - GENUINELY REMOVED.** Branches, staff, manual underwriting. Real, and ours.
+- **Credit losses - NOT REMOVED, REDISTRIBUTED.** Still priced; borne by underwriters instead of
+  the bank. The borrower's 30% equity at 70% LTV is the first-loss layer (see 2.19).
+- **Capital charge - REDUCED** (no charter) but **REPLACED** by over-collateralisation, which is a
+  real cost to the borrower, just not a line item.
+- **Profit - REDIRECTED, NOT ELIMINATED.** QUI holders are the shareholders now. What CAN go is the
+  MONOPOLY component: competition among capital rather than among a licensed few.
+
+**AND THE PART THAT ACTUALLY DOMINATES: IRAN'S 30% IS MOSTLY CURRENCY, NOT MARGIN.** Against
+inflation near 40% a 30% nominal IRR mortgage is a NEGATIVE REAL RATE - the borrower is already
+being subsidised by the currency. No amount of disintermediation touches that. Quoting a
+hard-currency rate against it is a category error: it is cheaper in name only, and a borrower who
+earns rial and owes dollars has swapped an interest cost for FX risk that can be far larger. **That
+is a worse deal dressed as a better one, and the honest framing is that we lend in the currency the
+borrower earns or we are moving risk rather than cutting cost.**
+
+Both sentences corrected in FUNDING-APPLICATION.md (sec. 1 and sec. 2). Section 2 re-fitted to
+exactly 1000/1000.
+
+**THE STANDING FX RISK IS UNCHANGED AND STILL UNRESOLVED** - it was already flagged as
+non-technical. What changed is that the document no longer implies we have solved it.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

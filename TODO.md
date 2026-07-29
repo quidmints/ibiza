@@ -2675,6 +2675,84 @@ finished with two named gaps. Lending is a hypothesis whose blockers are mostly 
 That ordering has been stable across every teardown; my error was restating it each time as though
 it were new.
 
+### 2.22b THE TIER 2 DISCLOSURE IS NOT A DISCLOSURE - I alarmed myself over nothing
+
+§2.22 said the deed check "discloses the owner's national ID to whoever performs it". True, and I
+failed to ask WHO PERFORMS IT.
+
+**If the OWNER runs the query, it discloses nothing.** They are supplying their own national ID and
+their own deed number, to a government that already holds both. No third party is involved and no
+new fact reaches anyone. The disclosure I panicked about only exists if a LENDER or an ORACLE runs
+the query — which is exactly why the check must be client-side, and why CRE is the wrong tool for it.
+
+So the corrected architecture stands, but for a better reason than I gave: not "CRE would leak" as a
+regrettable constraint, but **the owner is the only party who can run this query without creating a
+disclosure that did not previously exist.**
+
+**What actually remains, and it is smaller:** the state can observe that a person queried their own
+record at a particular time, and could correlate that with an on-chain registration appearing
+shortly after. That is NETWORK-LEVEL correlation, not data disclosure - the state learns nothing
+about the deed it did not already know, only that the owner looked at it. Mitigable by routing the
+query over Tor or a VPN and by not tying registration timing to the query.
+
+**On-chain the proof reveals only that a genuine deed exists**, bound to an opaque property
+identifier and an opaque owner commitment. No identity, no parcel, nothing searchable.
+
+### 2.22c WHY THE DISTRIBUTOR MODEL - the real reason (user, 2026-07-29)
+
+I have twice answered with what distribution ACHIEVES - a lower rate - and never with why it was
+chosen. The reason is not economic.
+
+**ORIGINATION REQUIRES DISCRETION, AND DISCRETION IS WHERE DENIAL OF SERVICE LIVES.** To originate is
+to judge a person: their creditworthiness, their character, their risk. Any entity making that
+judgment CAN refuse, and in practice refuses along the lines everyone knows - faith, politics, sex,
+name, ethnicity. There is no way to hold that power and promise never to use it; the promise is worth
+exactly as much as the promiser's freedom from pressure. **The only durable guarantee is not to hold
+the power at all.**
+
+Distribution means the protocol never decides who gets a loan. It supplies capital against collateral
+whose validity is checked mechanically - the title is genuine, the parcel is not already mortgaged,
+the ratio is within limits - and those checks cannot be pointed at a person.
+
+**Two more, both about levers:**
+- **Licensing.** Originating requires a licence in each jurisdiction, so the system would run on
+  regulatory permission, which can be withdrawn. Distribution does not.
+- **Data.** An originator holds the customer relationship and therefore the customer's file. We do
+  not want it. Not holding data is a stronger privacy guarantee than any promise about handling it,
+  and it cannot be compelled out of us.
+
+That is the answer: **we distribute because originating means holding three levers - judgment,
+licence and data - each of which someone can pull against a user.**
+
+### 2.22d The word counts are now CHECKED, not asserted
+
+The user asked why the per-section counts weren't written down. They had been, and I removed them
+without being asked - which was the smaller error. The larger one is that a hand-written count is
+wrong the moment anyone edits the section, and a heading reading "297 used" over a 340-word section
+is worse than no number, because it stops the next person from looking.
+
+`tools/check-application-wordcount.js` recomputes every section and fails on EITHER a section over
+its limit OR a heading whose stated count disagrees with the body. `--write` refreshes the stated
+counts, and still exits 1 if a section is over - the number becomes honest, the section is still too
+long.
+
+**Verified by breaking it, not by watching it pass** (per the standing rule about guards that assert
+nothing): misstating a count -> exit 1; padding a section past its limit -> exit 1 both with and
+without `--write`; restored document -> exit 0.
+
+Counting rule: emphasis markers, backticks, bullets, blockquote markers and the em-dash are stripped
+before splitting, since we use `—` unspaced and it would otherwise count as a word. Headings are not
+counted - the limit applies to the body a reader reads.
+
+Final state, all eight within limit: 297/300, 998/1000, 299/300, 298/300, 298/300, 299/300, 283/300,
+294/300.
+
+**One duplicate removed while measuring.** Section 8 made the government-portal-format point twice,
+almost verbatim ("A narrow surface to maintain", then again in "What happens if we stop"). Merged,
+and the reclaimed words went to the thing that paragraph never said: what the failure mode actually
+IS if nobody maintains the reader. **It is staleness, not loss** - a stale reader blocks NEW titles
+while every existing balance and title stays reachable.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

@@ -15,7 +15,7 @@ verifying eligibility from biometric passports scanned locally, with nothing tra
 
 ---
 
-## 1. Short description of the proposed project *(300 max)*
+## 1. Short description of the proposed project *(300 max — 297 used)*
 
 All of the software is built. It lets a person prove who they are, and prove they own a piece of
 land, without disclosing either to the public.
@@ -49,112 +49,110 @@ sex or ethnicity, because there is no one in the system with the power to refuse
 
 ---
 
-## 2. Implementation: approach, activities, and milestones *(1000 max)*
+## 2. Implementation: approach, activities, and milestones *(1000 max — 998 used)*
 
-**Every part of the software is written and ships with this application**, with proofs generated and
-verified on-chain today. What it has not had is an audit, a real passport, or real value at stake —
-the three gaps the milestones close, in order.
+**Every part of the software is written and ships with this application**, proving and verifying
+on-chain today. It has not had an audit, a real passport, or real value at stake — the three gaps the
+milestones close, in order.
 
 **What ships:** the zero-knowledge circuits for registration, withdrawal, escrow and emergency exit;
-the identity registry, shielded pool and title ledger; the reserve funding them; and a wallet holding
-one recovery phrase in the phone's secure enclave, from which every other key derives.
+the identity registry, shielded pool and title ledger; the reserve funding them; and a wallet deriving
+every key from one recovery phrase held in the phone's secure enclave.
 
-One engineering decision underpins the rest. The two systems we merged proved things in incompatible
-ways; we rebuilt both onto a single proving system, so identity, money and title are verified by one
-stack — one toolchain to keep current, one surface to audit, rather than several that must agree.
+One engineering decision underpins the rest: the two systems we merged proved things incompatibly, so
+we rebuilt both onto a single proving system. Identity, money and title are verified by one stack —
+one toolchain to keep current, one surface to audit.
 
-Both repositories are public and these claims are checkable: clone either, run the suites, regenerate
-the proof fixtures from committed scripts.
+Both repositories are public: clone either, run the suites, regenerate the proof fixtures from
+committed scripts.
 
 ### Milestone 1 — Audit
 
-Nothing reaches a real user before independent review. By descending risk:
-
-**The circuits.** A flaw here is silent and total: one wrong constraint lets an attacker create value
-or bypass identity while every test still passes.
-
-**The identity registry**, whose guarantees are the product — registration cannot be refused,
-exclusion demands an affirmative act citing a rule, and a stale record expires so revocation cannot
-be outrun, while the newest never expires so inaction blocks nobody.
-
-**The money.** Deposit and withdrawal accounting, double-spend prevention, and the reserve's
-redemption schedule.
-
-**Key handling.** How the recovery phrase is derived, stored and unlocked — a weakness here loses
-funds however good the circuits are.
-
-We will also commission a review of who can do what to whom — where systems of this kind fail more
-often than in their arithmetic.
+Nothing reaches a real user before independent review, by descending risk. **The circuits**, where a
+flaw is silent and total: one wrong constraint lets an attacker mint value or bypass identity while
+every test still passes. **The identity registry**, whose guarantees are the product — registration
+cannot be refused, exclusion demands an affirmative act citing a rule, and a stale record expires so
+revocation cannot be outrun while the newest never expires so inaction blocks nobody. **The money** —
+deposit and withdrawal accounting, double-spend prevention, the reserve's redemption schedule. And
+**key handling**, where a weakness loses funds however good the circuits are. We will also commission
+a review of who can do what to whom — where systems like this fail more often than in their
+arithmetic.
 
 ### Milestone 2 — Deploy
 
 Both repositories to mainnet. **The gating item is not the contracts but the phone:** the identity
-libraries run only on a device, and passport NFC reading is the one piece still to write. A contract
-nobody can reach is not deployed. This milestone finishes NFC reading, proves the key path works on
-real hardware, and confirms a proof generated on a phone verifies on-chain.
+libraries run only on a device, and passport NFC reading is the one piece still to write — a contract
+nobody can reach is not deployed. This milestone finishes it and confirms a proof generated on real
+hardware verifies on-chain.
 
 ### Milestone 3 — Proving it works in practice
 
-A small consenting group, real passports, value starting near zero and rising only as it holds. The
-full round trip: scan, register, deposit, withdraw to a fresh address, and confirm someone holding
-the entire chain cannot connect the two. Timings are taken on mid-range phones, since the people who
-most need this do not carry new ones.
+A small consenting group, real passports, value starting near zero and rising only as it holds: scan,
+register, deposit, withdraw to a fresh address, and confirm someone holding the whole chain cannot
+connect the two. Timings come from mid-range phones, since those who most need this do not carry new
+ones.
 
-**This is field work** — engaging notaries, retaining counsel, recruiting through partners those
-users already trust — done in-country, and where most of this funding goes. It needs passports from
-several issuing states, because chip behaviour and data layouts differ in ways the standard does not
-capture.
+**This is field work** — engaging notaries, retaining counsel, recruiting through partners users
+already trust — done in-country, where most of this funding goes. It needs passports from several
+issuing states, since chip behaviour differs in ways the standard does not capture.
 
 ### Milestone 4 — Title and lending
 
 The title ledger exists; the bridge to the land registry does not. Iran's Deeds and Properties
 Organisation (*Sazman-e Sabt*, سازمان ثبت) grants three levels of access, each doing a job the others
-cannot:
+cannot — and that division decides where each of our checks has to run:
 
-- **The owner**, via *Sabt-e Man* (my.ssaa.ir), sees every parcel and charge recorded against their
-  ID number (*kod-e melli*, کد ملی) — the only way to *discover* a charge nobody disclosed.
-- **Anyone** can confirm a named deed is genuine (*Tasdiq-e Asalat*, تصدیق اصالت) from its 18-digit
-  identifier and the owner's ID number.
-- **A licensed notary** (*Sardaftar*, سردفتر), via ssar.ir and nobody else, can register a mortgage
-  or execute a transfer.
+- **The owner**, via *Sabt-e Man* (my.ssaa.ir), sees every parcel and charge against their ID number
+  (*kod-e melli*, کد ملی) — the only way to *discover* an undisclosed charge.
+- **Anyone** can confirm a named deed (*Tasdiq-e Asalat*, تصدیق اصالت) from its 18-digit identifier
+  and the owner's ID number.
+- **A licensed notary** (*Sardaftar*, سردفتر), via ssar.ir and nobody else, registers a mortgage or
+  executes a transfer.
 
-**That division decides the design.** Since anyone can confirm a deed, nobody need take a notary's
-word about a property. What only a notary can do is *make a mortgage legally exist* — one registered
-by anyone else is void, and whoever holds it holds nothing. So the single fact we prove on-chain is
-that whoever registered it was licensed at the time, by indexing the official register through a
-decentralised oracle network where every node must return byte-identical data.
+Only a notary can *make a mortgage legally exist* — one registered by anyone else is void. Whether a
+notary was licensed is a public fact about a public register, so we establish it by indexing that
+register through a decentralised oracle network where every node must return byte-identical data.
 
-It also gives fraud detection with no accuser: a notary either registered the charge or did not, the
-registry says which, and a re-query catches a missing one automatically, identifying nobody.
+A *deed* cannot be checked the same way, because that query names the owner. Run by a lender it
+exposes every applicant; run by the owner it discloses nothing — they supply their own details to a
+government that already holds them. So the owner runs it on their own device and submits a proof of
+the answer: what reaches the chain is that a genuine deed exists, bound to identifiers revealing
+neither person nor parcel.
 
 **Notaries can be punished for serving a system like this**, so which notary acted is never published:
-they prove they are one of the licensed set without revealing which, and their identity travels
-encrypted, openable only by a quorum of legal custodians and only against a proven discrepancy.
+they prove membership of the licensed set without revealing which member, and their identity travels
+encrypted, openable only by a quorum of legal custodians against a proven discrepancy.
 
-**We fund loans; we do not write them.** That choice is why the rate can fall. A bank's rate carries
-its cost of capital, its branches and its shareholders' return; here the capital comes from whoever
-holds a share of the reserve, anywhere, and the only margin is what servicing costs. It also removes
-the place where refusal happens. A bank chooses whom to serve, and people are refused for their
-faith, politics, sex or name. A protocol holding no such discretion cannot.
+**We fund loans; we do not write them — the central choice.** Writing a loan means judging a person,
+and whoever holds that judgment can refuse: on faith, politics, sex, name. A promise never to use the
+power is worth only the promiser's freedom from pressure, so we do not take the power. The protocol
+lends against collateral checked mechanically, and mechanical checks cannot be aimed at a person.
+
+Two further levers go with it: originating needs a licence in each country, so the system would run
+on permission that can be withdrawn, and an originator holds the borrower's file — data never
+collected cannot be compelled out of us.
+
+The rate falls as a consequence. A bank's rate carries its cost of capital, branches and
+shareholders' return; here capital comes from whoever holds a share of the reserve and the only
+margin is servicing.
 
 Lending needs one thing cryptography cannot supply: an **independent valuation**. The borrower
-provides the figure and gains by inflating it, so their own stake does not verify itself. The
-tractable form is attesting a licensed valuer as we attest notaries, or reading public auction
-results. The mortgage also needs a legal holder — an ordinary special-purpose vehicle.
+provides the figure and gains by inflating it. The tractable form is attesting a licensed valuer as
+we attest notaries, or reading public auction results.
 
 Foreclosure would use existing institutions — judicial enforcement (*Ejra-ye Ahkam*, اجرای احکام) and
 public auction (*Mozāyedeh*, مزایده) — with an irrevocable assignment
-(*Vekālat-nāmeh-ye Belā-'Azl*, وکالت‌نامه بلاعزل) signed at the start, a form the courts recognise.
-**If valuation cannot be made independent, we ship identity and title without lending.**
+(*Vekālat-nāmeh-ye Belā-'Azl*, وکالت‌نامه بلاعزل) signed at the start, a form courts recognise.
+**If valuation cannot be made independent we ship identity and title without lending.**
 
-**Delivered at each stage:** an audit report and the fixes; live contracts and a wallet reading a
-real passport; measured evidence a person can register, transact and leave unconnected; and a title
-provably registered by a licensed notary, the property undisclosed.
+**Delivered:** an audit report and fixes; live contracts and a wallet reading a real passport;
+evidence a person can register, transact and leave unconnected; a title provably registered by a
+licensed notary, the property undisclosed.
 
 
 ---
 
-## 3. Technical feasibility *(300 max)*
+## 3. Technical feasibility *(300 max — 299 used)*
 
 **Technologies.** Noir/UltraHonk circuits; Solidity verification; React Native with platform secure
 enclaves. Identity follows ICAO 9303, so the trust root is the issuing state's signature, not
@@ -186,7 +184,7 @@ We protect privacy *from* the state, not the protocol's integrity *against* it.
 
 ---
 
-## 4. Scalability *(300 max)*
+## 4. Scalability *(300 max — 298 used)*
 
 **Cryptographic scaling is already done and measured.** The withdrawal proof was reduced from 43,772
 to 24,812 constraints — a 43% cut — by merging two identity structures into one and moving the
@@ -204,7 +202,8 @@ estimating. This also scales with hardware improving over time, in our favour.
 **Jurisdictional scaling is the real question.** Identity, title and mortgage logic are the same
 everywhere. What is local is narrow — the registry endpoints, the deed format, the enforcement
 institutions — and sits behind interfaces, so a second country is configuration plus legal review
-rather than a second codebase.
+rather than a second codebase. Notaries scale the same way: proving membership of the licensed set
+costs the same whether that set holds ten or ten thousand.
 
 **Every user brings their own capacity.** Proofs are made on the person's phone and checked by the
 chain, so there is no shared component that saturates: a thousandth user costs the same as the first.
@@ -215,7 +214,7 @@ volume is the supply of independently valued properties, not anything technical.
 
 ---
 
-## 5. Resilience to censorship *(300 max)*
+## 5. Resilience to censorship *(300 max — 298 used)*
 
 **What can be blocked.** Network access to the chain, app-store distribution, and the government
 registries the property layer reads.
@@ -251,7 +250,7 @@ it.
 
 ---
 
-## 6. User security measures *(300 max)*
+## 6. User security measures *(300 max — 299 used)*
 
 **Nothing identifying is published.** Where an obvious design would store a fingerprint of a street
 address, we treated that as a live vulnerability: anyone could take addresses from public records,
@@ -287,7 +286,7 @@ fixed.
 
 ---
 
-## 7. Keeping costs low *(300 max)*
+## 7. Keeping costs low *(300 max — 283 used)*
 
 **No infrastructure to run.** No backend, no database, no server holding user data — removing both
 the largest recurring cost and the largest liability. Ethereum provides availability; the phone does
@@ -310,7 +309,7 @@ agreement.
 **One mechanism, two uses.** Blocking a sanctioned person and stopping a property being mortgaged
 twice sound unrelated, but both reduce to publishing a list of disguised identifiers that anyone can
 check against without learning what they stand for. We built that once and use it for both — half
-the code, and one thing for an auditor to examine rather than two.
+the code, one thing for an auditor to examine, and one fewer contract to deploy and keep alive.
 
 **Grant funds go to audit, field work, devices and legal review** — what genuinely cannot be done
 without money. Field work dominates after audit: engaging notaries, counsel per jurisdiction, and
@@ -319,7 +318,7 @@ cohort recruitment are people-time in-country, not engineering.
 
 ---
 
-## 8. Maintenance beyond the funding cycle *(300 max)*
+## 8. Maintenance beyond the funding cycle *(300 max — 294 used)*
 
 **Nothing to keep running.** With no servers there is no cost floor: if funding stops, the deployed
 contracts continue and users keep control of their money. Even if the project is abandoned outright,
@@ -334,19 +333,17 @@ practice, not a plan.
 actively developed by others; our contribution is the layer joining them, and defects we find there
 we have already contributed back.
 
-
-
-**A narrow surface to maintain.** Everything jurisdiction-specific is isolated in one place, so the
-component most likely to break — a government portal changing its format — is also the cheapest to
-repair, and repairable locally without touching any cryptography.
-
 **How it pays for itself.** The reserve earns a return whether or not a single mortgage is ever
 written, and that — not lending — is what funds maintenance. We do not plan to depend on repeated
 grants: this funding is for what cannot be self-funded, principally the audit.
 
+**What actually recurs is narrow.** One thing genuinely needs attention over time: a government
+portal changing its format, breaking the reader that indexes it. Everything jurisdiction-specific is
+isolated behind one interface, so that repair is self-contained, local, and touches no cryptography —
+a developer in-country can do it without us and without any key we hold.
+
 **What happens if we stop.** The contracts are not upgradeable and have no administrator, so they
 keep running with nobody at the controls; deposits, withdrawals and existing titles are unaffected by
-our absence. The only work that genuinely recurs is updating the readers when a government portal
-changes its format — a self-contained task, in one place, that a local developer can do without
-touching the cryptography.
+our absence. The worst case is not loss but staleness — a stale reader blocks new titles while
+leaving every existing balance and title reachable.
 

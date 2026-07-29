@@ -15,7 +15,7 @@ verifying eligibility from biometric passports scanned locally, with nothing tra
 
 ---
 
-## 1. Short description of the proposed project *(300 max — 297 used)*
+## 1. Short description of the proposed project *(297/300 words)*
 
 All of the software is built. It lets a person prove who they are, and prove they own a piece of
 land, without disclosing either to the public.
@@ -49,7 +49,7 @@ sex or ethnicity, because there is no one in the system with the power to refuse
 
 ---
 
-## 2. Implementation: approach, activities, and milestones *(1000 max — 1000 used)*
+## 2. Implementation: approach, activities, and milestones *(1000/1000 words)*
 
 **Every part of the software is written and ships with this application**, proving and verifying
 on-chain today. It has not had an audit, a real passport, or value at stake — the three gaps the
@@ -152,7 +152,7 @@ proven-licensed notary, the property undisclosed.
 
 ---
 
-## 3. Technical feasibility *(300 max — 299 used)*
+## 3. Technical feasibility *(299/300 words)*
 
 **Technologies.** Noir/UltraHonk circuits; Solidity verification; React Native with platform secure
 enclaves. Identity follows ICAO 9303, so the trust root is the issuing state's signature, not
@@ -184,7 +184,7 @@ We protect privacy *from* the state, not the protocol's integrity *against* it.
 
 ---
 
-## 4. Scalability *(300 max — 298 used)*
+## 4. Scalability *(298/300 words)*
 
 **Cryptographic scaling is already done and measured.** The withdrawal proof was reduced from 43,772
 to 24,812 constraints — a 43% cut — by merging two identity structures into one and moving the
@@ -214,43 +214,38 @@ volume is the supply of independently valued properties, not anything technical.
 
 ---
 
-## 5. Resilience to censorship *(300 max — 298 used)*
+## 5. Resilience to censorship *(299/300 words)*
 
-**What can be blocked.** Network access to the chain, app-store distribution, and the government
-registries the property layer reads.
+**What can be blocked** is network access to the chain and the registries the property layer reads.
+**Nothing else offers a lever:** no server to seize, no operator to coerce. Registration has no
+approval step, so nothing can be ordered withheld, and exclusion **fails open** — someone pressured
+into inaction blocks nobody, because the newest state stays valid indefinitely. Most systems get
+this backwards; here doing nothing is the safe default. Nor can anyone be quietly dropped:
+exclusion demands an affirmative act citing a stated reason, recorded permanently.
 
-**What cannot.** No server to seize, no operator to coerce. Registration has no approval step, so
-nothing can be ordered withheld, and exclusion **fails open** — someone pressured into inaction
-blocks nobody, because the newest state stays valid indefinitely. Most systems get this backwards;
-here doing nothing is the safe default, not the censoring one.
+Chain access runs over ordinary HTTPS to any endpoint the user supplies, and is costly to
+distinguish from other web traffic.
 
-Nor can anyone be removed after the fact. In the system we started from, an operator could publish a
-membership list quietly omitting someone; exclusion now demands an affirmative act citing a stated
-reason, recorded permanently.
-
-Chain access runs over ordinary HTTPS to any endpoint, including one the user supplies, and is
-costly to tell apart from other web traffic.
-
-**Distribution was a design decision.** We built the wallet in React Native because it compiles to a
-standard Android package that installs from a file — sideloaded, passed between phones, or sent over
-a messaging app, with no store, no account and no list of who downloaded it. A store can be ordered
-to delist; a file cannot be recalled once it has spread.
+**App-store delisting is among the weakest levers against us.** Sanctions already keep Google Play
+largely unavailable to Iranian users, so that market runs on local stores and direct installation:
+sideloading is the existing norm, not a habit we must teach. We chose React Native for that reason —
+it compiles to a standard Android package that installs from a file, passed between phones or over a
+messaging app, with no store, no account, no record of who downloaded it. A store can be delisted; a
+file cannot be recalled once it spreads. iOS lacks this path, so Android leads.
 
 A user cut off entirely is still not trapped: they can reclaim their deposit directly from the
-contract (section 6).
+chain (section 6).
 
-**Blocking the government registries degrades the system rather than stopping it.** Identity and the
-shielded pool read no state endpoint — only the passport chip and the chain. Only the property layer
-consults the registry, so cutting it costs property functions while leaving identity and private
-transfer intact.
+**Blocking the registries degrades the system rather than stopping it.** Identity and the shielded
+pool read no state endpoint — only the passport chip and the chain — so cutting the registry costs
+property functions while leaving identity and private transfer intact.
 
-**What we cannot engineer away** is coercion: a phone can be seized and its holder compelled to
-unlock it. Biometric gating and holding no identity in the clear limit the damage without solving
-it.
+**What we cannot engineer away** is coercion: a seized phone whose holder is made to unlock it.
+Biometric gating and holding no identity in the clear limit that damage without solving it.
 
 ---
 
-## 6. User security measures *(300 max — 298 used)*
+## 6. User security measures *(298/300 words)*
 
 **Nothing identifying is published.** An obvious design would store a fingerprint of a street
 address; anyone could then fingerprint addresses from public records and find the match. Those
@@ -285,7 +280,7 @@ fixed.
 
 ---
 
-## 7. Keeping costs low *(300 max — 299 used)*
+## 7. Keeping costs low *(299/300 words)*
 
 **No infrastructure to run.** No backend, no database, no server holding user data — removing the
 largest recurring cost and the largest liability together. Ethereum provides availability; the phone
@@ -319,7 +314,7 @@ are people-time in-country, not engineering.
 
 ---
 
-## 8. Maintenance beyond the funding cycle *(300 max — 294 used)*
+## 8. Maintenance beyond the funding cycle *(294/300 words)*
 
 **Nothing to keep running.** With no servers there is no cost floor: if funding stops, the deployed
 contracts continue and users keep control of their money. Even if the project is abandoned outright,

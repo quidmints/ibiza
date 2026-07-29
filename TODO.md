@@ -3391,6 +3391,42 @@ forgeries this construction cannot produce. Said plainly rather than claimed.
 openssl signatures under BOTH e=3 and e=65537 verify, each confirmed by openssl before use, plus a
 tampered-signature negative so those are not passing for free.
 
+### 2.18v THE ECDSA SIGNERS REFUSE HALF OF ALL GENUINE SIGNATURES - low-s, wrong context
+
+Third defect on the CSCA path, third distinct cause, same 50% arbitrary-refusal shape as sec. 2.18s.
+
+**`ECDSA256/384/512` ACCEPT ONLY LOW-s.** Their own doc says it: *"signatures only from the lower
+part of the curve are accepted."* That is deliberate and CORRECT for transactions - low-s prevents a
+malleated copy being a second valid TRANSACTION, which is why Ethereum and Bitcoin require it.
+
+**IT IS THE WRONG POLICY FOR VERIFYING SOMEONE ELSE'S X.509 SIGNATURE.** Nothing in certificate
+admission keys on signature bytes - `registerCertificate` does not record them - so malleability
+buys an attacker nothing. Meanwhile CAs do not normalise: **measured, openssl produced high-s in 11
+of 20 signings of one message.** So roughly half of all genuine ECDSA CSCA certificates would be
+refused, for a property of the signature that carries no meaning here.
+
+**FIXED IN `CECDSA256Signer` BY REWRITING `s` TO ITS LOW FORM BEFORE VERIFYING.** That is sound and
+not a bypass: if `(r, s)` verifies then so does `(r, n - s)` - they are the two representations of
+ONE signature and ECDSA verification is symmetric in that reflection, so the low form proves exactly
+the same statement about the same key and message. An invalid signature stays invalid either way,
+which the negatives pin.
+
+**A GUARD THE TEST FOUND, not review.** `n - s` underflows when a signature made under a DIFFERENT
+curve carries an `s` larger than this curve's order. `test_RejectsUnderTheWrongCurve` panicked
+immediately; such a signature is invalid here anyway, so it now passes through untouched for the
+library to reject.
+
+**BOTH HALVES PINNED.** The committed vector is deliberately HIGH-s - the half that was refused
+outright - and a second genuine LOW-s signature from the same key proves the normalisation leaves
+the already-canonical half alone. Verified by removal: without the rewrite the genuine high-s
+signature is rejected again.
+
+**STILL OPEN: `CECDSA384Signer` AND `CECDSA512Signer` HAVE THE IDENTICAL DEFECT.** `ECDSA384.sol`
+and `ECDSA512.sol` carry the same restriction (checked). They are unfixed because their curve orders
+are `bytes` rather than `uint256`, so the same rewrite needs a big-endian bignum subtraction rather
+than one line. Same fix, more plumbing - and until it lands, brainpoolP384r1 and brainpoolP512r1
+CSCAs are refused at the same ~50% rate.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

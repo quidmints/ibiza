@@ -53,6 +53,18 @@ contract CRSASignerForgeryTest is Test {
             hex"4d67e13d1ab53ae8448af5727fe1eac5f79b5aea818f074843d72574d2863285366d95e86781f7c2856fb48da77eda4ddd64033957db291e11cfebb9"
             hex"e0c1501a3da53a56f931174228d69c7d1d2bed106d184c131ced862d8a50fd1176db51e5a41ec59624e87b37d507c7bb0df0debca05d49c3a893dc34"
             hex"e6d80265f8449afa830e2a10c096f1dd";
+    bytes internal constant REAL_SHA1 =
+        hex"ad1b6e01fa91662dbb34cfeb0c1f4e3754a75cd34aa5dfc535c7117efc8c20010b41681753a40e57b1d87ea7ae4c092cc7ee9b9bfa4e8c1d4c4f1f24"
+            hex"99c3a906a612efa474a18713367109207bd44092826cb3dd241e58e09d873c0d59fb5e4f826107229944aa708e508609a7071ea2cfb0b3f6d2463cf8"
+            hex"4598ab82cb551902bfe52b690c8762f68c71b051cc324625f56c06a70a6352244451320a7e420af1b4fb11d35bfcc7537f1356fa83bbb6ab2596bfc9"
+            hex"4e443813703007118c3b0d31662bf32c5869c7042952a8271fc10deb62450b2a3e3f6bbc9231bf0432687e18ab8eab3a74a38eae5d520f8749a67900"
+            hex"04df32b5577a41d093f10fe17ac1198d";
+    bytes internal constant REAL_SHA512 =
+        hex"000f72b7c0b1cafe6bf3f31153a0b139ee36119a5bbfe48e720aa61edcceb13dacd49880513339cda5bb5bef2fb94f118dfa7e669c9213d9fb0f36b7"
+            hex"e6630204ae72dd40515168c2537f26ff1e7346ffcba45a729801252940a24fb58bb4a60371215021e68cf3a18fd1416c41cec7daed3f1defc2dcadbc"
+            hex"95d034e83975f0f435d4d8f942ec2f61220981d91a1758bfa26740c9541388e587793d475aacd9efc3609f17a537af512893966a5d1f9f0f088e840c"
+            hex"389b56af7781f5511214f91660ec8cfcce242d27b568e8c958f7079cb879f22f9da088085016c9da36ec48d0095c27687a69cd4a71623ed5266e92c6"
+            hex"a37f2bfb0e03fcb00b31b0d4ae77363e";
     bytes internal constant MESSAGE = hex"4943414f207369676e65642061747472696275746573207468652061747461636b6572206e65766572206861642061207369676e617475726520666f72202330";
 
     function setUp() public {
@@ -95,6 +107,53 @@ contract CRSASignerForgeryTest is Test {
         assertTrue(
             s65537_.verifyICAOSignature(MESSAGE, REAL_65537, MODULUS_65537),
             "a genuine e=65537 signature was rejected"
+        );
+    }
+
+    /*
+     * THE OTHER TWO HASH BRANCHES, which the fix rewrote and nothing had exercised.
+     *
+     * A padding fix that silently broke SHA-1 or SHA-512 would reject every CSCA using them - the
+     * censorship failure of sec. 2.18s, reintroduced by the repair for sec. 2.18u. Both signatures
+     * are genuine, produced and verified by openssl before use.
+     *
+     * SHA-1 matters in practice: plenty of long-lived CSCA certificates still use it.
+     */
+    function test_StillVerifiesAGenuineSha1Signature() public {
+        CRSASigner s1_ = new CRSASigner();
+        s1_.__CRSASigner_init(65537, CRSASigner.HF.sha1);
+
+        assertTrue(
+            s1_.verifyICAOSignature(MESSAGE, REAL_SHA1, MODULUS_65537),
+            "a genuine SHA-1 signature was rejected"
+        );
+    }
+
+    function test_StillVerifiesAGenuineSha512Signature() public {
+        CRSASigner s512_ = new CRSASigner();
+        s512_.__CRSASigner_init(65537, CRSASigner.HF.sha512);
+
+        assertTrue(
+            s512_.verifyICAOSignature(MESSAGE, REAL_SHA512, MODULUS_65537),
+            "a genuine SHA-512 signature was rejected"
+        );
+    }
+
+    /// And each branch must still REJECT a signature made under a different hash - otherwise the
+    /// DigestInfo check is decorative and algorithm substitution is possible.
+    function test_EachHashBranchRejectsAnotherHashesSignature() public {
+        CRSASigner s1_ = new CRSASigner();
+        s1_.__CRSASigner_init(65537, CRSASigner.HF.sha1);
+        assertFalse(
+            s1_.verifyICAOSignature(MESSAGE, REAL_SHA512, MODULUS_65537),
+            "the SHA-1 branch accepted a SHA-512 signature"
+        );
+
+        CRSASigner s512_ = new CRSASigner();
+        s512_.__CRSASigner_init(65537, CRSASigner.HF.sha512);
+        assertFalse(
+            s512_.verifyICAOSignature(MESSAGE, REAL_SHA1, MODULUS_65537),
+            "the SHA-512 branch accepted a SHA-1 signature"
         );
     }
 

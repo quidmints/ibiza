@@ -72,11 +72,8 @@ contract CRSASigner is ICertificateSigner, Initializable {
         bytes memory digestInfo_;
 
         if (hashFunction == HF.sha1) {
+            // SHA1.sha1 returns bytes20, so this is exactly 20 bytes - no truncation needed.
             digest_ = abi.encodePacked(x509SignedAttributes_.sha1());
-            // sha1() returns bytes32 with the 20-byte digest left-aligned; keep only those 20.
-            assembly {
-                mstore(digest_, 20)
-            }
             digestInfo_ = DIGEST_INFO_SHA1;
         } else if (hashFunction == HF.sha256) {
             digest_ = abi.encodePacked(sha256(x509SignedAttributes_));

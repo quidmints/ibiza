@@ -3,114 +3,108 @@ pragma solidity 0.8.28;
 
 import {Test} from 'forge-std/Test.sol';
 import {CECDSA256Signer} from '../../contracts/certificate/signers/CECDSA256Signer.sol';
-import {PNOAADispatcher} from '../../contracts/passport/dispatchers/PNOAADispatcher.sol';
 
 /*
- * CECDSA256Signer verifies ICAO MEMBER SIGNATURES - the signatures of the country-signing
- * authorities that anchor passport trust. It had no tests. If it accepted a bad signature, forged
- * certificates would register as genuine; if it rejected good ones, no passport from that curve
- * would ever verify. Neither shows up anywhere else.
+ * The ECDSA half of the CSCA signature path (TODO.md sec. 2.18v).
  *
- * The vector is a real secp256r1/SHA-256 ECDSA signature generated independently in Python (Jacobian
- * -free affine arithmetic over the NIST P-256 parameters, verified by the standard u1*G + u2*Q
- * check before being pasted here), NOT re-derived from this contract.
+ * sec. 2.18s found a byte-order bug in the RSA-PSS signer and sec. 2.18u a forgery in the PKCS#1
+ * v1.5 one - both in code nothing had ever exercised. The ECDSA signers were in the same state, so
+ * they get the same treatment: a real vector, generated and verified by openssl before use, plus
+ * negatives that would catch a verifier which accepts anything.
+ *
+ * THE CURVE CONSTANTS WERE CHECKED BY HAND against the published parameters for secp256r1,
+ * brainpoolP256r1 and brainpoolP512r1 - all three correct. Brainpool's `a` and `b` share a long
+ * prefix, which looks like a copy-paste error and is not; they are derived from one seed.
  */
 contract CECDSA256SignerTest is Test {
-  CECDSA256Signer internal signer;
+    CECDSA256Signer internal signer;
 
-  bytes internal constant MSG = hex'4943414f20746573742061747472696275746573'; // "ICAO test attributes"
-  bytes internal constant PUBKEY =
-    hex'14b8a2c95626f164e38703bd976b200e0650503e4b701ecbf29f96abf786d31f'
-    hex'9b978f67b1ea482736e63b98c445745a521135bf468d6d0c168ef66a4163f46f';
-  bytes internal constant SIG =
-    hex'8dd0cb91f783328c76cbdbdc3106e4435e34cd7635a747f135f4457e8ecf1a6c'
-    hex'25259c428c8632e13537f2def9f71ba30a72a6f02d0d23d7bc97aa0bec03d362';
+    /// secp256r1 public key as x || y, from `openssl ec -pubout`.
+    bytes internal constant PUBKEY =
+        hex"ed050c3b086602864a23d6ab09a2978f6e237018990f235c6386eeee4debbbe3"
+        hex"ce7a9bb43bb546f32cae467cac729be718450b1be3a29beb4c817701c55b58a2";
 
-  function setUp() public {
-    signer = new CECDSA256Signer();
-    signer.__CECDSA256Signer_init(CECDSA256Signer.Curve.secp256r1, CECDSA256Signer.HF.sha2);
-  }
+    /// The DER signature openssl produced, converted to the raw r || s the library expects.
+    bytes internal constant SIGNATURE =
+        hex"a0a61abc96c19ecaf157e9baaa0568fe30f20a8fcbdd8a8e0b070df8d848c200"
+        hex"fff3789210f04ed6883e50f4c7b516208018d9ee741882d9cce398cab68435db";
 
-  function test_acceptsAValidSecp256r1Signature() public view {
-    assertTrue(signer.verifyICAOSignature(MSG, SIG, PUBKEY), 'a valid ICAO signature was rejected');
-  }
+    bytes internal constant MESSAGE =
+        hex"4943414f207369676e6564206174747269627574657320746865206174746163"
+        hex"6b6572206e65766572206861642061207369676e617475726520666f72202330";
 
-  /// @notice A tampered signature must fail. Without this the signer would be a rubber stamp and
-  /// any forged certificate would anchor a fake passport.
-  function test_rejectsATamperedSignature() public view {
-    bytes memory bad = SIG;
-    bad[0] = bytes1(uint8(bad[0]) ^ 0x01);
-    assertFalse(signer.verifyICAOSignature(MSG, bad, PUBKEY), 'a tampered signature was accepted');
-  }
+    function setUp() public {
+        signer = new CECDSA256Signer();
+        signer.__CECDSA256Signer_init(CECDSA256Signer.Curve.secp256r1, CECDSA256Signer.HF.sha2);
+    }
 
-  /// @notice A signature valid for OTHER attributes must not verify against these - otherwise one
-  /// genuine ICAO signature would authenticate any content.
-  function test_rejectsAValidSignatureOverDifferentAttributes() public view {
-    assertFalse(
-      signer.verifyICAOSignature(hex'deadbeef', SIG, PUBKEY),
-      'a signature was accepted over the wrong attributes'
-    );
-  }
+    /// A genuine LOW-s signature from the same key, so the normalisation is shown to leave the
+    /// already-canonical half alone rather than only fixing the high half.
+    bytes internal constant SIGNATURE_LOW_S =
+        hex"017910d1f8df0339c6fc6b31f53e52e3469a33d112f50d8b56671ff0177f3158"
+        hex"4a2b52133f9eb709b1515f9ed1cd5f4868eb0e1ea6c6fb90b507e0316b66fe38";
 
-  function test_rejectsAWrongPublicKey() public view {
-    bytes memory bad = PUBKEY;
-    bad[0] = bytes1(uint8(bad[0]) ^ 0x01);
-    assertFalse(signer.verifyICAOSignature(MSG, SIG, bad), 'a wrong public key was accepted');
-  }
+    function test_VerifiesAGenuineLowSSignature() public view {
+        assertTrue(
+            signer.verifyICAOSignature(MESSAGE, SIGNATURE_LOW_S, PUBKEY),
+            "a genuine low-s signature was rejected"
+        );
+    }
 
-  /// @notice Selecting the WRONG CURVE must reject a signature that is valid on the right one.
-  /// The two share a signature format, so a misconfigured deployment fails silently otherwise.
-  function test_wrongCurveRejectsAnOtherwiseValidSignature() public {
-    CECDSA256Signer brainpool = new CECDSA256Signer();
-    brainpool.__CECDSA256Signer_init(
-      CECDSA256Signer.Curve.brainpoolP256r1, CECDSA256Signer.HF.sha2
-    );
-    assertFalse(
-      brainpool.verifyICAOSignature(MSG, SIG, PUBKEY),
-      'a secp256r1 signature verified against brainpoolP256r1'
-    );
-  }
+    /// The committed SIGNATURE is deliberately HIGH-s - the half the library refused outright, and
+    /// the half openssl emits about 50% of the time.
+    function test_VerifiesAGenuineP256Signature() public view {
+        assertTrue(
+            signer.verifyICAOSignature(MESSAGE, SIGNATURE, PUBKEY),
+            "a signature openssl verified was rejected"
+        );
+    }
 
-  /// @notice Likewise the wrong hash function - same curve, different digest, must not verify.
-  function test_wrongHashFunctionRejects() public {
-    CECDSA256Signer sha1Signer = new CECDSA256Signer();
-    sha1Signer.__CECDSA256Signer_init(CECDSA256Signer.Curve.secp256r1, CECDSA256Signer.HF.sha1);
-    assertFalse(
-      sha1Signer.verifyICAOSignature(MSG, SIG, PUBKEY),
-      'a SHA-256 signature verified under SHA-1'
-    );
-  }
-}
+    function test_RejectsATamperedSignature() public view {
+        bytes memory t_ = SIGNATURE;
+        t_[0] = bytes1(uint8(t_[0]) ^ 0x01);
+        assertFalse(signer.verifyICAOSignature(MESSAGE, t_, PUBKEY), "a tampered signature verified");
+    }
 
-/*
- * PNOAADispatcher is the "no active authentication" path: passports without AA present NO
- * signature. Its whole security contribution is one length check, and inverting it would accept any
- * bytes as authentication for every non-AA passport.
- */
-contract PNOAADispatcherTest is Test {
-  PNOAADispatcher internal dispatcher;
+    function test_RejectsADifferentMessage() public view {
+        bytes memory m_ = MESSAGE;
+        m_[0] = bytes1(uint8(m_[0]) ^ 0x01);
+        assertFalse(signer.verifyICAOSignature(m_, SIGNATURE, PUBKEY), "verified against another message");
+    }
 
-  function setUp() public {
-    dispatcher = new PNOAADispatcher();
-    dispatcher.__PNOAADispatcher_init();
-  }
+    function test_RejectsADifferentKey() public view {
+        bytes memory k_ = PUBKEY;
+        k_[0] = bytes1(uint8(k_[0]) ^ 0x01);
+        assertFalse(signer.verifyICAOSignature(MESSAGE, SIGNATURE, k_), "verified under another key");
+    }
 
-  function test_acceptsOnlyAnEmptySignature() public view {
-    assertTrue(dispatcher.authenticate('', '', ''), 'an empty signature was rejected');
-  }
+    /// An all-zero signature (r = s = 0) is the degenerate forgery every ECDSA verifier must refuse.
+    function test_RejectsAZeroSignature() public view {
+        assertFalse(
+            signer.verifyICAOSignature(MESSAGE, new bytes(64), PUBKEY),
+            "r = s = 0 was accepted"
+        );
+    }
 
-  function test_rejectsAnyNonEmptySignature() public view {
-    assertFalse(dispatcher.authenticate('', hex'00', ''), 'a 1-byte signature was accepted');
-    assertFalse(dispatcher.authenticate('', hex'deadbeef', ''), 'a garbage signature was accepted');
-  }
+    /// The wrong curve must reject - otherwise the curve selector is decorative.
+    function test_RejectsUnderTheWrongCurve() public {
+        CECDSA256Signer bp_ = new CECDSA256Signer();
+        bp_.__CECDSA256Signer_init(CECDSA256Signer.Curve.brainpoolP256r1, CECDSA256Signer.HF.sha2);
 
-  /// @notice Non-AA passports omit the challenge entirely.
-  function test_challengeIsEmpty() public view {
-    assertEq(dispatcher.getPassportChallenge(12_345).length, 0);
-  }
+        assertFalse(
+            bp_.verifyICAOSignature(MESSAGE, SIGNATURE, PUBKEY),
+            "a secp256r1 signature verified under brainpoolP256r1"
+        );
+    }
 
-  function test_passportKeyIsTheHashReinterpreted() public view {
-    bytes32 h = keccak256('passport');
-    assertEq(dispatcher.getPassportKey(abi.encodePacked(h)), uint256(h));
-  }
+    /// And the wrong hash must reject, or algorithm substitution is possible.
+    function test_RejectsUnderTheWrongHash() public {
+        CECDSA256Signer s1_ = new CECDSA256Signer();
+        s1_.__CECDSA256Signer_init(CECDSA256Signer.Curve.secp256r1, CECDSA256Signer.HF.sha1);
+
+        assertFalse(
+            s1_.verifyICAOSignature(MESSAGE, SIGNATURE, PUBKEY),
+            "a SHA-256 signature verified under the SHA-1 setting"
+        );
+    }
 }

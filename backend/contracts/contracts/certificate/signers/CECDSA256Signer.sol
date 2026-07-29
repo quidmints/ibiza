@@ -74,9 +74,56 @@ contract CECDSA256Signer is ICertificateSigner, Initializable {
         return
             curveParams_.verify(
                 hasher_(x509SignedAttributes_),
-                icaoMemberSignature_,
+                _normalizeS(icaoMemberSignature_, curveParams_.n),
                 icaoMemberKey_
             );
+    }
+
+    /**
+     * @dev Rewrite `s` into the lower half of the curve order, because the library refuses anything
+     *      else - "signatures only from the lower part of the curve are accepted" (ECDSA256.sol).
+     *
+     * THAT POLICY IS CORRECT FOR TRANSACTIONS AND WRONG HERE (TODO.md sec. 2.18v). Low-s is an
+     * Ethereum/Bitcoin convention preventing a malleated copy of a signature from being a second
+     * valid TRANSACTION. Nothing in certificate admission keys on signature bytes -
+     * `registerCertificate` does not record them - so malleability buys an attacker nothing, while
+     * enforcing low-s rejects any signature a CA happened to emit with high `s`.
+     *
+     * AND CAs DO NOT NORMALISE. Measured: openssl produced high-s in 11 of 20 signings of the same
+     * message. So without this, **roughly half of all genuine ECDSA CSCA certificates would be
+     * refused** - the same arbitrary 50% denial as sec. 2.18s, reached by a different route.
+     *
+     * REWRITING IS SOUND, NOT A BYPASS. If `(r, s)` verifies then so does `(r, n - s)`: they are the
+     * two representations of one signature, and ECDSA verification is symmetric in that reflection.
+     * Checking the low-s form therefore proves exactly the same statement about the same key and
+     * message. A signature that is invalid stays invalid under either representation, which is what
+     * the negative tests pin.
+     */
+    function _normalizeS(
+        bytes memory signature_,
+        uint256 n_
+    ) private pure returns (bytes memory) {
+        if (signature_.length != 64) {
+            return signature_; // malformed - let the library reject it rather than guess
+        }
+
+        uint256 r_;
+        uint256 s_;
+
+        assembly {
+            r_ := mload(add(signature_, 32))
+            s_ := mload(add(signature_, 64))
+        }
+
+        // `s_ < n_` is not redundant: a signature made under a DIFFERENT curve can carry an `s`
+        // larger than this curve's order, and `n_ - s_` would underflow. Such a signature is
+        // invalid here anyway, so it passes through untouched for the library to reject - which is
+        // exactly what `test_RejectsUnderTheWrongCurve` caught when this guard was missing.
+        if (s_ > n_ / 2 && s_ < n_) {
+            s_ = n_ - s_;
+        }
+
+        return abi.encodePacked(bytes32(r_), bytes32(s_));
     }
 
     function _sha1(bytes memory message) internal pure returns (bytes32) {

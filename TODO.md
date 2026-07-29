@@ -2730,11 +2730,14 @@ Reading it settles sec. 2.18g's build estimate downward by a lot:
    master tree
 Returns `(dg15_pk_hash, passport_hash, dg1_commitment, sk_hash)` and passes `icao_root` through.
 
-So the contract needs only: verify the Honk proof, check `icao_root ==
-stateKeeper.icaoMasterTreeMerkleRoot()`, call `addDocument`. **No certificate dispatcher, no signer
-contract.** Those belong to the legacy Circom path (`Registration2.register`), which is why they had
-no tests - they are not on any road we are travelling. sec. 2.18g called them "the trustless path we
-are not on"; more precisely, they are ONE trustless path, and the Noir circuit is a shorter one.
+So the contract needs only: verify the Honk proof, check the root, call `addDocument`.
+
+**I THEN CLAIMED "NO CERTIFICATE DISPATCHER, NO SIGNER CONTRACT". THAT WAS WRONG - SEE sec. 2.18l.**
+The dispatchers are what POPULATE the tree the circuit walks. Correction kept in place rather than
+edited away, because the reasoning that produced it looked sound: the circuit really does verify the
+signature chain in-circuit, and it is easy to conclude from that alone that nothing on-chain needs
+to parse a certificate. What it does not tell you is where the tree of legitimate signer keys comes
+from.
 
 **THE GATE MOVES, IT DOES NOT VANISH - and the difference is the whole point.**
 `StateKeeper.changeICAOMasterTreeRoot` is `onlyOwner`. So:
@@ -2927,10 +2930,12 @@ containing only the document being registered.** With all-zero siblings the SMT 
 3. set `icao_root = Poseidon(their_pk_hash, their_pk_hash, 1)`,
 4. produce a **completely valid** `register_identity` proof.
 
-The only thing between that and a registered identity is the contract comparing the proof's
-`icao_root` public output against `stateKeeper.icaoMasterTreeMerkleRoot()`. **That single comparison
-is the entire security of the permissionless path.** sec. 2.18h described it as a formality
-alongside the real work; it is the reverse.
+The only thing between that and a registered identity is the contract checking the proof's
+`icao_root` public output. **That single check is the entire security of the permissionless path.**
+sec. 2.18h described it as a formality alongside the real work; it is the reverse.
+
+**AND I NAMED THE WRONG CHECK - see sec. 2.18l.** It is NOT a comparison against
+`icaoMasterTreeMerkleRoot()`. That would reject every genuine proof.
 
 **THIS IS THE SAME SHAPE AS THE BLACKLIST VACUITY** that made `escrow_envelope` necessary in the
 first place: a proof that is perfectly sound about a structure the prover chose. Recorded here
@@ -2976,6 +2981,62 @@ belongs.
 
 Also note their generator derives `sk_identity` from the EC hash - a throwaway. Ours must use the
 USER's key, since `holder_root` derives from it.
+
+### 2.18l THE TRUST CHAIN IS TWO LEVELS, AND I HAD THE WRONG ONE (user: "are you sure?")
+
+Asked to check the task for missing context, and it was missing context AND wrong twice. Traced
+properly this time, each step read rather than inferred.
+
+**THE ACTUAL STRUCTURE:**
+
+| | what it holds | how it is set | who may write |
+|---|---|---|---|
+| `icaoMasterTreeMerkleRoot` | keccak256 Merkle tree of **CSCA** public keys | `changeICAOMasterTreeRoot` | **owner only** |
+| `certificatesSmt` | Poseidon SMT of **DSC** key hashes | `registerCertificate` | **anyone** |
+
+`Registration2.registerCertificate` is the bridge: it proves a CSCA is in the master tree
+(`icaoMerkleProof_.processProof(keccak256(icaoMember_.publicKey)) == icaoMasterTreeMerkleRoot`),
+verifies THAT CSCA's signature over a DSC's signed attributes, extracts the DSC public key, and adds
+it to `certificatesSmt`.
+
+**THE CIRCUIT WALKS `certificatesSmt`, NOT THE MASTER TREE.** `register_identity` computes
+`leaf = extract_pk_hash(pk)` where `pk` is the key that SIGNED THE SOD - a DSC - and sets
+`key = leaf`. `StateKeeper.addCertificate` stores exactly that shape:
+`certificatesSmt.add(certificateKey_, certificateKey_)`, key equals value. And
+`Registration2.registerViaNoir` feeds its `certificatesRoot_` into the circuit's `icao_root`
+parameter, gated by `PoseidonSMT(stateKeeper.certificatesSmt()).isRootValid(...)`.
+
+**SO THE PARAMETER IS MISNAMED**, and the correct check is:
+
+    PoseidonSMT(stateKeeper.certificatesSmt()).isRootValid(icao_root)
+
+Comparing against `icaoMasterTreeMerkleRoot()` - what sec. 2.18k said - would reject every genuine
+proof while looking principled. A trap of exactly the kind this section exists to catch, produced by
+trusting a parameter name.
+
+**TWO CORRECTIONS THAT MAKE THE POSITION BETTER, NOT WORSE:**
+
+1. **THE DISPATCHERS ARE NEEDED AFTER ALL** (sec. 2.18h said the opposite, and the task dropped
+   because of it should not have been). `ICertificateDispatcher` and the `C*Signer` contracts are
+   what `registerCertificate` uses to verify a CSCA signature and parse a DSC key out of X.509.
+   Without them `certificatesSmt` stays EMPTY and no permissionless registration can ever verify.
+   They are not legacy-Circom cruft; they are the supply line.
+2. **DSC ENROLMENT IS ALREADY PERMISSIONLESS.** `registerCertificate` takes no signature and no
+   role. So the only owner-controlled input in the whole chain is the CSCA master root - and CSCAs
+   are issued roughly once per country per several years, where DSCs turn over constantly. **We do
+   not have to maintain a DSC list at all**; anyone can add one, self-service, and the owner lever
+   shrinks to a small, slow, publicly-checkable value. That is a far better position than sec. 2.18k
+   assumed.
+
+**CHECKED FOR A GRIEFING VECTOR AND DID NOT FIND ONE:** `revokeCertificate` is also permissionless,
+but `StateKeeper.removeCertificate` requires `expirationTimestamp < block.timestamp`, so a caller
+can only remove certificates that have genuinely expired.
+
+**WHAT THE TASK ACTUALLY IS**, restated: publish the CSCA master root (owner, once, then rarely);
+get the dispatchers and signers under test since they gate every DSC admission; write the
+registration entry point checking `certificatesSmt.isRootValid` BEFORE proof verification so the
+negative test needs no valid proof; and anchor the CSCA root through CRE consensus to remove the
+last discretionary lever.
 
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 

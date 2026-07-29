@@ -22,9 +22,22 @@
 // So anyone can generate their own CSCA/DSC, sign a fabricated SOD over a fabricated MRZ, set
 // `icao_root` to the hash of their own key, and produce a COMPLETELY VALID proof of this circuit.
 //
-// `icao_root` is returned as a public output for exactly one reason: so the contract can compare it
-// against `StateKeeper.icaoMasterTreeMerkleRoot()`. **That comparison is the entire security of this
-// path.** Without it this circuit proves only that the prover can sign their own documents.
+// `icao_root` is returned as a public output for exactly one reason: so the contract can check it.
+// **That check is the entire security of this path.** Without it the circuit proves only that the
+// prover can sign their own documents.
+//
+// AND THE PARAMETER IS MISNAMED, WHICH IS ITS OWN TRAP. Despite the name, the correct check is NOT
+// against `StateKeeper.icaoMasterTreeMerkleRoot()`. The tree this circuit walks holds DSC keys -
+// `leaf = extract_pk_hash(pk)` where `pk` is the key that signed the SOD - and `StateKeeper` keeps
+// exactly that tree as `certificatesSmt`, whose leaves are added key-equals-value
+// (`certificatesSmt.add(certificateKey_, certificateKey_)`), matching this circuit's `key = leaf`.
+// So the check is:
+//
+//     PoseidonSMT(stateKeeper.certificatesSmt()).isRootValid(icao_root)
+//
+// `icaoMasterTreeMerkleRoot` is a DIFFERENT structure entirely - a keccak256 Merkle tree of CSCA
+// public keys, consumed only by `Registration2.registerCertificate` when admitting a DSC. Comparing
+// this circuit's root against it would reject every genuine proof while looking principled.
 //
 // AND THE TEST FOR IT CANNOT BE THE HAPPY PATH. Any fixture must use the fake single-leaf root - we
 // hold no real DSC private key - so a suite that configures the state keeper with the fixture's own

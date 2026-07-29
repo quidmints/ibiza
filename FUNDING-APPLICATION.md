@@ -49,20 +49,19 @@ sex or ethnicity, because there is no one in the system with the power to refuse
 
 ---
 
-## 2. Implementation: approach, activities, and milestones *(1000/1000 words)*
+## 2. Implementation: approach, activities, and milestones *(999/1000 words)*
 
 **Every part of the software is written and ships with this application**, proving and verifying
-on-chain today. It has not had an audit, a real passport, or value at stake — the three gaps the
+on-chain today. It has not had an audit, a real document, or value at stake — the three gaps the
 milestones close, in order.
 
 **What ships:** the zero-knowledge circuits for registration, withdrawal, escrow and emergency exit;
 the identity registry, shielded pool and title ledger; the reserve that earns on shielded deposits;
-the payment-channel bridge that holds bitcoin without a custodian; and a wallet deriving every key
-from one recovery phrase in the phone's secure enclave.
+the payment-channel bridge holding bitcoin without a custodian; and a wallet deriving every key from
+one phrase in the phone's secure enclave.
 
-One engineering decision underpins the rest: the two systems we merged proved things incompatibly, so
-we rebuilt both onto one proving system. Identity, money and title verify through a single stack —
-one toolchain to keep current, one surface to audit.
+One engineering decision underpins the rest: the two systems we merged proved things incompatibly,
+so we rebuilt both onto one proving system — one toolchain to keep current, one surface to audit.
 
 Both repositories are public, so the claim is checkable: clone either, run the suites, regenerate
 every fixture from committed scripts. Each generated verifier is exercised on-chain against a real
@@ -74,11 +73,10 @@ Nothing reaches a real user before independent review, by descending risk. **The
 flaw is silent and total: one wrong constraint mints value or bypasses identity while tests still
 pass. **The identity registry**, whose guarantees are the product: it can refuse
 nobody, exclusion demands an act citing a rule, and a stale record expires so revocation cannot be
-outrun, while the newest never expires so inaction blocks nobody. **And the enrolment gate** it
-depends on (section 5). **The money** —
-deposit and withdrawal accounting, double-spend prevention, redemption. And
-**key handling**, where a weakness loses funds however good the circuits are. We will also commission
-a review of who can do what to whom — where such systems fail more often than in their
+outrun while the newest never expires, so inaction blocks nobody. **The enrolment gate** feeding it
+(section 5). **The money** — deposit and withdrawal accounting, double-spend prevention, redemption.
+And **key handling**, where a weakness loses funds however good the circuits are. We will also
+commission a review of who can do what to whom, where such systems fail more often than in
 arithmetic.
 
 ### Milestone 2 — Deploy
@@ -90,7 +88,7 @@ verifies on-chain.
 
 ### Milestone 3 — Proving it works in practice
 
-A small consenting group, real passports, value starting near zero and rising as it holds: scan,
+A small consenting group, real documents, value starting near zero and rising as it holds: scan,
 register, deposit, withdraw to a fresh address, and confirm nobody holding the whole chain can
 connect the two. Timings come from mid-range phones.
 
@@ -104,7 +102,7 @@ The title ledger exists; the bridge to the land registry does not. Iran's Deeds 
 Organisation (*Sazman-e Sabt*, سازمان ثبت) grants three levels of access, each doing a job the others
 cannot — and that division decides where each check runs:
 
-- **The owner**, via *Sabt-e Man* (my.ssaa.ir), sees every parcel and charge against their ID number
+- **The owner**, via *Sabt-e Man* (my.ssaa.ir), sees every parcel and charge against their ID
   (*kod-e melli*, کد ملی) — the only way to *discover* an undisclosed charge.
 - **Anyone** can confirm a named deed (*Tasdiq-e Asalat*, تصدیق اصالت) from its 18-digit identifier
   and the owner's ID.
@@ -113,8 +111,8 @@ cannot — and that division decides where each check runs:
 
 Only a licensed notary can register a *consensual* mortgage: a private agreement is not void, but
 the Land Registration Act makes it inadmissible before courts and registries, so it cannot be
-foreclosed. Whether a notary is licensed is public fact about a public register, so we index that
-register through a decentralised oracle network where every node returns byte-identical data.
+foreclosed. Whether a notary is licensed is public fact about a public register, which we index
+through a decentralised oracle network where every node returns byte-identical data.
 
 A *deed* cannot be checked that way, because the query names the owner. Run by a lender it exposes
 every applicant; run by the owner it discloses nothing — they supply details a government already
@@ -122,28 +120,30 @@ holds. So the owner runs it on their own device and submits a proof: what reache
 a genuine deed exists, bound to identifiers naming neither party nor parcel.
 
 **Notaries can be punished for serving a system like this**, so which notary acted is never
-published: they prove membership of the licensed set without naming a member, and their identity
-travels encrypted, openable by a quorum of custodians against a proven fault.
+published: they prove membership of the licensed set without naming a member, their identity
+travelling encrypted, openable by a quorum of custodians against a proven fault.
 
-**We fund loans; we do not write them — the central choice.** Writing a loan means judging a person,
-and whoever holds that judgment can refuse: on faith, politics, sex, name. A promise never to use it
-is worth only the promiser's freedom from pressure, so we do not take the power. The protocol lends
-against collateral checked mechanically, and mechanical checks cannot be aimed at anyone.
+**We fund loans; nobody underwrites them — the central choice.** Underwriting means judging a
+person, and whoever holds that judgment can refuse: on faith, politics, sex, name. A promise never
+to use it is worth only the promiser's freedom from pressure, so the power sits nowhere. The
+protocol lends against collateral checked mechanically — genuine title, unencumbered parcel, ratio
+within limits — which cannot be aimed at anyone. **The reserve lends, the borrower repays it** on a
+schedule the contract holds, a notary creates the lien, and the borrower's equity is first loss.
 
-**Two more reasons not to originate.** An originator needs a licence, so writing loans ourselves
-would put the system on permission that can be withdrawn. And an originator holds the borrower's
-file, which we would rather never hold: data never collected cannot be compelled from us.
+**Two more reasons not to take that role.** Underwriting needs a licence, so doing it ourselves
+would put the system on permission that can be withdrawn — and an underwriter holds the borrower's
+file, which we would rather never hold: uncollected data cannot be compelled.
 
-A cheaper rate follows, though less than disintermediation is usually claimed to give; section 7
-sets out which parts of a bank's rate we remove and which we do not.
+A cheaper rate follows, though less than disintermediation usually promises; section 7 sets out
+which parts of a bank's rate we remove and which we do not.
 
-Lending also needs what cryptography cannot supply: an **independent valuation**. The borrower
-provides the figure and gains by inflating it. The tractable form is attesting a licensed valuer as
+Lending also needs what cryptography cannot supply: an **independent valuation** — the borrower
+provides the figure and gains by inflating it. The tractable form is attesting a licensed valuer, as
 we attest notaries, or reading auction results.
 
 Foreclosure uses existing institutions — judicial enforcement (*Ejra-ye Ahkam*, اجرای احکام) and
-public auction (*Mozāyedeh*, مزایده) — with irrevocable assignment
-(*Vekālat-nāmeh-ye Belā-'Azl*, وکالت‌نامه بلاعزل) signed at the start, a form courts recognise.
+auction (*Mozāyedeh*, مزایده) — with irrevocable assignment
+(*Vekālat-nāmeh-ye Belā-'Azl*, وکالت‌نامه بلاعزل) signed at the start, a form courts accept.
 **If valuation cannot be made independent we ship identity and title without lending.**
 
 **Delivered:** an audit report and fixes; live contracts and a wallet reading a real passport;

@@ -3695,6 +3695,62 @@ Supporting passport booklets as well still needs a 93-byte `escrow_envelope` var
 verifier contract and a second fixture pipeline. That remains a product question: **which document
 is this for**, and whether both.
 
+### 2.18ad EVERYTHING NOT PROVEN, IN ONE PLACE - with what would close each
+
+Scattered caveats are caveats nobody reads. This is the complete list of things asserted but not
+demonstrated, each with the specific thing that would settle it. **Nothing below is a known defect -
+they are claims resting on argument rather than execution.**
+
+**BLOCKED ON A REAL DOCUMENT** (milestone 3; a synthetic one is refused, sec. 2.18k):
+1. **`register_identity` / `register_identity_td1` happy path.** No proof has ever been produced by
+   either. Needs a SOD signed by a DSC genuinely in the ICAO chain. *Closes with:* one real card or
+   passport, `js/process_passport.js`'s `{dg1, dg15, sod}` input, then `nargo execute`.
+2. **The `icao_root` check's POSITIVE case.** `registerDocumentViaIcao` is proven only by its
+   negative test - an unknown root reverts. That a VALID root is accepted has never run.
+   *Closes with:* the same document, plus `certificatesSmt` populated by a real
+   `registerCertificate`.
+3. **The TD1 SOD layout constants** (`EC_LEN 126`, `SA_LEN 62`, `DG1_SHIFT 25`, `EC_SHIFT 42`).
+   Inherited from the TD3 profile on the reasoning that they describe SOD structure rather than MRZ
+   length. **Plausible, unverified.** *Closes with:* one real TD1 card - and if wrong, it is a
+   parameter change, not a redesign.
+4. **No Solidity verifier is generated for either full-registration circuit.** Deliberate: a
+   verifier that has never accepted a proof is a liability, and `codegen-verifiers.sh`'s self-checks
+   need a witness. *Closes with:* item 1.
+
+**TRUST ASSUMPTIONS, NOT PROOFS:**
+5. **The CSCA master root is owner-set** (`changeICAOMasterTreeRoot`, `onlyOwner`). Every guarantee
+   in sec. 2.18w's table is downstream of someone publishing the right list. *Closes with:* CRE
+   consensus anchoring, which removes the discretion rather than documenting it.
+6. **Iranian legal claims** - the Land Registration Act making private deeds inadmissible, the
+   notary monopoly on consensual mortgages, the foreclosure institutions. From `spec.pdf` plus
+   general knowledge, **not from anyone qualified to give an opinion.** *Closes with:* the
+   in-country counsel milestone 3 budgets for. Already corrected once (sec. 2.18f), which is
+   evidence the rest deserves checking too.
+
+**PARTIALLY PINNED - the whole is tested, the parts are not:**
+7. **`CRSASigner`'s individual padding clauses.** Neutering `_checkPkcs1v15` re-admits the forgery,
+   so the fix as a whole is load-bearing; removing any SINGLE clause does not, because the forged
+   cube is mostly leading zeros and several clauses catch it independently (sec. 2.18u). Each guards
+   a different family. *Closes with:* forgeries tailored to bypass all-but-one, which this
+   construction cannot produce.
+8. **`PRSASHAAuthenticator`'s fix is unit-tested but unreachable in situ** - Active Authentication
+   needs DG15 and our variant has `DG15_LEN = 0` (sec. 2.18y). *Closes with:* a DG15-carrying
+   profile, if one is ever wired.
+
+**NOT YET BUILT:**
+9. **A 93-byte `escrow_envelope`** - required if passport booklets are supported alongside ID cards.
+   Second verifier, second fixture pipeline (sec. 2.18ac).
+10. **Untested contracts that remain:** the passport dispatchers (`PECDSASHA1Dispatcher`,
+    `PRSASHADispatcher`, `PNOAADispatcher`) and the SDK query-proof executors
+    (`AQueryProofExecutor`, `TD1/TD3QueryProofNoirVerifier`). The dispatchers are unreachable for
+    the same reason as item 8. **The query executors are NOT** - the wallet calls `query_identity`
+    for presentations - so they are the next place worth looking, and sec. 2.18aa's hit rate says
+    expect something.
+
+**THE ONE THING THIS LIST IS FOR:** sec. 2.18w's forgery table reads like an all-clear. It is not,
+and items 1, 2 and 5 are why. The guards are real and tested; what has never run is the path they
+guard.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

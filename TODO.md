@@ -3901,6 +3901,24 @@ this signal on TWO real proofs - `test_RejectsTamperedContext`, `test_RejectsTam
 and both are rejected by the verifier itself, before any contract-level comparison. Had Noir optimised
 an ungated public input away, those tests would pass tampering through and fail.
 
+**DOES `let _ =` MAKE THE VALUE UNUSABLE? NO - PROBED, NOT ASSUMED.** *"the underscore still troubles
+me, that makes the context unusable?"* (user, 2026-07-29). A fair worry, and reasoning by analogy to
+Rust would have been a guess about a different compiler. A two-input scratch circuit settles it:
+
+```noir
+fn main(a: pub Field, b: pub Field) {
+    let _ = a;
+    assert(a + b == 12, "a was not usable after let _ = a");
+}
+```
+
+It compiles (so `a` is still usable after being discarded) and the `should_fail` case `main(5, 8)`
+fails as required (so the constraint is LIVE, not elided). `_` evaluates and drops; it does not move,
+shadow, consume or mark. `context` remains an ordinary parameter and an ordinary public input, and if
+a constraint on it is ever wanted the `let _` line simply becomes redundant. Corroborated twice over:
+opcode count is 24,812 with and without it, and both real proofs still verify - neither of which a
+line that changed `context`'s status could manage.
+
 **WHAT CHANGED.** `let _ = context;` in the body, plus the reasoning at the parameter. No constraints
 (24,812 opcodes before and after; both real proofs still verify, so the ACIR is byte-identical). The
 point is the warning: `unused variable context` fired on every build, and a warning that is expected
@@ -3989,14 +4007,36 @@ reasoning had been confident.
 
 **THE ACTUAL GAP: 6 PROFILES.** 29 of the 35 Circom profiles already have a Noir twin. The orphans:
 
-| profile | hash | nearest Noir sibling |
-|---|---|---|
-| `1_160_3_4_576_200_NA` | SHA-1 | 1 sharing `1_160_3` |
-| `20_160_3_3_736_200_NA` | SHA-1 | 2 sharing `20_160_3` |
-| `4_160_3_3_336_216_1_1296_3_256` | SHA-1 | **0 - signature type 4 is unported entirely** |
-| `1_256_3_6_336_560_1_2744_4_256` | SHA-256 | 18 sharing `1_256_3` |
-| `14_256_3_4_336_64_1_1480_5_296` | SHA-256 | 3 sharing `14_256_3` |
-| `20_256_3_5_336_72_NA` | SHA-256 | 2 sharing `20_256_3` |
+| profile | signature (decoded from the lib's own SIG_TYPE dispatch) | hash | Active Auth? |
+|---|---|---|---|
+| `1_160_3_4_576_200_NA` | RSA-2048, e=65537 | SHA-1 | no |
+| `20_160_3_3_736_200_NA` | ECDSA secp256r1 | SHA-1 | no |
+| `4_160_3_3_336_216_1_1296_3_256` | RSA-2048, **e=37187** | SHA-1 | **YES** |
+| `1_256_3_6_336_560_1_2744_4_256` | RSA-2048, e=65537 | SHA-256 | **YES** |
+| `14_256_3_4_336_64_1_1480_5_296` | RSA-PSS-3072, salt 32, e=65537 | SHA-256 | **YES** |
+| `20_256_3_5_336_72_NA` | ECDSA secp256r1 | SHA-256 | no |
+
+**THE CRYPTOGRAPHY IS NOT THE BLOCKER, and an earlier version of this section said it was.** I wrote
+"signature type 4 is unported entirely", reading that off the VERIFIER FILENAMES rather than the
+library. `not_passports_zk_circuits.nr` dispatches SIG_TYPE 1-8, 10-15, 20-21 and 23-27 - every type
+these six need is already implemented. Third time the same mistake in this session (sec. 2.18h,
+sec. 2.18aj's first count, sec. 2.18ak): a number read off the nearest file instead of the thing it
+claims to measure.
+
+**WHAT IS ACTUALLY MISSING is the per-profile SOD LAYOUT: `EC_LEN`, `SA_LEN`, `N`.** The profile name
+encodes only SIG_TYPE, hash bits, doc type, `EC_SHIFT` (name value / 8) and `DG1_SHIFT` (name value /
+8) - verified against our own circuit, where `336/8 = 42 = EC_SHIFT` and `200/8 = 25 = DG1_SHIFT`. It
+does NOT encode the three that decide WHICH BYTES GET HASHED, no profile->parameter table exists
+anywhere in this repo, and these six by definition have no rarime Noir source to copy from. Inventing
+them is refused under sec. 2.18k: a wrong `SA_LEN` compiles cleanly and hashes the wrong span, with no
+symptom until a real document disagrees.
+
+**THREE OF THE SIX CARRY ACTIVE AUTHENTICATION - they ARE the DG15 profiles.** DG15 is the ICAO 9303
+data group holding the chip's AA public key; AA is the challenge-response that proves the chip is
+genuine rather than a clone of its data. Our circuits set `DG15_LEN = 0`, which is what the trailing
+`NA` means in a profile name, and it is why `PRSASHAAuthenticator` and the passport dispatchers are
+unreachable in situ. **So porting these six would also close sec. 2.18ad items 8 and 10 as a side
+effect** - a better argument for the migration than the toolchain tidiness first offered here.
 
 **GENERATING the circuits needs ZERO passports** - five of the six differ from an existing Noir
 profile only in SOD layout offsets, which is a parameter change exactly like `register_identity_td1`
@@ -4098,8 +4138,40 @@ upstream's actual state, not an artifact of how the fork was taken. The same hol
 crypto: `sigver` has 25 tests across 31 files, but `big_curve` has **1 across 17**.
 
 That is an explanation of PROVENANCE, not a defence. Inheriting an untested 883-line file that decides
-what a proof discloses makes it ours the moment we shipped it, and rarime having tested with real
-passports (their empirical claim) is not the same as having unit tests on the disclosure arithmetic.
+what a proof discloses makes it ours the moment we shipped it.
+
+**AND THE REASON REAL-PASSPORT TESTING DOES NOT COVER IT - the sentence to remember:**
+
+> **A selector mask can be wrong for every passport ever tried and still verify.**
+
+rarime tested with real passports; that is their empirical claim and it is credible. It establishes
+something different from what is needed here. A passport test exercises the SIGNATURE path: does this
+chip's SOD verify, does the DSC chain to a CSCA. It says nothing about the DISCLOSURE arithmetic,
+because a proof that reveals too much still verifies perfectly. Every party in the loop is satisfied:
+the prover produced a valid proof, the verifier accepted it, the passport was genuine. The only thing
+wrong is WHICH FIELDS CAME OUT, and no cryptographic check anywhere is looking at that. The same holds
+for a birth-date bound off by one day, an expiry comparison using the wrong operator, or a citizenship
+mask that ORs where it should AND.
+
+This generalises past `query.nr`, and it is the reason this project keeps finding defects in things
+that "work": **a check that cannot fail loudly is not covered by testing the happy path.** It is the
+same shape as sec. 2.18ah's deletable context comparison, sec. 2.18 ae's always-true mock, and the
+sec. 2.18o root-validity guard that silently passed for every invented root.
+
+**WHAT ELSE IS UNTESTED REPO-WIDE, since the rule is "no untested thing":**
+
+| unit | lines | tests | ours or inherited? |
+|---|---|---|---|
+| `noir_dl/src/query.nr` | 883 | 0 | inherited |
+| `noir_dl/src/not_passports_zk_circuits.nr` | 907 | 0 | inherited, needs a document |
+| `noir_dl/src/big_curve` | 17 files | 1 | inherited |
+| **`backend/cre/notary_registry/main.go`** | **~500** | **0** | **OURS** |
+| wallet TypeScript (`pp/`, `identity/`, `sdk/`) | - | 0 test files | ours |
+
+**`main.go` IS THE UNCOMFORTABLE ONE** - it is our own code, not vendored, and it is the CRE workflow
+that scrapes Ukraine's Ministry of Justice notary registry (sec. 2.15a). Its parsing logic is exactly
+what sec. 2.15a warns about ("scrapers rot"), it is plain Go testable against fixture HTML with no
+document and no network, and it has no tests at all. Nothing about it is blocked.
 
 **CRE IS NOT A PREREQUISITE FOR ANY OF IT.** sec. 2.15a's scraper anchors the ACTIVE-NOTARY snapshot;
 it feeds `TitleLedger`'s notary side, not the passport query path. And even for `title_holder`, the

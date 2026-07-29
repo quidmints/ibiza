@@ -3742,10 +3742,11 @@ they are claims resting on argument rather than execution.**
    Second verifier, second fixture pipeline (sec. 2.18ac).
 10. **Untested contracts that remain:** the passport dispatchers (`PECDSASHA1Dispatcher`,
     `PRSASHADispatcher`, `PNOAADispatcher`), unreachable for the same reason as item 8, and the
-    generated query verifiers. **`AQueryProofExecutor`'s root check is now covered** - see
-    sec. 2.18ae. What remains untested there is the SIGNAL BUILDING itself: `PublicSignalsBuilder`
-    packs 23 signals and a selector bitmask, and a mis-packed field would be verified happily
-    against the wrong claim. *Closes with:* a real `query_identity` proof, i.e. item 1.
+    generated query verifiers. `AQueryProofExecutor`'s root check is covered (sec. 2.18ae) and the
+    **signal LAYOUT is now covered too** (sec. 2.18af) - **I had marked that blocked on a real proof
+    and it was not**, which is the error this list exists to prevent. What genuinely still needs a
+    proof is only end-to-end acceptance: that a real `query_identity` proof verifies against signals
+    this builder produced. *Closes with:* item 1.
 
 **THE ONE THING THIS LIST IS FOR:** sec. 2.18w's forgery table reads like an all-clear. It is not,
 and items 1, 2 and 5 are why. The guards are real and tested; what has never run is the path they
@@ -3777,6 +3778,37 @@ everything. Verified by removal: deleting the check makes two of the four fail.
 `Registration2`'s certificate gate). Until sec. 2.18o that function accepted ANY root on a chain
 younger than an hour - so this check was vacuous on a fresh chain or L2 **even with a real SMT
 behind it**. Four independent guards, one shared failure, which is the sec. 2.18q argument again.
+
+### 2.18af THE SIGNAL LAYOUT WAS TESTABLE ALL ALONG - I had it filed as blocked
+
+*(user: "if anything can be done now before we have phone or passport, do it, do not wait")* sec.
+2.18ad listed the signal building as blocked on a real proof. **That was wrong.** The builder is a
+pure function from inputs to 23 words; checking that each lands in the slot the circuit reads it
+from needs no proof, no phone and no document. Filed as blocked, done in twenty minutes.
+
+**WHY IT MATTERS.** `PublicSignalsBuilder` assembles the signals a `query_identity` proof is
+verified against, and **their order is a contract with the circuit that nothing enforced.** A field
+one slot out verifies happily against the wrong claim - a proof of nationality checked as though it
+were sex, an age bound applied to an expiry date. Silent, and wrong in the direction that matters.
+
+**THE EXISTING TESTS COULD NOT HAVE CAUGHT IT.** `mock/sdk/ProofBuilderTest.sol`'s eleven
+"equivalence" tests compare the library against a reference **in the same file**. That proves
+internal consistency and says nothing about the circuit - the same vacuity as sec. 2.18i, where both
+sides of my cross-path test called one function.
+
+**THE REFERENCE USED HERE IS THE CIRCUIT SOURCE**, the only thing that cannot drift with the
+library. Mapped by hand from `query_identity/src/main.nr`'s return tuple against the builder's
+`mstore` offsets (`slot = (offset - 32) / 32`), and **every one matches**: nullifier at 0, the
+identity fields at 3-7, eventId/eventData at 9-10, idStateRoot 11, selector 12, and the five bound
+PAIRS through 22.
+
+**THE BOUND PAIRS ARE THE DANGEROUS PART** and get their own test: every one is a (lower, upper) of
+the same shape, so a pair written one slot out still looks like a plausible range while constraining
+the WRONG attribute. Verified by swapping two adjacent bound slots - the test fails immediately.
+
+Also pinned: the array is exactly 23 long, and unset date slots default to `ZERO_DATE` rather than 0,
+since the circuit reads them as passport timestamps and a raw zero is a different claim from
+"unconstrained".
 
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 

@@ -2776,6 +2776,50 @@ circuit is the smaller move.
 codegen-verifiers.sh -> a signature-free entry point binding via `addDocument` -> tests -> then the
 CRE anchoring of the ICAO root as a separate piece.
 
+### 2.18i THE ANTI-REPLAY TRAP IS ELIMINATED STRUCTURALLY, NOT BY REMEMBERING
+
+sec. 2.18h recorded a trap to avoid when building the permissionless path: the two registration
+paths would key anti-replay on DIFFERENT values (`dg1Hash` from the light circuit, `passport_hash`
+from the full one), letting the SAME passport bind twice under two holder roots - once through each
+door - and destroying the document scarcity the identity blacklist rests on.
+
+**A note saying "remember not to do this" is not a fix.** Three changes make it structural:
+
+1. **ONE DEFINITION OF THE PACKING.** `lite::dg1_hash_field` extracted from
+   `register_identity_light`. The convention - skip digest[0], read the remaining 31 bytes
+   big-endian - is not obvious (32 bytes do not fit BN254, and this drops the FIRST byte rather than
+   truncating the last), so a second hand-written copy was the likeliest way to diverge.
+   **Behaviour-preserving, verified on the committed vector: dgCommit, dg1_hash and sk_hash all
+   byte-identical, and the circuit is 16,180 opcodes exactly as before.**
+2. **THE FULL CIRCUIT NOW RETURNS `dg1_hash`** as a sixth public output, computed with that same
+   function. 72,932 -> 73,348 opcodes (+416, the extra sha256 - consistent with the 396 measured for
+   the same binding in sec. 2.13i). The permissionless path can therefore key on exactly what
+   `_replayKey` already uses.
+3. **TWO TESTS, AND ONLY ONE OF THEM WORKS - WHICH I FOUND BY BREAKING IT.**
+   `register_identity::test_dg1_hash_agrees_with_the_light_registration_path` compares the two
+   paths, but both call the shared function, so corrupting the packing moves both together and **the
+   test still passed**. It catches a path that INLINES its own copy, which is the realistic
+   regression, and nothing more. The load-bearing guard is
+   `lite::test_dg1_hash_field_matches_the_published_vector`, a KNOWN-ANSWER test against a value
+   computed OUTSIDE Noir - the fixture generator's own sha256 and packing loop, which the committed
+   escrow proofs and `HolderStateKeeper` have agreed with all along. **That one fails when the
+   packing changes.** Verified both ways.
+
+   The doc comment on the first test originally claimed it "makes the trap unreachable". It does
+   not, and it now says what it actually does.
+
+**STILL BLOCKED, AND HONESTLY SO: THE SOLIDITY SIDE CANNOT BE VERIFIED YET.** A proof from
+`register_identity` needs `ec`, `sa`, `pk`, `sig` and an ICAO inclusion branch - i.e. REAL PASSPORT
+DATA, signed by a real DSC that chains to a real CSCA. We have none, which is exactly what milestone
+3's field work exists to obtain. Writing the contract entry point now would mean shipping a path no
+test can execute, against the standing rule.
+
+**THE TRACTABLE ROUTE IS A SYNTHETIC PASSPORT**, and it is genuinely possible: the circuit verifies
+a signature chain, not a state. Generate a CSCA/DSC keypair, construct a conforming SOD (the EC and
+SA byte layouts with the offsets `DG1_SHIFT`/`EC_SHIFT` expect), sign it, and build an ICAO tree
+containing that DSC key. Then the whole path is testable end-to-end with no real document. That is
+the next concrete piece of work, and it is a fixture-generation problem rather than a protocol one.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

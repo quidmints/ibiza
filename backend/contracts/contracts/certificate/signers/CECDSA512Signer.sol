@@ -5,6 +5,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 
 import {ECDSA512} from "@solarity/solidity-lib/libs/crypto/ECDSA512.sol";
 
+import {EcdsaS} from "../../utils/EcdsaS.sol";
 import {ICertificateSigner} from "../../interfaces/signers/ICertificateSigner.sol";
 
 import {SHA512} from "../../utils/SHA512.sol";
@@ -31,7 +32,7 @@ contract CECDSA512Signer is ICertificateSigner, Initializable {
         return
             _brainpoolP512r1CurveParams.verify(
                 x509SignedAttributes_.sha512(),
-                icaoMemberSignature_,
+                EcdsaS.normalize(icaoMemberSignature_, _brainpoolP512r1CurveParams.n),
                 icaoMemberKey_
             );
     }

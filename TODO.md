@@ -3427,6 +3427,55 @@ are `bytes` rather than `uint256`, so the same rewrite needs a big-endian bignum
 than one line. Same fix, more plumbing - and until it lands, brainpoolP384r1 and brainpoolP512r1
 CSCAs are refused at the same ~50% rate.
 
+### 2.18w FORGERY INVENTORY - every circuit, every prover-chosen anchor
+
+*(user: "i meant any kind of forgery not just RSA, with our circuits too, you've been keepin track?")*
+Partly, and scattered across sections. Swept properly instead.
+
+**THE PATTERN TO HUNT** is the one sec. 2.18k found: a public input that NAMES A STRUCTURE THE
+PROVER CHOSE, accepted without on-chain validation. A proof can be perfectly sound about a tree the
+attacker built. Every circuit, every anchor:
+
+| circuit | prover-chosen anchor | on-chain check | |
+|---|---|---|---|
+| `withdraw_identity` | `state_root` | `_isKnownRoot` (PrivacyPool:57) | OK |
+| `withdraw_identity` | `identity_root` | `IDENTITY_REGISTRY.isValidRoot` (:76) | OK |
+| `escrow_envelope` | `registration_root` | `registrationSmt.isRootValid` **and** not predating the last invalidation (sec. 2.18e) | OK |
+| `escrow_envelope` | `controller_x/y` | pinned to `CONTROLLER_KEY_X/Y` | OK |
+| `register_identity` | `icao_root` | `certificatesSmt.isRootValid` | OK, **built today** |
+| `ragequit` | `commitment_hash` | `_isInState` + `depositors[label] == msg.sender` | OK |
+| `title_holder` | *none* | **the contract CONSTRUCTS both public inputs from its own storage** | strongest |
+
+**`title_holder` IS THE PATTERN TO PREFER.** `_verifyHolderProof` builds `publicInputs` from
+`holderCommitment[titleId_]` and `titleId_`; `bindNotaryIdentity` computes `expected_` on-chain from
+`holderRoot_` and `context_`. **The caller supplies only the proof.** Nothing prover-chosen means
+nothing to validate and no vacuity to reason about - where a root has to be passed in, the check is
+a patch over the fact that it could have been anything.
+
+**ONE SHARED SINGLE POINT OF FAILURE, AND IT WAS BROKEN UNTIL TODAY.** Four of the six checks reduce
+to `isRootValid`, which accepted ANY root on a chain younger than an hour (sec. 2.18o) - in three
+separate copies (sec. 2.18q). So the entire table above was simultaneously vacuous on a fresh chain,
+an L2, or any un-warped test. **That is the most important thing in this section**: the per-circuit
+checks all looked present and were all resting on one function that said yes.
+
+**FORGERY DEFECTS FOUND AND FIXED, consolidated:**
+1. **sec. 2.18k** - ICAO tree vacuity. The circuit's inclusion proof is against a prover-supplied
+   root; rarime's own generator builds a ONE-LEAF tree holding the key being registered. Closed by
+   checking `certificatesSmt` in `registerDocumentViaIcao`. **Circuit-side, and the largest.**
+2. **sec. 2.18u** - CRSASigner PKCS#1 v1.5 forgery, demonstrated with a constructed value under
+   e=3. Fixed by full encoded-message reconstruction.
+3. **sec. 2.18m** - X509 out-of-bounds read admitting an attacker-influenced DSC key. Fixed.
+4. **sec. 2.18o/q** - `isRootValid` accepting unknown roots, x3. Fixed and unified.
+5. **sec. 2.18a** - not document forgery but status forgery: a revoked identity re-registering
+   clean under a fresh secret. Fixed by making the commitment a function of `sk_identity`.
+
+**WHAT IS NOT CLOSED, stated so the table is not read as an all-clear:**
+- `registerDocumentViaIcao` cannot be exercised on the happy path until a real document exists, so
+  the `icao_root` check is proven only by its negative test (sec. 2.18k).
+- The **CSCA master root itself is owner-set** (sec. 2.18h). Every guarantee above is downstream of
+  someone publishing the right list; that is a trust assumption, not a proof, and the application
+  now says so.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

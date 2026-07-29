@@ -5,6 +5,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 
 import {ECDSA384} from "@solarity/solidity-lib/libs/crypto/ECDSA384.sol";
 
+import {EcdsaS} from "../../utils/EcdsaS.sol";
 import {ICertificateSigner} from "../../interfaces/signers/ICertificateSigner.sol";
 
 import {SHA384} from "../../utils/SHA384.sol";
@@ -74,7 +75,7 @@ contract CECDSA384Signer is ICertificateSigner, Initializable {
         return
             curveParams_.verify(
                 hasher_(x509SignedAttributes_),
-                icaoMemberSignature_,
+                EcdsaS.normalize(icaoMemberSignature_, curveParams_.n),
                 icaoMemberKey_
             );
     }

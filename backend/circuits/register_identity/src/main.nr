@@ -6,9 +6,31 @@
 //   1. DG1 hashes into EC, EC hashes into the signed attributes (the SOD chain)
 //   2. the DSC's signature over those attributes
 //   3. the DSC public key's inclusion in the ICAO master tree at `icao_root`
-// so a contract consuming it needs only to check `icao_root` against the published master root.
 // NO backend signature, NO certificate dispatcher: that is the whole point - enrolment through this
 // path cannot be refused to one person, because nothing about it is per-person.
+//
+// ============================================================================================
+// READ THIS BEFORE WRITING THE CONSUMING CONTRACT (TODO.md sec. 2.18k).
+//
+// STEP 3 IS VACUOUS UNLESS THE CONTRACT PINS `icao_root`. The tree is proven against whatever root
+// the PROVER supplies, and rarime's own witness generator supplies a fake one:
+//
+//     const branches = new Array(80).fill(0);
+//     const root = poseidon([pk_hash, pk_hash, 1n]);   // a ONE-LEAF tree, holding this very key
+//
+// With all-zero siblings the SMT verifier reduces to exactly that hash and accepts by construction.
+// So anyone can generate their own CSCA/DSC, sign a fabricated SOD over a fabricated MRZ, set
+// `icao_root` to the hash of their own key, and produce a COMPLETELY VALID proof of this circuit.
+//
+// `icao_root` is returned as a public output for exactly one reason: so the contract can compare it
+// against `StateKeeper.icaoMasterTreeMerkleRoot()`. **That comparison is the entire security of this
+// path.** Without it this circuit proves only that the prover can sign their own documents.
+//
+// AND THE TEST FOR IT CANNOT BE THE HAPPY PATH. Any fixture must use the fake single-leaf root - we
+// hold no real DSC private key - so a suite that configures the state keeper with the fixture's own
+// root passes whether or not the check exists. The test that carries the property is the NEGATIVE
+// one: a proof bearing a DIFFERENT `icao_root` must be REJECTED.
+// ============================================================================================
 //
 // `dg1_hash` IS RETURNED, AND THAT IS A DELIBERATE ADDITION (sec. 2.18i).
 //

@@ -2897,6 +2897,69 @@ document a person under pressure is most likely to be denied or have confiscated
 layout". 95 is TD1. The fixture is a passport-style MRZ inside a TD1-sized buffer - harmless as a
 test vector, since nothing parses the MRZ, and actively misleading read as a real document.
 
+### 2.18k THE ICAO INCLUSION PROOF IS VACUOUS BY ITSELF - THE CONTRACT CARRIES ALL OF IT
+
+Went and looked instead of planning around it (user, 2026-07-29: *"do it immediately instead of
+waiting"*). `rarimo/passport-zk-circuits-noir` ships **no committed witness** - `register_identity/js/`
+holds the GENERATOR (`process_passport.js`, `asn1.js`, `poseidon.js`, `autogen.sh`) and the input is
+just `{dg1, dg15, sod}`, supplied by you. So there is nothing to download, and that is the small
+finding.
+
+**THE LARGE ONE IS HOW THEIR GENERATOR BUILDS THE ICAO PROOF:**
+
+```js
+function getFakeIdenData(ec, pk){
+    const branches = new Array(80).fill(0);
+    ...
+    const root = poseidon([pk_hash, pk_hash, 1n]).toString(16)
+    return [sk_iden, root, branches]
+}
+```
+
+Eighty ZERO branches, and a root that is `Poseidon(pk_hash, pk_hash, 1)` - precisely
+`smt_hash1(key, value)` with key = value = this passport's own DSC key. **A single-leaf tree
+containing only the document being registered.** With all-zero siblings the SMT verifier's
+`levels[0]` reduces to exactly that hash, so it accepts by construction.
+
+**SO THE IN-CIRCUIT ICAO CHECK PROVES NOTHING ON ITS OWN.** An attacker can:
+1. generate their own CSCA/DSC keypair,
+2. sign a fabricated SOD over a fabricated MRZ,
+3. set `icao_root = Poseidon(their_pk_hash, their_pk_hash, 1)`,
+4. produce a **completely valid** `register_identity` proof.
+
+The only thing between that and a registered identity is the contract comparing the proof's
+`icao_root` public output against `stateKeeper.icaoMasterTreeMerkleRoot()`. **That single comparison
+is the entire security of the permissionless path.** sec. 2.18h described it as a formality
+alongside the real work; it is the reverse.
+
+**THIS IS THE SAME SHAPE AS THE BLACKLIST VACUITY** that made `escrow_envelope` necessary in the
+first place: a proof that is perfectly sound about a structure the prover chose. Recorded here
+because the trap is invisible at the point it matters - a contract that simply forgot the check
+would pass every test written against a fixture, since the fixture's own root would be configured
+into the state keeper.
+
+**THE TESTING SPLIT THIS FORCES, and its own trap.** A fixture must use the fake single-leaf root
+(we have no real DSC private key, and never will). So tests configure the state keeper with the
+FIXTURE's root, and production configures the real ICAO master root. A test suite that only ever
+does the former proves the happy path and nothing else. **Mandatory alongside it: a test that a
+proof carrying a DIFFERENT `icao_root` is REJECTED** - that is the one asserting the property, and
+it is the one that would fail if the contract's check were dropped.
+
+**WHAT THIS UNBLOCKS.** A witness needs no real passport: `{dg1, dg15, sod}` plus a synthetic
+CSCA/DSC is enough, and rarime's own generator proves the ICAO half is already synthetic. The
+remaining work is constructing a conforming SOD - CMS SignedData whose signed attributes carry the
+EC hash at `EC_SHIFT` and whose EC carries the DG1 hash at `DG1_SHIFT`. For the committed
+`registerIdentity_3_160_3_3_336_200_NA` variant those are 42 and 25, with `DG_HASH_TYPE`/`HASH_TYPE`
+of 20 (SHA-1 for the SOD's internal DG hashing) and `SIG_TYPE` 3.
+
+**NOTE THE SOD's SHA-1 IS NOT OUR `dg1_hash`.** `DG_HASH_TYPE = 20` governs the DG hashes INSIDE the
+SOD; sec. 2.18i's `dg1_hash` output is sha256 over DG1 and matches the light path. Two different
+digests over the same bytes, and conflating them would put a 20-byte value where the anti-replay key
+belongs.
+
+Also note their generator derives `sk_identity` from the EC hash - a throwaway. Ours must use the
+USER's key, since `holder_root` derives from it.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

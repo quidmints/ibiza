@@ -2670,6 +2670,56 @@ Corrected in FUNDING-APPLICATION.md sec. 2. **This is exactly the class of claim
 in milestone 3 is budgeted for** - it is drawn from spec.pdf plus general knowledge of Iranian
 registration law, not from an opinion by anyone qualified to give one.
 
+### 2.18g THE APPROVAL STEP WE CLAIMED TO HAVE REMOVED IS STILL THERE, ONE LAYER UP
+
+Found while asking which of the 15 untested inherited contracts are actually reachable. **This is
+the most serious defect in the design, and it invalidates a claim made in four places.**
+
+**THE CHAIN OF REASONING, each step verified in the code:**
+1. `IdentityRegistry.register` IS permissionless - proof-gated, no role, no signature. True.
+2. But it requires the document to already be bound in `StateKeeper.registrationSmt` (sec. 2.18).
+3. `registrationSmt` is written only via `_bindDocument`, reachable only through
+   `HolderStateKeeper.addDocument`/`renewDocument`, both `onlyRegistration`.
+4. Our registration contract is `HolderRegistration`. **EVERY** entry point on it -
+   `registerDocumentViaNoir`, `renewDocumentViaNoir`, `revokeDocumentViaSigner` - routes through
+   `_authenticateDocument`, which does `require(_isSigner(signer_))`.
+
+**SO REGISTRATION IS GATED BY A BACKEND SIGNER'S ECDSA SIGNATURE.** A key we hold can be ordered to
+withhold, and the person is blocked - which is EXACTLY the censorship-by-inaction lever the whole
+blacklist design exists to remove. We moved the lever upstream and then described the downstream
+half as if it were the system.
+
+**THE SECOND FALSE CLAIM, same root cause.** Comments in `IdentityRegistry.sol` and
+`escrow_envelope/src/main.nr` both say the ICAO signature chain "is verified during REGISTRATION".
+On our path it is NOT verified on-chain at all: `RegistrationSimple` (which `HolderRegistration`
+follows) checks a signer's signature and a Noir proof over DG1, and nothing else. **The trust root
+for "this is a genuine passport" is our own signer key, not the issuing state's signature.**
+
+**THE FIX IS INHERITED, UNUSED AND UNTESTED - it is those very "15 untested contracts".**
+`Registration2.registerViaNoir` takes **NO signature**. It is gated only by a ZK proof against
+`certificatesRoot_`, a certificates SMT that `registerCertificate` populates by verifying ICAO
+signatures ON-CHAIN against `stateKeeper.icaoMasterTreeMerkleRoot()`, using the certificate
+dispatchers and signers (`CECDSADispatcher`, `CRSAPSSSigner`, `CECDSA384Signer`, ...) that showed up
+in the untested list. **They are not cruft. They are the trustless path we are not on.**
+
+**THIS REFRAMES THE "UNTESTED CONTRACTS" ITEM ENTIRELY.** It was on the list as a coverage gap. It
+is actually the missing half of the censorship-resistance property.
+
+**THE SHAPE OF THE FIX IS ADDITIVE, NOT A REPLACEMENT.** `StateKeeper._registrations` is a MAP of
+named registration contracts, so more than one may be authorised at once. The signer path can stay
+as the cheap, convenient default; what must exist alongside it is a permissionless path nobody can
+withhold - the same relationship `ragequit` has to `withdraw`. A user who is refused a signature
+must still be able to register by proving the certificate chain themselves, on-chain, at their own
+gas cost.
+
+**NOT YET BUILT.** Requires: an ICAO-verifying registration contract writing into the HOLDER tree
+(`addDocument`, not upstream's 1:1 `addBond`); the certificate dispatchers/signers under test for
+the first time; and `icaoMasterTreeMerkleRoot` actually populated, which is its own operational
+question - who publishes the ICAO master list, and can THAT be withheld?
+
+**CLAIMS CORRECTED MEANWHILE**, rather than left standing while the build is pending:
+FUNDING-APPLICATION.md sec. 5 and sec. 6, `IdentityRegistry.sol`, `escrow_envelope/src/main.nr`.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

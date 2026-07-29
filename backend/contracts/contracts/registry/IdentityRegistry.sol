@@ -49,8 +49,13 @@ import {Constants} from '../pool/lib/Constants.sol';
  *
  * 5. AN ESCROW PROOF DOES NOT PROVE THE PASSPORT IS REAL - and this is the subtlest of them.
  *    `escrow_envelope` proves knowledge of an MRZ and of the `sk_identity` it belongs to. It CANNOT
- *    prove the document is genuine, because the ICAO signature chain is verified during
- *    REGISTRATION. Taken alone, a caller could invent an MRZ, escrow against it and land a
+ *    prove the document is genuine - that is registration's job.
+ *
+ *    AND ON OUR PATH REGISTRATION DOES NOT DO IT ON-CHAIN EITHER (TODO.md sec. 2.18g).
+ *    `RegistrationSimple`, which `HolderRegistration` follows, verifies a backend signer's
+ *    signature and a Noir proof over DG1 - not the ICAO certificate chain. The trust root for "this
+ *    is a genuine passport" is therefore OUR SIGNER KEY, not the issuing state's signature.
+ *    `Registration2` does verify the chain on-chain, and is not the path we are on. Taken alone, a caller could invent an MRZ, escrow against it and land a
  *    commitment backed by nothing - making the tree's scarcity guarantee, and therefore the whole
  *    blacklist, worthless.
  *
@@ -198,6 +203,17 @@ contract IdentityRegistry {
    * @notice Register an identity by posting its sealed escrow envelope. PERMISSIONLESS.
    * @dev Gated by a proof, never by a role - an approval step would hand back the
    *      censorship-by-inaction lever this whole design removes.
+   *
+   * THE HONEST SCOPE OF THAT CLAIM (TODO.md sec. 2.18g). It is true of THIS function and false of
+   * the system as it currently stands. Registering here requires the document to already sit in
+   * `registrationSmt`, and the only contract that writes it - `HolderRegistration` - requires a
+   * BACKEND SIGNER'S SIGNATURE on every entry point. So the approval step still exists; it is one
+   * layer upstream of here. A key we hold can be ordered to withhold, and the person is blocked.
+   *
+   * The permissionless replacement is already in this repo, unused: `Registration2.registerViaNoir`
+   * takes no signature and is gated only by a proof against a certificates root built by verifying
+   * ICAO signatures ON-CHAIN. Until a path like that writes into the holder tree, this contract's
+   * permissionlessness is a property of one link in a chain that has a gate earlier on.
    */
   function register(bytes calldata proof_, bytes32[] calldata publicInputs_) external returns (bytes32 root_) {
     if (publicInputs_.length != PUBLIC_INPUT_COUNT) revert WrongPublicInputCount(publicInputs_.length);

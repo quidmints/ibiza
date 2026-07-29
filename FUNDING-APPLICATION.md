@@ -49,7 +49,7 @@ sex or ethnicity, because there is no one in the system with the power to refuse
 
 ---
 
-## 2. Implementation: approach, activities, and milestones *(1000/1000 words)*
+## 2. Implementation: approach, activities, and milestones *(999/1000 words)*
 
 **Every part of the software is written and ships with this application**, proving and verifying
 on-chain today. It has not had an audit, a real passport, or value at stake — the three gaps the
@@ -64,17 +64,18 @@ One engineering decision underpins the rest: the two systems we merged proved th
 we rebuilt both onto one proving system. Identity, money and title verify through a single stack —
 one toolchain to keep current, one surface to audit.
 
-Both repositories are public, so the claim is checkable rather than asserted: clone either, run the
-suites, regenerate every fixture from committed scripts. Each generated verifier is exercised
-on-chain against a real proof, so one that stopped verifying would fail.
+Both repositories are public, so the claim is checkable: clone either, run the suites, regenerate
+every fixture from committed scripts. Each generated verifier is exercised on-chain against a real
+proof, so one that stopped verifying would fail.
 
 ### Milestone 1 — Audit
 
 Nothing reaches a real user before independent review, by descending risk. **The circuits**, where a
-flaw is silent and total: one wrong constraint lets an attacker mint value or bypass identity while
-tests still pass. **The identity registry**, whose guarantees are the product: registration
-cannot be refused, exclusion demands an act citing a rule, and a stale record expires so revocation
-cannot be outrun, while the newest never expires so inaction blocks nobody. **The money** —
+flaw is silent and total: one wrong constraint mints value or bypasses identity while tests still
+pass. **The identity registry**, whose guarantees are the product: it can refuse
+nobody, exclusion demands an act citing a rule, and a stale record expires so revocation cannot be
+outrun, while the newest never expires so inaction blocks nobody. **And the enrolment gate** it
+depends on (section 5). **The money** —
 deposit and withdrawal accounting, double-spend prevention, redemption. And
 **key handling**, where a weakness loses funds however good the circuits are. We will also commission
 a review of who can do what to whom — where such systems fail more often than in their
@@ -95,7 +96,7 @@ connect the two. Timings come from mid-range phones, not new ones.
 
 **This is field work** — engaging notaries, retaining counsel, recruiting through partners users
 already trust — done in-country, where most of this funding goes. It needs passports from several
-states, since chip behaviour differs in ways the standard does not.
+states, since chip behaviour differs beyond the standard.
 
 ### Milestone 4 — Title and lending
 
@@ -147,39 +148,39 @@ public auction (*Mozāyedeh*, مزایده) — with irrevocable assignment
 
 **Delivered:** an audit report and fixes; live contracts and a wallet reading a real passport;
 evidence a person can register, transact and leave unconnected; a title registered by a
-proven-licensed notary, the property undisclosed.
+proven-licensed notary, property undisclosed.
 
 
 ---
 
-## 3. Technical feasibility *(299/300 words)*
+## 3. Technical feasibility *(300/300 words)*
 
 **Technologies.** Noir/UltraHonk circuits; Solidity verification; React Native with platform secure
-enclaves. Identity follows ICAO 9303, so the trust root is the issuing state's signature, not
-anything we control.
+enclaves. Identity follows ICAO 9303, so the trust root can be the issuing state's signature rather
+than anything we control — today a key of ours attests it, which milestone 1 moves on-chain.
 
 **Capacity.** The system is built and tested, the strongest evidence we can build it. We found and
-fixed subtle defects along the way — a proof binding to an unconstrained field, stale roots letting
-revocation be evaded, a commitment hiding the property while permitting the same parcel to be titled
-twice. Finding our own errors matters more than claiming correctness. **The identity base is
-field-proven in this exact jurisdiction:** the passport stack we fork ran anonymous Iranian protest
-voting (link above), so passport scanning by users at risk is demonstrated, not hypothetical.
+fixed subtle defects on the way — a proof binding to an unconstrained field, stale roots letting
+revocation be evaded, a commitment hiding the property while letting one parcel be titled twice.
+Finding our own errors matters more than claiming correctness. **The identity base is field-proven
+in this jurisdiction:** the passport stack we fork ran anonymous Iranian protest voting (link
+above), so scanning by users at risk is demonstrated, not hypothetical.
 
-**Dependencies.** The proving toolchain and passport standard, both stable and open; and the
-jurisdiction's registry portals, outside our control.
+**Dependencies.** The proving toolchain and passport standard, both stable and open; registry
+portals outside our control.
 
 **Risks and mitigation.** *Lending's dependencies do not resolve* — independent valuation, an entity
-able to hold a lien, and a state-visible encumbrance; mitigated by scoping identity and title to
-stand alone, since provable private ownership is useful without anyone lending against it. *Portal
-changes break the scrapers* — versioned workflows with a timelock, so an update is visible before it
-takes effect. *Registry access withdrawn* — local integration sits behind an interface, so a
-jurisdiction is configuration, not a fork. *Proving too slow* — measured on mid-range devices; the
-withdrawal circuit is already 43% smaller. *A soundness bug* — why audit is first. *Key loss* — every
-key derives from one enclave-held seed, and notes are re-derivable by scanning.
+able to hold a lien, a state-visible encumbrance; mitigated by scoping identity and title to stand
+alone, since provable private ownership is useful without anyone lending against it. *Portal changes
+break the scrapers* — versioned workflows with a timelock, so an update is visible before it takes
+effect. *Registry access withdrawn* — local integration sits behind an interface, so a jurisdiction
+is configuration, not a fork. *Proving too slow* — measured on mid-range devices; withdrawal is
+already 43% smaller. *A soundness bug* — why audit is first. *Key loss* — one seed derives every key,
+and notes are re-derivable by scanning.
 
 **One bound we state rather than hide.** The registers are the state's own: strong against private
-fraud — a bribed notary, a forged deed — and worth nothing against a state fabricating credentials.
-We protect privacy *from* the state, not the protocol's integrity *against* it.
+fraud — a bribed notary, a forged deed — and worthless against a state fabricating credentials. We
+protect privacy *from* the state, not the protocol's integrity *against* it.
 
 
 ---
@@ -216,32 +217,32 @@ volume is the supply of independently valued properties, not anything technical.
 
 ## 5. Resilience to censorship *(299/300 words)*
 
-**What can be blocked** is network access to the chain and the registries the property layer reads.
-**Nothing else offers a lever:** no server to seize, no operator to coerce. Registration has no
-approval step, so nothing can be ordered withheld, and exclusion **fails open** — someone pressured
-into inaction blocks nobody, because the newest state stays valid indefinitely. Most systems get
-this backwards; here doing nothing is the safe default. Nor can anyone be quietly dropped:
-exclusion demands an affirmative act citing a stated reason, recorded permanently.
+**What can be blocked** is network access to the chain, the registries the property layer reads,
+and one approval step we have not removed: enrolling a passport needs a signature from a key we
+hold, attesting the issuing state's certificate chain off-chain. That key could be ordered to
+withhold. Milestone 1 verifies the chain on-chain instead, using forked code we have not wired.
 
-Chain access runs over ordinary HTTPS to any endpoint the user supplies, and is costly to
-distinguish from other web traffic.
+**After that step there is no gatekeeper.** No server to seize, no operator to coerce. Exclusion
+**fails open** — someone pressured into inaction blocks nobody, because the newest state stays valid
+indefinitely. Most systems get this backwards; here doing nothing is safe. Nor can anyone be quietly
+dropped: exclusion demands an affirmative act citing a reason, recorded permanently.
+
+Chain access runs over ordinary HTTPS to any endpoint the user supplies, hard to distinguish from
+other web traffic.
 
 **App-store delisting is among the weakest levers against us.** Sanctions already keep Google Play
-largely unavailable to Iranian users, so that market runs on local stores and direct installation:
-sideloading is the existing norm, not a habit we must teach. We chose React Native for that reason —
-it compiles to a standard Android package that installs from a file, passed between phones or over a
-messaging app, with no store, no account, no record of who downloaded it. A store can be delisted; a
-file cannot be recalled once it spreads. iOS lacks this path, so Android leads.
-
-A user cut off entirely is still not trapped: they can reclaim their deposit directly from the
-chain (section 6).
+largely unavailable to Iranian users, so that market runs on local stores and direct installation —
+sideloading is the norm, not a habit we must teach. We chose React Native for that: it compiles to a
+standard Android package installable from a file, passed between phones or over a messaging app,
+with no store, no account, no record of who downloaded it. A store can be delisted; a file cannot.
+iOS lacks this path, so Android leads.
 
 **Blocking the registries degrades the system rather than stopping it.** Identity and the shielded
-pool read no state endpoint — only the passport chip and the chain — so cutting the registry costs
-property functions while leaving identity and private transfer intact.
+pool read no state endpoint — only the passport chip and the chain — so cutting it costs property
+functions, leaving private transfer intact.
 
 **What we cannot engineer away** is coercion: a seized phone whose holder is made to unlock it.
-Biometric gating and holding no identity in the clear limit that damage without solving it.
+Biometric gating and holding no identity in the clear limit that, without solving it.
 
 ---
 

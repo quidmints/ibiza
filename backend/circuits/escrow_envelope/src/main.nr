@@ -10,6 +10,12 @@
 // withhold. That is deliberate - an attested escrow would hand back the censorship-by-inaction
 // lever the blacklist design exists to remove.
 //
+// TRUE OF THIS CIRCUIT, NOT YET OF THE SYSTEM (TODO.md sec. 2.18g). Escrowing requires a document
+// already bound in `registrationSmt`, and the only contract that binds one - `HolderRegistration` -
+// demands a BACKEND SIGNER'S SIGNATURE on every entry point. The approval step was moved upstream,
+// not removed. `Registration2.registerViaNoir` is the signature-free path already in the repo, and
+// nothing yet routes it into the holder tree.
+//
 // ---------------------------------------------------------------------------------------------
 // WHAT THIS CIRCUIT PUBLISHES, AND WHY THAT CHANGED (TODO.md sec. 2.18)
 //

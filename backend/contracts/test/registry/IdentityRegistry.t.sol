@@ -1,32 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.28;
 
-import {Test} from 'forge-std/Test.sol';
-import {ERC1967Proxy} from '@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol';
-
 import {IdentityRegistry} from '../../contracts/registry/IdentityRegistry.sol';
 import {SparseMerkleTree} from '@solarity/solidity-lib/libs/data-structures/SparseMerkleTree.sol';
 import {EscrowEnvelopeHonkVerifier} from '../../contracts/registry/verifiers/EscrowEnvelopeHonkVerifier.sol';
-import {HolderStateKeeperMock} from '../../contracts/mock/holder/HolderStateKeeperMock.sol';
-import {PoseidonSMTMock} from '../../contracts/mock/state/PoseidonSMTMock.sol';
-
-/// See HolderRegistration.t.sol - OZ 5.6.1 rejects empty proxy init data; this suite
-/// deploys-then-initializes, which is safe single-threaded.
-contract UnsafeTestProxy is ERC1967Proxy {
-  constructor(address impl) ERC1967Proxy(impl, '') {}
-
-  function _unsafeAllowUninitialized() internal pure override returns (bool) {
-    return true;
-  }
-}
-
-contract TestEvidenceRegistry {
-  mapping(bytes32 => bytes32) public statements;
-
-  function addStatement(bytes32 key_, bytes32 value_) external {
-    statements[keccak256(abi.encodePacked(msg.sender, key_))] = value_;
-  }
-}
+import {EscrowFixtureBase} from './EscrowFixtureBase.sol';
 
 /*
  * TODO.md sec. 2.13k/2.13m - the SINGLE identity tree, and every trap the merge creates.
@@ -41,13 +19,18 @@ contract TestEvidenceRegistry {
  * inclusion, fatal for exclusion). Each guard below is therefore pinned by a test that fails if the
  * guard is removed, not by a comment asserting it holds.
  */
-contract IdentityRegistryTest is Test {
+contract IdentityRegistryTest is EscrowFixtureBase {
   IdentityRegistry internal registry;
-  HolderStateKeeperMock internal sk;
-  TestEvidenceRegistry internal evidence;
 
-  bytes32 internal constant ICAO = 0x2c50ce3aa92bc3dd0351a89970b02630415547ea83c487befbc8b1795ea90c45;
   uint256 internal constant MAX_ROOT_AGE = 1 days;
+
+  /// escrow_envelope's public-input layout, mirroring IdentityRegistry's own constants. `holder_root`
+  /// and `dg1_hash` used to sit at 2 and 4 and are GONE (TODO.md sec. 2.18) - they linked every
+  /// user's identity to their pool handle in registration calldata.
+  uint256 internal constant PUBLIC_INPUT_COUNT = 11;
+  uint256 internal constant PUB_CONTROLLER_X = 0;
+  uint256 internal constant PUB_COMMITMENT = 2;
+  uint256 internal constant PUB_REGISTRATION_ROOT = 3;
 
   /// MUST equal withdraw_identity's IDENTITY_TREE_DEPTH and identityProof.ts's IDENTITY_TREE_DEPTH.
   /// Solarity's maxDepth is a CAP, so the ROOT is the same at any height - but a shallower registry
@@ -66,22 +49,7 @@ contract IdentityRegistryTest is Test {
     6_509_666_988_291_764_283_313_685_078_036_329_297_907_336_602_650_572_952_945_826_675_203_643_401_307;
 
   function setUp() public {
-    PoseidonSMTMock smt = PoseidonSMTMock(_proxy(address(new PoseidonSMTMock())));
-    PoseidonSMTMock certs = PoseidonSMTMock(_proxy(address(new PoseidonSMTMock())));
-    sk = HolderStateKeeperMock(_proxy(address(new HolderStateKeeperMock())));
-
-    evidence = new TestEvidenceRegistry();
-    TestEvidenceRegistry ev = evidence;
-    smt.__PoseidonSMT_init(address(sk), address(ev), 80);
-    certs.__PoseidonSMT_init(address(sk), address(ev), 80);
-    sk.__StateKeeper_init(address(0xA11CE), address(smt), address(certs), ICAO);
-
-    // Open the registration gate to this test so a document can be planted directly.
-    string[] memory keys = new string[](1);
-    keys[0] = 'test';
-    address[] memory vals = new address[](1);
-    vals[0] = address(this);
-    sk.mockAddRegistrations(keys, vals);
+    _setUpStateKeeper();
 
     bytes32[] memory preds = new bytes32[](2);
     preds[0] = PREDICATE_SANCTIONS;
@@ -91,17 +59,13 @@ contract IdentityRegistryTest is Test {
       address(new EscrowEnvelopeHonkVerifier()),
       address(sk),
       CONTROLLER,
-      address(ev),
+      address(evidence),
       CONTROLLER_KEY_X,
       CONTROLLER_KEY_Y,
       IDENTITY_TREE_DEPTH,
       MAX_ROOT_AGE,
       preds
     );
-  }
-
-  function _proxy(address impl) internal returns (address) {
-    return address(new UnsafeTestProxy(impl));
   }
 
   function _proof() internal view returns (bytes memory) {
@@ -119,8 +83,8 @@ contract IdentityRegistryTest is Test {
   function _publicInputsAt(uint256 _n) internal view returns (bytes32[] memory _inputs) {
     bytes memory _raw =
       vm.readFileBinary(string.concat('test/fixtures/escrow_envelope', vm.toString(_n), '.public'));
-    _inputs = new bytes32[](12);
-    for (uint256 _i = 0; _i < 12; _i++) {
+    _inputs = new bytes32[](PUBLIC_INPUT_COUNT);
+    for (uint256 _i = 0; _i < PUBLIC_INPUT_COUNT; _i++) {
       bytes32 _w;
       assembly {
         _w := mload(add(_raw, add(32, mul(_i, 32))))
@@ -129,16 +93,18 @@ contract IdentityRegistryTest is Test {
     }
   }
 
-  /// Plant the document the fixture's escrow refers to, so `register` finds it bound.
-  function _plantDocument() internal {
-    _plantDocumentAt(0);
-  }
-
-  function _plantDocumentAt(uint256 _n) internal {
-    bytes32[] memory p = _publicInputsAt(_n);
-    sk.addDocument(
-      bytes32(uint256(0xD0C) + _n), p[4] /* dg1Hash */, p[2] /* holderRoot */, sk.DOC_PASSPORT(), 111 + _n, 0
-    );
+  /*
+   * Rebuild the EXACT registration tree every escrow proof was built against.
+   *
+   * This replaces `_plantDocument`, which bound one document with `dgCommit = 111` and a documentKey
+   * of its own invention. That worked while the contract only checked `holderOfDocumentHash`; since
+   * TODO.md sec. 2.18 the proof carries an SMT INCLUSION of the document's leaf, so a placeholder
+   * commitment - or binding the documents in a different order, or at a different timestamp -
+   * yields a different root and the proof no longer verifies. All three are bound because all three
+   * are in the tree the witness was emitted from.
+   */
+  function _bindDocuments() internal {
+    _bindDocumentsFromFixture();
   }
 
   /*
@@ -157,13 +123,13 @@ contract IdentityRegistryTest is Test {
    * no privileged insert to shortcut with.
    */
   function test_EmitIdentityWitnessFixture() public {
+    _bindDocuments();
     for (uint256 i = 0; i < 3; i++) {
-      _plantDocumentAt(i);
       registry.register(_proofAt(i), _publicInputsAt(i));
     }
     assertEq(registry.registeredCount(), 3, 'expected three genuine registrations');
 
-    bytes32 commitment = _publicInputsAt(0)[3];
+    bytes32 commitment = _publicInputsAt(0)[PUB_COMMITMENT];
     SparseMerkleTree.Proof memory p = registry.getProof(commitment);
 
     assertTrue(p.existence, 'the primary identity is not in the tree');
@@ -180,14 +146,14 @@ contract IdentityRegistryTest is Test {
   // ── the happy path ──────────────────────────────────────────────────────────────────────
 
   function test_RegisterWithRealProof() public {
-    _plantDocument();
+    _bindDocuments();
     bytes32 before = registry.root();
 
     registry.register(_proof(), _publicInputs());
 
     bytes32[] memory p = _publicInputs();
-    assertTrue(registry.registered(p[3]), 'commitment not marked registered');
-    assertEq(registry.statusOf(p[3]), bytes32(0), 'a fresh registration must be CLEAN (value 0)');
+    assertTrue(registry.registered(p[PUB_COMMITMENT]), 'commitment not marked registered');
+    assertEq(registry.statusOf(p[PUB_COMMITMENT]), bytes32(0), 'a fresh registration must be CLEAN (value 0)');
     assertEq(registry.registeredCount(), 1);
     assertTrue(registry.root() != before, 'root did not change on registration');
     assertTrue(registry.isValidRoot(registry.root()), 'the new root is not valid');
@@ -195,32 +161,69 @@ contract IdentityRegistryTest is Test {
 
   // ── TRAP 5: an escrow proof does NOT prove the passport is real ──────────────────────────
 
-  function test_RegisterRevertsWhenTheDocumentWasNeverRegistered() public {
-    // No _plantDocument(). The proof is perfectly valid - it just attests to an MRZ nobody has ever
-    // registered through the ICAO-verified path. Without this guard the tree's scarcity guarantee,
-    // and therefore the entire blacklist, is worthless.
+  function test_RegisterRevertsWhenNoDocumentWasEverBound() public {
+    // No _bindDocuments(). The proof is perfectly valid and its inclusion argument is internally
+    // sound - it simply cites a registration root that this state keeper has never held, because
+    // nothing has been registered through the ICAO-verified path. Without this check the inclusion
+    // proof asserts NOTHING: a prover would invent a tree containing whatever leaf they liked.
     bytes32[] memory p = _publicInputs();
     bytes memory pf = _proof();
 
-    vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.DocumentNotRegistered.selector, p[4]));
+    vm.expectRevert(
+      abi.encodeWithSelector(IdentityRegistry.UnknownRegistrationRoot.selector, p[PUB_REGISTRATION_ROOT])
+    );
     registry.register(pf, p);
   }
 
-  function test_RegisterRevertsWhenTheDocumentBelongsToAnotherHolder() public {
+  /// The root is real but not THIS registry's - the same failure an attacker's invented tree gives.
+  function test_RegisterRevertsOnATamperedRegistrationRoot() public {
+    _bindDocuments();
     bytes32[] memory p = _publicInputs();
-    sk.addDocument(bytes32(uint256(0xD0C)), p[4], bytes32(uint256(0xBEEF)), sk.DOC_PASSPORT(), 111, 0);
+    p[PUB_REGISTRATION_ROOT] = bytes32(uint256(p[PUB_REGISTRATION_ROOT]) ^ 1);
     bytes memory pf = _proof();
 
-    vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.DocumentBoundToAnotherHolder.selector, p[4]));
+    // Reverts on the ROOT before the proof is verified. That ordering is what makes this test
+    // possible at all: tampering with a public input also makes the generated verifier revert, so
+    // checking the root second surfaces `SumcheckFailed()` and hides which input was wrong.
+    vm.expectRevert(
+      abi.encodeWithSelector(IdentityRegistry.UnknownRegistrationRoot.selector, p[PUB_REGISTRATION_ROOT])
+    );
     registry.register(pf, p);
+  }
+
+  /*
+   * TRAP 6: A REVOKED IDENTITY CANNOT COME BACK (TODO.md sec. 2.18a).
+   *
+   * This is the test the old design could not have passed. While the escrowed secret was freely
+   * chosen, anyone revoked could escrow a FRESH secret against the same passport, land a DIFFERENT
+   * commitment, and register clean - the blacklist was evadable by exactly the people it was
+   * applied to. `commitment` is now a function of `sk_identity`, fixed in-circuit, so the second
+   * attempt collides with the first and `registered[commitment]` rejects it.
+   */
+  function test_ARevokedIdentityCannotRegisterAgain() public {
+    _bindDocuments();
+    registry.register(_proof(), _publicInputs());
+    bytes32 c = _publicInputs()[PUB_COMMITMENT];
+
+    vm.prank(CONTROLLER);
+    registry.revoke(c, PREDICATE_SANCTIONS);
+    assertEq(registry.statusOf(c), PREDICATE_SANCTIONS, 'revocation did not take');
+
+    // The SAME passport, the SAME identity key: the circuit can only ever produce this commitment.
+    bytes32[] memory p = _publicInputs();
+    bytes memory pf = _proof();
+    vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.AlreadyRegistered.selector, c));
+    registry.register(pf, p);
+
+    assertEq(registry.statusOf(c), PREDICATE_SANCTIONS, 'the revocation was cleared by a re-register');
   }
 
   // ── envelope must be readable by the controller ──────────────────────────────────────────
 
   function test_RegisterRevertsOnAForeignControllerKey() public {
-    _plantDocument();
+    _bindDocuments();
     bytes32[] memory p = _publicInputs();
-    p[0] = bytes32(uint256(p[0]) + 1); // sealed to a key the controller does not hold
+    p[PUB_CONTROLLER_X] = bytes32(uint256(p[PUB_CONTROLLER_X]) + 1); // sealed to a key the controller does not hold
     bytes memory pf = _proof();
 
     vm.expectRevert(IdentityRegistry.WrongControllerKey.selector);
@@ -228,29 +231,31 @@ contract IdentityRegistryTest is Test {
   }
 
   function test_RegisterRevertsOnWrongInputCount() public {
-    bytes32[] memory short_ = new bytes32[](11);
+    bytes32[] memory short_ = new bytes32[](PUBLIC_INPUT_COUNT - 1);
     bytes memory pf = _proof();
 
-    vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.WrongPublicInputCount.selector, uint256(11)));
+    vm.expectRevert(
+      abi.encodeWithSelector(IdentityRegistry.WrongPublicInputCount.selector, PUBLIC_INPUT_COUNT - 1)
+    );
     registry.register(pf, short_);
   }
 
   function test_RegisterRevertsOnDuplicate() public {
-    _plantDocument();
+    _bindDocuments();
     registry.register(_proof(), _publicInputs());
 
     bytes32[] memory p = _publicInputs();
     bytes memory pf = _proof();
-    vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.AlreadyRegistered.selector, p[3]));
+    vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.AlreadyRegistered.selector, p[PUB_COMMITMENT]));
     registry.register(pf, p);
   }
 
   // ── TRAP 4: only the controller revokes ─────────────────────────────────────────────────
 
   function test_RevokeRevertsForNonController() public {
-    _plantDocument();
+    _bindDocuments();
     registry.register(_proof(), _publicInputs());
-    bytes32 c = _publicInputs()[3];
+    bytes32 c = _publicInputs()[PUB_COMMITMENT];
 
     vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.NotTheController.selector, address(this)));
     registry.revoke(c, PREDICATE_SANCTIONS);
@@ -259,9 +264,9 @@ contract IdentityRegistryTest is Test {
   // ── TRAP 2: zero is the CLEAN sentinel ──────────────────────────────────────────────────
 
   function test_RevokeRejectsAZeroPredicate() public {
-    _plantDocument();
+    _bindDocuments();
     registry.register(_proof(), _publicInputs());
-    bytes32 c = _publicInputs()[3];
+    bytes32 c = _publicInputs()[PUB_COMMITMENT];
 
     // A zero predicate would write the CLEAN value and "revoke" the identity into good standing.
     vm.prank(CONTROLLER);
@@ -285,9 +290,9 @@ contract IdentityRegistryTest is Test {
   }
 
   function test_RevokeRejectsAnUnknownPredicate() public {
-    _plantDocument();
+    _bindDocuments();
     registry.register(_proof(), _publicInputs());
-    bytes32 c = _publicInputs()[3];
+    bytes32 c = _publicInputs()[PUB_COMMITMENT];
 
     vm.prank(CONTROLLER);
     vm.expectRevert(abi.encodeWithSelector(IdentityRegistry.UnknownPredicate.selector, keccak256('MADE_UP')));
@@ -301,9 +306,9 @@ contract IdentityRegistryTest is Test {
   }
 
   function test_RevokeIsMonotone() public {
-    _plantDocument();
+    _bindDocuments();
     registry.register(_proof(), _publicInputs());
-    bytes32 c = _publicInputs()[3];
+    bytes32 c = _publicInputs()[PUB_COMMITMENT];
 
     vm.prank(CONTROLLER);
     registry.revoke(c, PREDICATE_SANCTIONS);
@@ -317,7 +322,7 @@ contract IdentityRegistryTest is Test {
   // ── TRAP 1: root expiry, the asymmetry I already got wrong once ─────────────────────────
 
   function test_LatestRootIsAlwaysValidHoweverOld() public {
-    _plantDocument();
+    _bindDocuments();
     registry.register(_proof(), _publicInputs());
     bytes32 latest = registry.root();
 
@@ -327,10 +332,10 @@ contract IdentityRegistryTest is Test {
   }
 
   function test_ASupersededCleanRootExpires() public {
-    _plantDocument();
+    _bindDocuments();
     registry.register(_proof(), _publicInputs());
     bytes32 cleanRoot = registry.root();
-    bytes32 c = _publicInputs()[3];
+    bytes32 c = _publicInputs()[PUB_COMMITMENT];
 
     vm.prank(CONTROLLER);
     registry.revoke(c, PREDICATE_SANCTIONS);
@@ -413,9 +418,9 @@ contract IdentityRegistryTest is Test {
   /// makes a revocation auditable from committed state rather than from the event log, and what a
   /// future proof-of-correct-listing would prove against.
   function test_TheLeafValueRecordsThePredicate() public {
-    _plantDocument();
+    _bindDocuments();
     registry.register(_proof(), _publicInputs());
-    bytes32 c = _publicInputs()[3];
+    bytes32 c = _publicInputs()[PUB_COMMITMENT];
 
     vm.prank(CONTROLLER);
     registry.revoke(c, PREDICATE_SANCTIONS);
@@ -426,12 +431,12 @@ contract IdentityRegistryTest is Test {
   }
 
   function test_RevokingMovesTheRoot() public {
-    _plantDocument();
+    _bindDocuments();
     registry.register(_proof(), _publicInputs());
     bytes32 before = registry.root();
 
     vm.prank(CONTROLLER);
-    registry.revoke(_publicInputs()[3], PREDICATE_SANCTIONS);
+    registry.revoke(_publicInputs()[PUB_COMMITMENT], PREDICATE_SANCTIONS);
 
     assertTrue(registry.root() != before, 'revoking did not move the root, so it would not take effect');
     assertEq(registry.revokedCount(), 1);
@@ -466,7 +471,7 @@ contract IdentityRegistryTest is Test {
   }
 
   function test_RegistrationAnchorsItsRoot() public {
-    _plantDocument();
+    _bindDocuments();
     registry.register(_proof(), _publicInputs());
 
     assertEq(_statementFor(0), registry.root(), 'the registration root was not anchored as evidence');
@@ -477,12 +482,12 @@ contract IdentityRegistryTest is Test {
   /// statement on tree SIZE - the obvious choice, and what the old registry used - would collide
   /// here, because size does not change on a revocation.
   function test_RevocationAlsoAnchorsItsRoot() public {
-    _plantDocument();
+    _bindDocuments();
     registry.register(_proof(), _publicInputs());
     bytes32 afterRegister = registry.root();
 
     vm.prank(CONTROLLER);
-    registry.revoke(_publicInputs()[3], PREDICATE_SANCTIONS);
+    registry.revoke(_publicInputs()[PUB_COMMITMENT], PREDICATE_SANCTIONS);
 
     assertEq(_statementFor(1), registry.root(), 'the revocation root was not anchored');
     assertTrue(registry.root() != afterRegister, 'revocation did not move the root');
@@ -492,11 +497,11 @@ contract IdentityRegistryTest is Test {
   /// Distinct keys per root. TestEvidenceRegistry reverts on a duplicate key, so a colliding
   /// derivation would make the SECOND anchor revert and take the whole transaction with it.
   function test_EachRootGetsADistinctStatementKey() public {
-    _plantDocument();
+    _bindDocuments();
     registry.register(_proof(), _publicInputs());
 
     vm.prank(CONTROLLER);
-    registry.revoke(_publicInputs()[3], PREDICATE_SANCTIONS);
+    registry.revoke(_publicInputs()[PUB_COMMITMENT], PREDICATE_SANCTIONS);
 
     assertTrue(_statementFor(0) != _statementFor(1), 'two roots share one statement key');
     assertTrue(_statementFor(0) != bytes32(0) && _statementFor(1) != bytes32(0), 'a root went unanchored');
@@ -515,9 +520,9 @@ contract IdentityRegistryTest is Test {
   // ── TRAP 3: removal must not exist ──────────────────────────────────────────────────────
 
   function test_ThereIsNoRemovalPath() public {
-    _plantDocument();
+    _bindDocuments();
     registry.register(_proof(), _publicInputs());
-    bytes32 c = _publicInputs()[3];
+    bytes32 c = _publicInputs()[PUB_COMMITMENT];
 
     // The solarity SMT provides `remove`, and exposing it would let a controller ERASE a
     // registration - censorship by deletion. Assert no such selector is callable: any of the

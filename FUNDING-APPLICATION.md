@@ -250,37 +250,36 @@ it.
 
 ---
 
-## 6. User security measures *(300 max — 299 used)*
+## 6. User security measures *(300 max — 298 used)*
 
-**Nothing identifying is published.** Where an obvious design would store a fingerprint of a street
-address, we treated that as a live vulnerability: anyone could take addresses from public records,
-fingerprint each and find the match. Those values are now disguised in a way that cannot be
-searched.
+**Nothing identifying is published.** An obvious design would store a fingerprint of a street
+address; anyone could then fingerprint addresses from public records and find the match. Those
+values are disguised so they cannot be searched.
 
-**One secret, in hardware.** A single recovery phrase lives in the phone's secure enclave behind
-biometric unlock, and every other key derives from it. If the enclave is unavailable the wallet
-refuses to store it rather than quietly falling back to weaker storage.
+**One secret, in hardware.** A single phrase sits in the phone's secure storage behind biometric
+unlock, and every other key derives from it — spending keys derived, never stored. If hardware
+backing cannot be confirmed, the wallet refuses to store it at all.
 
-**Nothing else to lose.** Spending keys are derived from that phrase rather than stored, so a stolen
-backup reveals nothing further.
+**The gap we disclose rather than let an auditor find: there is no recovery.** The phrase is
+generated on the device, never shown, and kept out of cloud backup — a lost phone is a lost identity
+and lost funds. Milestone 2 adds recovery that puts no key on anyone's server.
 
-**A guaranteed way out.** Whoever made a deposit can always reclaim it directly from the contract
-with the key on their own phone — no approval, no operator, nothing working but the chain. The cost
-is that this one action publicly links the deposit to whoever reclaims it, which ordinary withdrawal
-never does. Nobody can make that trade on the user's behalf.
+**A guaranteed way out.** Whoever deposited can always reclaim directly from the contract with the
+key on their own phone — no approval, no operator, nothing working but the chain. The cost is that
+this action publicly links the deposit to whoever reclaims it. Nobody makes that trade for them.
 
 **Assumptions stated, not hidden.** The check proves someone holds a genuine passport, not that they
-are trustworthy — and a person may hold several, limiting what excluding an identity achieves.
+are trustworthy — and a person may hold several, limiting what excluding one achieves.
 
-**A limitation we disclose rather than let an auditor find:** registering publicly links a person to
-their pool account, so it is visible that someone joined — never what they did, nor which deposit
-belongs to which withdrawal. We are closing it so even joining is unobservable.
+**Joining is now unobservable.** Registration used to publish a person's identity beside their pool
+account, so it was visible that someone had joined. The proof now shows the passport is registered
+without naming it; the one value published is shared by everyone.
 
 **Verification over assertion.** We test by deleting a safeguard and confirming the test then fails,
-rather than trusting a green result. That caught several real defects, including a test that had
-quietly stopped checking anything.
+rather than trusting a green result — which caught several real defects, including a test that had
+quietly stopped checking.
 
-**Audit first.** No real value at stake until independent review is complete and its findings
+**Audit first.** No real value at stake until independent review is complete and its findings are
 fixed.
 
 

@@ -146,9 +146,11 @@ TARGETS=(
   "withdraw_identity:${CONTRACTS_DIR}/pool/verifiers/WithdrawalHonkVerifier.sol:WithdrawalHonkVerifier:7"
   "title_holder:${CONTRACTS_DIR}/title/TitleHolderHonkVerifier.sol:TitleHolderHonkVerifier:2"
   "ragequit:${CONTRACTS_DIR}/pool/verifiers/RagequitHonkVerifier.sol:RagequitHonkVerifier:4"
-  # 12 public inputs: controller_x/y, holder_root, commitment, dg1_hash, c1_x/y, sealed[5].
+  # 11 public inputs: controller_x/y, commitment, registration_root, c1_x/y, sealed[5].
   # Miscounting here silently produces a fixture the verifier rejects for the wrong reason.
-  "escrow_envelope:${CONTRACTS_DIR}/registry/verifiers/EscrowEnvelopeHonkVerifier.sol:EscrowEnvelopeHonkVerifier:12"
+  # WAS 12: `holder_root` and `dg1_hash` were dropped in TODO.md sec. 2.18 - both were per-person
+  # identifiers that linked every user's identity to their pool handle in registration calldata.
+  "escrow_envelope:${CONTRACTS_DIR}/registry/verifiers/EscrowEnvelopeHonkVerifier.sol:EscrowEnvelopeHonkVerifier:11"
 )
 
 for target in "${TARGETS[@]}"; do

@@ -2462,6 +2462,133 @@ ONE-TIME registration path, never the withdrawal hot path. That is the right pla
 `registrationSmt.isRootValid` instead of `holderOfDocumentHash`, three escrow fixtures and the
 verifier regenerated, tests updated.
 
+### 2.18 BUILT. Measured 70,223 - the sec. 2.18 estimate was wrong about the DEPTH
+
+**MEASURED: 38,874 -> 70,223 ACIR opcodes (+81%)**, not the ~52-55k predicted. The prediction sized
+the inclusion at DEPTH 32 - the IDENTITY registry's height. `registrationSmt` is a rarime
+`PoseidonSMT` initialised at **80** everywhere it is deployed, and `query_identity` already took
+`siblings: [Field; 80]`, so the number was checkable and I did not check it.
+
+For context, all measured today: register_identity 72,932 | escrow 70,223 | query_identity_td1
+46,797 | withdraw_identity 24,812 | title_holder 12,969 | ragequit 997. Escrow now costs about what
+REGISTRATION costs, on the same one-time path. **The withdrawal hot path is untouched at 24,812.**
+
+**PUBLIC INPUTS 12 -> 11.** Gone: `holder_root`, `dg1_hash`. Added: `registration_root`, shared by
+every user of the system. The verifier is still **24,491 bytes** - unchanged - which confirms again
+that verifier size is flat in public-input count (sec. 2.13i), even across a circuit that nearly
+doubled in constraints.
+
+**REUSED `identity_state_verifier` RATHER THAN REBUILDING THE LEAF.** It already existed in
+`noir_dl_lib/src/query.nr`, private; made `pub`. A hand-written second copy of
+`Poseidon(documentKey, holderRoot) -> Poseidon(dgCommit, seq, timestamp)` would have been free to
+drift from the one `query_identity` uses, with nothing to notice.
+
+**TWO DEFECTS CLOSED AS SIDE EFFECTS, both found while wiring it:**
+1. **A REVOKED DOCUMENT COULD STILL REGISTER AN IDENTITY.** `_holderOfDocumentHash` is written at
+   binding and NEVER cleared - not by `revokeDocument`, not by `renewDocument`. So the old check
+   passed for a cancelled passport. The tree cannot be fooled that way: revocation overwrites the
+   leaf VALUE with `Poseidon1(REVOKED)`, which no `Poseidon3(dgCommit, seq, timestamp)`
+   reconstruction equals. **The new check is strictly stronger than the one it replaces.**
+2. **THE ROOT CHECK RAN AFTER PROOF VERIFICATION.** I wrote a comment claiming it ran before, did
+   not verify it, and the test caught me: tampering with a public input makes the generated verifier
+   revert `SumcheckFailed()` first, so the useful error never surfaced. Reordered - a mapping read
+   before a ~500k-gas Honk verification - and now the comment is true.
+
+**RESIDUAL, recorded rather than left implicit (sec. 2.18b).** `PoseidonSMT.isRootValid` = latest OR
+within ROOT_VALIDITY (1 hour). Because `revokeDocument` moves a leaf's VALUE, for up to an hour
+after a document is cancelled its pre-revocation root still admits an escrow. Bounded and
+correctable - the identity is still revocable afterwards - but it is NOT the "old roots are safe on
+an inclusion tree" argument sec. 2.18 made, because this tree carries status too.
+
+### 2.18a THE BLACKLIST WAS EVADABLE BY EVERYONE IT APPLIED TO
+
+Found while removing `holder_root`: `IdentityRegistry` guards on `registered[commitment]` and
+**nothing else**. While the escrowed secret was freely chosen, a revoked user could escrow a FRESH
+secret against the SAME passport, get a DIFFERENT commitment, and register clean. `dg1Hash` still
+bound to their `holderRoot`, so every check passed.
+
+**THE FIX IS ONE POSEIDON.** `revocation_secret = Poseidon(sk_identity, "pp:revocation-secret:v1")`,
+so the commitment is a FUNCTION of the identity: one identity, one commitment,
+`registered[commitment]` becomes the per-holder guard, and re-registration reverts
+`AlreadyRegistered`. Pinned by `test_ARevokedIdentityCannotRegisterAgain`, which the old design
+could not have passed.
+
+The domain separator is checked against its own string in-circuit
+(`test_revocation_domain_is_the_string_it_claims_to_be`) and asserted distinct from
+`extract_pk_identity_hash` - both are Poseidon over two fields, and a dropped separator would have
+handed anyone who saw a published holder root the secret that revokes it.
+
+**WHAT IT DOES NOT CLAIM:** two passports under two DIFFERENT `sk_identity` values are still two
+identities. Nothing in ICAO 9303 links two states' documents - which is exactly why the MRZ rides
+inside the envelope for the controller to attribute. What is closed is free re-registration of the
+SAME identity, which needed no second passport at all.
+
+### 2.18b THE FIXTURE PIPELINE, and the hand-built steps it replaces
+
+The witness comes from the REAL contract, never rebuilt off-chain - the rule `identityProof.ts` and
+`fixture-common.js` already established. Five steps, each consuming the last:
+
+1. `node tools/build-escrow-fixtures.js --documents 3` -> `escrow_documents.json`
+2. `forge test --match-test test_EmitRegistrationWitnessFixture` -> `registration_witness.json`
+3. `node tools/build-escrow-fixtures.js 3` -> `Prover.escrow<i>.toml`
+4. `backend/circuits/codegen-verifiers.sh` -> verifier + vk
+5. `tools/prove-escrow-fixtures.sh` -> `escrow_envelope<i>.proof/.public`  **(NEW)**
+
+**`dgCommit` IS TAKEN FROM THE CIRCUIT, NOT REIMPLEMENTED.** The generator shells out to
+`nargo execute` on `register_identity_light_td1` and reads its output. Writing
+`extract_dg1_commitment` in JS would have meant a second implementation of a bit-packing convention
+with three places to get the endianness wrong. Cross-checked: the circuit's `dg1_hash` and `sk_hash`
+outputs equal the values the generator computes independently, which is what licenses trusting it
+for the one value we cannot derive here.
+
+**STEP 5 DID NOT EXIST.** The three numbered proofs had been produced BY HAND with nothing in the
+repo recording the commands - the same defect as a header naming a generator that does not exist.
+
+**THE CROSS-IMPLEMENTATION RESULT THAT MATTERS:** a witness produced by solarity's on-chain
+`SparseMerkleTree` is accepted by the circomlib SMT gadget in Noir. That is genuine agreement
+between two independent implementations, not a self-consistent loop.
+
+### 2.18c THE COMMITTED ragequit.proof CORRESPONDED TO NO COMMITTED WITNESS
+
+Surfaced by regenerating. `RagequitHonkVerifier.t.sol` has always documented its fixture as the
+differential vector `(value 10, label 20, nullifier 30, secret 40)` cross-checked against
+poseidon-solidity - but `ragequit/Prover.toml` was overwritten with the END-TO-END witness
+(value 1e18, a real label) during the single-identity-tree merge, and the fixture was never
+re-proved. So the committed proof was **unreproducible**, and the next codegen run would silently
+replace it with one the test rejects. That is exactly what happened.
+
+Fixed with `ragequit/Prover.baseline.toml`, which `codegen-verifiers.sh` prefers over `Prover.toml`
+- the same protection `withdraw_identity` already had, and the reason it has it.
+
+### 2.18d THERE IS NO KEY RECOVERY (user, 2026-07-29)
+
+*"there is no recovery possible with the enclave"* - correct, and worse than "an enclave key cannot
+be exported". From `frontend/identity-wallet/src/identity/root.ts`:
+
+- `getOrCreateRootMnemonic()` GENERATES a 24-word phrase. **There is no import path anywhere** -
+  nothing calls `Mnemonic.fromPhrase` on user input.
+- The phrase is **never displayed**, so the user cannot write it down.
+- `keychainAccessible: WHEN_UNLOCKED_THIS_DEVICE_ONLY` **excludes it from iCloud Keychain and device
+  backups** by design.
+- `requireAuthentication: true` binds it to current biometric enrolment, which re-enrolment can
+  invalidate.
+
+Lost or wiped phone -> identity and every pool note gone permanently.
+
+**THE NUANCE THAT DECIDES THE FIX:** this is NOT a non-extractable Secure Enclave key. It is a value
+STORED IN Keychain/Keystore, readable by the app after biometric auth. So recovery is a feature we
+never built, not a physical impossibility.
+
+**AGAINST THE MPC/SOCIAL-RECOVERY SDKs** (Web3Auth, Turnkey, Privy, Para): every one introduces a
+server-side party, and most gate on Google/Apple OAuth - precisely the deniable-refusal lever the
+distributor argument exists to remove (sec. 2.22c) - plus a US-operated dependency for Iranian
+users. It would contradict sec. 5's censorship claims and sec. 7's "no infrastructure to run".
+
+**THE CONSISTENT ANSWER** is an encrypted backup the user controls: the mnemonic sealed under a user
+passphrase, ciphertext storable anywhere, recovery = passphrase + blob, no custodian. NOT BUILT.
+FUNDING-APPLICATION.md sec. 6 now discloses the gap and puts the fix in milestone 2; the
+participation-leak disclosure it replaced is the one closed by sec. 2.18 above.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

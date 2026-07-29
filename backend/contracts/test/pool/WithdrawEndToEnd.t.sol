@@ -16,6 +16,7 @@ import {RagequitHonkVerifier} from '../../contracts/pool/verifiers/RagequitHonkV
 import {IPrivacyPool} from '../../contracts/pool/interfaces/IPrivacyPool.sol';
 import {ProofLib} from '../../contracts/pool/lib/ProofLib.sol';
 import {Constants} from '../../contracts/pool/lib/Constants.sol';
+import {EscrowFixtureBase} from '../registry/EscrowFixtureBase.sol';
 
 /// OZ 5.6.1 rejects an ERC1967Proxy constructed with EMPTY init data (front-run protection for real
 /// deployments). The state-keeper and SMT mocks below are deploy-then-initialize, matching their own
@@ -79,7 +80,7 @@ contract MockEvidenceRegistry is IEvidenceRegistry {
  * changes (it is derived from the deployed address, so ANY change to deployment order in setUp
  * invalidates the fixture — test_ScopeMatchesFixture pins that).
  */
-contract WithdrawEndToEndTest is Test {
+contract WithdrawEndToEndTest is EscrowFixtureBase {
   Entrypoint internal entrypoint;
   IdentityRegistry internal identityRegistry;
   HolderStateKeeperMock internal stateKeeper;
@@ -137,11 +138,16 @@ contract WithdrawEndToEndTest is Test {
     return vm.readFileBinary(string.concat('test/fixtures/escrow_envelope', vm.toString(_i), '.proof'));
   }
 
+  /// escrow_envelope's public-input layout. `holder_root` (2) and `dg1_hash` (4) are GONE since
+  /// TODO.md sec. 2.18 - both were per-person identifiers published in registration calldata.
+  uint256 internal constant ESCROW_PUBLIC_INPUT_COUNT = 11;
+  uint256 internal constant ESCROW_PUB_COMMITMENT = 2;
+
   function _escrowPublicInputs(uint256 _n) internal view returns (bytes32[] memory _inputs) {
     bytes memory _raw =
       vm.readFileBinary(string.concat('test/fixtures/escrow_envelope', vm.toString(_n), '.public'));
-    _inputs = new bytes32[](12);
-    for (uint256 _i = 0; _i < 12; _i++) {
+    _inputs = new bytes32[](ESCROW_PUBLIC_INPUT_COUNT);
+    for (uint256 _i = 0; _i < ESCROW_PUBLIC_INPUT_COUNT; _i++) {
       bytes32 _w;
       assembly {
         _w := mload(add(_raw, add(32, mul(_i, 32))))
@@ -156,8 +162,13 @@ contract WithdrawEndToEndTest is Test {
   /// The identity registry's root after setUp's three genuine registrations. Committed so a change
   /// in registration order or content shows up as a STALE FIXTURE rather than as an unexplained
   /// proof rejection. Cross-checked against the live registry in test_WalletMirrorsMatchTheChain.
+  ///
+  /// MOVED WITH THE COMMITMENT DERIVATION (TODO.md sec. 2.18a): the tree is keyed on
+  /// `Poseidon(revocation_secret)` and that secret is now derived from `sk_identity` rather than
+  /// chosen, so every leaf key changed. The state root and context above did NOT move, which is
+  /// the check that this was a key-derivation change and not a deployment-order one.
   uint256 internal constant E2E_IDENTITY_ROOT =
-    406318650705240760235803096569314685721996710259988392525137199379957793483;
+    2910739936757023150025232640645754432456838469272402593742390097823972605304;
 
   // ── the proved withdrawal (test/fixtures/withdraw_e2e.proof) ────────────────────────────────
   uint256 internal constant WITHDRAWN = 300000000000000000;
@@ -179,15 +190,20 @@ contract WithdrawEndToEndTest is Test {
     // status carried in the leaf value. NON-UPGRADEABLE, and the pool holds a direct reference, so
     // nothing upgradeable sits between it and a set that can block a withdrawal (sec. 2.5a).
     //
-    // The registry needs a state keeper because `register` REFUSES an escrow whose MRZ was never
-    // registered through the ICAO-verified path - the escrow proof binds the MRZ to a hash but
-    // cannot prove the passport is genuine (sec. 2.13n, trap 5).
+    // The registry needs a state keeper because `register` REFUSES an escrow citing a registration
+    // root it has never held - the escrow proof includes the document's own leaf from that tree, and
+    // without checking the root that inclusion argument asserts nothing (sec. 2.13n trap 5, 2.18).
     PoseidonSMTMock smt = PoseidonSMTMock(address(new UnsafeTestProxy(address(new PoseidonSMTMock()))));
     PoseidonSMTMock certs = PoseidonSMTMock(address(new UnsafeTestProxy(address(new PoseidonSMTMock()))));
     stateKeeper = HolderStateKeeperMock(address(new UnsafeTestProxy(address(new HolderStateKeeperMock()))));
-    smt.__PoseidonSMT_init(address(stateKeeper), address(registry), 80);
-    certs.__PoseidonSMT_init(address(stateKeeper), address(registry), 80);
+    smt.__PoseidonSMT_init(address(stateKeeper), address(registry), REGISTRATION_TREE_DEPTH);
+    certs.__PoseidonSMT_init(address(stateKeeper), address(registry), REGISTRATION_TREE_DEPTH);
     stateKeeper.__StateKeeper_init(owner, address(smt), address(certs), bytes32(uint256(1)));
+
+    // The escrow proofs were built against a tree bound at this exact time - the timestamp is part
+    // of every leaf value. `_bindDocumentsInto` refuses to run at any other, rather than letting the
+    // root silently differ.
+    vm.warp(FIXTURE_TIMESTAMP);
 
     string[] memory skKeys = new string[](1);
     skKeys[0] = 'e2e';
@@ -220,16 +236,16 @@ contract WithdrawEndToEndTest is Test {
       }
     }
 
-    // Three GENUINE registrations, each with its own real escrow proof and its own planted
-    // document. Three rather than one because a single-leaf SMT has an EMPTY inclusion path, so the
-    // withdrawal would hash no siblings and prove nothing about the Merkle path.
+    // Three GENUINE registrations, each with its own real escrow proof. Three rather than one
+    // because a single-leaf SMT has an EMPTY inclusion path, so the withdrawal would hash no
+    // siblings and prove nothing about the Merkle path.
+    //
+    // THE DOCUMENTS COME FROM THE SHARED FIXTURE, not from the proofs' own public inputs - those no
+    // longer carry `dg1Hash` or `holderRoot` to read back. Each proof includes its document's leaf,
+    // so the tree here must be byte-identical to the one the witness was emitted from.
+    _bindDocumentsInto(stateKeeper);
     for (uint256 i = 0; i < 3; i++) {
-      bytes32[] memory pi = _escrowPublicInputs(i);
-      stateKeeper.addDocument(
-        bytes32(uint256(0xD0C) + i), pi[4] /* dg1Hash */, pi[2] /* holderRoot */,
-        stateKeeper.DOC_PASSPORT(), 111 + i, 0
-      );
-      identityRoot = uint256(identityRegistry.register(_escrowProof(i), pi));
+      identityRoot = uint256(identityRegistry.register(_escrowProof(i), _escrowPublicInputs(i)));
     }
   }
 
@@ -298,7 +314,7 @@ contract WithdrawEndToEndTest is Test {
     // getProof (sec. 2.13o), so there is no second implementation to disagree with. What still
     // needs pinning is that the fixture was proved against THIS registry's root.
     assertEq(uint256(identityRegistry.root()), E2E_IDENTITY_ROOT, 'fixture proved against a different identity root');
-    assertGt(identityRegistry.getProof(_escrowPublicInputs(0)[3]).siblings.length, 0, 'identity witness is degenerate');
+    assertGt(identityRegistry.getProof(_escrowPublicInputs(0)[ESCROW_PUB_COMMITMENT]).siblings.length, 0, 'identity witness is degenerate');
   }
 
   function _e2eProof() internal view returns (ProofLib.WithdrawProof memory _p) {
@@ -447,7 +463,7 @@ contract WithdrawEndToEndTest is Test {
 
     // A DIFFERENT registered identity is revoked - not ours - superseding the root our proof used.
     vm.prank(postman);
-    identityRegistry.revoke(_escrowPublicInputs(1)[3], keccak256('predicate.document.not-current'));
+    identityRegistry.revoke(_escrowPublicInputs(1)[ESCROW_PUB_COMMITMENT], keccak256('predicate.document.not-current'));
 
     // Inside the grace window the in-flight proof still works - deliberate, so an unrelated
     // revocation cannot be used to kill everyone's pending withdrawals.
@@ -465,7 +481,7 @@ contract WithdrawEndToEndTest is Test {
   /// liveness failure. Rebuild the witness against the new root and the withdrawal proceeds.
   function test_CurrentIdentityRootSurvivesTheSameDelay() public {
     vm.prank(postman);
-    identityRegistry.revoke(_escrowPublicInputs(1)[3], keccak256('predicate.document.not-current'));
+    identityRegistry.revoke(_escrowPublicInputs(1)[ESCROW_PUB_COMMITMENT], keccak256('predicate.document.not-current'));
     bytes32 current = identityRegistry.root();
 
     vm.warp(block.timestamp + 3650 days);

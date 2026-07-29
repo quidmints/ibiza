@@ -57,8 +57,12 @@ contract WithdrawalHonkVerifierTest is Test {
   uint256 internal constant STATE_ROOT =
     4344985332480040079471765000069393836362873940320599351794913073184699413871;
   uint256 internal constant STATE_TREE_DEPTH = 3;
+  /// CHANGED WITH THE COMMITMENT DERIVATION (TODO.md sec. 2.18a). The identity tree is keyed on
+  /// `Poseidon(revocation_secret)`, and the secret is now DERIVED from `sk_identity` rather than
+  /// chosen - so every leaf key moved, and with them the root. The other five signals are unchanged,
+  /// which is the check that this was a key-derivation change and not something broader.
   uint256 internal constant IDENTITY_ROOT =
-    406318650705240760235803096569314685721996710259988392525137199379957793483;
+    2910739936757023150025232640645754432456838469272402593742390097823972605304;
   uint256 internal constant CONTEXT = 42424242;
   /// Empty revocation registry: root 0, and an all-zero witness proves absence for every key
 
@@ -172,7 +176,7 @@ contract WithdrawalHonkVerifierTest is Test {
     11922358609946525750179191892257841520060631680150773185653959528175536025855;
   uint256 internal constant W_STATE_TREE_DEPTH = 3;
   uint256 internal constant W_IDENTITY_ROOT =
-    406318650705240760235803096569314685721996710259988392525137199379957793483;
+    2910739936757023150025232640645754432456838469272402593742390097823972605304;
   uint256 internal constant W_CONTEXT = 42424242;
 
   function _walletProof() internal view returns (ProofLib.WithdrawProof memory _p) {

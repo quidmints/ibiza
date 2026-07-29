@@ -11,16 +11,50 @@
  */
 const path = require('path');
 const fs = require('fs');
+const { createRequire } = require('module');
+const walletRequire = createRequire(
+  path.join(__dirname, '..', '..', 'frontend', 'identity-wallet', 'package.json'),
+);
+const { poseidon } = walletRequire('@iden3/js-crypto');
 
 /** Foundry's standard test mnemonic. Nothing here guards value; it must simply be FIXED. */
 const MNEMONIC = 'test test test test test test test test test test test junk';
 
 /**
- * escrow0's revocation secret. Its Poseidon commitment IS the identity tree's key, so every
- * withdrawal fixture must use THIS secret or its inclusion proof is for someone else's leaf.
- * Must match tools/build-escrow-fixtures.js.
+ * Domain separator for the revocation secret: the big-endian bytes of "pp:revocation-secret:v1".
+ *
+ * MUST equal escrow_envelope's REVOCATION_SECRET_DOMAIN, which asserts itself against the same
+ * string in `test_revocation_domain_is_the_string_it_claims_to_be`.
  */
-const REVOCATION_SECRET = 987654321n;
+const REVOCATION_SECRET_DOMAIN = BigInt(
+  '0x' + Buffer.from('pp:revocation-secret:v1', 'ascii').toString('hex'),
+);
+
+/**
+ * The identity's revocation secret. DERIVED, no longer chosen (TODO.md sec. 2.18a).
+ *
+ * While it was a free constant (`987654321n` lived here), a revoked user could escrow a FRESH
+ * secret against the same passport, land a different commitment, and register clean - the blacklist
+ * was evadable by exactly the people it was applied to. One identity now yields exactly one
+ * commitment, which is what makes `IdentityRegistry.registered[commitment]` a per-holder guard.
+ *
+ * DEFINED HERE, NOT IN build-escrow-fixtures.js, because three generators need it and the wallet's
+ * withdrawal witness must derive the SAME value - a second copy that drifts produces an inclusion
+ * proof for someone else's leaf, which fails as `InvalidIdentityRoot` and names nothing useful.
+ */
+function deriveRevocationSecret(skIdentity) {
+  return poseidon.hash([skIdentity, REVOCATION_SECRET_DOMAIN]);
+}
+
+/**
+ * Identity 0's sk_identity - pp/src/identity_asp.nr's published vector, and escrow0's. Every
+ * withdrawal fixture is for THIS identity's leaf.
+ */
+const SK_IDENTITY_0 =
+  287325206580568373396753082727527032974277810276511506339905121597618812140n;
+
+/** escrow0's revocation secret. Its Poseidon commitment IS the identity tree's key. */
+const REVOCATION_SECRET = deriveRevocationSecret(SK_IDENTITY_0);
 
 const IDENTITY_WITNESS_PATH = path.join(
   __dirname, '..', '..', 'backend', 'contracts', 'test', 'fixtures', 'identity_witness.json',
@@ -102,6 +136,7 @@ function logPublicSignals(pubSignals) {
 }
 
 module.exports = {
-  MNEMONIC, REVOCATION_SECRET, IDENTITY_WITNESS_PATH,
+  MNEMONIC, REVOCATION_SECRET, REVOCATION_SECRET_DOMAIN, SK_IDENTITY_0, deriveRevocationSecret,
+  IDENTITY_WITNESS_PATH,
   loadWallet, loadIdentityWitness, writeProverToml, PUBLIC_SIGNAL_NAMES, logPublicSignals,
 };

@@ -38,7 +38,7 @@ import {INoirVerifier} from '../../contracts/interfaces/verifiers/INoirVerifier.
  *
  * EIP-170: 24,491 bytes with `optimizer_runs = 1` scoped to it in foundry.toml, leaving 85 bytes.
  * WITHOUT that scoping it compiled to 25,503 and was undeployable. Note the cause was the OPTIMIZER
- * SETTING, not the public-input count: this circuit has 12 public inputs and measures 24,491, while
+ * SETTING, not the public-input count: this circuit has 11 public inputs and measures 24,491, while
  * TitleHolder has 2 and measures the same 24,491. Verifier size here is essentially flat in input
  * count, so `forge build --sizes` still needs checking after changes, but adding a public input is
  * not the thing to fear.
@@ -46,22 +46,32 @@ import {INoirVerifier} from '../../contracts/interfaces/verifiers/INoirVerifier.
 contract EscrowEnvelopeHonkVerifierTest is Test {
   INoirVerifier internal verifier;
 
-  uint256 internal constant PUBLIC_INPUT_COUNT = 12;
+  /// WAS 12. `holder_root` (slot 2) and `dg1_hash` (slot 4) were removed in TODO.md sec. 2.18:
+  /// both were per-person identifiers, so registration calldata linked every user's identity to
+  /// their pool handle. What replaced them is `registration_root`, which every user shares.
+  uint256 internal constant PUBLIC_INPUT_COUNT = 11;
 
   /// babyJub.mulPointEScalar(babyJub.Base8, 1234) - the controller's published sealing key. Pinned
   /// in pp/src/envelope.nr::test_controller_key_matches_babyjub.
   uint256 internal constant CONTROLLER_X =
     4_880_901_335_776_166_390_443_888_589_907_570_248_644_423_541_468_541_082_967_598_048_550_539_024_543;
-  /// Poseidon(pubkey(sk_identity)) for identity_asp.nr's published sk_identity.
-  uint256 internal constant HOLDER_ROOT =
-    1_865_212_777_183_579_978_282_563_455_860_747_611_651_741_716_602_891_477_985_491_951_937_263_287_453;
   /// Poseidon(revocation_secret) - what the registered-identity leaf stores, and the key the
   /// controller would list this identity under.
+  ///
+  /// CHANGED WITH THE SECRET'S DERIVATION (sec. 2.18a). The secret used to be a chosen constant;
+  /// it is now `Poseidon(sk_identity, "pp:revocation-secret:v1")`, so one identity yields exactly
+  /// one commitment and a revoked user cannot come back under a fresh one.
   uint256 internal constant COMMITMENT =
-    8_358_125_608_916_792_199_567_624_990_380_031_336_399_968_764_944_869_913_697_508_384_993_845_680_707;
-  /// The registration-bound MRZ digest the sealed DG1 must reproduce.
-  uint256 internal constant DG1_HASH =
-    25_221_877_208_166_930_351_050_665_436_133_530_901_095_817_342_996_592_571_437_213_589_958_279_235;
+    17_650_903_678_720_452_054_381_356_126_183_849_406_023_549_141_052_820_066_135_326_546_653_806_493_741;
+  /// The root of `registrationSmt` this witness proves inclusion against, emitted by
+  /// RegistrationWitnessFixture.t.sol from the REAL contract. Shared by every registered document,
+  /// so unlike the two values it replaced it identifies nobody.
+  uint256 internal constant REGISTRATION_ROOT =
+    7_553_396_750_661_601_236_506_689_713_315_529_231_608_311_828_670_595_460_606_212_574_078_751_161_966;
+
+  /// First sealed slot. Moved 7 -> 6 with the two removed inputs; named so the distinctness test
+  /// below cannot silently start comparing the wrong slots.
+  uint256 internal constant SEALED_0 = 6;
 
   function setUp() public {
     verifier = INoirVerifier(address(new EscrowEnvelopeHonkVerifier()));
@@ -96,9 +106,8 @@ contract EscrowEnvelopeHonkVerifierTest is Test {
   function test_FixtureIsTheDocumentedWitness() public view {
     bytes32[] memory _inputs = _publicInputs();
     assertEq(uint256(_inputs[0]), CONTROLLER_X, 'slot 0 is not the controller key');
-    assertEq(uint256(_inputs[2]), HOLDER_ROOT, 'slot 2 is not the published holder_root vector');
-    assertEq(uint256(_inputs[3]), COMMITMENT, 'slot 3 is not Poseidon(revocation_secret)');
-    assertEq(uint256(_inputs[4]), DG1_HASH, 'slot 4 is not the registration-bound MRZ digest');
+    assertEq(uint256(_inputs[2]), COMMITMENT, 'slot 2 is not Poseidon(revocation_secret)');
+    assertEq(uint256(_inputs[3]), REGISTRATION_ROOT, 'slot 3 is not the emitted registration root');
   }
 
   /// Every public input must be load-bearing. If any slot could be altered while the proof still
@@ -127,7 +136,7 @@ contract EscrowEnvelopeHonkVerifierTest is Test {
   /// against the REAL proof rather than only in-circuit.
   function test_SealedSlotsAreDistinct() public view {
     bytes32[] memory _inputs = _publicInputs();
-    for (uint256 _i = 7; _i < PUBLIC_INPUT_COUNT; _i++) {
+    for (uint256 _i = SEALED_0; _i < PUBLIC_INPUT_COUNT; _i++) {
       for (uint256 _j = _i + 1; _j < PUBLIC_INPUT_COUNT; _j++) {
         assertTrue(_inputs[_i] != _inputs[_j], 'two sealed slots are identical');
       }

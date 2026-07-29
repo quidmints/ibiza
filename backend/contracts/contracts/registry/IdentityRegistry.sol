@@ -47,12 +47,22 @@ import {Constants} from '../pool/lib/Constants.sol';
  *    Both paths are single-purpose and neither can perform the other's write.
  *
  * 5. AN ESCROW PROOF DOES NOT PROVE THE PASSPORT IS REAL - and this is the subtlest of them.
- *    `escrow_envelope` proves an MRZ hashes to `dg1_hash` and that `holder_root` derives from
- *    `sk_identity`. It CANNOT prove the document is genuine, because the ICAO signature chain is
- *    verified during REGISTRATION. Taken alone, a caller could invent an MRZ, escrow against it and
- *    land a commitment backed by nothing - making the tree's scarcity guarantee, and therefore the
- *    whole blacklist, worthless. `register` closes this by requiring the state keeper to already
- *    bind that `dg1Hash` to that `holderRoot`.
+ *    `escrow_envelope` proves knowledge of an MRZ and of the `sk_identity` it belongs to. It CANNOT
+ *    prove the document is genuine, because the ICAO signature chain is verified during
+ *    REGISTRATION. Taken alone, a caller could invent an MRZ, escrow against it and land a
+ *    commitment backed by nothing - making the tree's scarcity guarantee, and therefore the whole
+ *    blacklist, worthless.
+ *
+ *    CLOSED IN-CIRCUIT SINCE sec. 2.18, NOT HERE. The circuit proves SMT inclusion of the document's
+ *    own leaf in `StateKeeper.registrationSmt`; this contract's only remaining job is to confirm the
+ *    root that inclusion was proven against is one the SMT actually recognises. See `register`.
+ *
+ * 6. A REVOKED IDENTITY COULD SIMPLY REGISTER AGAIN (sec. 2.18a).
+ *    There is no per-holder guard on this contract and there cannot easily be one: `holderRoot` is
+ *    no longer published, by design. The guard is that `commitment` is a FUNCTION of `sk_identity`,
+ *    fixed in-circuit, so one identity has exactly one commitment and `registered[commitment]`
+ *    rejects the second attempt. While the escrowed secret was freely chosen, anyone revoked could
+ *    escrow a fresh secret against the same passport and come back clean.
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  *
  * NON-UPGRADEABLE and UNOWNED, for the reasons the RevocationRegistry it replaces was: an upgradeable identity
@@ -63,15 +73,18 @@ contract IdentityRegistry {
 
   /// Public-input layout of `escrow_envelope`. Order is pinned by the circuit's `main` signature;
   /// a mismatch here reads the wrong field while the proof still verifies.
+  /// `holder_root` AND `dg1_hash` USED TO SIT AT 2 AND 4 (TODO.md sec. 2.18). Both were per-person
+  /// identifiers, so registration calldata linked every user's identity to their pool handle -
+  /// their activity stayed private, their PARTICIPATION did not. They are gone, replaced by
+  /// `registration_root`, which every user of the system shares.
   uint256 internal constant PUB_CONTROLLER_X = 0;
   uint256 internal constant PUB_CONTROLLER_Y = 1;
-  uint256 internal constant PUB_HOLDER_ROOT = 2;
-  uint256 internal constant PUB_COMMITMENT = 3;
-  uint256 internal constant PUB_DG1_HASH = 4;
-  uint256 internal constant PUB_C1_X = 5;
-  uint256 internal constant PUB_C1_Y = 6;
-  uint256 internal constant PUB_SEALED_0 = 7;
-  uint256 internal constant PUBLIC_INPUT_COUNT = 12;
+  uint256 internal constant PUB_COMMITMENT = 2;
+  uint256 internal constant PUB_REGISTRATION_ROOT = 3;
+  uint256 internal constant PUB_C1_X = 4;
+  uint256 internal constant PUB_C1_Y = 5;
+  uint256 internal constant PUB_SEALED_0 = 6;
+  uint256 internal constant PUBLIC_INPUT_COUNT = 11;
 
   INoirVerifier public immutable ESCROW_VERIFIER;
   HolderStateKeeper public immutable STATE_KEEPER;
@@ -121,8 +134,10 @@ contract IdentityRegistry {
   error BadProof();
   error WrongPublicInputCount(uint256 got);
   error WrongControllerKey();
-  error DocumentNotRegistered(bytes32 dg1Hash);
-  error DocumentBoundToAnotherHolder(bytes32 dg1Hash);
+  /// The proof cites a `registrationSmt` root the state keeper does not recognise, or one that has
+  /// aged out. Replaces `DocumentNotRegistered`/`DocumentBoundToAnotherHolder`, which named a
+  /// `dg1Hash` this contract deliberately no longer sees.
+  error UnknownRegistrationRoot(bytes32 registrationRoot);
   error NotTheController(address caller);
   error ZeroPredicate();
   error UnknownPredicate(bytes32 predicate);
@@ -190,6 +205,34 @@ contract IdentityRegistry {
         || uint256(publicInputs_[PUB_CONTROLLER_Y]) != CONTROLLER_KEY_Y
     ) revert WrongControllerKey();
 
+    // Trap 5, the substantive half. The escrow proof shows the prover knows an MRZ and the
+    // `sk_identity` it belongs to, NOT that the passport is genuine - the ICAO chain is checked at
+    // registration. The circuit now proves that registration happened by INCLUDING the document's
+    // own leaf from `registrationSmt`, so all that is left here is to confirm the root it proved
+    // against is real. WITHOUT THIS CHECK THE INCLUSION PROOF IS WORTHLESS: a prover would invent a
+    // tree containing whatever leaf they liked and prove inclusion in that.
+    //
+    // CHECKED BEFORE THE PROOF, deliberately. A Honk verification costs hundreds of thousands of
+    // gas; this is one external view call. Ordering it after meant a caller citing an unknown root
+    // paid for a full verification before being told the root was the problem - and got
+    // `SumcheckFailed()` rather than a useful error, because tampering with a public input makes
+    // the generated verifier revert on its own. Neither is a security difference; both are the
+    // difference between a diagnosable failure and a confusing one.
+    //
+    // WHY ASK THE STATE KEEPER RATHER THAN STORE A ROOT HERE. `registrationSmt` moves on every
+    // document bound anywhere in the system; mirroring it would need a feed, and a feed that stalls
+    // is a registration freeze - exactly the censorship-by-inaction this design removes.
+    //
+    // `PoseidonSMT.isRootValid` = latest OR within ROOT_VALIDITY (1 hour). The 1-hour window is a
+    // real residual, not a formality: `revokeDocument` overwrites a leaf's VALUE, so for up to an
+    // hour after a document is cancelled its pre-revocation root still admits an escrow. The
+    // identity remains revocable afterwards through `revoke` below, so the window is correctable
+    // rather than permanent - recorded in TODO.md sec. 2.18b rather than left implicit.
+    bytes32 registrationRoot_ = publicInputs_[PUB_REGISTRATION_ROOT];
+    if (!STATE_KEEPER.registrationSmt().isRootValid(registrationRoot_)) {
+      revert UnknownRegistrationRoot(registrationRoot_);
+    }
+
     if (!ESCROW_VERIFIER.verify(proof_, publicInputs_)) revert BadProof();
 
     bytes32 commitment_ = publicInputs_[PUB_COMMITMENT];
@@ -201,16 +244,6 @@ contract IdentityRegistry {
     // upgraded to add it back.
     if (commitment_ == bytes32(0)) revert ZeroCommitment();
     if (uint256(commitment_) >= Constants.SNARK_SCALAR_FIELD) revert CommitmentOutOfField(commitment_);
-    bytes32 holderRoot_ = publicInputs_[PUB_HOLDER_ROOT];
-    bytes32 dg1Hash_ = publicInputs_[PUB_DG1_HASH];
-
-    // Trap 5, the substantive half: the escrow proof shows the MRZ hashes to dg1Hash, NOT that the
-    // passport is genuine - the ICAO chain is checked at registration. Require that registration to
-    // have happened, for THIS holder.
-    bytes32 boundHolder_ = STATE_KEEPER.holderOfDocumentHash(dg1Hash_);
-    if (boundHolder_ == bytes32(0)) revert DocumentNotRegistered(dg1Hash_);
-    if (boundHolder_ != holderRoot_) revert DocumentBoundToAnotherHolder(dg1Hash_);
-
     // `_tree.add` would revert with KeyAlreadyExists anyway; this gives the real reason, and stops a
     // re-add from being attempted against a REVOKED commitment.
     if (registered[commitment_]) revert AlreadyRegistered(commitment_);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
+import {RootValidity} from "../state/RootValidity.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
@@ -132,21 +133,7 @@ contract RegistrationSMTReplicator is IPoseidonSMT, AMultiOwnable, UUPSUpgradeab
      * The root is valid if it is the latest transited root or if it was transitioned within the ROOT_VALIDITY period.
      */
     function isRootValid(bytes32 root_) external view virtual returns (bool) {
-        if (root_ == bytes32(0)) {
-            return false;
-        }
-
-        if (isRootLatest(root_)) {
-            return true;
-        }
-
-        // See L1RegistrationState.isRootValid - an unrecorded root maps to 0, so without this the
-        // age test accepts ANY invented root until an hour past the epoch. It matters more here
-        // than anywhere: this contract is the L2 mirror, so a chain whose timestamps start low is
-        // exactly the deployment target (TODO.md sec. 2.18o).
-        uint256 transitionedAt_ = _roots[root_];
-
-        return transitionedAt_ != 0 && transitionedAt_ + ROOT_VALIDITY > block.timestamp;
+        return RootValidity.isValid(root_, isRootLatest(root_), _roots[root_], ROOT_VALIDITY);
     }
 
     /*

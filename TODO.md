@@ -3183,6 +3183,30 @@ repeated:
 - `PoseidonSMT.getRootTimestamp` (added in sec. 2.18e) - returns 0 for an unknown root, and its only
   consumer compares `<= lastDocumentInvalidationAt`, so an unknown root fails CLOSED.
 
+### 2.18q THE RULE IS NOW SHARED, AND ONE EDIT BREAKS ALL THREE
+
+sec. 2.18o ended on "three copies is the finding, not the bug" and left the duplication standing.
+Closed now: `contracts/state/RootValidity.sol` holds the rule once, and `PoseidonSMT`,
+`L1RegistrationState` and `RegistrationSMTReplicator` each reduce to a single call.
+
+**NO STORAGE IN THE LIBRARY.** Every caller keeps its own mapping and its own `ROOT_VALIDITY`; only
+the DECISION moved. That is what makes this safe to adopt in three contracts that are already
+UUPS-upgradeable - their layouts are untouched, so it is a logic change and not a migration.
+
+**THE PROPERTY, VERIFIED THE ONLY WAY THAT MEANS ANYTHING.** Deleting `recordedAt_ != 0` from the
+library - ONE edit - now fails five tests across three suites: the un-warped case for each of the
+three trees, plus both permissionless-enrolment guards that stand on top of them. Before this,
+the same edit in one file failed one test and left two contracts silently broken. **That difference
+is the whole point of the change**, and it is why the fix was not finished when the arithmetic was.
+
+Three clauses documented where the rule lives rather than at three call sites: the zero root is
+never valid (it is the empty-tree sentinel AND the default of any unset slot); the latest root is
+always valid however old (inaction must not become censorship); a superseded root is valid only
+briefly AND only if it existed.
+
+Contract sizes unchanged in substance - `PoseidonSMT` 10,055 bytes, `L1RegistrationState` 4,572,
+both far under EIP-170. Client ABIs re-checked.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

@@ -2617,6 +2617,64 @@ valuation, no nominee, no FX and no counterparty.
 
 Property-weighted voting is then a downstream application of the same proof, not the point of it.
 
+### 2.22 WHY THE TIERS ARE SHAPED THAT WAY - and the break it exposes in OUR design
+
+**The tiers are not our architecture.** They are Iran's cadastre's access model, and it is a
+deliberate anti-enumeration design, not an accident:
+- **The owner** sees everything under their national ID. Only they can DISCOVER an undisclosed
+  charge. Nobody else gets a list.
+- **The public** can CONFIRM one named deed but cannot browse, because the query demands the
+  18-digit *Shenaseh Yekta* AND the owner's national ID together. You must already know both to ask.
+- **Notaries** transact, because they are public officials carrying legal authority.
+- **The judiciary** seizes.
+
+Each tier exists to stop a different capability leaking into a lower one. It is coherent, and it is
+also the source of the problem below.
+
+**THE BREAK: TIER 2 VERIFICATION IS NOT ANONYMOUS, AND I BUILT AS THOUGH IT WERE.**
+The authenticity check requires the OWNER'S NATIONAL ID as an input. So whoever performs it LEARNS
+WHO OWNS THE PROPERTY. Every design above that says "anyone can verify the deed, so nobody must
+trust the notary" quietly assumed verification was identity-free. It is not.
+
+**AND THAT INVERTS §2.15a's CRE-OVER-TLSNOTARY CONCLUSION.** With CRE, the DON NODES make the HTTP
+request - so for a PER-USER query every node sees that user's national ID and deed number. That is
+fine for the notary REGISTER, which is a public bulk export containing no per-user data, and it is
+disqualifying for Tier 2, which is inherently per-user.
+
+TLSNotary does exactly what is needed here and CRE cannot: the USER makes the query themselves and
+proves the result, without the inputs ever reaching a third party. The spec specified it for a
+reason I dismissed. **Correct split: CRE for the bulk notary register; TLSNotary (or an equivalent
+client-side proof) for per-user deed verification.** Using one mechanism for both was the error.
+
+### 2.22a WHAT ACTUALLY SURVIVES - settled, not oscillating
+
+I have swung between "lending works" (§2.17) and "nothing works" (§2.20). Neither was right. Layer by
+layer, with the unresolved items named:
+
+**IDENTITY - SURVIVES INTACT.** Passport to zero-knowledge proof, no server, field-proven in Iran by
+the Freedom Tool. Registration cannot be refused, exclusion fails open and cannot be retroactive.
+One known defect, fully designed and measured: registration publicly links an identity to its pool
+account (§2.18, 28,302 opcodes to fix).
+
+**MONEY - SURVIVES INTACT.** Shielded deposits and withdrawals; yield on shielded balances, which
+Privacy Pools never had; non-custodial BTC where the depositor holds one of two keys and can close
+unilaterally. No external dependency, no counterparty, no jurisdiction.
+
+**TITLE - TWO UNRESOLVED ITEMS, both structural rather than fatal.**
+1. Nobody is assigned to compute `propertyKey` (§2.16b), so a property owner cannot check whether
+   their own land has been titled here.
+2. Tier 2 verification discloses the owner's national ID to whoever performs it - above.
+Both are solvable; neither is solved.
+
+**LENDING - THREE, of which two are not technical.** Independent valuation (solvable, unsolved).
+FX risk with no natural holder (not solvable by design - a sovereign can absorb it, a private pool
+cannot). Sanctions exposure (existential, legal, unaffected by any amount of cryptography).
+
+**The honest sentence:** identity and money are finished work that needs auditing. Title is nearly
+finished with two named gaps. Lending is a hypothesis whose blockers are mostly not ours to solve.
+That ordering has been stable across every teardown; my error was restating it each time as though
+it were new.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

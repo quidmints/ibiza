@@ -880,4 +880,310 @@ fn td1_dg1_data_extractor
     (birth_date, expiration_date, name, nationality, citizenship, sex, doc_number, personal_number, doc_type)
 }
 
+// =================================================================================================
+// THE FIRST TESTS THIS FILE HAS EVER HAD (sec. 2.18ak).
+//
+// 883 lines, zero tests, inherited from rarime at the fork commit with zero - verified, not assumed:
+// `rsa.nr` arrived carrying five, so vendoring did not strip them.
+//
+// WHY THIS FILE AND NOT ANOTHER. `query.nr` decides WHAT A PROOF DISCLOSES. That is the one thing
+// real-passport testing cannot cover, and the sentence to keep in mind is:
+//
+//     A selector mask can be wrong for every passport ever tried and still verify.
+//
+// A passport test exercises the SIGNATURE path - does this SOD verify, does the DSC chain to a CSCA.
+// A proof that reveals the wrong fields still verifies perfectly: prover satisfied, verifier
+// satisfied, passport genuine. Nothing cryptographic anywhere looks at which values came out. So the
+// only way these properties can fail loudly is a test that asserts them.
+mod disclosure_tests {
+    use super::{date_is_less, query_identity};
+    use crate::not_passports_zk_circuits::{extract_dg1_commitment, extract_pk_identity_hash};
+    use poseidon::poseidon::PoseidonHasher;
+    use std::hash::Hasher;
+
+    global SK: Field = 1234;
+    global PK_PASSPORT_HASH: Field = 5678;
+    global IDENTITY_COUNTER: Field = 3;
+    global TIMESTAMP: Field = 1_700_000_000;
+    global EVENT_ID: Field = 99;
+    global EVENT_DATA: Field = 100;
+
+    /// "260101" - the reference "today" every date comparison is windowed against.
+    global CURRENT_DATE: Field = 0x323630313031;
+
+    /// "800101" -> 1980, comfortably before the DG1's 1990 birth date, so the lowerbound is
+    /// SATISFIED. Not 0: see `test_a_zero_date_bound_aborts_proving` for why zero is not a no-op.
+    global A_SATISFIED_BIRTH_LOWERBOUND: Field = 0x383030313031;
+
+    /// "950101" -> 1995, AFTER the DG1's birth date, so the lowerbound is VIOLATED.
+    global A_VIOLATED_BIRTH_LOWERBOUND: Field = 0x393530313031;
+
+    /// A DG1 carrying birth date "900101" at [62..68) and expiry "300101" at [70..76), the offsets
+    /// `dg1_data_extractor` reads. Everything else is filler - these tests are about the selector
+    /// and the bounds, not about MRZ parsing.
+    fn a_dg1() -> [u8; 93] {
+        let mut dg1: [u8; 93] = [0; 93];
+        for i in 0..93 {
+            dg1[i] = 0x30; // ASCII '0', so unrelated fields stay well-formed digits
+        }
+        let birth: [u8; 6] = [0x39, 0x30, 0x30, 0x31, 0x30, 0x31]; // "900101"
+        let expiry: [u8; 6] = [0x33, 0x30, 0x30, 0x31, 0x30, 0x31]; // "300101"
+        for i in 0..6 {
+            dg1[62 + i] = birth[i];
+            dg1[70 + i] = expiry[i];
+        }
+        dg1
+    }
+
+    /// The single-leaf witness `identity_state_verifier` accepts, built the way sec. 2.18ah built
+    /// withdraw_identity's: derive the leaf, then let the root BE the leaf hash with zero siblings.
+    /// Nothing is faked - these are the same primitives the circuit itself uses.
+    fn a_valid_root(dg1: [u8; 93]) -> Field {
+        let dg1_commit = extract_dg1_commitment::<93>(dg1, SK);
+        let sk_iden_hash = extract_pk_identity_hash(SK);
+
+        let mut position_hasher = PoseidonHasher::default();
+        position_hasher.write(PK_PASSPORT_HASH);
+        position_hasher.write(sk_iden_hash);
+        let tree_position = position_hasher.finish();
+
+        let mut value_hasher = PoseidonHasher::default();
+        value_hasher.write(dg1_commit);
+        value_hasher.write(IDENTITY_COUNTER);
+        value_hasher.write(TIMESTAMP);
+        let value = value_hasher.finish();
+
+        // smt_hash1(key, value) - Poseidon(key, value, 1). Private in smt.nr, so recomputed here;
+        // if that convention ever changed, every test below would fail rather than silently pass.
+        let mut leaf_hasher = PoseidonHasher::default();
+        leaf_hasher.write(tree_position);
+        leaf_hasher.write(value);
+        leaf_hasher.write(1);
+        leaf_hasher.finish()
+    }
+
+    /// Runs the query with `selector`, leaving every BOUND wide open so only disclosure is measured.
+    fn query_with(
+        selector: Field,
+        birth_lower: Field,
+    ) -> (Field, Field, Field, Field, Field, Field, Field, Field, Field) {
+        let dg1 = a_dg1();
+        query_identity(
+            EVENT_ID,
+            EVENT_DATA,
+            a_valid_root(dg1),
+            selector,
+            CURRENT_DATE,
+            0,                    // timestamp lowerbound
+            0xFFFFFFFFFFFF,       // timestamp upperbound
+            0,                    // identity counter lowerbound
+            0xFFFFFFFFFFFF,       // identity counter upperbound
+            birth_lower,
+            0xFFFFFFFFFFFF,       // birth date upperbound
+            0,                    // expiration date lowerbound
+            0xFFFFFFFFFFFF,       // expiration date upperbound
+            0,                    // citizenship mask
+            SK,
+            PK_PASSPORT_HASH,
+            dg1,
+            [0; 80],
+            TIMESTAMP,
+            IDENTITY_COUNTER,
+        )
+    }
+
+    // -- the selector map ----------------------------------------------------------------------
+
+    /*
+     * THE FLAGSHIP. The comment block above `query_identity_td1` documents the selector as
+     * "0 - nullifier, 1 - birth date, 2 - expiration date, ...", while the CODE indexes
+     * `selector.to_be_bits::<18>()` - big-endian, so documented bit k lives at index 17 - k.
+     *
+     * That off-by-inversion is invisible: pick the wrong end and every field still gets multiplied
+     * by SOME bit, the proof still verifies, and the caller gets a different field than it asked
+     * for. This asserts the mapping one bit at a time, so a reordering breaks a named test instead
+     * of quietly redefining the API.
+     */
+    #[test]
+    fn test_bit_1_alone_reveals_the_birth_date_and_nothing_else() {
+        // 2 == documented bit 1, which the code must read at index 16.
+        let (nullifier, birth, expiry, name, name_residual, nationality, citizenship, sex, doc) =
+            query_with(2, A_SATISFIED_BIRTH_LOWERBOUND);
+
+        assert(birth != 0, "bit 1 is documented as birth date but did not reveal it");
+        assert(nullifier == 0, "bit 1 leaked the nullifier");
+        assert(expiry == 0, "bit 1 leaked the expiration date");
+        assert(name == 0, "bit 1 leaked the surname");
+        assert(name_residual == 0, "bit 1 leaked the given name");
+        assert(nationality == 0, "bit 1 leaked nationality");
+        assert(citizenship == 0, "bit 1 leaked citizenship");
+        assert(sex == 0, "bit 1 leaked sex");
+        assert(doc == 0, "bit 1 leaked the document number");
+    }
+
+    /// Bit 0 is the nullifier, and it must not drag anything else out with it.
+    #[test]
+    fn test_bit_0_alone_reveals_the_nullifier_and_nothing_else() {
+        let (nullifier, birth, expiry, name, name_residual, nationality, citizenship, sex, doc) =
+            query_with(1, A_SATISFIED_BIRTH_LOWERBOUND);
+
+        assert(nullifier != 0, "bit 0 is documented as the nullifier but did not reveal it");
+        assert(birth == 0, "bit 0 leaked the birth date");
+        assert(expiry == 0, "bit 0 leaked the expiration date");
+        assert(name == 0, "bit 0 leaked the surname");
+        assert(name_residual == 0, "bit 0 leaked the given name");
+        assert(nationality == 0, "bit 0 leaked nationality");
+        assert(citizenship == 0, "bit 0 leaked citizenship");
+        assert(sex == 0, "bit 0 leaked sex");
+        assert(doc == 0, "bit 0 leaked the document number");
+    }
+
+    /// An EMPTY selector must disclose nothing at all. The fail-safe direction, pinned: if the
+    /// masking were ever inverted, this is the test that catches it on the first run.
+    #[test]
+    fn test_an_empty_selector_discloses_nothing() {
+        let (nullifier, birth, expiry, name, name_residual, nationality, citizenship, sex, doc) =
+            query_with(0, A_SATISFIED_BIRTH_LOWERBOUND);
+
+        assert(nullifier == 0, "an empty selector still produced a nullifier");
+        assert(birth == 0, "an empty selector still revealed the birth date");
+        assert(expiry == 0, "an empty selector still revealed the expiration date");
+        assert(name == 0, "an empty selector still revealed the surname");
+        assert(name_residual == 0, "an empty selector still revealed the given name");
+        assert(nationality == 0, "an empty selector still revealed nationality");
+        assert(citizenship == 0, "an empty selector still revealed citizenship");
+        assert(sex == 0, "an empty selector still revealed sex");
+        assert(doc == 0, "an empty selector still revealed the document number");
+    }
+
+    /*
+     * THE NULLIFIER COLLISION HAZARD, documented by test rather than left to be discovered.
+     *
+     * `nullifier = Poseidon3(...) * selector_bits[17]`, so with bit 0 CLEAR the nullifier is 0 - not
+     * absent, ZERO, for every user. A relying party doing double-spend prevention on this value
+     * without checking that bit 0 was set would treat all holders as one person. That is a caller
+     * obligation the circuit cannot enforce, and the only defence is that it is written down.
+     */
+    #[test]
+    fn test_the_nullifier_is_zero_for_everyone_when_its_bit_is_clear() {
+        let (nullifier, _, _, _, _, _, _, _, _) = query_with(2, A_SATISFIED_BIRTH_LOWERBOUND);
+        assert(
+            nullifier == 0,
+            "bit 0 clear must zero the nullifier - if this ever changes, the collision note above is stale",
+        );
+    }
+
+    // -- the bounds are OPT-IN, which is the thing that cannot fail loudly ---------------------
+
+    /*
+     * `assert((n1 + (1 - n2) - n1 * (1 - n2)) == 1)` is `n1 OR NOT n2`: the bound is enforced ONLY
+     * when its selector bit is set. So a relying party that wants "born before 1995" and forgets to
+     * set bit 14 receives a perfectly valid proof that says NOTHING about age - and there is no
+     * error, no revert, no signal of any kind.
+     *
+     * This pair is the whole point. The first test proves the check really is skipped (so the
+     * hazard is real and documented), the second proves it really does bite when requested (so the
+     * feature is not vacuous). Neither is meaningful without the other.
+     */
+    #[test]
+    fn test_an_out_of_range_birth_date_passes_when_its_bound_bit_is_clear() {
+        // "950101" as a lowerbound is NOT less than the DG1's "900101", so the bound is violated.
+        // Bit 14 is clear, so nothing checks it and the proof stands.
+        let (_, birth, _, _, _, _, _, _, _) = query_with(2, A_VIOLATED_BIRTH_LOWERBOUND);
+        assert(birth != 0, "the query should still have succeeded with the bound unrequested");
+    }
+
+    #[test(should_fail_with = "Birth date lowerbound")]
+    fn test_the_same_out_of_range_birth_date_is_rejected_when_the_bit_is_set() {
+        // 2 + 16384 == bit 1 (reveal birth date) + bit 14 (enforce the lowerbound).
+        let _ = query_with(2 + 16384, A_VIOLATED_BIRTH_LOWERBOUND);
+    }
+
+    /// And a SATISFIED bound must pass with the bit set, or the two tests above would agree for the
+    /// wrong reason - a bound that rejects everything is not a working bound.
+    #[test]
+    fn test_a_satisfied_birth_date_bound_passes_when_the_bit_is_set() {
+        let (_, birth, _, _, _, _, _, _, _) = query_with(2 + 16384, A_SATISFIED_BIRTH_LOWERBOUND);
+        assert(birth != 0, "a satisfied lowerbound was rejected");
+    }
+
+    /*
+     * FOUND BY THESE TESTS, NOT BY READING: ZERO IS NOT A NO-OP DATE BOUND.
+     *
+     * The obvious way to say "I do not care about birth date" is to pass 0 - exactly what this
+     * suite's first draft did. It does not skip the check, it ABORTS PROVING. `date_is_less` does
+     * `to_be_bytes::<6>()` and then `date[0] - 48` inside `date_encoder_bytes`, so a zero byte
+     * underflows a u8 and the circuit fails with "attempt to subtract with overflow".
+     *
+     * TWO THINGS MAKE THIS WORSE THAN AN ORDINARY BAD INPUT:
+     *
+     * 1. IT HAPPENS EVEN WHEN THE BOUND IS NOT REQUESTED. `date_is_less` is evaluated
+     *    UNCONDITIONALLY, before the `n1 OR NOT n2` gate that decides whether anyone cares. So a
+     *    caller who correctly leaves selector bit 14 clear, and passes 0 because the bound is
+     *    unused, cannot produce a proof at all. No selector setting makes a zero date safe.
+     * 2. IT IS SAFE ONLY BY ACCIDENT. Noir's u8 underflow check is the only thing making this loud.
+     *    The same arithmetic over a Field would wrap to an enormous year and silently invert the
+     *    comparison - which is precisely the disclosure bug this suite exists to catch.
+     *
+     * PINNED RATHER THAN CLAMPED. Clamping would convert a loud abort into a quietly wrong
+     * comparison, which is the trap this project keeps naming. The real gap is that there is no
+     * documented "unused" sentinel: "000000" parses as year 2000, month 0, day 0 - a real
+     * comparison, not a skip. Until one exists, callers must pass a genuine ASCII YYMMDD for every
+     * date bound whether or not they intend to use it, and this test is where that is written down.
+     */
+    #[test(should_fail_with = "attempt to subtract with overflow")]
+    fn test_a_zero_date_bound_aborts_proving_even_when_unrequested() {
+        // Selector 2: bit 14 is CLEAR, so nothing asks for the lowerbound to hold. It still cannot
+        // be proven, because date_is_less runs before the gate that would have ignored it.
+        let _ = query_with(2, 0);
+    }
+
+    // -- date_is_less, where an off-by-one is a disclosure bug ---------------------------------
+
+    /*
+     * The two-digit-year window. `date_is_less` maps a year to 19xx if it is GREATER than the
+     * current two-digit year and 20xx otherwise, so the pivot sits exactly at equality. Getting
+     * that boundary wrong shifts every age comparison by a century for one birth year, and the
+     * proof still verifies.
+     */
+    #[test]
+    fn test_a_year_equal_to_the_current_year_is_this_century() {
+        // "260101" vs "260102" with current "260101": both 2026, so day ordering decides.
+        assert(date_is_less(0x323630313031, 0x323630313032, CURRENT_DATE) == 1);
+        assert(date_is_less(0x323630313032, 0x323630313031, CURRENT_DATE) == 0);
+    }
+
+    #[test]
+    fn test_a_year_above_the_current_year_is_last_century() {
+        // "900101" -> 1990 (90 > 26), "100101" -> 2010 (10 <= 26). 1990 < 2010.
+        assert(
+            date_is_less(0x393030313031, 0x313030313031, CURRENT_DATE) == 1,
+            "a 19xx year was not ordered before a 20xx year",
+        );
+        assert(
+            date_is_less(0x313030313031, 0x393030313031, CURRENT_DATE) == 0,
+            "a 20xx year was ordered before a 19xx year",
+        );
+    }
+
+    /// Strictly less, not less-or-equal - an equal date must NOT compare as less.
+    #[test]
+    fn test_an_equal_date_is_not_less() {
+        assert(date_is_less(CURRENT_DATE, CURRENT_DATE, CURRENT_DATE) == 0);
+    }
+
+    /// Month ordering must dominate day ordering: 01-31 precedes 02-01.
+    #[test]
+    fn test_the_month_outranks_the_day() {
+        assert(
+            date_is_less(0x323630313331, 0x323630323031, CURRENT_DATE) == 1,
+            "Jan 31 was not ordered before Feb 1",
+        );
+        assert(
+            date_is_less(0x323630323031, 0x323630313331, CURRENT_DATE) == 0,
+            "Feb 1 was ordered before Jan 31",
+        );
+    }
+}
+
 

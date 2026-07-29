@@ -22,6 +22,20 @@ library X509 {
     ) internal pure returns (uint256) {
         _checkPrefix(x509SignedAttributes_, hex"170d", expirationOffset_);
 
+        // BOUNDS, STATED RATHER THAN INHERITED. The loop below indexes `x509SignedAttributes_`
+        // directly, so Solidity would already bounds-check it and revert with a bare Panic(0x32).
+        // That made this function safe BY ACCIDENT OF STYLE - it is safe because of how the bytes
+        // happen to be read, not because anything says so, and a later rewrite to `unsafeCopy` for
+        // gas (exactly what `extractPublicKey` does two functions down, where the missing check WAS
+        // a live out-of-bounds read - TODO.md sec. 2.18m) would silently remove the protection.
+        //
+        // `expirationOffset` is a caller-supplied field of `Registration2.Certificate` and is NOT
+        // covered by the CSCA signature over the attributes, so it is unauthenticated input.
+        require(
+            expirationOffset_ + 12 <= x509SignedAttributes_.length,
+            "X509: expiration runs past the signed attributes"
+        );
+
         uint256[] memory asciiTime = new uint256[](6);
 
         for (uint256 i = 0; i < 12; i++) {

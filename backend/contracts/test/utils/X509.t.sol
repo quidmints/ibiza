@@ -97,6 +97,41 @@ contract X509Test is Test {
     assertEq(x509.extractExpirationTimestamp(sa, 10), 1_915_341_686);
   }
 
+  /*
+   * The expiration read is bounded EXPLICITLY, not by how it happens to be written.
+   *
+   * Indexing `bytes memory` bounds-checks in Solidity, so this reverted before the require existed -
+   * with a bare Panic(0x32), and only because the loop indexes rather than memcpys. `extractPublicKey`
+   * two functions down did the same job with `unsafeCopy` and had a real out-of-bounds read
+   * (sec. 2.18m); the difference between them was style, not intent. This asserts the named error, so
+   * the protection belongs to the function rather than to its current implementation.
+   */
+  function test_RejectsAnExpirationRunningPastTheAttributes() public {
+    bytes memory sa = new bytes(24);
+    sa[10] = 0x17;
+    sa[11] = 0x0d;
+
+    // 12 ASCII digits from offset 12 need 24 bytes; the array has exactly 24, so 13 overruns by one.
+    sa[11] = 0x00;
+    sa[12] = 0x17;
+    sa[13] = 0x0d;
+    vm.expectRevert(bytes('X509: expiration runs past the signed attributes'));
+    x509.extractExpirationTimestamp(sa, 14);
+  }
+
+  /// The boundary is accepted: twelve digits ending exactly at the final byte is an ordinary read.
+  function test_AcceptsAnExpirationEndingExactlyAtTheLastByte() public view {
+    bytes memory sa = new bytes(24);
+    sa[10] = 0x17;
+    sa[11] = 0x0d;
+    bytes memory ascii_ = bytes('300911072126');
+    for (uint256 i = 0; i < 12; ++i) {
+      sa[12 + i] = ascii_[i];
+    }
+
+    assertEq(x509.extractExpirationTimestamp(sa, 12), 1_915_341_686);
+  }
+
   // ── THE DEFECT ─────────────────────────────────────────────────────────────────────────────
 
   /*

@@ -3074,8 +3074,20 @@ recomputed rather than adjusted to match.
 **THE GENERAL SHAPE, worth carrying forward:** signatures cover CONTENT, not the OFFSETS used to
 read it. Anywhere a signed blob is parsed with caller-supplied indices, the indices are unauthenticated
 input even though the blob is authenticated. `Registration2.Certificate` carries `keyOffset` AND
-`expirationOffset`; the latter is read with Solidity indexing, which bounds-checks and reverts, so it
-was already safe - but only by accident of style, not by design.
+`expirationOffset`.
+
+**AND THE SECOND ONE WAS WORSE THAN "SAFE BY ACCIDENT OF STYLE" - MEASURED, NOT ASSUMED**
+*(user: "no accidents of style")*. `extractExpirationTimestamp` was described here as safe because
+Solidity bounds-checks its indexed reads. Removing the newly-added `require` to check that claim
+showed something else: it reverts with **Panic(0x11), arithmetic underflow**, not Panic(0x32). The
+ASCII conversion `uint8(byte) - 48` underflows on a zero byte BEFORE the index ever goes out of
+range. So the thing stopping the read was not the bounds check at all - it was an unrelated
+subtraction on whatever happened to be in memory.
+
+**WHICH MEANS THE PROTECTION DEPENDED ON THE DATA.** Out-of-bounds bytes that happened to be ASCII
+digits ('0'-'9') would not underflow, and the function would have parsed a timestamp out of memory
+past the end of the array and returned it successfully. Explicit bound added, with the boundary case
+(twelve digits ending flush with the attributes) still accepted, and both pinned by tests.
 
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 

@@ -2814,11 +2814,37 @@ DATA, signed by a real DSC that chains to a real CSCA. We have none, which is ex
 3's field work exists to obtain. Writing the contract entry point now would mean shipping a path no
 test can execute, against the standing rule.
 
-**THE TRACTABLE ROUTE IS A SYNTHETIC PASSPORT**, and it is genuinely possible: the circuit verifies
-a signature chain, not a state. Generate a CSCA/DSC keypair, construct a conforming SOD (the EC and
-SA byte layouts with the offsets `DG1_SHIFT`/`EC_SHIFT` expect), sign it, and build an ICAO tree
-containing that DSC key. Then the whole path is testable end-to-end with no real document. That is
-the next concrete piece of work, and it is a fixture-generation problem rather than a protocol one.
+**WE DO TRUST RARIME'S CIRCUIT. THAT IS NOT WHAT THE FIXTURE IS FOR** *(user, 2026-07-29: "rarime
+tested this with real passports, so why cant we trust their outputs?")*. Two different questions:
+
+1. **"Does `register_identity` correctly verify a real passport?"** Rarime's question, answered by
+   them against real documents, and the vendored library carries their primitive vectors -
+   `rsa` 2048/3072/4096, `rsa_pss` at four salt/hash combinations, `sigver` ECDSA over curves
+   192/224/384/521, the whole SHA family. **We inherit all of it and I am not proposing to re-verify
+   any of it.**
+2. **"Does OUR generated Honk verifier accept a proof from that circuit, and does OUR contract bind
+   the document correctly?"** Ours, and it needs one concrete proof to exist. Not because rarime
+   might be wrong - because every generated verifier in this repo is exercised on-chain against a
+   real proof, and one that has never accepted a proof is a liability (see
+   EscrowEnvelopeHonkVerifier.t.sol's header for the phase `WithdrawalHonkVerifier` spent in exactly
+   that state).
+
+**AND THE TRUST DOES NOT TRANSFER TO THEIR PROOF, ONLY TO THEIR WITNESS.** We compile from vendored
+source with our own nargo/bb pins and generate our own verifier. A proof made against rarime's
+HOSTED bytecode would not verify against our verifier unless the two circuits are byte-identical -
+which is precisely what we cannot assume, since we have already modified this circuit (sec. 2.18i
+added a sixth public output). So: **reuse their INPUTS, generate our own proof.**
+
+**REVISED PLAN, cheapest first:**
+1. **Look for a committed witness in rarime's `passport-zk-circuits`** - their CI has to prove these
+   circuits, so a Prover.toml or equivalent test input very likely exists. If it does, this is a
+   download rather than a build. NOT YET CHECKED - the vendored `noir_dl_lib` carries primitive
+   vectors only, no end-to-end DG1+EC+SA+signature+ICAO-branch witness.
+2. Only if none exists: construct one synthetically. Genuinely possible, since the circuit verifies
+   a signature chain and not a state - generate a CSCA/DSC keypair, build a conforming SOD at the
+   offsets `DG1_SHIFT`/`EC_SHIFT` expect, sign it, and build an ICAO tree containing that DSC key.
+
+Either way it is fixture generation, not protocol work.
 
 ### 2.18j THE LIVE PATH IS BUILT FOR ID CARDS, AND EVERY DOCUMENT WE WROTE SAYS PASSPORT
 

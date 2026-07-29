@@ -2504,6 +2504,70 @@ attesting an appraisal.
 in Milestone 4 and names originator sourcing as a budgeted field-work activity and a headline risk.
 Both are now wrong.
 
+### 2.20 ADVERSARIAL TEARDOWN OF THE WHOLE MODEL (user: "try to break every assumption")
+
+Attacking each assumption rather than defending it. **Five of six break. The identity and title
+layers survive; the lending layer does not.**
+
+**BREAK 1 - THE BORROWER'S EQUITY IS NOT INDEPENDENT PROTECTION, and this kills §2.19.**
+I concluded yesterday that 30% equity IS the first loss, so no third party is needed. Wrong. Equity
+only protects if the VALUATION is honest - and the borrower both supplies the valuation input and
+benefits from inflating it. Inflate an appraisal 50% and the "30% equity" is fictional; the loan is
+underwater at origination. **I moved the fraud from the notary to the appraisal and handed it to the
+party with the strongest motive to lie.** So the independent, competent, accountable valuer is not a
+small remaining piece - it is the core problem, and calling them an appraiser rather than an
+originator does not make them easier to recruit. §2.19 was too optimistic and §2.17e's recruitment
+risk is NOT deleted, only renamed.
+
+**BREAK 2 - A POOL CANNOT HOLD A LIEN.** Foreclosure needs a named creditor with standing in an
+Iranian court. A smart contract has none, and neither does a diffuse set of QUI holders. Somebody
+must hold the lien as nominee - a legal entity that can be coerced, sanctioned, or simply abscond
+with the security interest of every loan in the book. That is a single point of failure with no
+cryptographic mitigation, and it is not in any version of the design so far.
+
+**BREAK 3 - THE LENDING LAYER'S PRIVACY IS NEAR-CONTRADICTORY.** A mortgage REQUIRES registering an
+encumbrance (*Bāzdāsht*) in the state cadastre, executed by a state-licensed notary on a state portal
+using a state-issued hardware token. **The state therefore knows: this property, this owner, this
+lien.** On-chain privacy is irrelevant to that fact. What we can hide is WHO FUNDED it and the
+linkage between pool deposits and withdrawals. What we cannot hide, from the adversary in the threat
+model, is that a specific person mortgaged a specific property. Presenting "private mortgages" to a
+funder without this caveat would be misrepresentation.
+
+**BREAK 4 - THE FX RISK HAS NOWHERE TO GO.** A dollar pool lending to a rial-earning borrower: if
+the borrower owes dollars, devaluation makes servicing harder exactly when they can least afford it,
+which is a default machine. If the loan is CPI-indexed rial, the POOL is short dollars and long an
+inflating currency - an unhedged position QUI holders have no reason to accept. The spec's Model A
+resolves this only because a SOVEREIGN can absorb FX risk as policy. A private pool cannot. **Neither
+counterparty wants the risk and there is no third party to sell it to** - which is a large part of
+why this market does not already exist.
+
+**BREAK 5 - "TRUSTLESS" IS NOT CLOSE TO ACCURATE.** Trusted roles now: the state registers
+(conceded), the notary, the appraiser, the legal nominee, the CRE scrapers and their version
+publisher, and the guardian set. Six, several of which can act unilaterally against a user. The
+honest word is "trust-MINIMISED in specific, stated places", and every claim should be scoped to the
+layer it applies to.
+
+**BREAK 6 - SANCTIONS EXPOSURE IS EXISTENTIAL, NOT TECHNICAL.** A protocol knowingly facilitating
+credit into a sanctioned jurisdiction exposes its operators, its pool, and any nominee or originator
+to real legal jeopardy. No amount of cryptography addresses this, and it can end the project
+independent of whether the code is correct.
+
+**WHAT SURVIVES, AND IT IS NOT NOTHING:**
+- **Private identity.** Prove you hold a genuine passport without revealing who you are. No economic
+  assumptions, no third party, works today.
+- **Private title.** Prove you own a property without revealing which, with double-titling prevented.
+  Depends on Tier 2 verification, which is public and permissionless.
+- **Private transfer.** The shielded pool, unlinkable deposits and withdrawals, with an unconditional
+  exit.
+
+None of these require an appraiser, a nominee, FX risk, or a lien in the state register. **They are
+the product.** Lending is a hypothesis stacked on six unresolved dependencies, and should be
+presented as such or not at all.
+
+**ACTION: FUNDING-APPLICATION.md OVERSTATES LENDING.** It leads with mortgage underwriting in §1 and
+gives lending a full milestone. The honest version leads with identity and title, and treats lending
+as explicitly conditional. Correcting it.
+
 ### 2.5 Provably rule-bound revocation (after §2.3 — circuit work)
 
 Deliberately after the toolchain settles, so verifiers aren't regenerated twice.

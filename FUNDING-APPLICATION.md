@@ -56,14 +56,17 @@ on-chain today. It has not had an audit, a real passport, or value at stake — 
 milestones close, in order.
 
 **What ships:** the zero-knowledge circuits for registration, withdrawal, escrow and emergency exit;
-the identity registry, shielded pool and title ledger; the reserve funding them; and a wallet deriving
-every key from one recovery phrase in the phone's secure enclave.
+the identity registry, shielded pool and title ledger; the reserve that earns on shielded deposits;
+the payment-channel bridge that holds bitcoin without a custodian; and a wallet deriving every key
+from one recovery phrase in the phone's secure enclave.
 
 One engineering decision underpins the rest: the two systems we merged proved things incompatibly, so
 we rebuilt both onto one proving system. Identity, money and title verify through a single stack —
 one toolchain to keep current, one surface to audit.
 
-Both repositories are public: clone either, run the suites, regenerate the fixtures.
+Both repositories are public, so the claim is checkable rather than asserted: clone either, run the
+suites, regenerate every fixture from committed scripts. Each generated verifier is exercised
+on-chain against a real proof, so one that stopped verifying could not pass.
 
 ### Milestone 1 — Audit
 
@@ -130,11 +133,8 @@ Two further levers go with it: originating needs a licence, so the system would 
 that can be withdrawn; and an originator holds the borrower's file — data never collected cannot be
 compelled from us.
 
-**The rate falls, but less than "no bank margin" implies.** Banks fund on insured deposits, the
-cheapest money there is, and we cannot beat that. What genuinely goes is branch and underwriting
-overhead, the charter's capital charge, and the premium a licensed few command. And Iran's 30% is
-mostly currency: against inflation near 40% it is already negative in real terms, so hard-currency
-credit is cheaper in name only unless the borrower earns hard currency.
+A cheaper rate follows, though less of one than disintermediation is usually claimed to give;
+section 7 sets out which parts of a bank's rate we actually remove and which we do not.
 
 Lending also needs what cryptography cannot supply: an **independent valuation**. The borrower
 provides the figure and gains by inflating it. The tractable form is attesting a licensed valuer as
@@ -286,34 +286,36 @@ fixed.
 
 ---
 
-## 7. Keeping costs low *(300 max — 283 used)*
+## 7. Keeping costs low *(300 max — 299 used)*
 
-**No infrastructure to run.** No backend, no database, no server holding user data — removing both
-the largest recurring cost and the largest liability. Ethereum provides availability; the phone does
-only what it must.
+**No infrastructure to run.** No backend, no database, no server holding user data — removing the
+largest recurring cost and the largest liability together. Ethereum provides availability; the phone
+does the rest.
 
 **Optimise what recurs, accept what does not.** Every change is measured, and we reject those adding
-cost to the frequently-used path however elegant they look: withdrawal is 43% cheaper than it was,
-and one proposed redesign was cancelled on measurement when it proved 12% more expensive for a
-cosmetic gain. One-time registration cost we accept, since it is paid once per person rather than
-once per transaction.
+cost to the frequent path however elegant: withdrawal is 43% cheaper than it was, and one redesign
+was cancelled on measurement at 12% more expensive for a cosmetic gain. Registration cost we
+accept — paid once per person, not per transaction.
 
-**Transaction fees are the user's cost, so they are our problem.** Verification cost is fixed by proof
-size, which stays constant here however complex the underlying computation.
+**Transaction fees are the user's cost, so they are our problem.** Verification cost is fixed by
+proof size, constant here however complex the computation behind it.
 
-**Build on maintained open source.** We wrote no proving system, data structure or passport parser of
-our own, using established implementations and testing against them. Where we did briefly write our
-own, we deleted it and asked the chain instead — less to maintain, and impossible to drift out of
-agreement.
+**Build on maintained open source.** We wrote no proving system, data structure or passport parser.
+Where we briefly wrote one, we deleted it and asked the chain instead — less to maintain, and
+impossible to drift out of agreement.
 
 **One mechanism, two uses.** Blocking a sanctioned person and stopping a property being mortgaged
-twice sound unrelated, but both reduce to publishing a list of disguised identifiers that anyone can
-check against without learning what they stand for. We built that once and use it for both — half
-the code, one thing for an auditor to examine, and one fewer contract to deploy and keep alive.
+twice both reduce to publishing disguised identifiers anyone can check without learning what they
+mean. Built once, used for both — half the code, one auditable thing, one fewer contract.
 
-**Grant funds go to audit, field work, devices and legal review** — what genuinely cannot be done
-without money. Field work dominates after audit: engaging notaries, counsel per jurisdiction, and
-cohort recruitment are people-time in-country, not engineering.
+**The largest cost a borrower bears is the rate, and we cut less of it than disintermediation
+implies.** Banks fund on insured deposits, the cheapest money there is. What genuinely goes is
+branch overhead, the charter's capital charge and the premium a licensed few command. Iran's 30% is
+mostly currency — negative in real terms against 40% inflation — so hard-currency credit is cheaper
+in name only unless the borrower earns it.
+
+**Grant funds go to audit, field work, devices and legal review** — what money alone unlocks. Field work dominates after audit: notaries, counsel per jurisdiction and cohort recruitment
+are people-time in-country, not engineering.
 
 
 ---

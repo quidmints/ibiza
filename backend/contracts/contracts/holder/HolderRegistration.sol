@@ -96,19 +96,17 @@ contract HolderRegistration is RegistrationSimple {
      *   be recording a claim the caller made about themselves as though it were established.
      *
      * ────────────────────────────────────────────────────────────────────────────────────────
-     * INCOMPLETE END TO END, AND THE GAP IS A DOCUMENT LENGTH (TODO.md sec. 2.18j/2.18r).
+     * THE VERIFIER MUST BE THE TD1 ONE (TODO.md sec. 2.18j / 2.18z / 2.18ac).
      *
-     * `register_identity` is the TD3 circuit - a passport booklet, DG1 of 93 bytes. `escrow_envelope`
-     * computes `dgCommit` over **95** bytes, the TD1 / ID-card layout, because that is what the live
-     * signer path and the wallet's upstream circuits use. A document registered HERE therefore
-     * produces a `registrationSmt` leaf that escrow can never reproduce, so it can never obtain a
-     * pool identity.
+     * `register_identity` is TD3 - a passport booklet, DG1 of 93 bytes - while `escrow_envelope`
+     * computes `dgCommit` over **95**, the TD1 / ID-card layout the live signer path and the
+     * wallet's upstream circuits use. Pointing this function at the 93-byte circuit produces
+     * `registrationSmt` leaves escrow can NEVER reproduce, so the documents it registers could
+     * never obtain a pool identity - correct-looking and inert.
      *
-     * So this function is correct and its guards are tested, and the path it belongs to does not yet
-     * reach the pool. The missing piece is one length decision - either a 93-byte escrow variant or
-     * a 95-byte registration variant - NOT more logic here. Recorded rather than papered over,
-     * because a caller who registered through this today would get a document that silently goes
-     * nowhere.
+     * `register_identity_td1` exists for that reason and is what `icaoRegistrationVerifier` must be
+     * set to. Its `dg1Hash` AND its `dgCommit` are proven to agree with `register_identity_light` at
+     * 95 bytes, which is exactly the agreement escrow depends on.
      * ────────────────────────────────────────────────────────────────────────────────────────
      *
      * THE ROOT IS CHECKED BEFORE THE PROOF IS VERIFIED, deliberately (sec. 2.18k). Two reasons.

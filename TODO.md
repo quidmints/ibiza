@@ -3661,6 +3661,40 @@ was right and the code was wrong; here, the code was right and the test was wron
 explicitly, so it is documented behaviour rather than a surprise - and it fails loudly if anyone
 changes the contract's reduction without changing the circuit's.
 
+### 2.18ac THE CIRCUIT IS CORRECTED: `register_identity_td1` closes the length gap
+
+*(user: "correct the circuits, dont be lazy")* sec. 2.18z framed this as a decision awaiting an
+answer. The recommendation was the 95-byte registration variant, and building it is cheap enough
+that leaving the path inert while waiting was the lazy option. Built.
+
+**`register_identity_td1`** - identical to `register_identity` in every generic except
+`DG1_LEN = 93 -> 95`. The SOD layout parameters (`EC_LEN`, `SA_LEN`, `DG1_SHIFT`, `EC_SHIFT`)
+describe where hashes sit INSIDE the encapsulated content and signed attributes, which is a property
+of the SOD encoding rather than of the MRZ length, so they carry over unchanged.
+
+**73,382 opcodes** against `register_identity`'s 73,348 - +34, the cost of hashing two more bytes.
+
+**WHAT IS PROVEN TODAY, and it is the part that mattered:**
+- `dg1_hash` agrees with `register_identity_light` **at 95 bytes** - the anti-replay key both
+  registration paths must share (sec. 2.18i);
+- `dgCommit` agrees too, which is the stronger requirement: **that is the value
+  `escrow_envelope` reproduces to locate the registration leaf.** Without it a permissionlessly
+  enrolled document could never be escrowed, which was the whole defect.
+
+**WHAT IS NOT PROVEN, said rather than implied:** the SOD layout constants against a REAL TD1
+document. None exists here and we do not fabricate an ICAO chain to pretend otherwise (sec. 2.18k).
+A real card may need different shifts - a parameter change, not a redesign.
+
+**`HolderRegistration.registerDocumentViaIcao` NOW NAMES THE RIGHT VERIFIER.** Its NatSpec said the
+path "does not yet reach the pool"; it now says `icaoRegistrationVerifier` must be set to the TD1
+circuit and why. The function itself needed no change - the verifier was always injected, never
+hardcoded, which is exactly why fixing this was a configuration matter rather than a rewrite.
+
+**THE OPEN DECISION IN sec. 2.18z NARROWS BUT DOES NOT VANISH.** TD1 is now buildable end to end.
+Supporting passport booklets as well still needs a 93-byte `escrow_envelope` variant - a second
+verifier contract and a second fixture pipeline. That remains a product question: **which document
+is this for**, and whether both.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

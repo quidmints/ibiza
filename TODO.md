@@ -3810,6 +3810,39 @@ Also pinned: the array is exactly 23 long, and unset date slots default to `ZERO
 since the circuit reads them as passport timestamps and a raw zero is a different claim from
 "unconstrained".
 
+### 2.18ag THE PASSPORT DISPATCHERS - and a vacuous test I wrote while documenting vacuous tests
+
+Last untested cluster. Unreachable today (AA needs DG15, our variant is `DG15_LEN = 0`) and tested
+anyway, on sec. 2.18y's reasoning: unreachable is a property of one generic in one circuit, not of
+the code.
+
+**FOUND AND BOUNDED.** `PECDSASHA1Dispatcher.authenticate` reads `r`, `s`, `x`, `y` by raw `mload`
+at fixed offsets into caller-supplied arrays **without consulting their lengths** - so a short
+signature or key pulls adjacent memory into the verification inputs. Same shape as sec. 2.18m.
+
+**AND THE TEST I WROTE FOR IT IS VACUOUS.** Removing the guard does NOT make it fail: whatever the
+out-of-bounds read picks up still has to satisfy ECDSA verification, garbage does not, so
+`authenticate` returns false either way. **It passes with the guard and without it.** I wrote it,
+ran the removal check out of habit, and it came back green - which is the only reason I know.
+
+That is worth more than the fix. **A test asserting the CORRECT outcome for the WRONG reason is
+indistinguishable from a working one until you delete the code it claims to guard.** Every removal
+check this session has been cheap; this is the first where the answer was "your test proves
+nothing", and it would have read as coverage forever.
+
+Left in place with the limitation written into the file rather than quietly deleted, because the
+tests still pin something real - that refusal is explicit and does not depend on surrounding memory.
+What would genuinely prove the guard is adjacent bytes forming a VERIFYING tuple, which needs
+control of Solidity's memory layout I do not have here. **So the guard is defence in depth, not a
+fix for a demonstrated exploit, and it is labelled that way.**
+
+**ALSO COVERED, and these are not vacuous:** the ECDSA dispatcher unpacks a real brainpoolP256r1
+response to the same verdict as the authenticator; the challenge is the last 8 bytes of the identity
+key big-endian, and both dispatchers agree on that convention - a mismatch would let a response be
+replayed under a different identity; and `PNOAADispatcher` accepts ONLY an empty signature, which is
+its entire security, since returning true regardless would let a document that supports AA skip it
+by claiming not to.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

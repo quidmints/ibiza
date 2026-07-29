@@ -98,8 +98,9 @@ interface IState {
 
   /**
    * @notice Returns the configured Noir/Honk verifier contract for withdrawals - identity-based
-   * ASP withdrawals (withdraw_identity circuit) are Noir-proved, not Groth16 (RAGEQUIT_VERIFIER
-   * stays Groth16/IVerifier - ragequit has no ASP-membership check to port).
+   * ASP withdrawals (withdraw_identity circuit) are Noir-proved. SO IS RAGEQUIT: both verifiers are
+   * `INoirVerifier` and no Groth16 path remains in this pool. An earlier note here said
+   * `RAGEQUIT_VERIFIER` stayed Groth16, which was true only in the window between the two ports.
    * @return _verifier The Verifier contract
    */
   function WITHDRAWAL_VERIFIER() external view returns (INoirVerifier _verifier);

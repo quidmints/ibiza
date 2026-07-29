@@ -3943,6 +3943,37 @@ so all of them agreed with themselves and none could see the substitution missin
 `test_RejectsAContextTheContractDerivedDifferently` closes that: an untouched, genuine proof verified
 against a context it was not made for must fail, and against the right one must pass.
 
+### 2.18ai "BUT WE GOT RID OF GROTH COMPLETELY?" - yes, in the pool. The comments hadn't noticed.
+
+The question came from a comment I had just read aloud: `ragequit` calls a Noir verifier under a line
+saying *"Verify proof with Groth16 verifier"*. Checked rather than assumed - `State.sol` declares
+**both** verifiers as `INoirVerifier`, and `ragequit` takes `bytes proof` with no `pA`/`pB`/`pC`. So
+the pool is 100% Honk and a dozen comments still said otherwise.
+
+**Worse than merely stale - actively contradictory.** `PrivacyPoolSimple.t.sol` claimed ragequit
+"stays Groth16, matching State.sol's two distinct verifier types" while declaring `NoirVerifierMock`
+for BOTH verifiers two lines below. `ProofLib.RagequitProof` carried `@param pA`, `@param pB`,
+`@param pC` for fields the struct does not have. A reader trusting either would form a false model of
+the trust boundary - which is exactly how the `icaoMasterTreeMerkleRoot` mis-naming nearly cost a day
+(sec. 2.18k).
+
+**Fixed at nine sites**, all comments/docs, no logic: `PrivacyPool.sol` (constructor params, the
+ragequit line, a "Groth16/Noir" hedge), `IState.sol`, `IPrivacyPool.InvalidProof`, `ProofLib` (title
+plus the three phantom `@param`s), `NoirVerifierMock`, `PrivacyPoolSimple.t.sol`, `PP-NOIR-FUSION.md`.
+Where the old claim was once true, the note now says so and dates it, rather than silently reversing.
+
+**AND ONE DEAD FILE.** `contracts/pool/interfaces/IVerifier.sol` - the Groth16
+`verifyProof(pA,pB,pC,uint[8])` interface - had no importers left. The `IVerifier` matches elsewhere
+are interfaces the generated Honk verifiers declare INTERNALLY at their own line 129, not this file.
+Deleted and verified the way sec. 2.18 established: build, then the full suite. 372 tests pass, so it
+was genuinely dead rather than dead-looking.
+
+**WHAT IS STILL GROTH16, AND LEGITIMATELY SO.** The rarime registration side -
+`RegistrationSimple.sol`, `Registration2.sol`, `AQueryProofExecutor.sol` - imports solarity's
+`Groth16VerifierHelper` and verifies real Circom proofs. `AQueryProofExecutor` is deliberately
+dual-stack (`execute` for Circom, `executeNoir` for Honk). "We got rid of Groth16" is true of the
+POOL and false of the identity stack, and the two are easy to conflate because both live here.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

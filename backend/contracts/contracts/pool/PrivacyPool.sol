@@ -118,8 +118,8 @@ abstract contract PrivacyPool is State, IPrivacyPool {
   /**
    * @notice Initializes the contract state addresses
    * @param _entrypoint Address of the Entrypoint that operates this pool
-   * @param _withdrawalVerifier Address of the Groth16 verifier for withdrawal proofs
-   * @param _ragequitVerifier Address of the Groth16 verifier for ragequit proofs
+   * @param _withdrawalVerifier Address of the Noir/Honk verifier for withdrawal proofs
+   * @param _ragequitVerifier Address of the Noir/Honk verifier for ragequit proofs
    * @param _asset Address of the pool asset
    */
   /// @notice The single identity tree: registration AND revocation status in one place.
@@ -155,7 +155,7 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     // Every other input to the commitment Poseidon hash below is explicitly field-reduced
     // (`_label` via `% Constants.SNARK_SCALAR_FIELD`); `_precommitmentHash` is depositor-supplied
     // and was the one input with no such check. An out-of-field value doesn't corrupt anyone
-    // else's funds, but it produces a commitment a Groth16/Noir withdrawal circuit (which computes
+    // else's funds, but it produces a commitment the Noir withdrawal circuit (which computes
     // Poseidon over an implicitly-reduced field element) can never reconstruct - i.e. a
     // self-locking deposit from a buggy or malicious client SDK. Reject it up front instead.
     if (_precommitmentHash >= Constants.SNARK_SCALAR_FIELD) revert InvalidPrecommitmentHash();
@@ -215,7 +215,8 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     uint256 _label = _proof.label();
     if (depositors[_label] != msg.sender) revert OnlyOriginalDepositor();
 
-    // Verify proof with Groth16 verifier
+    // Verify proof with the Noir/Honk verifier. Ragequit was ported alongside withdrawal - there is
+    // no Groth16 anywhere in this pool, and both verifiers are `INoirVerifier` (see State.sol).
     if (!RAGEQUIT_VERIFIER.verify(_proof.proof, _proof.ragequitPublicInputsBytes32())) revert InvalidProof();
 
     // Check commitment exists in state

@@ -352,7 +352,8 @@ that workstream; it is NOT assumed to be in scope for the base Noir migration.
 - ✅ **P3 (Groth16→Honk swap for withdrawals): DONE at the contract level.** `ProofLib.WithdrawProof`
   now carries a Honk `bytes proof` (no more `pA`/`pB`/`pC`); `State.WITHDRAWAL_VERIFIER` is
   `INoirVerifier`; `PrivacyPool.withdraw()` calls `.verify(proof, publicInputsBytes32())`.
-  `RAGEQUIT_VERIFIER` stays Groth16 (ragequit has no ASP-membership check to port). Test suite
+  `RAGEQUIT_VERIFIER` was ALSO ported (see `RagequitHonkVerifier.t.sol`); both are `INoirVerifier`
+  today, so no Groth16 remains in the pool. Test suite
   (`PrivacyPoolSimple.t.sol`) updated to match. Still missing: the actual generated Honk verifier
   contract for `withdraw_identity` (needs `nargo compile` + `bb` codegen — a build step, not
   hand-writable) and the wallet-side prover integration (P4, below).

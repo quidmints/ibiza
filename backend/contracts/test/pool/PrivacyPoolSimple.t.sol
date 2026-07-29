@@ -44,9 +44,9 @@ contract MockEntrypoint {
 /// PP core: deposit / withdraw / ragequit - previously zero test coverage on this fork.
 contract PrivacyPoolSimpleTest is Test {
   MockEntrypoint internal entrypoint;
-  // Withdrawal is identity-based-ASP, Noir/Honk-proved (see ProofLib.WithdrawProof); ragequit
-  // has no ASP-membership check to port and stays Groth16, matching State.sol's two distinct
-  // verifier types.
+  // BOTH paths are Noir/Honk-proved - withdrawal via ProofLib.WithdrawProof, ragequit via
+  // RagequitProof - which is why ONE mock type serves both. State.sol declares each as
+  // `INoirVerifier`; no Groth16 remains in this pool.
   NoirVerifierMock internal withdrawalVerifier;
   NoirVerifierMock internal ragequitVerifier;
   PrivacyPoolSimple internal pool;
@@ -152,7 +152,7 @@ contract PrivacyPoolSimpleTest is Test {
     uint256 context = uint256(keccak256(abi.encode(withdrawal_, pool.SCOPE()))) % FIELD;
 
     proof_ = _emptyWithdrawProof();
-    proof_.pubSignals[0] = 777; // newCommitmentHash (arbitrary - VerifierMock doesn't check)
+    proof_.pubSignals[0] = 777; // newCommitmentHash (arbitrary - NoirVerifierMock does not check)
     proof_.pubSignals[1] = 555; // existingNullifierHash
     proof_.pubSignals[2] = withdrawnValue_;
     proof_.pubSignals[3] = pool.currentRoot();
@@ -251,7 +251,7 @@ contract PrivacyPoolSimpleTest is Test {
 
     ProofLib.RagequitProof memory p = _emptyRagequitProof();
     p.pubSignals[0] = commitment;
-    p.pubSignals[1] = 555; // nullifierHash - arbitrary, VerifierMock doesn't check
+    p.pubSignals[1] = 555; // nullifierHash - arbitrary, NoirVerifierMock does not check
     p.pubSignals[2] = value;
     p.pubSignals[3] = label;
 

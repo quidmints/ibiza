@@ -77,7 +77,10 @@ interface IPrivacyPool is IState {
   //////////////////////////////////////////////////////////////*/
 
   /**
-   * @notice Thrown when failing to verify a withdrawal proof through the Groth16 verifier
+   * @notice Thrown when failing to verify a withdrawal or ragequit proof through its Noir/Honk
+   *         verifier. For withdrawals this ALSO fires when the proof is cryptographically genuine
+   *         but was made for DIFFERENT withdrawal parameters, since `withdraw` hands the verifier
+   *         the context it derived itself rather than the one in the proof.
    */
   error InvalidProof();
 

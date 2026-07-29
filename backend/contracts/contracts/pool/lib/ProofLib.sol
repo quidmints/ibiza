@@ -3,7 +3,9 @@ pragma solidity 0.8.28;
 
 /**
  * @title ProofLib
- * @notice Facilitates accessing the public signals of a Groth16 proof.
+ * @notice Facilitates accessing the public signals of a Noir/Honk proof. BOTH pool proofs -
+ *         withdrawal and ragequit - are Honk; the Groth16 stack this library was written for is
+ *         gone, along with the `pA`/`pB`/`pC` points its structs used to carry.
  * @custom:semver 0.1.0
  */
 library ProofLib {
@@ -157,9 +159,7 @@ library ProofLib {
    *      a Noir circuit so the fusion keeps ONE proving stack; the 4 public signals and their order
    *      are unchanged, so every accessor below still reads the same slot.
    * @dev The public signals array must match the order of public inputs/outputs in the circuit
-   * @param pA First elliptic curve point (π_A) of the Groth16 proof, encoded as two field elements
-   * @param pB Second elliptic curve point (π_B) of the Groth16 proof, encoded as 2x2 matrix of field elements
-   * @param pC Third elliptic curve point (π_C) of the Groth16 proof, encoded as two field elements
+   * @param proof The serialized Honk proof (`bb prove_ultra_keccak_honk` output)
    * @param pubSignals Array of public inputs and outputs:
    *        - [0] commitmentHash: Hash of the commitment being ragequit
    *        - [1] nullifierHash: Nullifier hash of commitment being ragequit

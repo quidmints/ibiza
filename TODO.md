@@ -4029,6 +4029,59 @@ capability goes to the Noir side.
 **NOT SCHEDULED.** Six documents is a real dependency and blocks on the same thing sec. 2.18ad does.
 Revisit when a real card or passport exists; convergence is then deletion, not a port.
 
+### 2.18ak TEST COVERAGE, COUNTED PROPERLY - and why the first count was wrong
+
+*"the table you gave me... it's already the contents of TODO.md?"* (user, 2026-07-29). It was not.
+sec. 2.18ad's items 1-10 came from this file; every COVERAGE row was assembled live from a filesystem
+inventory and written nowhere. Unrecorded work gets re-derived, so here it is.
+
+**THE FIRST COUNT WAS WRONG, and wrong in the direction that wastes effort.** I reported
+`title_holder`, `query_identity`, `query_identity_td1` and `register_identity_light_td1` as
+"zero-coverage circuits". All four are THIN WRAPPER CRATES - `main.nr` files of 13-49 lines that
+forward to a library gadget. Counting `#[test]` in the wrapper says nothing about the gadget:
+
+- `title_holder` -> `pp::title_holder::title_holder_proof`. Tested in `pp`, and **already proved
+  on-chain** against the generated verifier (`TitleHolderHonkVerifier.t.sol`, sec. 2.12).
+- `register_identity_light_td1` -> `noir_dl::lite::register_identity_light`. Covered by `lite.nr`'s
+  known-answer vector plus the TD1 cross-checks in `register_identity_td1` (sec. 2.18ac).
+- `query_identity` / `query_identity_td1` -> `noir_dl::query`. **This one is genuinely uncovered.**
+
+Counting the wrong artifact is the same failure as sec. 2.18h ("dispatchers are not needed at all")
+and sec. 2.18aj (comparing our `backend/circuits/` against rarime's vendored verifiers): a number
+read off the nearest file rather than the thing it claims to measure.
+
+**WHERE COVERAGE ACTUALLY STANDS** (measured 2026-07-29):
+
+| unit | tests | note |
+|---|---|---|
+| `pp` (all gadgets) | 84 | commitment, lean_imt, smt, envelope, jubjub, title_holder |
+| `noir_dl::smt` | 11 | |
+| `noir_dl::rsa` / `rsa_pss` | 5 / 5 | |
+| `noir_dl::jubjub` | 5 | |
+| `noir_dl::sha1/224/384/512` | 2 each | |
+| `noir_dl::lite` | 1 | the dg1_hash known-answer vector |
+| `withdraw_identity` | 5 | first ever, sec. 2.18ah |
+| `escrow_envelope` | 4 | |
+| `ragequit` | 3 | |
+| **`noir_dl::query`** | **0** | **883 lines. THE REAL GAP.** |
+| **`noir_dl::not_passports_zk_circuits`** | **0** | 907 lines, but see below |
+| **wallet TypeScript** | **0 test files** | `check-recovery.js` is a script, not a suite |
+
+**`query.nr` IS THE ONE TO DO, and it needs no document.** It decides WHAT A PROOF REVEALS -
+selector bits, birth-date and expiry lower/upper bounds, citizenship mask, identity counters. It is
+arithmetic over a DG1 byte array that can be constructed in-circuit, exactly like sec. 2.18ah's
+witness. An off-by-one in a date bound or a mis-masked selector discloses more than the user chose,
+and nothing would fail loudly.
+
+**`not_passports_zk_circuits.nr` IS NOT** - its core is `passport_verification_flow`, which needs a
+real SOD (sec. 2.18ad item 1). The parts that DON'T (`extract_dg1_commitment`) are already exercised
+by `register_identity_td1`'s two tests.
+
+**CRE IS NOT A PREREQUISITE FOR ANY OF IT.** sec. 2.15a's scraper anchors the ACTIVE-NOTARY snapshot;
+it feeds `TitleLedger`'s notary side, not the passport query path. And even for `title_holder`, the
+circuit proves set membership against a root - where the root comes from is orthogonal to whether the
+circuit is wired correctly.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

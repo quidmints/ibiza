@@ -3741,15 +3741,42 @@ they are claims resting on argument rather than execution.**
 9. **A 93-byte `escrow_envelope`** - required if passport booklets are supported alongside ID cards.
    Second verifier, second fixture pipeline (sec. 2.18ac).
 10. **Untested contracts that remain:** the passport dispatchers (`PECDSASHA1Dispatcher`,
-    `PRSASHADispatcher`, `PNOAADispatcher`) and the SDK query-proof executors
-    (`AQueryProofExecutor`, `TD1/TD3QueryProofNoirVerifier`). The dispatchers are unreachable for
-    the same reason as item 8. **The query executors are NOT** - the wallet calls `query_identity`
-    for presentations - so they are the next place worth looking, and sec. 2.18aa's hit rate says
-    expect something.
+    `PRSASHADispatcher`, `PNOAADispatcher`), unreachable for the same reason as item 8, and the
+    generated query verifiers. **`AQueryProofExecutor`'s root check is now covered** - see
+    sec. 2.18ae. What remains untested there is the SIGNAL BUILDING itself: `PublicSignalsBuilder`
+    packs 23 signals and a selector bitmask, and a mis-packed field would be verified happily
+    against the wrong claim. *Closes with:* a real `query_identity` proof, i.e. item 1.
 
 **THE ONE THING THIS LIST IS FOR:** sec. 2.18w's forgery table reads like an all-clear. It is not,
 and items 1, 2 and 5 are why. The guards are real and tested; what has never run is the path they
 guard.
+
+### 2.18ae THE PRESENTATION PATH'S ROOT CHECK WAS REAL AND UNTESTED - behind an always-true mock
+
+Followed sec. 2.18ad's own prediction that the query executors were the next place to look.
+
+**I EXPECTED A VACUITY AND DID NOT FIND ONE.** `AQueryProofExecutor.execute*` take
+`registrationRoot_` FROM THE CALLER and feed it into the public signals - textbook sec. 2.18k shape.
+The executor itself contains no validation, and `_beforeVerify` is an EMPTY VIRTUAL HOOK, which
+reads exactly like a security check left optional. **The check exists**, in
+`PublicSignalsBuilder.withIdStateRoot`: `isRootValid`, reverting `InvalidRegistrationRoot`. Not in
+the file anyone would look in first, which is worth knowing on its own.
+
+**BUT NOTHING EXERCISED IT, AND THE REASON IS THE INTERESTING PART.** The only harness on this path,
+`mock/sdk/ProofBuilderTest.sol`, wires a `MockRegistrationSMT` whose `isRootValid` **returns TRUE
+UNCONDITIONALLY**. So the guard was inert in every existing test and **would have stayed green if
+someone deleted it** - the precise defect already caught once in this project with
+`MockEntrypoint.isValidRoot`, sitting in a second place.
+
+**NOW COVERED WITH A REAL `PoseidonSMT`:** an invented root, an invented root on the TD1 entry point,
+and the zero root are each refused; and a root the tree genuinely holds gets PAST the check and on to
+proof verification, which is what proves the guard rejects the root specifically rather than failing
+everything. Verified by removal: deleting the check makes two of the four fail.
+
+**IT IS ALSO A FOURTH CONSUMER OF `isRootValid`** (after the identity registry, the escrow path and
+`Registration2`'s certificate gate). Until sec. 2.18o that function accepted ANY root on a chain
+younger than an hour - so this check was vacuous on a fresh chain or L2 **even with a real SMT
+behind it**. Four independent guards, one shared failure, which is the sec. 2.18q argument again.
 
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 

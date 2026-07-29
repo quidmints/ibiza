@@ -101,6 +101,21 @@ contract HolderStateKeeper is StateKeeper {
      */
     mapping(bytes32 => bytes32) internal _holderOfDocumentHash; // dg1Hash => holderRoot
 
+    /**
+     * @notice When a document last STOPPED being current, by revocation or renewal. Appended after
+     *         all prior storage, so the proxy layout is unaffected.
+     *
+     * WHY A CONSUMER NEEDS THIS. Invalidating a document overwrites its leaf VALUE, so every root
+     * created afterwards excludes it - but roots created BEFORE still prove it current, and
+     * `PoseidonSMT.isRootValid` keeps accepting those for the rest of ROOT_VALIDITY (one hour).
+     * A cancelled passport could therefore still register a pool identity for up to an hour
+     * (TODO.md sec. 2.18b). A consumer that requires the root it was given to be at least as new as
+     * this timestamp closes that, and nothing else on this contract exposes the information: the
+     * SMT records WHEN each root appeared but not WHY, and `_documents` is keyed by a document key
+     * a caller proving in zero knowledge deliberately never reveals.
+     */
+    uint64 public lastDocumentInvalidationAt;
+
     event DocumentAdded(bytes32 indexed holderRoot, bytes32 documentKey, bytes32 docType);
     event DocumentRenewed(
         bytes32 indexed holderRoot,
@@ -178,6 +193,7 @@ contract HolderStateKeeper is StateKeeper {
 
         // Supersede the old leaf (keeps it provably non-current in the tree).
         old_.status = DocStatus.Superseded;
+        lastDocumentInvalidationAt = uint64(block.timestamp);
         bytes32 oldIndex_ = bytes32(
             PoseidonUnit2L.poseidon([uint256(oldDocumentKey_), uint256(holderRoot_)])
         );
@@ -205,6 +221,7 @@ contract HolderStateKeeper is StateKeeper {
         require(doc_.status == DocStatus.Current, "HolderStateKeeper: not current");
 
         doc_.status = DocStatus.Revoked;
+        lastDocumentInvalidationAt = uint64(block.timestamp);
 
         bytes32 index_ = bytes32(
             PoseidonUnit2L.poseidon([uint256(documentKey_), uint256(doc_.holderRoot)])

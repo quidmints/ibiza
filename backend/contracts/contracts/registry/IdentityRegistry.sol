@@ -5,6 +5,7 @@ import {SparseMerkleTree} from '@solarity/solidity-lib/libs/data-structures/Spar
 import {PoseidonUnit2L, PoseidonUnit3L} from '../libraries/Poseidon.sol';
 import {INoirVerifier} from '../interfaces/verifiers/INoirVerifier.sol';
 import {HolderStateKeeper} from '../holder/HolderStateKeeper.sol';
+import {PoseidonSMT} from '../state/PoseidonSMT.sol';
 import {IEvidenceRegistry} from '@rarimo/evidence-registry/interfaces/IEvidenceRegistry.sol';
 import {Constants} from '../pool/lib/Constants.sol';
 
@@ -138,6 +139,9 @@ contract IdentityRegistry {
   /// aged out. Replaces `DocumentNotRegistered`/`DocumentBoundToAnotherHolder`, which named a
   /// `dg1Hash` this contract deliberately no longer sees.
   error UnknownRegistrationRoot(bytes32 registrationRoot);
+  /// The cited root predates the most recent document revocation or renewal, so it would still
+  /// prove a cancelled document current. See `register`.
+  error RegistrationRootPredatesAnInvalidation(bytes32 registrationRoot);
   error NotTheController(address caller);
   error ZeroPredicate();
   error UnknownPredicate(bytes32 predicate);
@@ -219,19 +223,43 @@ contract IdentityRegistry {
     // the generated verifier revert on its own. Neither is a security difference; both are the
     // difference between a diagnosable failure and a confusing one.
     //
+    // TWO CONDITIONS, AND THE SECOND IS NOT REDUNDANT.
+    //
+    // `PoseidonSMT.isRootValid` = latest OR within ROOT_VALIDITY (1 hour). That alone left a real
+    // hole: revoking a document overwrites its leaf VALUE, so roots created BEFORE the revocation
+    // still prove it CURRENT - and stay valid for the rest of the hour. A cancelled passport could
+    // register a pool identity for up to an hour after being cancelled (TODO.md sec. 2.18b).
+    //
+    // So the root must ALSO be no older than the last time any document stopped being current. A
+    // pre-invalidation root is now rejected outright instead of lingering.
+    //
+    // THE TIMESTAMP MEANS "WHEN THIS ROOT WAS SUPERSEDED", NOT "WHEN IT WAS CREATED" -
+    // `PoseidonSMT.withRootUpdate` stamps the OUTGOING root before mutating. I had this backwards
+    // first time and the test caught it: a root superseded BY the invalidation carries exactly
+    // `lastDocumentInvalidationAt`, so the comparison must be `<=`. With `<` that root - the very
+    // one that still shows the cancelled document as current - would sail through.
+    //
+    // The LATEST root skips the test entirely, and must: the current root has NO entry in `_roots`
+    // (it has not been superseded), so it would read as 0 and be rejected forever. It is also
+    // always safe, because any invalidation moves the root - whatever is latest already reflects it.
+    //
+    // Same-block conservatism, in the safe direction: a root superseded by an unrelated binding in
+    // the same block as an invalidation is also rejected. It costs that prover a re-proof; it
+    // cannot let a cancelled document through.
+    //
     // WHY ASK THE STATE KEEPER RATHER THAN STORE A ROOT HERE. `registrationSmt` moves on every
     // document bound anywhere in the system; mirroring it would need a feed, and a feed that stalls
     // is a registration freeze - exactly the censorship-by-inaction this design removes.
-    //
-    // `PoseidonSMT.isRootValid` = latest OR within ROOT_VALIDITY (1 hour). The 1-hour window is a
-    // real residual, not a formality: `revokeDocument` overwrites a leaf's VALUE, so for up to an
-    // hour after a document is cancelled its pre-revocation root still admits an escrow. The
-    // identity remains revocable afterwards through `revoke` below, so the window is correctable
-    // rather than permanent - recorded in TODO.md sec. 2.18b rather than left implicit.
     bytes32 registrationRoot_ = publicInputs_[PUB_REGISTRATION_ROOT];
-    if (!STATE_KEEPER.registrationSmt().isRootValid(registrationRoot_)) {
+    PoseidonSMT registrationSmt_ = STATE_KEEPER.registrationSmt();
+    if (!registrationSmt_.isRootValid(registrationRoot_)) {
       revert UnknownRegistrationRoot(registrationRoot_);
     }
+    if (
+      !registrationSmt_.isRootLatest(registrationRoot_)
+        && registrationSmt_.getRootTimestamp(registrationRoot_)
+          <= STATE_KEEPER.lastDocumentInvalidationAt()
+    ) revert RegistrationRootPredatesAnInvalidation(registrationRoot_);
 
     if (!ESCROW_VERIFIER.verify(proof_, publicInputs_)) revert BadProof();
 

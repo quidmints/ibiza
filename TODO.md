@@ -2589,6 +2589,87 @@ passphrase, ciphertext storable anywhere, recovery = passphrase + blob, no custo
 FUNDING-APPLICATION.md sec. 6 now discloses the gap and puts the fix in milestone 2; the
 participation-leak disclosure it replaced is the one closed by sec. 2.18 above.
 
+### 2.18e BOTH DEFECTS ADDRESSED (user: "address the defects")
+
+**1. THE STALE-ROOT WINDOW IS CLOSED, not shrunk.** sec. 2.18b left up to an hour in which a
+CANCELLED passport could still register a pool identity, because revoking a document overwrites its
+leaf VALUE while roots created earlier keep proving it current, and `isRootValid` accepts those for
+the rest of `ROOT_VALIDITY`.
+
+Three small pieces: `PoseidonSMT.getRootTimestamp` (a view - no storage change, UUPS-safe),
+`HolderStateKeeper.lastDocumentInvalidationAt` (set by `revokeDocument` AND `renewDocument`), and a
+second condition in `register` requiring the cited root be newer than the last invalidation.
+
+**I GOT THE COMPARISON BACKWARDS AND THE TEST CAUGHT IT.** `withRootUpdate` calls `_saveRoot()`
+BEFORE mutating the tree, so `_roots[R]` is when R **STOPPED** being current, not when it started -
+the opposite of what the getter name suggests, and the reason `isRootValid` means "superseded less
+than an hour ago". The root superseded BY the invalidation therefore carries exactly
+`lastDocumentInvalidationAt`, so the test must be `<=`. With `<` the very root that still shows the
+cancelled document as current would have passed. Both the code and the doc comment I had written
+around it were wrong; the boundary is now asserted explicitly in the test because it is the mistake
+I actually made.
+
+The LATEST root skips the check and must: the current root has NO `_roots` entry, so it reads as 0
+and would be rejected forever. It is also always safe - any invalidation moves the root.
+
+Verified by removal: with the guard deleted the registration SUCCEEDS, so the attack was real and
+the test is load-bearing.
+
+**2. KEY RECOVERY EXISTS (sec. 2.18d).** `src/identity/recovery.ts` + wrappers in `root.ts`:
+`revealRootMnemonic` (the wallet was previously unbackupable BY CONSTRUCTION - the phrase was
+generated on-device and never displayed), `importRootMnemonic`, `exportEncryptedBackup`,
+`restoreFromEncryptedBackup`.
+
+**FORMAT: the Web3 keystore v3 ethers already implements** - scrypt N=131072, AES-128-CTR,
+MAC-checked. No new dependency, and readable by any standard tool if this wallet disappears, which
+for a recovery artefact is the property that matters. Measured first: it round-trips a 24-word
+phrase exactly (32 bytes of entropy - the field has a history of assuming 16).
+
+**A PRIVACY DEFECT IN THE OBVIOUS IMPLEMENTATION, found by measuring rather than by review.** The
+keystore writes a plaintext `address` - for `m/44'/60'/0'/0/0`, which is EXACTLY the path
+`src/pp/notes.ts` uses for Privacy Pool account 0. An unmodified backup would publish, in the clear,
+an address derived from the same key material as the user's note secrets: a stable identifier
+linking every copy of the backup to every other. Stripped, along with `gethFilename` (address +
+creation time) and `id`. **`address` cannot merely be blanked** - ethers checks it against the
+decrypted key and rejects a zeroed one; DELETING it restores cleanly. Both behaviours are pinned,
+because a future ethers that required the field would break every backup silently.
+
+**GUARDS:** BIP39 validated BEFORE storing (a mistyped phrase derives the WRONG keys perfectly well
+and shows an empty wallet, not an error, with the real phrase already overwritten); a
+private-key-only keystore is rejected rather than restoring an identity-less wallet; restore refuses
+by default over an existing seed (`WalletAlreadyExistsError`) because that is silent and
+irreversible; minimum passphrase length, since the file is meant to be stored off the device.
+
+**AGAINST THE MPC SDKs** - unchanged from sec. 2.18d: every one puts a share on a server and most
+gate on Google/Apple sign-in, which is the deniable-refusal lever sec. 2.22c exists to remove.
+
+**TESTED BY A SCRIPT THAT RUNS**, per the standing rule. `recovery.ts` is deliberately PURE - no
+expo-secure-store, no React Native - so `tools/check-recovery.js` exercises it under node: 14
+assertions, verified by removal (deleting the address strip -> 2 FAIL; deleting the
+no-mnemonic guard -> 1 FAIL). An import of SecureStore into that file silently deletes the only test
+this code has.
+
+Recorded honestly: a two-word SWAP of correct words is not always caught by the BIP39 checksum. The
+script reports the real behaviour rather than asserting a hoped-for one.
+
+### 2.18f "ONLY A NOTARY CAN MAKE A MORTGAGE LEGALLY EXIST?" - overstated twice
+
+*(user, 2026-07-29.)* The application said "Only a notary can make a mortgage legally exist - one
+registered by anyone else is void." Two errors:
+
+1. **"VOID" IS WRONG.** Under the Land Registration Act (قانون ثبت اسناد و املاک), a private
+   document (سند عادی) concerning registered immovable property is **inadmissible before courts and
+   government offices** - Article 48 - rather than void ab initio. The practical consequence for us
+   is the same (it cannot be foreclosed through the official machinery, and creates no registered
+   lien binding third parties), but the legal characterisation is not.
+2. **"ONLY" IS TOO BROAD.** A notary monopoly holds for a **CONSENSUAL** mortgage. Non-consensual
+   liens exist: the judiciary imposes seizures (*Bāzdāsht*) directly - the spec's own Tier 4. Our
+   mortgages are consensual, so the claim holds for our use, but not as stated.
+
+Corrected in FUNDING-APPLICATION.md sec. 2. **This is exactly the class of claim the local counsel
+in milestone 3 is budgeted for** - it is drawn from spec.pdf plus general knowledge of Iranian
+registration law, not from an opinion by anyone qualified to give one.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

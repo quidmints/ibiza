@@ -34,6 +34,7 @@
 import * as SecureStore from "expo-secure-store";
 import { HDNodeWallet, Mnemonic, randomBytes, hexlify } from "ethers";
 import { FIELD, masterKeysFromMnemonic, type MasterKeys } from "../pp/notes";
+import { assertValidMnemonic, openBackup, sealMnemonic } from "./recovery";
 
 const ROOT_KEY = "quid.wallet.root.mnemonic";
 
@@ -122,4 +123,100 @@ export async function loadWalletRoot(): Promise<WalletRoot> {
     skIdentity: deriveSkIdentity(mnemonic),
     ppMasterKeys: deriveProfileMasterKeys(mnemonic),
   };
+}
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+// RECOVERY. Everything below exists because, until it did, THERE WAS NONE - see recovery.ts's
+// header for the full shape of that gap. The crypto lives there, pure and node-testable
+// (tools/check-recovery.js); this half is the part that touches SecureStore and therefore cannot
+// be exercised off-device.
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Thrown when a restore would destroy a wallet that already holds funds. */
+export class WalletAlreadyExistsError extends Error {
+  constructor() {
+    super(
+      "WalletAlreadyExistsError: a root seed is already stored on this device. Restoring over it " +
+        "would PERMANENTLY LOSE every identity and Privacy Pool note derived from the current " +
+        "seed. Back up the existing seed first, then pass { replaceExistingWallet: true }.",
+    );
+    this.name = "WalletAlreadyExistsError";
+  }
+}
+
+/** Whether this device already holds a root seed. Prompts biometric auth. */
+export async function hasRootMnemonic(): Promise<boolean> {
+  if (sessionMnemonic) return true;
+  return (await SecureStore.getItemAsync(ROOT_KEY, SECURE_ITEM_OPTIONS)) !== null;
+}
+
+/**
+ * Reveal the root phrase so the user can WRITE IT DOWN.
+ *
+ * THE WALLET WAS PREVIOUSLY UNBACKUPABLE BY CONSTRUCTION: the phrase was generated on-device and
+ * never displayed, so no amount of diligence let a user protect themselves. This is the whole
+ * mechanism behind "24 words on paper", which needs no passphrase, no file and no service - and is
+ * the only recovery path that still works when the user has lost the device AND cannot reach a
+ * network.
+ *
+ * DELIBERATELY A SEPARATE FUNCTION from the internal derivation calls, so that "show the user their
+ * secret" is a distinct, greppable, auditable action rather than an incidental use of
+ * `loadWalletRoot().mnemonic`. Callers must treat the return value as display-only: never log it,
+ * never put it in a screenshot-able view without warning, never send it anywhere.
+ */
+export async function revealRootMnemonic(): Promise<string> {
+  return getOrCreateRootMnemonic();
+}
+
+/**
+ * Store a user-supplied phrase as the root seed - the "I wrote down 24 words" path.
+ *
+ * VALIDATED BEFORE IT IS STORED. A mistyped phrase would derive keys perfectly well; they would
+ * simply be the wrong keys, and the user would see an empty wallet rather than an error, with the
+ * real phrase already overwritten. See recovery.ts::assertValidMnemonic.
+ */
+export async function importRootMnemonic(
+  phrase: string,
+  opts: { replaceExistingWallet?: boolean } = {},
+): Promise<void> {
+  const normalised = assertValidMnemonic(phrase);
+
+  if (!SecureStore.canUseBiometricAuthentication()) throw new InsecureDeviceError();
+  if (!opts.replaceExistingWallet && (await hasRootMnemonic())) {
+    throw new WalletAlreadyExistsError();
+  }
+
+  await SecureStore.setItemAsync(ROOT_KEY, normalised, SECURE_ITEM_OPTIONS);
+  sessionMnemonic = normalised;
+}
+
+/**
+ * Produce an encrypted backup file the user can store anywhere.
+ *
+ * The ciphertext is useless without the passphrase, and carries no address, device identifier or
+ * timestamp (recovery.ts strips them - the unmodified keystore would have published an address
+ * derived from the same seed as the user's note secrets). Nothing here contacts a server: the user
+ * holds the only copy and there is no party to ask for it back.
+ */
+export async function exportEncryptedBackup(passphrase: string): Promise<string> {
+  return sealMnemonic(await getOrCreateRootMnemonic(), passphrase);
+}
+
+/**
+ * Restore from an encrypted backup.
+ *
+ * REFUSES BY DEFAULT IF A WALLET ALREADY EXISTS. Restoring an older backup over a live wallet is
+ * irreversible and silent: every note derived from the current seed becomes unspendable, and the
+ * user's next screen looks like an ordinary balance rather than a loss. Overwriting has to be an
+ * explicit decision taken with that spelled out, not a default that happens to be convenient.
+ */
+export async function restoreFromEncryptedBackup(
+  backupJson: string,
+  passphrase: string,
+  opts: { replaceExistingWallet?: boolean } = {},
+): Promise<void> {
+  // Decrypt BEFORE touching storage, so a wrong passphrase or corrupt file cannot leave the device
+  // in a half-restored state.
+  const phrase = await openBackup(backupJson, passphrase);
+  await importRootMnemonic(phrase, opts);
 }

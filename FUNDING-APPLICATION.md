@@ -66,16 +66,16 @@ one toolchain to keep current, one surface to audit.
 
 Both repositories are public, so the claim is checkable rather than asserted: clone either, run the
 suites, regenerate every fixture from committed scripts. Each generated verifier is exercised
-on-chain against a real proof, so one that stopped verifying could not pass.
+on-chain against a real proof, so one that stopped verifying would fail.
 
 ### Milestone 1 — Audit
 
 Nothing reaches a real user before independent review, by descending risk. **The circuits**, where a
 flaw is silent and total: one wrong constraint lets an attacker mint value or bypass identity while
-every test still passes. **The identity registry**, whose guarantees are the product: registration
-cannot be refused, exclusion demands an affirmative act citing a rule, and a stale record expires so
-revocation cannot be outrun, while the newest never expires so inaction blocks nobody. **The money** —
-deposit and withdrawal accounting, double-spend prevention, the redemption schedule. And
+tests still pass. **The identity registry**, whose guarantees are the product: registration
+cannot be refused, exclusion demands an act citing a rule, and a stale record expires so revocation
+cannot be outrun, while the newest never expires so inaction blocks nobody. **The money** —
+deposit and withdrawal accounting, double-spend prevention, redemption. And
 **key handling**, where a weakness loses funds however good the circuits are. We will also commission
 a review of who can do what to whom — where such systems fail more often than in their
 arithmetic.
@@ -89,13 +89,13 @@ verifies on-chain.
 
 ### Milestone 3 — Proving it works in practice
 
-A small consenting group, real passports, value starting near zero and rising only as it holds: scan,
+A small consenting group, real passports, value starting near zero and rising as it holds: scan,
 register, deposit, withdraw to a fresh address, and confirm nobody holding the whole chain can
 connect the two. Timings come from mid-range phones, not new ones.
 
 **This is field work** — engaging notaries, retaining counsel, recruiting through partners users
 already trust — done in-country, where most of this funding goes. It needs passports from several
-issuing states, since chip behaviour differs in ways the standard does not.
+states, since chip behaviour differs in ways the standard does not.
 
 ### Milestone 4 — Title and lending
 
@@ -110,19 +110,19 @@ cannot — and that division decides where each check runs:
 - **A licensed notary** (*Sardaftar*, سردفتر), via ssar.ir alone, registers a mortgage or executes a
   transfer.
 
-Only a notary can *make a mortgage legally exist* — one registered by anyone else is void. Whether a
-notary is licensed is a public fact about a public register, so we index that register through a
-decentralised oracle network where every node must return byte-identical data.
+Only a licensed notary can register a *consensual* mortgage: a private agreement is not void, but
+the Land Registration Act makes it inadmissible before courts and registries, so it cannot be
+foreclosed. Whether a notary is licensed is public fact about a public register, so we index that
+register through a decentralised oracle network where every node returns byte-identical data.
 
 A *deed* cannot be checked that way, because the query names the owner. Run by a lender it exposes
-every applicant; run by the owner it discloses nothing — they supply their own details to a
-government that already holds them. So the owner runs it on their own device and submits a proof:
-what reaches the chain is that a genuine deed exists, bound to identifiers naming neither
-person nor parcel.
+every applicant; run by the owner it discloses nothing — they supply details a government already
+holds. So the owner runs it on their own device and submits a proof: what reaches the chain is that
+a genuine deed exists, bound to identifiers naming neither person nor parcel.
 
-**Notaries can be punished for serving a system like this**, so which notary acted is never published:
-they prove membership of the licensed set without naming a member, and their identity travels
-encrypted, openable only by a quorum of custodians against a proven discrepancy.
+**Notaries can be punished for serving a system like this**, so which notary acted is never
+published: they prove membership of the licensed set without naming a member, and their identity
+travels encrypted, openable by a quorum of custodians against a proven discrepancy.
 
 **We fund loans; we do not write them — the central choice.** Writing a loan means judging a person,
 and whoever holds that judgment can refuse: on faith, politics, sex, name. A promise never to use it
@@ -141,13 +141,13 @@ provides the figure and gains by inflating it. The tractable form is attesting a
 we attest notaries, or reading public auction results.
 
 Foreclosure uses existing institutions — judicial enforcement (*Ejra-ye Ahkam*, اجرای احکام) and
-public auction (*Mozāyedeh*, مزایده) — with an irrevocable assignment
+public auction (*Mozāyedeh*, مزایده) — with irrevocable assignment
 (*Vekālat-nāmeh-ye Belā-'Azl*, وکالت‌نامه بلاعزل) signed at the start, a form courts recognise.
 **If valuation cannot be made independent we ship identity and title without lending.**
 
 **Delivered:** an audit report and fixes; live contracts and a wallet reading a real passport;
-evidence a person can register, transact and leave unconnected; a title registered by a proven-licensed
-notary, the property undisclosed.
+evidence a person can register, transact and leave unconnected; a title registered by a
+proven-licensed notary, the property undisclosed.
 
 
 ---

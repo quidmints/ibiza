@@ -122,6 +122,27 @@ contract PoseidonSMT is Initializable, UUPSUpgradeable {
     }
 
     /**
+     * @notice When `root_` STOPPED being current, or 0 if it never has.
+     *
+     * READ THE DIRECTION CAREFULLY - it is the opposite of what the name suggests. `withRootUpdate`
+     * calls `_saveRoot()` BEFORE mutating the tree, so the timestamp stamped is the OUTGOING root's,
+     * and it records the moment that root was superseded. That is what makes `isRootValid`'s
+     * `_roots[root_] + ROOT_VALIDITY > block.timestamp` mean "superseded less than an hour ago",
+     * which is the grace window it is meant to be. The CURRENT root has no entry at all, which is
+     * why `isRootLatest` is checked first there and must be here too.
+     *
+     * ADDED so a consumer can require a root be no older than some event of its own, which
+     * `isRootValid` cannot express - it only answers "within ROOT_VALIDITY". IdentityRegistry needs
+     * exactly that: a root superseded at or before a document revocation still proves that document
+     * CURRENT, and would otherwise stay usable for the rest of the window (TODO.md sec. 2.18b).
+     *
+     * A VIEW ONLY - no new storage, so the proxy layout is untouched.
+     */
+    function getRootTimestamp(bytes32 root_) external view virtual returns (uint256) {
+        return _roots[root_];
+    }
+
+    /**
      * @notice Check if the SMT root is a latest one
      */
     function isRootLatest(bytes32 root_) public view virtual returns (bool) {

@@ -107,6 +107,14 @@ contract IdentityRegistryTest is EscrowFixtureBase {
     _bindDocumentsFromFixture();
   }
 
+  /// The document key of fixture entry `_i`, read from the same JSON the witness was built from.
+  function _documentKeyAt(uint256 _i) internal view returns (bytes32) {
+    return vm.parseJsonBytes32(
+      vm.readFile('test/fixtures/escrow_documents.json'),
+      string.concat('.documents[', vm.toString(_i), '].documentKey')
+    );
+  }
+
   /*
    * EMITS the identity inclusion witness the withdrawal fixture is built from.
    *
@@ -171,6 +179,57 @@ contract IdentityRegistryTest is EscrowFixtureBase {
 
     vm.expectRevert(
       abi.encodeWithSelector(IdentityRegistry.UnknownRegistrationRoot.selector, p[PUB_REGISTRATION_ROOT])
+    );
+    registry.register(pf, p);
+  }
+
+  /*
+   * A CANCELLED PASSPORT CANNOT REGISTER AN IDENTITY (TODO.md sec. 2.18b).
+   *
+   * Revoking a document overwrites its leaf VALUE, so roots created afterwards exclude it - but the
+   * PRE-revocation root still proves it current, and `PoseidonSMT.isRootValid` kept accepting that
+   * root for the rest of ROOT_VALIDITY. For up to an HOUR after a passport was cancelled, its
+   * holder could still land a pool identity.
+   *
+   * The escrow proof here is completely genuine; only the root it cites is older than the
+   * revocation. That is the whole attack, and it is what `RegistrationRootPredatesAnInvalidation`
+   * now rejects.
+   */
+  function test_RegisterRevertsOnARootOlderThanTheLastRevocation() public {
+    _bindDocuments();
+    bytes32[] memory p = _publicInputs();
+    bytes32 rootTheProofCites = p[PUB_REGISTRATION_ROOT];
+
+    // The proof would be accepted right now - establish that, or the assertion below could pass
+    // for some unrelated reason.
+    assertTrue(
+      _registrationSmt().isRootValid(rootTheProofCites), 'precondition: the cited root is valid'
+    );
+
+    // Cancel a DIFFERENT document, one second later. The cited root is now stale in the way that
+    // matters: it predates an invalidation, while still being inside the one-hour window.
+    vm.warp(block.timestamp + 1);
+    sk.revokeDocument(_documentKeyAt(2));
+
+    assertTrue(
+      _registrationSmt().isRootValid(rootTheProofCites),
+      'the old root is still inside ROOT_VALIDITY - which is exactly why the extra check is needed'
+    );
+
+    // The cited root was superseded BY the revocation, so it carries exactly
+    // `lastDocumentInvalidationAt` - the boundary case, and the one a `<` comparison would let
+    // through. Pinned here because that is the mistake I actually made.
+    assertEq(
+      _registrationSmt().getRootTimestamp(rootTheProofCites),
+      sk.lastDocumentInvalidationAt(),
+      'expected the cited root to sit exactly on the invalidation boundary'
+    );
+
+    bytes memory pf = _proof();
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IdentityRegistry.RegistrationRootPredatesAnInvalidation.selector, rootTheProofCites
+      )
     );
     registry.register(pf, p);
   }

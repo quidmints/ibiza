@@ -3590,6 +3590,77 @@ changes the sequencing rather than just the target.
 matches the wallet, and it serves the document more people actually hold - and the prose is cheaper
 to correct than the circuits.
 
+### 2.18aa THE PATTERN ACROSS ALL OF IT: nothing had ever met a vector it did not produce
+
+Worth banking, because it predicts where to look next better than any individual finding.
+
+**SEVEN CONTRACTS ON THE CERTIFICATE AND PASSPORT CRYPTO PATH GOT THEIR FIRST TESTS TODAY. SIX HAD
+DEFECTS:**
+
+| contract | defect | class |
+|---|---|---|
+| `RSASSAPSS` (solarity) | leading-zero count off the LAST modulus byte | ~50% refusal |
+| `CRSASigner` | no PKCS#1 v1.5 padding check | **demonstrated forgery** |
+| `X509` | unbounded `unsafeCopy` past the attributes | attacker-influenced key |
+| `CECDSA256Signer` | low-s only | ~50% refusal |
+| `CECDSA384/512Signer` | low-s only | ~50% refusal |
+| `PECDSASHA1Authenticator` | low-s only | ~50% refusal |
+| `PRSASHAAuthenticator` | ISO 9796-2 frame unread | unenforced invariant |
+
+**THE COMMON CAUSE IS NOT CRYPTOGRAPHY, IT IS THE ABSENCE OF AN OUTSIDE REFERENCE.** Every one of
+these had been read, reviewed and shipped. None had ever been run against a value produced by
+something other than itself. The moment each met an openssl vector - or in the forgery's case, a
+value constructed to violate an assumption nobody had written down - it failed in under a minute.
+
+**WHAT THIS PREDICTS.** The remaining risk is not in the code that looks hardest. It is wherever a
+value is *checked* rather than *reproduced*:
+- compare-the-tail instead of rebuild-the-whole (`CRSASigner`);
+- trust a length instead of bounding it (`X509`);
+- accept a policy from a library written for another context (low-s, x3);
+- read a parameter's NAME instead of its meaning (`icao_root`, sec. 2.18l).
+
+**AND THE CHEAPEST TEST IS ALWAYS THE SAME:** produce a valid input with an independent tool, and a
+malformed one that violates the invariant you believe is enforced. Both took minutes here; four of
+the six defects failed on the FIRST such test.
+
+**A COROLLARY I WALKED INTO TWICE.** My own test for X509's expiry bound was itself in-bounds and
+"passed" for an unrelated reason (sec. 2.18x), and my first cross-path digest test was vacuous
+because both sides called the same function (sec. 2.18i). **A test written against your own
+implementation inherits your own blind spot.** Known-answer vectors from outside are the only ones
+that do not.
+
+### 2.18ab A COLLISION THAT IS NOT A BUG - and I nearly "fixed" a deliberate design
+
+Testing `CECDSADispatcher` produced a red test reading **"two different keys collided"**. Two DSC
+public keys deriving one `certificatesSmt` leaf would be serious: one admitted certificate could
+stand in for another. It is not a bug, and chasing it down is the point of recording it.
+
+**THE MECHANISM.** `Bytes2Poseidon.hash512/hash1024` reduce each 32-byte word `% 2 ** 248`, dropping
+its most significant byte so the value fits a BN254 field element. My test flipped byte 0 of the key
+- exactly the discarded one.
+
+**THE CIRCUIT DOES THE SAME THING**, which is what makes it correct rather than merely intentional.
+`extract_pk_hash`'s ECDSA branch accumulates `EC_FIELD_SIZE - DIFF` bits with
+`DIFF = EC_FIELD_SIZE - 248`, i.e. **the LOW 248 bits of x and y** - discarding the identical byte.
+**Contract and circuit agree.** Had they disagreed, no ECDSA DSC would ever have verified, which
+would have been a far worse finding than the one I thought I had.
+
+**IS THE COLLISION SPACE REACHABLE? NO.** An attacker would need a valid curve point agreeing with an
+admitted DSC in the low 248 bits of both coordinates AND the private key for it. A colliding
+x-coordinate hands them nothing - they cannot sign with a point whose discrete log they do not know,
+and searching for a private key whose public key collides is ~2^248 work. Also `registerCertificate`
+would still demand a CSCA signature over it.
+
+**WHAT I ALMOST DID.** The first instinct on a red "collision" test is to fix the hashing. That would
+have desynchronised the contract from the circuit and broken ECDSA admission entirely - a real
+outage manufactured to fix a non-issue. **The check that stopped it was reading the CIRCUIT before
+touching the contract**, which is the same discipline sec. 2.18s needed in reverse: there, the test
+was right and the code was wrong; here, the code was right and the test was wrong.
+
+**PINNED EITHER WAY.** `test_TheTopByteOfEachCoordinateIsIgnored` now asserts the truncation
+explicitly, so it is documented behaviour rather than a surprise - and it fails loudly if anyone
+changes the contract's reduction without changing the circuit's.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

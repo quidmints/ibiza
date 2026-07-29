@@ -18,36 +18,33 @@ verifying eligibility from biometric passports scanned locally, with nothing tra
 
 ## 1. Short description of the proposed project *(300 max)*
 
-We have built infrastructure letting people prove who they are, and what they own, without
-disclosing either publicly. The code ships with this application; the funding proves it works in
+We have built infrastructure that lets people prove who they are, and what they own, without
+disclosing either publicly. The code ships with this application. The funding proves it works in
 practice.
 
-It joins two open-source systems. Privacy Pools (0xbow) is a shielded pool: deposit and later
-withdraw unlinkably, proving funds came from a screened set. Rarime provides passport identity — a
-phone reads an ICAO chip and proves the document genuine, revealing nothing about its holder.
+The identity base is not hypothetical here: the passport zero-knowledge stack we fork was already
+used inside Iran for anonymous voting, passports scanned on the phone, nothing sent to a server.
+People at real risk have already trusted this method. What has never existed is the layer beneath it
+— the ability to *hold* something, and prove you hold it, on the same terms.
 
-Each has a gap. Privacy Pools screens *money*, by chain-analysis heuristics that taint funds by
-association; Rarime proves *personhood* but has no financial layer. We merged them, so a withdrawal
-proves the honest property — the withdrawer is a real, admitted person — not guilt-by-association
-about where their money has been.
+We joined two open-source systems. Privacy Pools (0xbow) lets someone deposit and later withdraw
+unlinkably; Rarime proves a passport genuine while revealing nothing about its holder. Each had a
+gap: Privacy Pools screens *money*, by chain-analysis heuristics that taint funds by association;
+Rarime proves *personhood* with no financial layer. Merged, a withdrawal proves the honest thing — a
+real, admitted person is withdrawing — not guilt-by-association about where their money has been.
 
-On that base we built what the merge exposed as missing: an identity registry where exclusion is
-*fail-open*, so an operator who does nothing blocks nobody; where no one can be retroactively
-removed; and where status is proved in one zero-knowledge inclusion proof. We extended it to
-property — ownership provable, the property not publicly identifiable, the same parcel never titled
-twice.
+On that base we built what the merge exposed as missing. An identity registry that **fails open**: an
+operator who does nothing blocks nobody, and no one can be retroactively removed — the reverse of how
+these systems usually fail. Then property: ownership provable, the property itself not publicly
+identifiable, the same parcel never titled twice.
 
-Private identity, private title, private transfer: that is the deliverable. None needs a
-counterparty, a valuation, or court enforcement — which is why all three work today.
+**Private identity, private title, private transfer.** None needs a counterparty, a valuation, or a
+court, which is why all three work today. Lending against those titles is specified and would follow,
+but it depends on things cryptography does not provide, and we scope it separately rather than
+promise it.
 
-A fourth — lending against those titles from a duration-matched dollar pool — is conditional, not
-promised. It needs an independent valuation, an entity able to hold a lien, and an encumbrance
-registered where the state can see it. Cryptography removes none of those, and we do not claim it
-does.
-
-Users are people who must transact, hold property, or prove identity under governments treating
-financial surveillance as control. The cryptography is jurisdiction-agnostic; only registry
-endpoints and enforcement are local.
+For people whose governments treat financial surveillance as an instrument of control, this is the
+difference between owning something and being permitted to.
 
 *(≈299 words)*
 
@@ -63,6 +60,10 @@ value. Those three gaps are what the milestones close, in order.
 **What ships:** four Noir/UltraHonk circuits (withdrawal, ragequit, escrow, registration); the
 identity registry, privacy pool, entrypoint and title ledger; the dollar pool that funds against
 them; and a wallet holding one BIP39 seed in the device secure enclave, from which every key derives.
+
+Both repositories are public and these claims are checkable today: clone either, run the suites,
+regenerate the proof fixtures from committed scripts. Nothing here asks to be taken on trust that
+could instead be run.
 
 ### Milestone 1 — Audit
 
@@ -138,28 +139,23 @@ notary proves in zero knowledge that they are one of the licensed set without re
 their attestation carries an encrypted identity a quorum of legal guardians can open **only** on a
 proven discrepancy.
 
-**Lending is a separate question and we treat it as one.** Everything above stands alone and is what
-we ask to be funded to prove. Lending against those titles is specified but carries three
-dependencies cryptography does not remove, and we would rather name them than meet them in front of
-users.
-
-*Valuation.* Someone independent must value the property. The borrower supplies the input and gains
-by inflating it, so their equity is not self-verifying protection. This is the binding constraint;
-the tractable form is attesting a licensed appraiser's registration as we attest notaries, or reading
-public auction comparables.
-
-*Standing.* A pool cannot hold a lien — a legal entity must, on its behalf, and that entity is a
-single point of failure with no cryptographic mitigation.
-
-*Visibility.* A mortgage requires an encumbrance registered in the cadastre, so the state knows the
-property, owner and lien. We can hide who funded a loan, not that a person mortgaged a property, and
-will not present it as private.
+**Lending is scoped separately, deliberately.** Everything above stands alone. Lending adds one
+dependency cryptography cannot supply: an **independent valuation**. The borrower provides the input
+and gains by inflating it, so their own equity is not self-verifying — the tractable form is
+attesting a licensed appraiser's registration exactly as we attest notaries, or reading public
+auction comparables. A lien also needs a legal holder, which is a special-purpose vehicle, standard
+finance rather than an open problem.
 
 Foreclosure would use existing institutions — *Ejra-ye Ahkam* (اجرای احکام) via adliran.ir,
 *Mozāyedeh* (مزایده) via setadiran.ir — with an irrevocable assignment
 (*Vekālat-nāmeh-ye Belā-'Azl*, وکالت‌نامه بلاعزل) executed at origination, a form courts recognise.
-**If those dependencies do not resolve we ship identity and title without lending.** They are the
-product; lending is the hypothesis.
+**If valuation cannot be made independent, we ship identity and title without lending.** Those are
+the product; lending is the extension.
+
+**What each milestone delivers:** 1 — an audit report and remediated code. 2 — live contracts and a
+wallet that reads a real passport. 3 — measured evidence that a person can register, transact and
+exit unlinkably on a mid-range phone. 4 — a title provably issued by a licensed notary, with the
+property undisclosed.
 
 *(1000 words)*
 
@@ -221,13 +217,13 @@ being asked to generalise beyond a single country, and it is the difference betw
 population and infrastructure for many.
 
 **Capital scales independently of any of this.** Funding capacity grows by adding reserves or
-liquidity, needing no protocol change and no permission, and the reserves are diversified so capacity
-is not gated on a single asset's depth. The constraint on lending volume is originator capacity and
-first-loss capital, not anything technical.
+liquidity — no protocol change, no permission — and diversified reserves mean capacity is not gated
+on a single asset's depth. What bounds lending volume is the supply of independently valued
+properties, not anything technical.
 
 **Operationally**, there is no server to scale. The chain and the user's device do the work.
 
-*(≈250 words)*
+*(≈293 words)*
 
 ---
 
@@ -261,7 +257,7 @@ functions while leaving private identity and transfer intact. That layering is d
 person compelled to unlock it. We reduce blast radius — biometric gating, no plaintext identity
 on-chain — but do not pretend to solve it.
 
-*(≈280 words)*
+*(≈291 words)*
 
 ---
 
@@ -326,12 +322,12 @@ maintain, and impossible to drift.
 **Reuse across subsystems.** The same pseudonym primitive serves identity revocation and property
 uniqueness. One mechanism audited once, used twice.
 
-**Grant funds go to audit, field work, devices and legal review** — the things that genuinely cannot
-be done without money. Field work dominates after audit: sourcing originators and notaries, counsel
-per jurisdiction, and cohort recruitment are people-time in-country, not engineering. We spend
-nothing on marketing and issue no token.
+**Grant funds go to audit, field work, devices and legal review** — what genuinely cannot be done
+without money. Field work dominates after audit: engaging notaries, counsel per jurisdiction, and
+cohort recruitment are people-time in-country, not engineering. We spend nothing on marketing and
+issue no token.
 
-*(≈260 words)*
+*(≈281 words)*
 
 ---
 
@@ -356,11 +352,12 @@ upstream we push upstream — we have already contributed fixes back.
 most likely to break — a government portal changing — is the part cheapest to repair, and can be
 repaired by someone local without touching the cryptography.
 
-**Sustainability path.** The lending layer generates protocol revenue — origination and interest
-spread on the dollar pool — which can fund maintenance without further grants. We are explicitly not planning to depend on repeated grant cycles for
-survival; grant funding is for the work that cannot be self-funded, principally security audit.
+**Sustainability path.** The treasury earns yield on its reserves whether or not a single mortgage is
+written, and that revenue — not lending — is what funds maintenance. Lending would add to it. We do
+not plan to depend on repeated grant cycles: grant funding is for what cannot be self-funded,
+principally security audit.
 
 **Realistic commitment.** We will not claim indefinite stewardship. What we commit to is leaving the
 system in a state where someone else can take it on.
 
-*(≈280 words)*
+*(≈291 words)*

@@ -86,7 +86,7 @@ contract WithdrawalHonkVerifierTest is Test {
   /// @notice The baseline: a genuine proof verifies on-chain through the production plumbing.
   function test_VerifiesRealProof() public view {
     ProofLib.WithdrawProof memory _p = _withdrawProof();
-    assertTrue(verifier.verify(_p.proof, _p.publicInputsBytes32()));
+    assertTrue(verifier.verify(_p.proof, _p.publicInputsBytes32(_p.context())));
   }
 
   /// @notice ProofLib's accessors must agree with the fixture's slot ordering. If an accessor were
@@ -115,11 +115,10 @@ contract WithdrawalHonkVerifierTest is Test {
   /*
    * THE SECURITY-CRITICAL CASE. `context` is declared `pub` in the circuit but its body never
    * reads it - nargo emits "unused variable context" for exactly this. withdraw_identity's header
-   * argues that `pub` binds it as a public input regardless, and PrivacyPool.validWithdrawal
-   * depends on that being true: it recomputes context from (withdrawal, SCOPE) and compares, which
-   * is what stops a valid proof being replayed against different withdrawal parameters. If the
-   * value were NOT bound into the transcript, that check would be trivially bypassable by
-   * submitting any context alongside an otherwise-valid proof.
+   * argues that `pub` binds it as a public input regardless, and the whole proof-to-recipient
+   * binding depends on that being true: `PrivacyPool.withdraw` hands the verifier a context DERIVED
+   * from the withdrawal data, so if the value were not bound into the transcript, that substitution
+   * would prove nothing and any proof could be presented against any recipient.
    *
    * §2.12 inferred this from the verification key's publicInputsSize == 8. This proves it.
    */
@@ -127,6 +126,41 @@ contract WithdrawalHonkVerifierTest is Test {
     ProofLib.WithdrawProof memory _p = _withdrawProof();
     _p.pubSignals[6] = CONTEXT + 1;
     _assertRejects(_p);
+  }
+
+  /*
+   * THE SUBSTITUTION ITSELF, which is what actually enforces the binding (TODO.md sec. 2.18ah).
+   *
+   * The test above tampers the proof struct - it shows the transcript is bound, but a caller does
+   * not get to hand `PrivacyPool` a struct and have its context believed. `withdraw` ignores
+   * `pubSignals[6]` entirely and passes `_contextFor(_withdrawal)` in its place. So the property
+   * that matters is this one: an OTHERWISE-PERFECT proof, untouched, must fail when the context the
+   * CONTRACT derives is not the one it was made for. That is precisely the replay attempt - the
+   * same proof, a different recipient.
+   *
+   * This is what stops the binding vanishing silently. Before the substitution, the only thing
+   * holding it up was an equality check three lines long in a modifier; delete it and nothing here
+   * would have noticed, because every test still fed the prover's own context to the verifier and
+   * so agreed with itself. Now the derived value is an argument, and this asserts the argument is
+   * load-bearing rather than decorative.
+   */
+  function test_RejectsAContextTheContractDerivedDifferently() public view {
+    ProofLib.WithdrawProof memory _p = _withdrawProof();
+
+    // The proof is untouched and genuine - only the context the caller supplies differs, exactly as
+    // it would if this proof were lifted and re-submitted against another processooor.
+    bytes32[] memory _inputs = _p.publicInputsBytes32(CONTEXT + 1);
+    try verifier.verify(_p.proof, _inputs) returns (bool _ok) {
+      assertFalse(_ok, 'a genuine proof verified under a context it was not made for');
+    } catch {
+      assertTrue(true);
+    }
+
+    // ...and the same call with the correct derivation still passes, so the rejection above is the
+    // binding doing its job and not the substitution being broken outright.
+    assertTrue(
+      verifier.verify(_p.proof, _p.publicInputsBytes32(CONTEXT)), 'the correct context stopped verifying'
+    );
   }
 
   function test_RejectsTamperedWithdrawnValue() public {
@@ -195,7 +229,7 @@ contract WithdrawalHonkVerifierTest is Test {
   /// @notice The end-to-end case: a proof over a WALLET-ASSEMBLED witness verifies on-chain.
   function test_VerifiesWalletAssembledWitness() public view {
     ProofLib.WithdrawProof memory _p = _walletProof();
-    assertTrue(verifier.verify(_p.proof, _p.publicInputsBytes32()));
+    assertTrue(verifier.verify(_p.proof, _p.publicInputsBytes32(_p.context())));
   }
 
   /// @notice Guards BOTH fixtures against silently regressing to the degenerate size-1 shape this
@@ -241,7 +275,7 @@ contract WithdrawalHonkVerifierTest is Test {
 
   /// @dev A rejection is either `false` or a revert (SumcheckFailed etc.) - both are correct.
   function _assertRejects(ProofLib.WithdrawProof memory _p) internal view {
-    bytes32[] memory _inputs = _p.publicInputsBytes32();
+    bytes32[] memory _inputs = _p.publicInputsBytes32(_p.context());
     try verifier.verify(_p.proof, _inputs) returns (bool _ok) {
       assertFalse(_ok);
     } catch {

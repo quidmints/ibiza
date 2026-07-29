@@ -45,8 +45,12 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     // Check caller is the allowed processooor
     if (msg.sender != _withdrawal.processooor) revert InvalidProcessooor();
 
-    // Check the context matches to ensure its integrity
-    if (_proof.context() != uint256(keccak256(abi.encode(_withdrawal, SCOPE))) % Constants.SNARK_SCALAR_FIELD) {
+    // DIAGNOSTIC ONLY - the binding itself is enforced in `withdraw`, which feeds the derived
+    // context straight into the verifier's public inputs (see ProofLib.publicInputsBytes32). This
+    // check is kept because `ContextMismatch` tells a relayer exactly what is wrong with a proof it
+    // was handed, where the `InvalidProof` it would otherwise get names nothing. Deleting it costs
+    // a good error message and no security, which is the opposite of what was true before.
+    if (_proof.context() != _contextFor(_withdrawal)) {
       revert ContextMismatch();
     }
 
@@ -75,6 +79,22 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     // TODO.md sec. 2.5a.
     if (!IDENTITY_REGISTRY.isValidRoot(bytes32(_proof.identityRoot()))) revert InvalidIdentityRoot();
     _;
+  }
+
+  /**
+   * @notice The context a proof must have been made for, derived from the withdrawal data itself.
+   * @param _withdrawal The withdrawal being processed
+   * @return The value `withdraw_identity`'s seventh public signal is required to hold
+   *
+   * @dev ONE DEFINITION, because two would eventually disagree. The modifier uses it to produce a
+   *      readable error and `withdraw` uses it as the value actually handed to the verifier; if
+   *      those were written out separately, a change to `SCOPE` or to the encoding would only have
+   *      to miss one of them for the diagnostic to start contradicting the check that matters.
+   *      This is the same lesson as RootValidity (TODO.md sec. 2.18o), where the rule was written
+   *      three times and all three copies carried the same defect.
+   */
+  function _contextFor(Withdrawal memory _withdrawal) internal view returns (uint256) {
+    return uint256(keccak256(abi.encode(_withdrawal, SCOPE))) % Constants.SNARK_SCALAR_FIELD;
   }
 
   /**
@@ -164,8 +184,16 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     Withdrawal memory _withdrawal,
     ProofLib.WithdrawProof memory _proof
   ) external validWithdrawal(_withdrawal, _proof) {
-    // Verify proof with the Noir/Honk verifier (identity-based ASP withdrawal, see ProofLib.WithdrawProof)
-    if (!WITHDRAWAL_VERIFIER.verify(_proof.proof, _proof.publicInputsBytes32())) revert InvalidProof();
+    // Verify proof with the Noir/Honk verifier (identity-based ASP withdrawal, see ProofLib.WithdrawProof).
+    //
+    // The context handed to the verifier is DERIVED HERE from `_withdrawal`, never read out of the
+    // proof. That substitution IS the proof-to-recipient binding: `context` is the only public
+    // signal naming who gets paid, and the circuit deliberately leaves it unconstrained because its
+    // meaning lives in data only this contract holds. Making it an argument rather than a
+    // comparison means the binding cannot be removed without the compiler objecting.
+    if (!WITHDRAWAL_VERIFIER.verify(_proof.proof, _proof.publicInputsBytes32(_contextFor(_withdrawal)))) {
+      revert InvalidProof();
+    }
 
     // Mark existing commitment nullifier as spent
     _spend(_proof.existingNullifierHash());

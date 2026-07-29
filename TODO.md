@@ -3908,10 +3908,40 @@ forever is a warning nobody reads - so the day a public input goes unused BY ACC
 that would have caught it is already background noise. Silencing it deliberately keeps the channel
 clean.
 
-**THE RESIDUAL RISK IS THE CONTRACT'S, AND IT IS REAL.** The binding is worthless if the recomputation
-is ever removed: the proof would still commit to `context`, but nobody would check that the committed
-value describes THIS withdrawal. That is a `PrivacyPool` invariant, not a circuit one, and it is why
-the check's existence is pinned here rather than left to a comment.
+**THE RESIDUAL RISK WAS THE CONTRACT'S, AND IT IS NOW CLOSED BY CONSTRUCTION.** *"we cant have silent
+vanishings like that. how can we make this safer"* (user, 2026-07-29). Correct instinct, and recording
+the hazard was the weaker answer. The binding rested on three lines in `validWithdrawal`:
+
+```solidity
+if (_proof.context() != keccak256(abi.encode(_withdrawal, SCOPE)) % SNARK_SCALAR_FIELD) revert ContextMismatch();
+```
+
+Delete them and the happy path still works, the code that remains still looks complete, and the tie
+between a proof and its recipient is gone. **The defect was the SHAPE, not the arithmetic** - a
+comparison is deletable, and nothing downstream depends on it having run.
+
+**THE FIX: MAKE IT AN ARGUMENT, NOT A CHECK.** `ProofLib.publicInputsBytes32` now takes the context
+from its CALLER and writes it into slot [6], ignoring `pubSignals[6]` entirely. `PrivacyPool.withdraw`
+passes `_contextFor(_withdrawal)`. The verifier cannot be called without a context, so there is no
+longer a line whose deletion silently weakens anything - delete the derivation and it does not
+compile. The unsafe no-argument overload was REMOVED rather than kept alongside, because a safe
+variant beside an unsafe one only relocates the mistake.
+
+The admission set is unchanged: a proof made for this withdrawal has `pubSignals[6] == context_` and
+verifies exactly as before. `ContextMismatch` survives as a DIAGNOSTIC - a relayer handed a stale
+proof learns what is wrong, rather than getting a bare `InvalidProof` - and is documented as carrying
+no security.
+
+**VERIFIED BY MUTATION, which is the only way to test a claim about deletion.** With the modifier
+check commented out, `test_ProofIsBoundToItsWithdrawalParameters` (a genuine proof replayed against
+`address(0xBAD)`) still fails - and `-vvvv` names the cause as **`SumcheckFailed()`**, the Honk
+verifier itself rejecting the proof. Before this change that same mutation would have let the replay
+through. Restored afterwards; 372 forge tests pass, client ABIs clean.
+
+**AND THE TEST GAP THAT ALLOWED IT.** Every existing test fed the verifier the PROVER'S OWN context,
+so all of them agreed with themselves and none could see the substitution missing.
+`test_RejectsAContextTheContractDerivedDifferently` closes that: an untouched, genuine proof verified
+against a context it was not made for must fail, and against the right one must pass.
 
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 

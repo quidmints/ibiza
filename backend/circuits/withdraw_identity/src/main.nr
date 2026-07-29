@@ -25,9 +25,12 @@
 // `asp_tree_depth` is gone with the LeanIMT identity tree; the SMT depth is FIXED, so there is no
 // prover-supplied depth to reason about at all.
 //
-// `context` is a plain pass-through public signal - PrivacyPool.sol independently recomputes and
-// checks it (keccak256(abi.encode(withdrawal, scope)) % SNARK_SCALAR_FIELD) against this same
-// value, so the circuit only needs it bound as a public input, which `pub` already guarantees.
+// `context` is a pass-through public signal, and the pass-through IS the mechanism. PrivacyPool
+// does not compare its own keccak256(abi.encode(withdrawal, scope)) % SNARK_SCALAR_FIELD against
+// what the prover put here - it SUBSTITUTES it, handing the derived value to the verifier in slot
+// [6] and ignoring the proof's. So the circuit owes only that the proof be BOUND to whatever was
+// passed, which `pub` guarantees, and a proof made for another withdrawal fails inside the verifier
+// rather than at a check someone could delete.
 use pp::commitment::commitment_hasher;
 use pp::envelope::secret_commitment;
 use pp::lean_imt::lean_imt_inclusion;
@@ -69,9 +72,9 @@ fn main(
     // recipient, the fee, the processooor, the pool. Nothing else in this circuit names who gets
     // paid, so without it a valid withdrawal proof could be lifted out of the mempool and
     // re-submitted against a different recipient. There is nothing to CHECK here - the value's
-    // meaning lives entirely in data only the contract holds, so PrivacyPool.validWithdrawal
-    // recomputes it and compares. What the circuit owes is that the proof COMMITS to whatever was
-    // passed, which `pub` gives in the transcript whether or not a gate reads it.
+    // meaning lives entirely in data only the contract holds, so PrivacyPool derives it and passes
+    // ITS OWN value to the verifier in this slot. What the circuit owes is that the proof COMMITS to
+    // whatever was passed, which `pub` gives in the transcript whether or not a gate reads it.
     context: pub Field,
     // The existing note being spent.
     value: Field,

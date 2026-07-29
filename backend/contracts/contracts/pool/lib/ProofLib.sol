@@ -39,18 +39,46 @@ library ProofLib {
   }
 
   /**
-   * @notice Converts `pubSignals` to the `bytes32[]` shape INoirVerifier.verify expects. A fixed
-   * array can't be implicitly cast to a dynamic one in Solidity, so this copies element-by-element
-   * - the same thing RegistrationSimple._verifyNoirZKProof already does manually for its own
+   * @notice Converts `pubSignals` to the `bytes32[]` shape INoirVerifier.verify expects, with
+   * `context` supplied by the CALLER rather than taken from the proof. A fixed array can't be
+   * implicitly cast to a dynamic one in Solidity, so this copies element-by-element - the same
+   * thing RegistrationSimple._verifyNoirZKProof already does manually for its own
    * (differently-shaped) public inputs.
+   *
+   * WHY `context_` IS A PARAMETER AND NOT `_p.pubSignals[6]`.
+   *
+   * `context` is the only public signal that names WHO GETS PAID - it is
+   * `keccak256(abi.encode(withdrawal, SCOPE)) % SNARK_SCALAR_FIELD`, covering the recipient, the
+   * fee and the pool. Every other signal is equally true whoever receives the money, so if the
+   * proof's own `context` were fed back to the verifier, verification would prove only that the
+   * prover once chose SOME context - never that it describes THIS withdrawal. What ties the two
+   * together has to come from outside the proof.
+   *
+   * That used to be a separate equality check in `PrivacyPool.validWithdrawal`, and it worked. The
+   * problem was its SHAPE: a comparison is deletable. Remove those three lines and every test but
+   * one still passes, the happy path still works, and the binding between a proof and its recipient
+   * is gone with no symptom - the worst kind of regression, because the code that remains looks
+   * complete. Passing the derived value as an ARGUMENT removes that failure mode by construction:
+   * the verifier cannot be called without a context, so there is no line whose deletion silently
+   * weakens anything. Delete the derivation and the contract does not compile.
+   *
+   * The admission set is unchanged. A proof made for this withdrawal has `pubSignals[6] ==
+   * context_` and verifies exactly as before; one made for a different withdrawal now fails inside
+   * the verifier instead of at a preceding `require`.
+   *
    * @param _p The proof containing the public signals
+   * @param context_ The context the CALLER derived from the withdrawal data it holds
    * @return _publicInputs The public signals as a dynamic bytes32 array, in the same order
    */
-  function publicInputsBytes32(WithdrawProof memory _p) internal pure returns (bytes32[] memory _publicInputs) {
+  function publicInputsBytes32(
+    WithdrawProof memory _p,
+    uint256 context_
+  ) internal pure returns (bytes32[] memory _publicInputs) {
     _publicInputs = new bytes32[](7);
-    for (uint256 _i = 0; _i < 7; ++_i) {
+    for (uint256 _i = 0; _i < 6; ++_i) {
       _publicInputs[_i] = bytes32(_p.pubSignals[_i]);
     }
+    _publicInputs[6] = bytes32(context_);
   }
 
   /**

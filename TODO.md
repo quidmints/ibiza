@@ -3514,8 +3514,37 @@ Recorded so nobody re-audits them under the impression they gate something.
 For completeness on the one that looked most similar: `PRSASHAAuthenticator` compares a digest
 recovered FROM the decryption against a hash over the recovered message, so the sec. 2.18u forgery
 does not transfer - an attacker would need the recovered message and its own hash to agree, a
-fixpoint rather than a free choice. It does omit the ISO 9796-2 header/trailer validation, which
-would be worth fixing if it ever became reachable.
+fixpoint rather than a free choice. **It did omit the ISO 9796-2 header/trailer validation. Fixed -
+see sec. 2.18y.**
+
+### 2.18y ISO 9796-2 FRAME VALIDATION IN THE AA AUTHENTICATOR - "if it's worth fixing then fix it"
+
+I had written that this "would be worth fixing if it ever became reachable". That is a hedge, not a
+judgement, and the user called it: **being unreachable today is not a property of the code.** It is a
+property of ONE generic parameter in ONE circuit - `register_identity` is built with `DG15_LEN = 0`,
+and a TD3 variant would make this live without anyone revisiting the file.
+
+**WHAT WAS WRONG.** `authenticate` advanced past `decipher_[0]` and stripped the trailer WITHOUT
+READING EITHER, recovering `M1` from whatever lay between. The header nibble and trailer are the only
+things distinguishing a signature-shaped block from an arbitrary one, so discarding them unread left
+the scheme's framing entirely unenforced.
+
+**FIXED:** header must be `0x6A` (partial recovery) or `0x4A` (total); trailer must be `0xBC` for the
+one-byte form or `0xCC` for the two-byte one; plus a minimum-length check before any of it.
+
+**TESTED WITH THREE REAL SIGNATURES UNDER ONE PRIVATE KEY, differing only in framing** - each with a
+correct `M1` and a correct `SHA1(M1 || challenge)`, so nothing but the frame decides the outcome:
+- header `0x00` -> must be rejected (was accepted);
+- trailer `0xAA` -> must be rejected (was accepted);
+- header `0x4A` -> **must still be ACCEPTED**, because narrowing the standard to one of its two
+  legal headers would be the sec. 2.18s failure again - refusing genuine documents.
+
+Verified by removal: deleting both checks re-accepts the two bad frames and nothing else changes.
+
+**THIS IS NOT A DEMONSTRATED FORGERY** and should not be recorded as one. Unlike sec. 2.18u, the
+digest is recovered from the same decryption it is checked against, so exploiting the missing frame
+needs a fixpoint an attacker cannot simply construct. What it removes is an unenforced invariant in
+security code - the kind that becomes exploitable when someone later changes something else.
 
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 

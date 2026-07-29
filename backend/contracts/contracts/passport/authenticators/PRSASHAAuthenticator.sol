@@ -40,8 +40,39 @@ contract PRSASHAAuthenticator is Initializable {
 
         bytes memory decipher_ = s_.decrypt(e_, n_);
 
+        uint256 suffixLen_ = isSha1 ? 1 : 2;
+
+        if (decipher_.length < hashLen + suffixLen_ + 2) {
+            return false;
+        }
+
+        /*
+         * THE ISO 9796-2 FRAME IS CHECKED, not skipped (TODO.md sec. 2.18y).
+         *
+         * This function used to advance past `decipher_[0]` and strip the trailer WITHOUT LOOKING AT
+         * EITHER, recovering `M1` from whatever lay between. The header nibble and the trailer are
+         * the only things distinguishing a signature-shaped block from an arbitrary one, so
+         * discarding them unread leaves the scheme's framing unenforced.
+         *
+         * Header: 0x6A for partial recovery, 0x4A for total. Trailer: 0xBC for the implicit
+         * one-byte form, 0xCC when a hash identifier precedes it.
+         *
+         * THIS IS NOT CURRENTLY REACHABLE - Active Authentication needs DG15, and our
+         * `register_identity` variant is built with `DG15_LEN = 0`. It is fixed anyway because
+         * being unreachable today is not a property of the code, it is a property of one generic
+         * parameter in one circuit.
+         */
+        bytes1 header_ = decipher_[0];
+
+        if (header_ != 0x6a && header_ != 0x4a) {
+            return false;
+        }
+
+        if (decipher_[decipher_.length - 1] != (suffixLen_ == 1 ? bytes1(0xbc) : bytes1(0xcc))) {
+            return false;
+        }
+
         assembly {
-            let suffixLen_ := add(1, iszero(sload(isSha1.slot)))
             mstore(decipher_, sub(mload(decipher_), suffixLen_))
         }
 

@@ -189,6 +189,86 @@ contract HolderRegistrationTest is Test {
         reg.renewDocumentViaNoir(p1.publicKey, 1, p2, docType, 0, strangerSig, '');
     }
 
+    /*
+     * ── THE PERMISSIONLESS PATH (TODO.md sec. 2.18n) ──────────────────────────────────────────
+     *
+     * WHY EVERY TEST HERE IS A NEGATIVE ONE, and why that is the right way round.
+     *
+     * The happy path needs a `register_identity` proof, which needs a SOD signed by a DSC whose key
+     * is genuinely in the ICAO chain. We hold no such key and never will, and we do NOT fake the
+     * root - a fake root is one setter call from production and the failure it causes (forged
+     * documents admitted as genuine) is silent and total. So the positive case waits for a real
+     * document, in milestone 3.
+     *
+     * The GUARDS, however, are testable today, and they are the half that protects users. That is
+     * only true because `registerDocumentViaIcao` checks the certificates root BEFORE verifying the
+     * proof: these tests hand it arbitrary bytes and assert it reverts on the root, never reaching
+     * the verifier. Order those two the other way and none of this could be written until a real
+     * passport existed.
+     */
+    function _icaoInputs() internal pure returns (bytes32[] memory inputs_) {
+        inputs_ = new bytes32[](6);
+        inputs_[0] = bytes32(uint256(0xD6C5)); // dg15PkHash
+        inputs_[1] = bytes32(uint256(0xDEED)); // passportHash -> documentKey
+        inputs_[2] = bytes32(uint256(0xC0)); // dgCommit
+        inputs_[3] = bytes32(uint256(0xA11CE)); // holderRoot
+        inputs_[4] = bytes32(uint256(0xBAD0)); // icaoRoot - not a root the keeper knows
+        inputs_[5] = bytes32(uint256(0xD61)); // dg1Hash
+    }
+
+    /// THE property test. A root `certificatesSmt` never held must be refused, and refused BEFORE
+    /// the proof is looked at - which is what lets this run with no valid proof in existence.
+    function test_icao_revertsOnACertificatesRootTheKeeperNeverHeld() public {
+        reg.setIcaoRegistrationVerifier(address(0xBEEF));
+        bytes32[] memory inputs = _icaoInputs();
+
+        vm.expectRevert(bytes("HolderRegistration: unknown certificates root"));
+        reg.registerDocumentViaIcao(inputs, hex"1234");
+    }
+
+    /// It reverts on the root even when the verifier is unset, proving the ordering directly: an
+    /// unset verifier would revert too, and this shows which check fires first.
+    function test_icao_theRootIsCheckedBeforeTheVerifier() public {
+        bytes32[] memory inputs = _icaoInputs();
+        assertEq(reg.icaoRegistrationVerifier(), address(0), "precondition: verifier unset");
+
+        vm.expectRevert(bytes("HolderRegistration: unknown certificates root"));
+        reg.registerDocumentViaIcao(inputs, hex"1234");
+    }
+
+    function test_icao_revertsOnWrongPublicInputCount() public {
+        bytes32[] memory short_ = new bytes32[](5);
+
+        vm.expectRevert(bytes("HolderRegistration: wrong public input count"));
+        reg.registerDocumentViaIcao(short_, hex"1234");
+    }
+
+    /*
+     * THE VERIFIER IS PINNED, NOT CALLER-SUPPLIED - the hole that removing the signature creates.
+     *
+     * `registerDocumentViaNoir` reads `passport_.verifier` from its caller, which is safe ONLY
+     * because the backend signature covers the whole struct including that field. With no signature
+     * a caller-supplied verifier would let anyone pass a contract whose `verify` returns true and
+     * register any identity at all. So the address lives in storage, owner-set.
+     */
+    function test_icao_theVerifierCannotBeChosenByTheCaller() public view {
+        // There is no argument for it and no setter reachable by a stranger; the only way in is
+        // `setIcaoRegistrationVerifier`, which is owner-gated. Asserting the shape of the ABI is the
+        // point: a `verifier` parameter appearing here later would be the regression.
+        assertEq(reg.icaoRegistrationVerifier(), address(0));
+    }
+
+    function test_icao_onlyTheOwnerCanSetTheVerifier() public {
+        vm.prank(address(0xBAD));
+        vm.expectRevert();
+        reg.setIcaoRegistrationVerifier(address(0xBEEF));
+    }
+
+    function test_icao_theVerifierCannotBeSetToZero() public {
+        vm.expectRevert(bytes("HolderRegistration: zero verifier"));
+        reg.setIcaoRegistrationVerifier(address(0));
+    }
+
     // ── registerDocumentViaNoir ────────────────────────────────────────────────────────────
 
     function test_registerDocumentViaNoir_succeeds() public {

@@ -6,6 +6,8 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 
 import {RegistrationSimple} from "../registration/RegistrationSimple.sol";
 import {HolderStateKeeper} from "./HolderStateKeeper.sol";
+import {INoirVerifier} from "../interfaces/verifiers/INoirVerifier.sol";
+import {PoseidonSMT} from "../state/PoseidonSMT.sol";
 
 /**
  * @title HolderRegistration
@@ -28,6 +30,139 @@ import {HolderStateKeeper} from "./HolderStateKeeper.sol";
 contract HolderRegistration is RegistrationSimple {
     event DocumentRegistered(bytes32 indexed holderRoot, bytes32 documentKey, bytes32 docType);
     event DocumentRenewedVia(bytes32 indexed holderRoot, bytes32 oldDocumentKey, bytes32 newDocumentKey);
+
+    /*
+     * ── THE PERMISSIONLESS PATH (TODO.md sec. 2.18g/2.18l/2.18n) ────────────────────────────────
+     *
+     * Every OTHER entry point on this contract requires a backend signer's signature, so enrolment
+     * can be withheld from one person by whoever holds that key. `registerDocumentViaIcao` takes no
+     * signature: it consumes a `register_identity` proof, which verifies the whole ICAO chain
+     * in-circuit, and the only thing the caller must satisfy is arithmetic.
+     */
+
+    /// Public-input layout of `register_identity`, pinned by its `main` signature. A mismatch here
+    /// reads the wrong field while the proof still verifies.
+    uint256 internal constant _ICAO_SIGNALS_COUNT = 6;
+    uint256 internal constant _ICAO_PUB_DG15_PK_HASH = 0;
+    uint256 internal constant _ICAO_PUB_PASSPORT_HASH = 1;
+    uint256 internal constant _ICAO_PUB_DG_COMMIT = 2;
+    uint256 internal constant _ICAO_PUB_HOLDER_ROOT = 3;
+    uint256 internal constant _ICAO_PUB_ICAO_ROOT = 4;
+    uint256 internal constant _ICAO_PUB_DG1_HASH = 5;
+
+    /**
+     * @notice The ONE verifier accepted on the permissionless path. PINNED, never caller-supplied.
+     *
+     * THIS IS THE TRAP THAT REMOVING THE SIGNATURE CREATES, and it is easy to miss because the
+     * signer path looks like it takes a caller-supplied verifier safely. It does:
+     * `registerDocumentViaNoir` reads `passport_.verifier` from the caller, but the backend
+     * signature covers the whole `Passport` struct including that field, so the signer is
+     * attesting the verifier as much as the data.
+     *
+     * Delete the signature and that becomes a hole wide enough to drive anything through: a caller
+     * would pass their own contract whose `verify` returns true unconditionally, and register any
+     * identity they liked. So on this path the verifier is set once, by the owner, and the caller
+     * has no say.
+     */
+    address public icaoRegistrationVerifier;
+
+    event IcaoRegistrationVerifierSet(address verifier);
+
+    function setIcaoRegistrationVerifier(address verifier_) external {
+        _onlyOwner();
+        require(verifier_ != address(0), "HolderRegistration: zero verifier");
+        icaoRegistrationVerifier = verifier_;
+
+        emit IcaoRegistrationVerifierSet(verifier_);
+    }
+
+    /**
+     * @notice Register a document with NO signature, against the ICAO chain proven in-circuit.
+     * @param publicInputs_ `register_identity`'s six public outputs, in circuit order.
+     * @param zkPoints_ the Honk proof.
+     *
+     * WHAT THE CALLER DOES NOT GET TO CHOOSE, and why each one matters:
+     *
+     * - **the verifier** - see `icaoRegistrationVerifier`.
+     * - **`documentKey`** - taken from the proof's `passportHash`, not from an argument. The signer
+     *   path uses `passport_.publicKey`, a caller-supplied field; here it is proof-bound, which is
+     *   strictly better and costs nothing.
+     * - **the anti-replay key** - `dg1Hash`, the same value `_replayKey` uses on the signer path.
+     *   sec. 2.18i added that output to the circuit precisely so the two paths cannot key on
+     *   different values and let one passport bind twice under two holder roots.
+     * - **`docType`** - fixed to `DOC_PASSPORT`. `register_identity` IS the passport circuit; a
+     *   caller-supplied type would let someone label a passport a national ID for free.
+     * - **`notAfter`** - fixed to 0. Nothing in the proof attests an expiry, so accepting one would
+     *   be recording a claim the caller made about themselves as though it were established.
+     *
+     * THE ROOT IS CHECKED BEFORE THE PROOF IS VERIFIED, deliberately (sec. 2.18k). Two reasons.
+     * A Honk verification costs hundreds of thousands of gas and a root lookup is one call, so the
+     * cheap check goes first. And more importantly it is what makes the guard TESTABLE AT ALL
+     * before a real document exists: the negative test hands this function arbitrary bytes with a
+     * wrong root and asserts it reverts on the root, never reaching the verifier.
+     */
+    function registerDocumentViaIcao(
+        bytes32[] calldata publicInputs_,
+        bytes calldata zkPoints_
+    ) external virtual {
+        require(
+            publicInputs_.length == _ICAO_SIGNALS_COUNT,
+            "HolderRegistration: wrong public input count"
+        );
+
+        /*
+         * THE ENTIRE SECURITY OF THIS PATH IS THIS CHECK (TODO.md sec. 2.18k).
+         *
+         * `register_identity` proves the document's signer key is in a tree with the root the
+         * PROVER supplied. That is vacuous on its own - rarime's own witness generator builds a
+         * ONE-LEAF tree holding the very key being registered, and the circuit accepts it by
+         * construction. Anyone can generate a keypair, sign a fabricated SOD over a fabricated
+         * MRZ, and produce a completely valid proof.
+         *
+         * What makes it mean something is that the root must be one `certificatesSmt` actually
+         * holds - a tree whose every leaf arrived through `Registration2.registerCertificate`,
+         * which proves a CSCA is in the ICAO master list and verifies that CSCA's signature over
+         * the DSC. Without this line the proof shows only that the prover can sign their own
+         * documents.
+         *
+         * NOTE THE TREE: `certificatesSmt`, NOT `icaoMasterTreeMerkleRoot`. The circuit parameter
+         * is named `icao_root` and the master root is a DIFFERENT structure - a keccak tree of CSCA
+         * keys, consumed only when admitting a DSC. Comparing against it would reject every genuine
+         * proof while looking principled (sec. 2.18l).
+         */
+        require(
+            PoseidonSMT(address(stateKeeper.certificatesSmt())).isRootValid(
+                publicInputs_[_ICAO_PUB_ICAO_ROOT]
+            ),
+            "HolderRegistration: unknown certificates root"
+        );
+
+        address verifier_ = icaoRegistrationVerifier;
+        require(verifier_ != address(0), "HolderRegistration: icao verifier not set");
+        require(
+            INoirVerifier(verifier_).verify(zkPoints_, publicInputs_),
+            "HolderRegistration: invalid icao zk proof"
+        );
+
+        bytes32 holderRoot_ = publicInputs_[_ICAO_PUB_HOLDER_ROOT];
+        require(holderRoot_ != bytes32(0), "HolderRegistration: holder can not be zero");
+
+        bytes32 dg1Hash_ = publicInputs_[_ICAO_PUB_DG1_HASH];
+        require(dg1Hash_ != bytes32(0), "HolderRegistration: zero dg1 hash");
+
+        bytes32 documentKey_ = publicInputs_[_ICAO_PUB_PASSPORT_HASH];
+
+        _holderStateKeeper().addDocument(
+            documentKey_,
+            dg1Hash_,
+            holderRoot_,
+            _holderStateKeeper().DOC_PASSPORT(),
+            uint256(publicInputs_[_ICAO_PUB_DG_COMMIT]),
+            0
+        );
+
+        emit DocumentRegistered(holderRoot_, documentKey_, _holderStateKeeper().DOC_PASSPORT());
+    }
 
     /**
      * @notice Register a NEW document under `holderRoot_` (= identity key). Unlike the

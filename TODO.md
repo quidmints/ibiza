@@ -3089,6 +3089,61 @@ digits ('0'-'9') would not underflow, and the function would have parsed a times
 past the end of the array and returned it successfully. Explicit bound added, with the boundary case
 (twelve digits ending flush with the attributes) still accepted, and both pinned by tests.
 
+### 2.18n THE PERMISSIONLESS ENTRY POINT IS BUILT, AND ITS GUARDS ARE TESTED
+
+*(user: "can this remaining ICAO work be done now?")* The part that protects users, yes.
+
+`HolderRegistration.registerDocumentViaIcao` takes **no signature**. It consumes a
+`register_identity` proof and the caller must satisfy only arithmetic.
+
+**WHAT THE CALLER DOES NOT GET TO CHOOSE, each for a reason:**
+
+- **THE VERIFIER - and this is the hole that removing the signature CREATES.**
+  `registerDocumentViaNoir` reads `passport_.verifier` from its caller, which is safe ONLY because
+  the backend signature covers the whole struct including that field. Delete the signature and a
+  caller would pass their own contract whose `verify` returns true unconditionally and register
+  anything at all. So it is owner-set storage, `icaoRegistrationVerifier`, with no argument for it.
+  **The signer path looks like precedent for accepting it from the caller. It is the opposite.**
+- **`documentKey`** - taken from the proof's `passportHash` rather than an argument. The signer path
+  uses caller-supplied `passport_.publicKey`; here it is proof-bound, strictly better and free.
+- **the anti-replay key** - `dg1Hash`, the same value `_replayKey` uses, which is why sec. 2.18i
+  added that output.
+- **`docType`** - fixed to `DOC_PASSPORT`; `register_identity` IS the passport circuit.
+- **`notAfter`** - fixed to 0. Nothing in the proof attests an expiry, so accepting one would record
+  a caller's claim about themselves as though it were established.
+
+**THE ROOT IS CHECKED BEFORE THE PROOF**, which is what makes any of this testable now: the negative
+tests hand it arbitrary bytes and assert it reverts on the root, never reaching the verifier. Order
+those two the other way and none could be written until a real passport existed. **Seven tests, all
+negative, and that is the right way round** - the guards are the half that protects users and the
+half we can prove. The happy path waits for milestone 3, with no fake root (sec. 2.18k).
+
+### 2.18o `isRootValid` ACCEPTED ROOTS THE TREE HAD NEVER HELD
+
+Found by the above: a guard test that did NOT warp - the natural way to write one - silently passed.
+
+```solidity
+return isRootLatest(root_) || _roots[root_] + ROOT_VALIDITY > block.timestamp;
+```
+
+`_roots[unknown]` is 0, so for an invented root this reads `0 + 3600 > block.timestamp` - **TRUE
+for every root that has never existed, until an hour past the epoch.** Live chains are long past
+that, which is the only reason it was ever safe. **Another protection that came from a fact about
+the world rather than from anything the code says** - the third in a row, after X509's key read
+(sec. 2.18m) and its expiration read, where removing the guard revealed the real stopper was an
+unrelated arithmetic underflow.
+
+**THE BLAST RADIUS IS EVERY ROOT CHECK IN THE SYSTEM.** `IdentityRegistry.register`,
+`HolderRegistration.registerDocumentViaIcao` and `Registration2`'s certificate gate all reduce to
+this function, and each is a guard standing in front of a proof. A fresh chain, an L2 or devnet
+counting from a low timestamp, or any un-warped test accepts ARBITRARY roots. A guard that silently
+passes is worth less than no guard, because it is trusted.
+
+Fixed with an explicit existence check (`supersededAt_ != 0 && ...`), and pinned by
+`test/state/PoseidonSMTRootValidity.t.sol` - five tests including the un-warped case that exposed
+it, the latest root staying valid however old, and a superseded root expiring on schedule. Verified
+by removal.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

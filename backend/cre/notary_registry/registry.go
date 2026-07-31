@@ -22,16 +22,27 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
+// NotaryRecordXML mirrors the REAL schema of Ukraine's `17-ex_xml_wern.xml` (sec. 2.18ce).
+//
+// VERIFIED AGAINST THE ACTUAL FILE, not a description of it. An earlier version guessed
+// `reg_number/full_name/region/status`; every one of those tags was wrong, and the parse yielded ZERO
+// records - caught only because `parseRegistryExport` refuses an empty result.
+//
+// `LICENSE` IS THE STABLE KEY: unique across all 6,159 records in the 2026-07-28 export. `FIO` is
+// NOT - names collide in a country this size, which matters wherever identity is bound to a register
+// entry.
 type NotaryRecordXML struct {
-	RegistrationNumber string `xml:"reg_number"`
-	FullName           string `xml:"full_name"`
-	Region             string `xml:"region"`
-	Status             string `xml:"status"` // expected values: "active" / "suspended" / "terminated"
+	License  string `xml:"LICENSE"`  // notary certificate number - the unique identifier
+	FullName string `xml:"FIO"`      // surname + given names
+	Region   string `xml:"REGION"`   // oblast
+	Office   string `xml:"NAME_OBJ"` // notarial office name
+	Contacts string `xml:"CONTACTS"` // address, phone, email - NOT committed to (see leafHash)
+	Info     string `xml:"INFO"`     // free-text note; EMPTY means operating
 }
 
 type NotaryRegistryXML struct {
-	XMLName xml.Name          `xml:"registry"`
-	Records []NotaryRecordXML `xml:"record"`
+	XMLName xml.Name          `xml:"DATA"`
+	Records []NotaryRecordXML `xml:"RECORD"`
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -110,10 +121,10 @@ func parseRegistryExport(body []byte) ([]NotaryRecordXML, error) {
 // TitleLedger.registerNotary is this value; both sides must change together, and both did.
 func leafHash(r NotaryRecordXML) [32]byte {
 	return crypto.Keccak256Hash(
-		crypto.Keccak256([]byte(r.RegistrationNumber)),
+		crypto.Keccak256([]byte(r.License)),
 		crypto.Keccak256([]byte(r.FullName)),
 		crypto.Keccak256([]byte(r.Region)),
-		crypto.Keccak256([]byte(normalizeStatus(r.Status))), // normalised, so casing cannot fork the leaf
+		crypto.Keccak256([]byte(normalizeStatus(r.Info))), // normalised, so casing cannot fork the leaf
 	)
 }
 
@@ -157,6 +168,11 @@ const (
 // snapshot (see activeLeaves), so a jurisdiction whose vocabulary has not been declared cannot
 // publish a partially-correct one. Adding a country means adding a table entry here, taken from a
 // REAL export - never guessed.
+//
+// UKRAINE HAS NO STATUS FIELD (sec. 2.18ce). The real export carries `INFO`, EMPTY for 5,759 of
+// 6,159 records and holding one distinct note in the rest. So the mapping is from a NOTE to a
+// meaning, and **an empty note means operating** - which is the third semantics family sec. 2.18cb
+// names, and not the one the vocabulary layer was first built for.
 var statusVocabularies = map[string]map[string]statusMeaning{
 	// The three values the export was assumed to emit - this workflow's XML type documents them.
 	//
@@ -166,9 +182,11 @@ var statusVocabularies = map[string]map[string]statusMeaning{
 	// maps a status to the wrong meaning (silent, and it decides who may act). Until a real export
 	// is read, an unknown status correctly refuses to publish.
 	"UA_NOTARY_REGISTRY": {
-		"active":     meaningActive,
-		"suspended":  meaningInactive,
-		"terminated": meaningInactive,
+		// Empty INFO - the overwhelming majority - means the notary is operating.
+		"": meaningActive,
+		// The ONLY non-empty value in the 2026-07-28 export, in all 400 cases where INFO is set.
+		// Taken from the file, not invented (sec. 2.18k forbids the latter).
+		"тимчасово не діє": meaningInactive, // "temporarily not operating"
 	},
 }
 
@@ -218,7 +236,7 @@ func activeLeaves(records []NotaryRecordXML, registryKey string) ([][32]byte, er
 	seen := make(map[[32]byte]struct{}, len(records))
 
 	for _, r := range records {
-		switch vocabulary[normalizeStatus(r.Status)] {
+		switch vocabulary[normalizeStatus(r.Info)] {
 		case meaningActive:
 			leaf := leafHash(r)
 			if _, dup := seen[leaf]; dup {
@@ -230,9 +248,11 @@ func activeLeaves(records []NotaryRecordXML, registryKey string) ([][32]byte, er
 			continue
 		default:
 			return nil, fmt.Errorf(
-				"unknown status %q for registration %q in registry %q - refusing to publish a "+
-					"snapshot that would silently omit this notary; declare it in statusVocabularies",
-				r.Status, r.RegistrationNumber, registryKey)
+				"unrecognised INFO note %q for licence %q in registry %q - refusing to publish a "+
+					"snapshot that would silently omit this notary. A NEW note is how a register "+
+					"expresses a state we have not seen; declare it in statusVocabularies rather "+
+					"than defaulting, because guessing wrong removes someone's ability to act",
+				r.Info, r.License, registryKey)
 		}
 	}
 	return leaves, nil

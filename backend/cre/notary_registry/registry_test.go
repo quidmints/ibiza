@@ -31,11 +31,13 @@ import (
 // does not silently turn every test into a "no vocabulary declared" error that still passes.
 const testRegistry = "UA_NOTARY_REGISTRY"
 
+// Shaped exactly like the REAL export (sec. 2.18ce): DATA/RECORD, and an EMPTY <INFO> meaning the
+// notary is operating. Copied from `17-ex_xml_wern.xml`, not invented.
 const twoActiveNotaries = `<?xml version="1.0" encoding="UTF-8"?>
-<registry>
-  <record><reg_number>123</reg_number><full_name>Jane Doe</full_name><region>Kyiv</region><status>active</status></record>
-  <record><reg_number>456</reg_number><full_name>John Roe</full_name><region>Lviv</region><status>active</status></record>
-</registry>`
+<DATA FORMAT_VERSION="1.0">
+  <RECORD><REGION>Kyiv</REGION><NAME_OBJ>Office A</NAME_OBJ><CONTACTS>addr</CONTACTS><FIO>Jane Doe</FIO><LICENSE>123</LICENSE><INFO></INFO></RECORD>
+  <RECORD><REGION>Lviv</REGION><NAME_OBJ>Office B</NAME_OBJ><CONTACTS>addr</CONTACTS><FIO>John Roe</FIO><LICENSE>456</LICENSE><INFO></INFO></RECORD>
+</DATA>`
 
 func TestParsesAPlainXmlExport(t *testing.T) {
 	records, err := parseRegistryExport([]byte(twoActiveNotaries))
@@ -45,8 +47,8 @@ func TestParsesAPlainXmlExport(t *testing.T) {
 	if len(records) != 2 {
 		t.Fatalf("want 2 records, got %d", len(records))
 	}
-	if records[0].RegistrationNumber != "123" || records[0].FullName != "Jane Doe" ||
-		records[0].Region != "Kyiv" || records[0].Status != "active" {
+	if records[0].License != "123" || records[0].FullName != "Jane Doe" ||
+		records[0].Region != "Kyiv" || records[0].Info != "" || records[0].Office != "Office A" {
 		t.Fatalf("fields did not land in the right struct members: %+v", records[0])
 	}
 }
@@ -99,14 +101,14 @@ func TestParsesAZippedExportIdentically(t *testing.T) {
  * the only thing standing between a schema change and a published empty snapshot.
  */
 func TestARenamedRecordElementIsRejectedRatherThanReturningNothing(t *testing.T) {
-	renamed := `<registry><notary><reg_number>1</reg_number><status>active</status></notary></registry>`
+	renamed := `<DATA><NOTARY><LICENSE>1</LICENSE><INFO></INFO></NOTARY></DATA>`
 	if _, err := parseRegistryExport([]byte(renamed)); err == nil {
 		t.Fatal("a renamed record element parsed to zero records without an error - schema rot would be silent")
 	}
 }
 
 func TestMalformedXmlIsRejected(t *testing.T) {
-	if _, err := parseRegistryExport([]byte("<registry><record>")); err == nil {
+	if _, err := parseRegistryExport([]byte("<DATA><RECORD>")); err == nil {
 		t.Fatal("truncated XML did not error")
 	}
 }
@@ -131,10 +133,10 @@ func TestAZipWhoseFirstEntryIsNotTheExportFailsRatherThanGuessing(t *testing.T) 
 
 func TestOnlyActiveNotariesBecomeLeaves(t *testing.T) {
 	records := []NotaryRecordXML{
-		{RegistrationNumber: "1", Status: "active"},
-		{RegistrationNumber: "2", Status: "suspended"},
-		{RegistrationNumber: "3", Status: "terminated"},
-		{RegistrationNumber: "4", Status: "active"},
+		{License: "1", Info: ""},
+		{License: "2", Info: "тимчасово не діє"},
+		{License: "3", Info: "тимчасово не діє"},
+		{License: "4", Info: ""},
 	}
 	leaves, err := activeLeaves(records, testRegistry)
 	if err != nil {
@@ -154,10 +156,10 @@ func TestOnlyActiveNotariesBecomeLeaves(t *testing.T) {
  */
 func TestAStatusCasingChangeNoLongerDropsNotaries(t *testing.T) {
 	records := []NotaryRecordXML{
-		{RegistrationNumber: "1", Status: "active"},
-		{RegistrationNumber: "2", Status: "Active"},
-		{RegistrationNumber: "3", Status: "ACTIVE"},
-		{RegistrationNumber: "4", Status: "  active  "},
+		{License: "1", Info: ""},
+		{License: "2", Info: ""},
+		{License: "3", Info: ""},
+		{License: "4", Info: "   "},
 	}
 	leaves, err := activeLeaves(records, testRegistry)
 	if err != nil {
@@ -179,8 +181,8 @@ func TestAStatusCasingChangeNoLongerDropsNotaries(t *testing.T) {
  */
 func TestAnUnknownStatusRefusesTheSnapshotRatherThanOmittingTheNotary(t *testing.T) {
 	records := []NotaryRecordXML{
-		{RegistrationNumber: "1", Status: "active"},
-		{RegistrationNumber: "2", Status: "\u0434\u0456\u044e\u0447\u0438\u0439"}, // "diyuchyi" - Ukrainian for active
+		{License: "1", Info: ""},
+		{License: "2", Info: "\u0434\u0456\u044e\u0447\u0438\u0439"}, // "diyuchyi" - Ukrainian for active
 	}
 	if _, err := activeLeaves(records, testRegistry); err == nil {
 		t.Fatal("an unrecognised status was silently skipped - that is censorship by parse error")
@@ -189,9 +191,9 @@ func TestAnUnknownStatusRefusesTheSnapshotRatherThanOmittingTheNotary(t *testing
 
 func TestKnownInactiveStatusesAreSkippedWithoutError(t *testing.T) {
 	records := []NotaryRecordXML{
-		{RegistrationNumber: "1", Status: "active"},
-		{RegistrationNumber: "2", Status: "Suspended"},
-		{RegistrationNumber: "3", Status: "TERMINATED"},
+		{License: "1", Info: ""},
+		{License: "2", Info: "тимчасово не діє"},
+		{License: "3", Info: "ТИМЧАСОВО НЕ ДІЄ"},
 	}
 	leaves, err := activeLeaves(records, testRegistry)
 	if err != nil {
@@ -243,14 +245,14 @@ func TestAnEmptyRegisterProducesTheZeroRoot(t *testing.T) {
  * CHANGING ANY FIELD CHANGES THE LEAF - the property the whole snapshot rests on.
  */
 func TestEveryFieldIsBoundIntoTheLeaf(t *testing.T) {
-	base := NotaryRecordXML{RegistrationNumber: "123", FullName: "Jane Doe", Region: "Kyiv", Status: "active"}
+	base := NotaryRecordXML{License: "123", FullName: "Jane Doe", Region: "Kyiv", Info: ""}
 	h := leafHash(base)
 
 	variants := map[string]NotaryRecordXML{
-		"registration number": {RegistrationNumber: "124", FullName: "Jane Doe", Region: "Kyiv", Status: "active"},
-		"full name":           {RegistrationNumber: "123", FullName: "Jane Roe", Region: "Kyiv", Status: "active"},
-		"region":              {RegistrationNumber: "123", FullName: "Jane Doe", Region: "Lviv", Status: "active"},
-		"status":              {RegistrationNumber: "123", FullName: "Jane Doe", Region: "Kyiv", Status: "suspended"},
+		"registration number": {License: "124", FullName: "Jane Doe", Region: "Kyiv", Info: ""},
+		"full name":           {License: "123", FullName: "Jane Roe", Region: "Kyiv", Info: ""},
+		"region":              {License: "123", FullName: "Jane Doe", Region: "Lviv", Info: ""},
+		"status":              {License: "123", FullName: "Jane Doe", Region: "Kyiv", Info: "тимчасово не діє"},
 	}
 	for field, v := range variants {
 		if leafHash(v) == h {
@@ -267,8 +269,8 @@ func TestEveryFieldIsBoundIntoTheLeaf(t *testing.T) {
  * fixed-width, so no boundary is ambiguous.
  */
 func TestFieldsCannotBeReSplitAcrossTheRegNumberNameBoundary(t *testing.T) {
-	left := NotaryRecordXML{RegistrationNumber: "12", FullName: "3X", Region: "Kyiv", Status: "active"}
-	right := NotaryRecordXML{RegistrationNumber: "123", FullName: "X", Region: "Kyiv", Status: "active"}
+	left := NotaryRecordXML{License: "12", FullName: "3X", Region: "Kyiv", Info: ""}
+	right := NotaryRecordXML{License: "123", FullName: "X", Region: "Kyiv", Info: ""}
 
 	if leafHash(left) == leafHash(right) {
 		t.Fatal("two different notaries still collide across the reg-number/name boundary")
@@ -283,8 +285,8 @@ func TestFieldsCannotBeReSplitAcrossTheRegNumberNameBoundary(t *testing.T) {
  * country's snapshot unpublishable. A safe failure, but a liveness one.
  */
 func TestDuplicateRecordsAreDeduplicated(t *testing.T) {
-	dup := NotaryRecordXML{RegistrationNumber: "1", FullName: "Jane", Region: "Kyiv", Status: "active"}
-	other := NotaryRecordXML{RegistrationNumber: "2", FullName: "John", Region: "Lviv", Status: "active"}
+	dup := NotaryRecordXML{License: "1", FullName: "Jane", Region: "Kyiv", Info: ""}
+	other := NotaryRecordXML{License: "2", FullName: "John", Region: "Lviv", Info: ""}
 
 	leaves, err := activeLeaves([]NotaryRecordXML{dup, other, dup}, testRegistry)
 	if err != nil {
@@ -300,10 +302,10 @@ func TestDuplicateRecordsAreDeduplicated(t *testing.T) {
  * is what the contract checks. Sorting alone does not give that when duplicates are present.
  */
 func TestSubmittedLeavesAreStrictlyAscending(t *testing.T) {
-	dup := NotaryRecordXML{RegistrationNumber: "1", FullName: "Jane", Region: "Kyiv", Status: "active"}
+	dup := NotaryRecordXML{License: "1", FullName: "Jane", Region: "Kyiv", Info: ""}
 	records := []NotaryRecordXML{dup, dup,
-		{RegistrationNumber: "2", FullName: "John", Region: "Lviv", Status: "active"},
-		{RegistrationNumber: "3", FullName: "Ann", Region: "Odesa", Status: "active"},
+		{License: "2", FullName: "John", Region: "Lviv", Info: ""},
+		{License: "3", FullName: "Ann", Region: "Odesa", Info: ""},
 	}
 	leaves, err := activeLeaves(records, testRegistry)
 	if err != nil {
@@ -340,8 +342,8 @@ func TestANonLatinVocabularyWorksOnceDeclared(t *testing.T) {
 	defer delete(statusVocabularies, key)
 
 	records := []NotaryRecordXML{
-		{RegistrationNumber: "1", Status: "\u0414\u0406\u042e\u0427\u0418\u0419"}, // upper case - must still fold
-		{RegistrationNumber: "2", Status: "\u0437\u0443\u043f\u0438\u043d\u0435\u043d\u043e"},
+		{License: "1", Info: "\u0414\u0406\u042e\u0427\u0418\u0419"}, // upper case - must still fold
+		{License: "2", Info: "\u0437\u0443\u043f\u0438\u043d\u0435\u043d\u043e"},
 	}
 	leaves, err := activeLeaves(records, key)
 	if err != nil {
@@ -359,7 +361,7 @@ func TestANonLatinVocabularyWorksOnceDeclared(t *testing.T) {
  * an undeclared register refuses outright rather than publishing whatever happens to match English.
  */
 func TestAnUndeclaredRegistryRefusesToPublish(t *testing.T) {
-	records := []NotaryRecordXML{{RegistrationNumber: "1", Status: "active"}}
+	records := []NotaryRecordXML{{License: "1", Info: ""}}
 	if _, err := activeLeaves(records, "IR_NOTARY_REGISTRY"); err == nil {
 		t.Fatal("an undeclared registry published using the English vocabulary by accident")
 	}
@@ -401,7 +403,7 @@ func TestEveryLeafIsProvableAtEveryTreeSize(t *testing.T) {
 		records := make([]NotaryRecordXML, 0, size)
 		for i := 0; i < size; i++ {
 			records = append(records, NotaryRecordXML{
-				RegistrationNumber: string(rune('A' + i)), FullName: "N", Region: "R", Status: "active",
+				License: string(rune('A' + i)), FullName: "N", Region: "R", Info: "",
 			})
 		}
 		leaves, err := activeLeaves(records, testRegistry)
@@ -427,8 +429,8 @@ func TestEveryLeafIsProvableAtEveryTreeSize(t *testing.T) {
 // the boolean - conflating them would let a non-notary be admitted against a one-notary snapshot.
 func TestAnAbsentLeafIsReportedAbsentRatherThanGivenAnEmptyProof(t *testing.T) {
 	leaves, _ := activeLeaves([]NotaryRecordXML{
-		{RegistrationNumber: "1", Status: "active"},
-		{RegistrationNumber: "2", Status: "active"},
+		{License: "1", Info: ""},
+		{License: "2", Info: ""},
 	}, testRegistry)
 
 	if _, ok := merkleProof(leaves, [32]byte{0xFF}); ok {
@@ -437,7 +439,7 @@ func TestAnAbsentLeafIsReportedAbsentRatherThanGivenAnEmptyProof(t *testing.T) {
 }
 
 func TestASingleLeafProofIsEmptyAndValid(t *testing.T) {
-	leaves, _ := activeLeaves([]NotaryRecordXML{{RegistrationNumber: "1", Status: "active"}}, testRegistry)
+	leaves, _ := activeLeaves([]NotaryRecordXML{{License: "1", Info: ""}}, testRegistry)
 	root := merkleRoot(append([][32]byte(nil), leaves...))
 
 	proof, ok := merkleProof(leaves, leaves[0])
@@ -457,9 +459,9 @@ func TestASingleLeafProofIsEmptyAndValid(t *testing.T) {
 // still holds - including the leaves about to be submitted on-chain.
 func TestGeneratingAProofDoesNotReorderTheCallersLeaves(t *testing.T) {
 	leaves, _ := activeLeaves([]NotaryRecordXML{
-		{RegistrationNumber: "3", Status: "active"},
-		{RegistrationNumber: "1", Status: "active"},
-		{RegistrationNumber: "2", Status: "active"},
+		{License: "3", Info: ""},
+		{License: "1", Info: ""},
+		{License: "2", Info: ""},
 	}, testRegistry)
 
 	before := append([][32]byte(nil), leaves...)
@@ -486,10 +488,10 @@ func TestGeneratingAProofDoesNotReorderTheCallersLeaves(t *testing.T) {
  */
 func TestEmitSolidityCrossCheckFixture(t *testing.T) {
 	records := []NotaryRecordXML{
-		{RegistrationNumber: "123", FullName: "Jane Doe", Region: "Kyiv", Status: "active"},
-		{RegistrationNumber: "456", FullName: "John Roe", Region: "Lviv", Status: "active"},
-		{RegistrationNumber: "789", FullName: "Ann Poe", Region: "Odesa", Status: "active"},
-		{RegistrationNumber: "999", FullName: "Old Notary", Region: "Kyiv", Status: "terminated"},
+		{License: "123", FullName: "Jane Doe", Region: "Kyiv", Info: ""},
+		{License: "456", FullName: "John Roe", Region: "Lviv", Info: ""},
+		{License: "789", FullName: "Ann Poe", Region: "Odesa", Info: ""},
+		{License: "999", FullName: "Old Notary", Region: "Kyiv", Info: "тимчасово не діє"},
 	}
 	leaves, err := activeLeaves(records, testRegistry)
 	if err != nil {

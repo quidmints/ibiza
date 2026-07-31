@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.28;
 
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import {SparseMerkleTree} from "@solarity/solidity-lib/libs/data-structures/SparseMerkleTree.sol";
 import {AccessControlUpgradeable} from "@oz-upgradeable/access/AccessControlUpgradeable.sol";
 import {UUPSUpgradeable} from "@oz-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
@@ -11,6 +10,7 @@ import {PoseidonUnit2L} from "../libraries/Poseidon.sol";
 import {HolderStateKeeper} from "../holder/HolderStateKeeper.sol";
 import {INoirVerifier} from "../interfaces/verifiers/INoirVerifier.sol";
 import {RegistrySourceAnchor} from "../registry/RegistrySourceAnchor.sol";
+import {Constants} from "../pool/lib/Constants.sol";
 
 /// @notice Public, inspectable title/property ledger - informed by (NOT copying) MetaLeX's
 /// CyberCorps design (see backend/circuits/pp/src/title_holder.nr's header and the 2026-07-24
@@ -51,6 +51,8 @@ import {RegistrySourceAnchor} from "../registry/RegistrySourceAnchor.sol";
 /// convention for record-holding registry contracts (see RegistrySourceAnchor.sol's own doc
 /// comment for the non-upgradeable-vault-vs-upgradeable-registry distinction this follows).
 contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
+    using SparseMerkleTree for SparseMerkleTree.Bytes32SMT;
+
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
 
     struct TitleEntry {
@@ -100,7 +102,9 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
         bytes32 jurisdiction; // e.g. keccak256("UA") - which registry/law this title is under
         uint256 priorTitleId; // 0 if this is a root entry; otherwise a chain-of-title link
         bytes32 notaryRegistryId; // which RegistrySourceAnchor registryId attested this entry
-        address notary; // the specific notary (must be active at mint/endorse time)
+        // NO `address notary`. Storing it named the acting notary for anyone who read the public
+        // `titles` mapping (sec. 2.18am), and it is not needed: authorisation is now a proof of
+        // membership in `_notaryTree`, which says an ACTIVE notary acted without saying which.
         uint256 mintedAt;
         bool encumbered;
     }
@@ -109,7 +113,7 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
     // (one implementation can serve many proxies; deployment-specific config is initializer-set).
     RegistrySourceAnchor public NOTARY_REGISTRY;
     INoirVerifier public TITLE_HOLDER_VERIFIER; // verifies pp::title_holder proofs
-    HolderStateKeeper public STATE_KEEPER; // a notary is a registered identity - see notaryDataHashOf
+    HolderStateKeeper public STATE_KEEPER; // holder documents, for the title-holder path
 
     // 0 is reserved for "no prior title" in priorTitleId. NOT given an inline default here: for a
     // UUPS-upgradeable contract, an inline state-variable initializer only runs in the
@@ -134,45 +138,72 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
     // process described above), but it does mean there is exactly ONE trust assumption in this
     // whole mechanism (whoever the registry's postman is), not two.
     /**
-     * A NOTARY IS A REGISTERED IDENTITY, not an address (sec. 2.13l / sec. 2.15).
+     * A NOTARY IS A COMMITMENT, not an address (sec. 2.13l / sec. 2.15 / sec. 2.18am).
      *
-     * Two independent facts, deliberately kept apart:
-     *   `notaryDataHashOf`  - WHICH registry entry this identity claims, proven against the
-     *                         CRE-anchored root in `_requireActiveNotary`. Notary-ness comes from
-     *                         the official register, scraped by a decentralised oracle network where
-     *                         every node must produce a byte-identical result - not from anyone's
-     *                         say-so here.
-     *   `notaryIdentityOf`  - which signing key acts for that identity, so an action does not need
-     *                         a fresh zero-knowledge proof per signature.
+     * WHAT THIS REPLACED. Two public mappings used to live here - `notaryDataHashOf` (holderRoot
+     * to keccak(regNumber, fullName, region, status)) and `notaryIdentityOf` (signing key to
+     * holderRoot). Both are gone. The first was ENUMERABLE: every preimage component comes from the
+     * official register, which is public by construction because a decentralised oracle network
+     * scrapes it, so anyone could compute the hash for every notary and match. The second published
+     * the link between a signing key and an identity outright.
      *
-     * WHY AN IDENTITY AND NOT AN ADDRESS. A notary is a regular user of this system like anyone
-     * else, and binding their authority to a bare keypair made them the ONLY participant who could
-     * not be revoked - an address has no passport to expire, no document to invalidate and no
-     * status to lose. Keyed by `holderRoot`, a notary is revocable by exactly the mechanism that
-     * covers every other user: `_requireActiveNotary` refuses to act for an identity with no
-     * CURRENT document.
+     * WHAT STANDS IN THEIR PLACE. A commitment in `_notaryTree`, admitted by `registerNotary` only
+     * against a register entry proven in the CRE-anchored snapshot - so notary-ness still comes from
+     * the official register and the postman still cannot invent a notary. What changed is that
+     * ACTING no longer names anyone: `notary_action` proves membership in that tree in zero
+     * knowledge.
+     *
+     * WHY A COMMITMENT AND NOT AN ADDRESS. Unchanged in substance from the original reasoning, and
+     * now enforced rather than argued: a bare keypair made the notary the ONLY participant who could
+     * not be revoked - an address has no passport to expire, no document to invalidate, no status to
+     * lose. A leaf has all three, because revocation writes a non-zero value that no clean-status
+     * proof can equal.
      *
      * DELIBERATELY NOT the pool commitment, even though that is this system's other identity
-     * handle. That value is a notary's PRIVATE key into the shielded pool; publishing it here to
-     * gain a revocation check would link their public professional role to their private financial
-     * identity - buying revocability by destroying the privacy the pool exists to provide.
-     * `holderRoot` is already public in the registration events, so it costs nothing.
+     * handle. That value is a notary's PRIVATE key into the shielded pool; reusing it here would
+     * link their public professional role to their private financial identity - buying convenience
+     * by destroying the privacy the pool exists to provide. `notary_secret` is its own value.
      */
-    mapping(bytes32 => bytes32) public notaryDataHashOf; // holderRoot => keccak(regNumber,fullName,region,status)
-    mapping(address => bytes32) public notaryIdentityOf; // signing key => holderRoot
+    /**
+     * THE ANONYMITY SET (sec. 2.18am). Notary commitments, one leaf each, value 0 while active.
+     *
+     * REGISTRATION IS PUBLIC AND VERIFIED; ACTIONS ARE ANONYMOUS. Those are separable, and keeping
+     * them separate is what lets this be private WITHOUT weakening who may act. `registerNotary`
+     * still proves the register entry against the CRE-anchored root, exactly as the old
+     * address-based path did - so the postman cannot invent a notary. What changed is action time:
+     * `notary_action` proves membership in this tree in zero knowledge, so a title records THAT an
+     * active notary authorised it and never WHICH one.
+     *
+     * REVOCATION IS THE FAULT MECHANISM, which is why no custodian quorum exists here. Writing a
+     * non-zero leaf value makes every STATUS_CLEAN proof for that leaf impossible, so a revoked
+     * notary silently loses the ability to act and nobody learns who they were. Identical to the
+     * identity registry, deliberately - see backend/circuits/notary_action/src/main.nr.
+     */
+    SparseMerkleTree.Bytes32SMT private _notaryTree;
+    mapping(bytes32 _root => uint256 _createdAt) public notaryRootCreatedAt;
 
-    event TitleMinted(uint256 indexed titleId, bytes32 jurisdiction, address indexed notary, bytes32 holderCommitment);
+    INoirVerifier public NOTARY_ACTION_VERIFIER; // verifies notary_action proofs
+
+    /// How long a SUPERSEDED notary root stays usable, so a proof built moments before another
+    /// notary was registered or revoked is not wasted. Matches the identity registry's window.
+    uint256 public constant NOTARY_ROOT_VALIDITY = 1 hours;
+
+    /// NO `address notary` ON ANY OF THESE. It used to be an `indexed` topic on three of them,
+    /// which made "every title this notary touched" a single log query - the worst of the four
+    /// exposures sec. 2.18am found, because indexing exists precisely to make lookup cheap.
+    event TitleMinted(uint256 indexed titleId, bytes32 jurisdiction, bytes32 holderCommitment);
     event TitleTransferred(uint256 indexed titleId, bytes32 oldHolderCommitment, bytes32 newHolderCommitment);
-    event LegendAdded(uint256 indexed titleId, string legend, address indexed notary);
-    event EncumbranceSet(uint256 indexed titleId, bool encumbered, address indexed notary);
-    event NotaryIdentityBound(bytes32 indexed holderRoot, address indexed signingKey, bytes32 notaryDataHash);
+    event LegendAdded(uint256 indexed titleId, string legend);
+    event EncumbranceSet(uint256 indexed titleId, bool encumbered);
+    event NotaryRegistered(bytes32 indexed notaryCommitment, bytes32 indexed registryId);
+    event NotaryRevoked(bytes32 indexed notaryCommitment, bytes32 predicate);
 
     error TitleDoesNotExist();
     error NotaryNotActive();
     error ZeroNotaryIdentity();
     error NotaryIdentityHasNoCurrentDocument();
     error InvalidNotaryIdentityProof();
-    error InvalidNotarySignature();
+    error UnknownNotaryRoot();
     error InvalidHolderProof();
     error ZeroCommitment();
     error ZeroPropertyKey();
@@ -191,11 +222,13 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
         address notaryRegistry_,
         address titleHolderVerifier_,
         address stateKeeper_,
-        address owner_
+        address owner_,
+        address notaryActionVerifier_
     ) external initializer {
         if (
             notaryRegistry_ == address(0) || titleHolderVerifier_ == address(0)
                 || stateKeeper_ == address(0) || owner_ == address(0)
+                || notaryActionVerifier_ == address(0)
         ) revert ZeroAddress();
         __AccessControl_init();
         // UUPSUpgradeable has no storage/init step in OZ 5.6.1 (it's a thin, stateless wrapper).
@@ -203,6 +236,10 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
         NOTARY_REGISTRY = RegistrySourceAnchor(notaryRegistry_);
         TITLE_HOLDER_VERIFIER = INoirVerifier(titleHolderVerifier_);
         STATE_KEEPER = HolderStateKeeper(stateKeeper_);
+        NOTARY_ACTION_VERIFIER = INoirVerifier(notaryActionVerifier_);
+        // MUST equal notary_action's NOTARY_TREE_DEPTH. A mismatch fails every proof with no useful
+        // diagnostic, which is why it is stated here next to the verifier it must agree with.
+        _notaryTree.initialize(32);
         nextTitleId = 1;
         _grantRole(DEFAULT_ADMIN_ROLE, owner_);
         _grantRole(OWNER_ROLE, owner_);
@@ -233,30 +270,80 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
      *      here performs. So the residual trust is "the postman attached the right entry", not
      *      "the postman invented a notary", which is a materially smaller claim.
      */
-    function bindNotaryIdentity(
-        bytes32 holderRoot_,
+    /**
+     * @notice Admit a notary to the anonymity set.
+     * @param notaryCommitment_ `Poseidon(notary_secret)` - the leaf key `notary_action` derives
+     *        from the secret it proves knowledge of. The secret NEVER appears on-chain.
+     * @param notaryDataHash_ keccak(regNumber, fullName, region, status) - the register entry
+     * @param registryId_ which RegistrySourceAnchor snapshot to prove against
+     * @param registryProof_ Merkle proof of `notaryDataHash_` in that snapshot's active root
+     *
+     * REGISTRATION STAYS PUBLIC AND VERIFIED, DELIBERATELY. It would have been easy to let the
+     * postman simply assert a commitment and call the result private - and that would have QUIETLY
+     * WEAKENED the system, because the old address-based path proved the register entry against the
+     * CRE-anchored root and so could not invent a notary. That check is kept here, unchanged. The
+     * privacy is bought at ACTION time instead, where `notary_action` proves membership in this
+     * tree in zero knowledge. Public admission plus anonymous action is the standard ASP shape, and
+     * it is strictly stronger than trusting the postman not to lie.
+     *
+     * The postman gate is retained on top for the reason it always existed: the Merkle proof shows
+     * the REGISTER ENTRY is genuine, not that this commitment belongs to that notary. Binding those
+     * two remains the out-of-band step the contract-level OPEN GAP note describes - unchanged in
+     * kind by this work, and unchanged in trust boundary (still exactly one assumption, whoever the
+     * registry's postman is).
+     */
+    function registerNotary(
+        bytes32 notaryCommitment_,
         bytes32 notaryDataHash_,
-        address signingKey_,
-        bytes calldata identityProof_
+        bytes32 registryId_,
+        bytes32[] calldata registryProof_
     ) external {
         if (!NOTARY_REGISTRY.hasRole(NOTARY_REGISTRY.REGISTRY_POSTMAN(), msg.sender)) revert OnlyRegistryPostman();
-        if (holderRoot_ == bytes32(0) || signingKey_ == address(0)) revert ZeroNotaryIdentity();
-        if (STATE_KEEPER.getActiveDocumentCount(holderRoot_) == 0) revert NotaryIdentityHasNoCurrentDocument();
+        if (notaryCommitment_ == bytes32(0) || notaryDataHash_ == bytes32(0)) revert ZeroNotaryIdentity();
+        if (!MerkleProof.verify(registryProof_, NOTARY_REGISTRY.latestActiveRoot(registryId_), notaryDataHash_)) {
+            revert NotaryNotActive();
+        }
 
-        // The context binds the proof to THIS signing key and THIS register entry, so a proof of
-        // identity control cannot be replayed to bind a different key or a different notary.
-        bytes32 context_ = notaryBindContext(notaryDataHash_, signingKey_);
-        bytes32 expected_ =
-            bytes32(PoseidonUnit2L.poseidon([uint256(holderRoot_), uint256(context_)]));
+        // Value 0 == STATUS_CLEAN, the value notary_action proves inclusion at.
+        _notaryTree.add(notaryCommitment_, bytes32(0));
+        notaryRootCreatedAt[_notaryTree.getRoot()] = block.timestamp;
+        emit NotaryRegistered(notaryCommitment_, registryId_);
+    }
 
-        bytes32[] memory publicInputs_ = new bytes32[](2);
-        publicInputs_[0] = expected_;
-        publicInputs_[1] = context_;
-        if (!TITLE_HOLDER_VERIFIER.verify(identityProof_, publicInputs_)) revert InvalidNotaryIdentityProof();
+    /**
+     * @notice Revoke a notary. THIS IS THE ENTIRE FAULT MECHANISM - see sec. 2.18am.
+     * @param predicate_ non-zero reason code written into the leaf
+     *
+     * No identity is opened, because nothing needs opening. Writing a non-zero value makes every
+     * STATUS_CLEAN inclusion proof for that leaf impossible, so the notary silently stops being able
+     * to act. That is what Privacy Pools does to a bad actor - exclusion, not exposure - and it is
+     * why the "quorum of custodians" this design once contemplated turned out to be answering a
+     * question the architecture does not ask.
+     */
+    function revokeNotary(bytes32 notaryCommitment_, bytes32 predicate_) external {
+        if (!NOTARY_REGISTRY.hasRole(NOTARY_REGISTRY.REGISTRY_POSTMAN(), msg.sender)) revert OnlyRegistryPostman();
+        if (predicate_ == bytes32(0)) revert ZeroNotaryIdentity(); // zero IS the clean status
 
-        notaryDataHashOf[holderRoot_] = notaryDataHash_;
-        notaryIdentityOf[signingKey_] = holderRoot_;
-        emit NotaryIdentityBound(holderRoot_, signingKey_, notaryDataHash_);
+        _notaryTree.update(notaryCommitment_, predicate_);
+        notaryRootCreatedAt[_notaryTree.getRoot()] = block.timestamp;
+        emit NotaryRevoked(notaryCommitment_, predicate_);
+    }
+
+    /// @notice Current root of the notary anonymity set - what a prover builds a witness against.
+    function notaryRoot() external view returns (bytes32) {
+        return _notaryTree.getRoot();
+    }
+
+    /// @notice Inclusion witness for a notary commitment, for building a `notary_action` witness.
+    /// @dev Taken from the REAL tree rather than rebuilt off-chain - the rule identityProof.ts and
+    ///      withdrawWitness.ts already follow, so a client can never prove against a tree of its own
+    ///      imagining.
+    function notaryProof(bytes32 notaryCommitment_)
+        external
+        view
+        returns (SparseMerkleTree.Proof memory)
+    {
+        return _notaryTree.getProof(notaryCommitment_);
     }
 
     /// @notice Mint a new title entry. `notarySignature_` must be from `notary_` over the entry's
@@ -269,20 +356,22 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
         bytes32 jurisdiction_,
         uint256 priorTitleId_,
         bytes32 notaryRegistryId_,
-        address notary_,
-        bytes32[] calldata notaryMerkleProof_,
-        bytes calldata notarySignature_,
+        bytes32 notaryRoot_,
+        bytes calldata notaryProof_,
         bytes32 initialHolderCommitment_
     ) external returns (uint256 titleId_) {
         if (initialHolderCommitment_ == bytes32(0)) revert ZeroCommitment();
         if (propertyKey_ == bytes32(0)) revert ZeroPropertyKey();
-        _requireActiveNotary(notaryRegistryId_, notary_, notaryMerkleProof_);
-        bytes32 mintMessage_ = keccak256(
-            abi.encodePacked(
-                "TITLE_LEDGER_MINT", address(this), propertyKey_, jurisdiction_, priorTitleId_
+
+        _requireActiveNotary(
+            notaryRoot_,
+            notaryProof_,
+            keccak256(
+                abi.encodePacked(
+                    "TITLE_LEDGER_MINT", address(this), propertyKey_, jurisdiction_, priorTitleId_
+                )
             )
         );
-        _requireSignedByNotary(notary_, notarySignature_, mintMessage_);
 
         _requireUntitledOrValidSuccession(propertyKey_, priorTitleId_);
 
@@ -292,14 +381,13 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
             jurisdiction: jurisdiction_,
             priorTitleId: priorTitleId_,
             notaryRegistryId: notaryRegistryId_,
-            notary: notary_,
             mintedAt: block.timestamp,
             encumbered: false
         });
         holderCommitment[titleId_] = initialHolderCommitment_;
         titleOfProperty[propertyKey_] = titleId_;
 
-        emit TitleMinted(titleId_, jurisdiction_, notary_, initialHolderCommitment_);
+        emit TitleMinted(titleId_, jurisdiction_, initialHolderCommitment_);
     }
 
     /// @notice Add a restriction legend to an existing title (e.g. "subject to mortgage", "life
@@ -311,22 +399,32 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
     function addLegend(
         uint256 titleId_,
         string calldata legend_,
-        bytes32[] calldata notaryMerkleProof_,
-        bytes calldata notarySignature_
+        bytes32 notaryRoot_,
+        bytes calldata notaryProof_
     ) external {
         TitleEntry storage entry = titles[titleId_];
         if (entry.mintedAt == 0) revert TitleDoesNotExist();
-        _requireActiveNotary(entry.notaryRegistryId, entry.notary, notaryMerkleProof_);
-        // Domain-separated from mintTitle's message (a different prefix, different fields) - a
-        // deterministic notary signer must never be asked to sign the "same" digest for two
-        // different operations, or a signature captured for one could be replayed as the other.
-        // See HolderRegistration.revokeDocumentViaSigner's doc comment for the same lesson,
-        // found the hard way earlier in this fusion's own registration flow.
-        bytes32 legendMessage_ = keccak256(abi.encodePacked("TITLE_LEDGER_LEGEND", address(this), titleId_, legend_));
-        _requireSignedByNotary(entry.notary, notarySignature_, legendMessage_);
+
+        // ANY ACTIVE NOTARY, NOT THE ONE WHO MINTED (sec. 2.18am, user decision 2026-07-31).
+        // Requiring the original would have meant storing a commitment to them, which is a
+        // PERSISTENT PSEUDONYM: every title one notary touched becomes linkable, so a single
+        // deanonymisation exposes their whole history - and the threat model here is notaries being
+        // punished. It also removed a liveness trap, where a revoked or unavailable minting notary
+        // left a title permanently unamendable. This matches the county-recorder analogy the
+        // function already used: a different clerk can file an encumbrance.
+        //
+        // Domain-separated from mintTitle's context (different prefix, different fields) - one
+        // operation's authorisation must never be replayable as another's. See
+        // HolderRegistration.revokeDocumentViaSigner for the same lesson, found the hard way in
+        // this fusion's own registration flow.
+        _requireActiveNotary(
+            notaryRoot_,
+            notaryProof_,
+            keccak256(abi.encodePacked("TITLE_LEDGER_LEGEND", address(this), titleId_, legend_))
+        );
 
         restrictionLegends[titleId_].push(legend_);
-        emit LegendAdded(titleId_, legend_, entry.notary);
+        emit LegendAdded(titleId_, legend_);
     }
 
     /// @notice Mark/clear a title as encumbered (e.g. a lending protocol placing/releasing a
@@ -335,18 +433,21 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
     function setEncumbered(
         uint256 titleId_,
         bool encumbered_,
-        bytes32[] calldata notaryMerkleProof_,
-        bytes calldata notarySignature_
+        bytes32 notaryRoot_,
+        bytes calldata notaryProof_
     ) external {
         TitleEntry storage entry = titles[titleId_];
         if (entry.mintedAt == 0) revert TitleDoesNotExist();
-        _requireActiveNotary(entry.notaryRegistryId, entry.notary, notaryMerkleProof_);
-        bytes32 encumberMessage_ =
-            keccak256(abi.encodePacked("TITLE_LEDGER_ENCUMBER", address(this), titleId_, encumbered_));
-        _requireSignedByNotary(entry.notary, notarySignature_, encumberMessage_);
+
+        // Any active notary - see addLegend for why binding to the minting notary was rejected.
+        _requireActiveNotary(
+            notaryRoot_,
+            notaryProof_,
+            keccak256(abi.encodePacked("TITLE_LEDGER_ENCUMBER", address(this), titleId_, encumbered_))
+        );
 
         entry.encumbered = encumbered_;
-        emit EncumbranceSet(titleId_, encumbered_, entry.notary);
+        emit EncumbranceSet(titleId_, encumbered_);
     }
 
     /// @notice Transfer registered holdership. Requires a ZK proof (pp::title_holder) that the
@@ -440,24 +541,53 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
         );
     }
 
-    function _requireActiveNotary(bytes32 registryId_, address notary_, bytes32[] calldata proof_) internal view {
-        bytes32 holderRoot = notaryIdentityOf[notary_];
-        if (holderRoot == bytes32(0)) revert NotaryNotActive();
-        if (STATE_KEEPER.getActiveDocumentCount(holderRoot) == 0) revert NotaryIdentityHasNoCurrentDocument();
+    /**
+     * @dev Require that SOME active notary authorised `actionMessage_`, without learning which.
+     *
+     * THE ACTION CONTEXT IS SUBSTITUTED, NOT COMPARED (sec. 2.18ah). `notary_action` leaves
+     * `action_context` unconstrained - there is nothing to check in-circuit, because its meaning
+     * lives entirely in data only this contract holds. So the value handed to the verifier is
+     * DERIVED HERE from the action, and the prover's own is never read. That is what binds a proof
+     * to one operation on one title.
+     *
+     * The shape matters as much as the arithmetic. Comparing would have worked identically today
+     * and been DELETABLE: remove the check and every test but one still passes while proofs become
+     * replayable across actions. Passing the derived value as an argument means there is no line
+     * whose removal silently weakens anything - delete the derivation and this does not compile.
+     *
+     * @param actionMessage_ a caller-built, already domain-separated keccak hash. Each call site
+     *        builds its own with its own prefix; this function never fabricates one, so two
+     *        different operations can never resolve to the same context.
+     */
+    function _requireActiveNotary(bytes32 notaryRoot_, bytes calldata proof_, bytes32 actionMessage_)
+        internal
+        view
+    {
+        if (!isValidNotaryRoot(notaryRoot_)) revert UnknownNotaryRoot();
 
-        bytes32 dataHash = notaryDataHashOf[holderRoot];
-        if (dataHash == bytes32(0)) revert NotaryNotActive();
-        if (!MerkleProof.verify(proof_, NOTARY_REGISTRY.latestActiveRoot(registryId_), dataHash)) {
-            revert NotaryNotActive();
-        }
+        bytes32[] memory publicInputs_ = new bytes32[](2);
+        publicInputs_[0] = notaryRoot_;
+        // Reduced into the field the circuit works over; a raw keccak output can exceed it, and
+        // silently wrapping would make two different actions share a context.
+        publicInputs_[1] = bytes32(uint256(actionMessage_) % Constants.SNARK_SCALAR_FIELD);
+
+        if (!NOTARY_ACTION_VERIFIER.verify(proof_, publicInputs_)) revert NotaryNotActive();
     }
 
-    /// @dev Generic signature check over a CALLER-CONSTRUCTED, already-domain-separated message
-    /// hash - each call site builds its own message with its own prefix (see mintTitle/addLegend),
-    /// this function never fabricates one, so two different operations can never end up asking a
-    /// notary to sign the same digest.
-    function _requireSignedByNotary(address notary_, bytes calldata signature_, bytes32 messageHash_) internal pure {
-        address signer_ = ECDSA.recover(MessageHashUtils.toEthSignedMessageHash(messageHash_), signature_);
-        if (signer_ != notary_) revert InvalidNotarySignature();
+    /**
+     * @notice Whether `root_` may still be proven against.
+     * @dev The identity registry's rule, for the identical reason (sec. 2.18o): the LATEST root is
+     *      always valid however old, so operator inaction cannot freeze notaries out; a SUPERSEDED
+     *      root is valid only briefly, because this tree carries revocations and honouring an old
+     *      root indefinitely would let a revoked notary act forever. An unrecorded root maps to 0
+     *      and must be REJECTED - the clause whose absence made every invented root valid in three
+     *      separate copies of this rule.
+     */
+    function isValidNotaryRoot(bytes32 root_) public view returns (bool) {
+        if (root_ == bytes32(0)) return false;
+        if (root_ == _notaryTree.getRoot()) return true;
+
+        uint256 createdAt_ = notaryRootCreatedAt[root_];
+        return createdAt_ != 0 && createdAt_ + NOTARY_ROOT_VALIDITY > block.timestamp;
     }
 }

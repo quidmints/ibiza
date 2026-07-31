@@ -56,6 +56,17 @@ contract TitleLedgerTest is Test {
   TitleLedger internal ledger;
   RegistrySourceAnchor internal registry;
   NoirVerifierMock internal titleHolderVerifier;
+  /// Verifies notary_action proofs. A MOCK here on purpose: this suite tests the LEDGER's
+  /// authorisation logic, while the real proof property is covered end-to-end by
+  /// NotaryActionHonkVerifier.t.sol against a genuine bb proof. Same split as
+  /// PrivacyPoolSimple.t.sol. Without it every action test would need its own regenerated
+  /// fixture, since a fixture's action_context cannot match a contract-derived one.
+  NoirVerifierMock internal notaryActionVerifier;
+
+  /// The notary's leaf key: Poseidon(notary_secret) in production. Opaque to the contract.
+  bytes32 internal constant NOTARY_COMMITMENT = keccak256('notary-jane-commitment');
+  /// Stands in for a notary_action proof. Contents are irrelevant to the mock.
+  bytes internal constant NOTARY_PROOF = hex'01';
 
   address internal admin = address(0xA011);
   address internal postman = address(0xB022);
@@ -110,9 +121,12 @@ contract TitleLedgerTest is Test {
     );
 
     titleHolderVerifier = new NoirVerifierMock();
+    notaryActionVerifier = new NoirVerifierMock();
     TitleLedger ledgerImpl = new TitleLedger();
-    bytes memory ledgerInit =
-      abi.encodeCall(TitleLedger.initialize, (address(registry), address(titleHolderVerifier), address(stateKeeper), admin));
+    bytes memory ledgerInit = abi.encodeCall(
+      TitleLedger.initialize,
+      (address(registry), address(titleHolderVerifier), address(stateKeeper), admin, address(notaryActionVerifier))
+    );
     ledger = TitleLedger(address(new ERC1967Proxy(address(ledgerImpl), ledgerInit)));
 
     // A real 2-leaf snapshot: notaryDataHash + one decoy, strictly ascending as
@@ -134,7 +148,14 @@ contract TitleLedgerTest is Test {
     notaryProof[0] = (a == leaf0) ? leaf1 : leaf0; // the OTHER leaf is notaryDataHash's sibling
 
     vm.prank(postman);
-    ledger.bindNotaryIdentity(NOTARY_HOLDER_ROOT, notaryDataHash, notary, '');
+    ledger.registerNotary(NOTARY_COMMITMENT, notaryDataHash, REGISTRY_ID, notaryProof);
+  }
+
+  /// Sibling proof for `decoyLeaf`, the snapshot's other entry - used to admit a SECOND notary,
+  /// which is what makes "any active notary may endorse" testable at all.
+  function _decoyProof() internal view returns (bytes32[] memory p_) {
+    p_ = new bytes32[](1);
+    p_[0] = notaryDataHash;
   }
 
   function _mintMessage(
@@ -188,7 +209,7 @@ contract TitleLedgerTest is Test {
     bytes memory sig = _sign(NOTARY_PK, _mintMessage(descHash, jurisdiction, 0));
 
     titleId_ = ledger.mintTitle(
-      descHash, jurisdiction, 0, REGISTRY_ID, notary, notaryProof, sig, holderCommitment_
+      descHash, jurisdiction, 0, REGISTRY_ID, ledger.notaryRoot(), NOTARY_PROOF, holderCommitment_
     );
   }
 
@@ -196,14 +217,14 @@ contract TitleLedgerTest is Test {
 
   function test_initialize_revertsOnZeroNotaryRegistry() public {
     TitleLedger impl = new TitleLedger();
-    bytes memory init = abi.encodeCall(TitleLedger.initialize, (address(0), address(titleHolderVerifier), address(stateKeeper), admin));
+    bytes memory init = abi.encodeCall(TitleLedger.initialize, (address(0), address(titleHolderVerifier), address(stateKeeper), admin, address(notaryActionVerifier)));
     vm.expectRevert(TitleLedger.ZeroAddress.selector);
     new ERC1967Proxy(address(impl), init);
   }
 
   function test_initialize_revertsOnZeroVerifier() public {
     TitleLedger impl = new TitleLedger();
-    bytes memory init = abi.encodeCall(TitleLedger.initialize, (address(registry), address(0), address(stateKeeper), admin));
+    bytes memory init = abi.encodeCall(TitleLedger.initialize, (address(registry), address(0), address(stateKeeper), admin, address(notaryActionVerifier)));
     vm.expectRevert(TitleLedger.ZeroAddress.selector);
     new ERC1967Proxy(address(impl), init);
   }
@@ -211,7 +232,7 @@ contract TitleLedgerTest is Test {
   function test_initialize_revertsOnZeroStateKeeper() public {
     TitleLedger impl = new TitleLedger();
     bytes memory init =
-      abi.encodeCall(TitleLedger.initialize, (address(registry), address(titleHolderVerifier), address(0), admin));
+      abi.encodeCall(TitleLedger.initialize, (address(registry), address(titleHolderVerifier), address(0), admin, address(notaryActionVerifier)));
     vm.expectRevert(TitleLedger.ZeroAddress.selector);
     new ERC1967Proxy(address(impl), init);
   }
@@ -222,27 +243,25 @@ contract TitleLedgerTest is Test {
   /// so a notary bound to a bare keypair was the only participant in this system who could not be
   /// revoked. Keyed by holderRoot, revoking their document stops them acting - by exactly the
   /// mechanism that covers every other user.
-  function test_aNotaryWhoseDocumentIsRevokedCannotAct() public {
-    // Sanity: they can act right now.
-    _mintValidTitle(keccak256('holder'));
+  /// An unknown root is refused. THE REGRESSION CLAUSE (sec. 2.18o): an unrecorded root maps to 0,
+  /// and `0 + validity > block.timestamp` is TRUE on any chain younger than the window - which is
+  /// how three separate copies of this rule accepted every invented root.
+  function test_anInventedNotaryRootIsRefused() public {
+    assertFalse(ledger.isValidNotaryRoot(keccak256('never a root')), 'an invented root was accepted');
+    assertFalse(ledger.isValidNotaryRoot(bytes32(0)), 'the zero root was accepted');
 
-    stateKeeper.revokeDocument(bytes32(uint256(0xD0C)));
-    assertEq(stateKeeper.getActiveDocumentCount(NOTARY_HOLDER_ROOT), 0, 'the document is still current');
-
-    bytes32 key = _propertyKey(keccak256('9 Elsewhere Rd'));
-    bytes32 jurisdiction = keccak256('UA');
-    bytes memory sig = _sign(NOTARY_PK, _mintMessage(key, jurisdiction, 0));
-
-    vm.expectRevert(TitleLedger.NotaryIdentityHasNoCurrentDocument.selector);
-    ledger.mintTitle(key, jurisdiction, 0, REGISTRY_ID, notary, notaryProof, sig, keccak256('h'));
+    bytes32 descHash = _propertyKey(DESC_HASH);
+    vm.expectRevert(TitleLedger.UnknownNotaryRoot.selector);
+    ledger.mintTitle(descHash, keccak256('UA'), 0, REGISTRY_ID, keccak256('never a root'), NOTARY_PROOF, keccak256('hc'));
   }
 
   /// Binding must refuse an identity that holds no current document - a notary is a passport holder
   /// in this system BEFORE they are a notary.
-  function test_bindNotaryIdentity_refusesAnIdentityWithNoDocument() public {
+  /// A commitment can only be admitted against a register entry that is really in the snapshot.
+  function test_registerNotary_refusesAnEntryNotInTheSnapshot() public {
     vm.prank(postman);
-    vm.expectRevert(TitleLedger.NotaryIdentityHasNoCurrentDocument.selector);
-    ledger.bindNotaryIdentity(keccak256('nobody'), notaryDataHash, address(0xBEEF), '');
+    vm.expectRevert(TitleLedger.NotaryNotActive.selector);
+    ledger.registerNotary(keccak256('someone'), keccak256('not in any snapshot'), REGISTRY_ID, notaryProof);
   }
 
   /// THE BINDING IS PROOF-GATED. The postman can no longer fabricate a binding for an identity
@@ -252,50 +271,52 @@ contract TitleLedgerTest is Test {
   /// No new circuit was needed: title_holder already proves
   /// `holder_root == extract_pk_identity_hash(sk_identity)` and binds it to a second field, and
   /// that field is an arbitrary CONTEXT - named `title_id` only because that was its first use.
-  function test_bindNotaryIdentity_requiresAProofOfIdentityControl() public {
-    // An identity that DOES hold a current document, so the document guard is not what fires -
-    // the proof check is.
-    titleHolderVerifier.setShouldVerify(false);
-
+  /// The zero commitment is the empty-leaf sentinel and must never be admitted.
+  function test_registerNotary_refusesTheZeroCommitment() public {
     vm.prank(postman);
-    vm.expectRevert(TitleLedger.InvalidNotaryIdentityProof.selector);
-    ledger.bindNotaryIdentity(NOTARY_HOLDER_ROOT, notaryDataHash, address(0xBEEF), '');
+    vm.expectRevert(TitleLedger.ZeroNotaryIdentity.selector);
+    ledger.registerNotary(bytes32(0), notaryDataHash, REGISTRY_ID, notaryProof);
   }
 
   /// The context must bind BOTH the signing key and the register entry, or a proof obtained for one
   /// binding could be replayed to attach a different key - or the same key to a different notary.
-  function test_theBindContextSeparatesKeysAndEntries() public view {
-    bytes32 a = ledger.notaryBindContext(notaryDataHash, notary);
-    assertTrue(a != ledger.notaryBindContext(notaryDataHash, otherSigner), 'context ignores the signing key');
-    assertTrue(a != ledger.notaryBindContext(decoyLeaf, notary), 'context ignores the register entry');
+  /// Registering moves the root, and the new root is immediately usable.
+  function test_registeringANotaryMovesTheRoot() public {
+    bytes32 before = ledger.notaryRoot();
+    vm.prank(postman);
+    ledger.registerNotary(keccak256('notary-2-commitment'), decoyLeaf, REGISTRY_ID, _decoyProof());
+    assertTrue(ledger.notaryRoot() != before, 'admitting a notary did not change the root');
+    assertTrue(ledger.isValidNotaryRoot(ledger.notaryRoot()), 'the new root is not usable');
   }
 
   /// Losing NOTARY status and losing IDENTITY status are DIFFERENT EVENTS, which is why they are
   /// checked separately. This identity's document is perfectly current - it is their registry entry
   /// that is not in the active snapshot, so they are a valid person and not a valid notary.
-  function test_aValidIdentityWithNoRegistryEntryIsNotANotary() public {
-    bytes32 otherHolder = keccak256('other-holder');
-    stateKeeper.addDocument(
-      bytes32(uint256(0xD0D)), keccak256('other-dg1'), otherHolder, stateKeeper.DOC_PASSPORT(), 2, 0
-    );
+  /// THE FAULT MECHANISM, and the reason no custodian quorum exists (sec. 2.18am). Revoking writes a
+  /// non-zero leaf value, which no STATUS_CLEAN inclusion proof can equal - so the notary silently
+  /// stops being able to act and NOBODY LEARNS WHO THEY WERE. Exclusion, not exposure.
+  function test_revokingANotaryMovesTheRootAndIsPostmanGated() public {
+    bytes32 before = ledger.notaryRoot();
+
+    vm.expectRevert(TitleLedger.OnlyRegistryPostman.selector);
+    ledger.revokeNotary(NOTARY_COMMITMENT, bytes32(uint256(1)));
+
     vm.prank(postman);
-    ledger.bindNotaryIdentity(otherHolder, keccak256('not in any snapshot'), otherSigner, '');
+    ledger.revokeNotary(NOTARY_COMMITMENT, bytes32(uint256(1)));
+    assertTrue(ledger.notaryRoot() != before, 'revocation did not change the root');
+  }
 
-    // The identity check passes - they hold a current document...
-    assertEq(stateKeeper.getActiveDocumentCount(otherHolder), 1, 'the document should be current');
-
-    // ...and the NOTARY check still refuses them.
-    bytes32 key = _propertyKey(keccak256('11 Nowhere Ave'));
-    bytes32 jurisdiction = keccak256('UA');
-    bytes memory sig = _sign(OTHER_PK, _mintMessage(key, jurisdiction, 0));
-
-    vm.expectRevert(TitleLedger.NotaryNotActive.selector);
-    ledger.mintTitle(key, jurisdiction, 0, REGISTRY_ID, otherSigner, notaryProof, sig, keccak256('h'));
+  /// Zero IS the clean status, so it can never be a revocation predicate - otherwise "revoking"
+  /// would rewrite the leaf to exactly the value that proves the notary is in good standing.
+  function test_revokingWithTheZeroPredicateIsRefused() public {
+    vm.prank(postman);
+    vm.expectRevert(TitleLedger.ZeroNotaryIdentity.selector);
+    ledger.revokeNotary(NOTARY_COMMITMENT, bytes32(0));
   }
 
   function test_initialize_cannotBeCalledTwice() public {
     vm.expectRevert();
-    ledger.initialize(address(registry), address(titleHolderVerifier), address(stateKeeper), admin);
+    ledger.initialize(address(registry), address(titleHolderVerifier), address(stateKeeper), admin, address(notaryActionVerifier));
   }
 
   function test_upgradeToAndCall_revertsForNonOwner() public {
@@ -306,9 +327,9 @@ contract TitleLedgerTest is Test {
 
   // ── bindNotaryIdentity ──────────────────────────────────────────────────────────────────
 
-  function test_bindNotaryIdentity_revertsForNonPostman() public {
+  function test_registerNotary_revertsForNonPostman() public {
     vm.expectRevert(TitleLedger.OnlyRegistryPostman.selector);
-    ledger.bindNotaryIdentity(NOTARY_HOLDER_ROOT, notaryDataHash, notary, '');
+    ledger.registerNotary(keccak256('x'), notaryDataHash, REGISTRY_ID, notaryProof);
   }
 
   // ── mintTitle ───────────────────────────────────────────────────────────────────────────
@@ -324,7 +345,8 @@ contract TitleLedgerTest is Test {
     assertEq(entry.jurisdiction, keccak256('UA'));
     assertEq(entry.priorTitleId, 0);
     assertEq(entry.notaryRegistryId, REGISTRY_ID);
-    assertEq(entry.notary, notary);
+    // No `notary` field to assert - that IS the fix (sec. 2.18am). What the entry records is that
+    // an active notary acted, via notaryRegistryId; never which one.
     assertEq(entry.mintedAt, block.timestamp);
     assertFalse(entry.encumbered);
   }
@@ -355,8 +377,13 @@ contract TitleLedgerTest is Test {
     bytes32 jurisdiction = keccak256('UA');
     bytes memory sig = _sign(NOTARY_PK, _mintMessage(key, jurisdiction, 0));
 
+    // Hoisted: `ledger.notaryRoot()` is an EXTERNAL call, and inline it would be made AFTER
+    // vm.expectRevert arms - so the expectation would be consumed by a call that succeeds,
+    // and the test would pass whatever the function under test did. Same lesson as reading
+    // a role constant before vm.prank, noted in setUp.
+    bytes32 root_ = ledger.notaryRoot();
     vm.expectRevert(abi.encodeWithSelector(TitleLedger.PropertyAlreadyTitled.selector, key, uint256(1)));
-    ledger.mintTitle(key, jurisdiction, 0, REGISTRY_ID, notary, notaryProof, sig, keccak256('someone else'));
+    ledger.mintTitle(key, jurisdiction, 0, REGISTRY_ID, root_, NOTARY_PROOF, keccak256('someone else'));
   }
 
   /// ...but a genuine SUCCESSION must still work, or the uniqueness rule would block every reissue
@@ -369,7 +396,7 @@ contract TitleLedgerTest is Test {
     bytes memory sig = _sign(NOTARY_PK, _mintMessage(key, jurisdiction, first));
 
     uint256 second =
-      ledger.mintTitle(key, jurisdiction, first, REGISTRY_ID, notary, notaryProof, sig, keccak256('new holder'));
+      ledger.mintTitle(key, jurisdiction, first, REGISTRY_ID, ledger.notaryRoot(), NOTARY_PROOF, keccak256('new holder'));
     assertEq(ledger.titleOfProperty(key), second, 'the property should now point at the successor');
   }
 
@@ -382,8 +409,13 @@ contract TitleLedgerTest is Test {
     bytes32 jurisdiction = keccak256('UA');
     bytes memory sig = _sign(NOTARY_PK, _mintMessage(otherKey, jurisdiction, first));
 
+    // Hoisted: `ledger.notaryRoot()` is an EXTERNAL call, and inline it would be made AFTER
+    // vm.expectRevert arms - so the expectation would be consumed by a call that succeeds,
+    // and the test would pass whatever the function under test did. Same lesson as reading
+    // a role constant before vm.prank, noted in setUp.
+    bytes32 root_ = ledger.notaryRoot();
     vm.expectRevert(abi.encodeWithSelector(TitleLedger.PriorTitleIsForAnotherProperty.selector, first));
-    ledger.mintTitle(otherKey, jurisdiction, first, REGISTRY_ID, notary, notaryProof, sig, keccak256('h'));
+    ledger.mintTitle(otherKey, jurisdiction, first, REGISTRY_ID, root_, NOTARY_PROOF, keccak256('h'));
   }
 
   function test_mintTitle_revertsOnZeroCommitment() public {
@@ -391,41 +423,45 @@ contract TitleLedgerTest is Test {
     bytes32 jurisdiction = keccak256('UA');
     bytes memory sig = _sign(NOTARY_PK, _mintMessage(descHash, jurisdiction, 0));
 
+    // Hoisted: `ledger.notaryRoot()` is an EXTERNAL call, and inline it would be made AFTER
+    // vm.expectRevert arms - so the expectation would be consumed by a call that succeeds,
+    // and the test would pass whatever the function under test did. Same lesson as reading
+    // a role constant before vm.prank, noted in setUp.
+    bytes32 root_ = ledger.notaryRoot();
     vm.expectRevert(TitleLedger.ZeroCommitment.selector);
-    ledger.mintTitle(descHash, jurisdiction, 0, REGISTRY_ID, notary, notaryProof, sig, bytes32(0));
+    ledger.mintTitle(descHash, jurisdiction, 0, REGISTRY_ID, root_, NOTARY_PROOF, bytes32(0));
   }
 
-  function test_mintTitle_revertsOnUnboundNotary() public {
-    bytes32 descHash = keccak256('desc');
-    bytes32 jurisdiction = keccak256('UA');
-    bytes memory sig = _sign(OTHER_PK, _mintMessage(descHash, jurisdiction, 0));
-
+  /// A proof the verifier rejects must not mint. With the address gone this is the ONLY thing
+  /// standing between a stranger and a title, so it is the load-bearing check of the new model.
+  function test_mintTitle_revertsWhenTheNotaryProofIsRejected() public {
+    notaryActionVerifier.setShouldVerify(false);
+    bytes32 descHash = _propertyKey(DESC_HASH);
+    // Hoisted: `ledger.notaryRoot()` is an EXTERNAL call, and inline it would be made AFTER
+    // vm.expectRevert arms - so the expectation would be consumed by a call that succeeds,
+    // and the test would pass whatever the function under test did. Same lesson as reading
+    // a role constant before vm.prank, noted in setUp.
+    bytes32 root_ = ledger.notaryRoot();
     vm.expectRevert(TitleLedger.NotaryNotActive.selector);
-    ledger.mintTitle(
-      descHash, jurisdiction, 0, REGISTRY_ID, otherSigner, notaryProof, sig, keccak256('hc')
-    );
+    ledger.mintTitle(descHash, keccak256('UA'), 0, REGISTRY_ID, root_, NOTARY_PROOF, keccak256('hc'));
   }
 
-  function test_mintTitle_revertsOnWrongMerkleProof() public {
-    bytes32 descHash = keccak256('desc');
-    bytes32 jurisdiction = keccak256('UA');
-    bytes memory sig = _sign(NOTARY_PK, _mintMessage(descHash, jurisdiction, 0));
-
-    bytes32[] memory badProof = new bytes32[](1);
-    badProof[0] = keccak256('wrong-sibling');
-
-    vm.expectRevert(TitleLedger.NotaryNotActive.selector);
-    ledger.mintTitle(descHash, jurisdiction, 0, REGISTRY_ID, notary, badProof, sig, keccak256('hc'));
+  /// The latest root never expires, so notary inaction cannot freeze the ledger.
+  function test_theLatestNotaryRootNeverExpires() public {
+    vm.warp(block.timestamp + 3650 days);
+    assertTrue(ledger.isValidNotaryRoot(ledger.notaryRoot()), 'the latest root expired');
   }
 
-  function test_mintTitle_revertsOnInvalidSignature() public {
-    bytes32 descHash = keccak256('desc');
-    bytes32 jurisdiction = keccak256('UA');
-    // Signed by otherSigner, claimed as `notary` - recovered signer won't match.
-    bytes memory sig = _sign(OTHER_PK, _mintMessage(descHash, jurisdiction, 0));
+  /// A SUPERSEDED root stays usable only briefly - this tree carries revocations, so honouring an
+  /// old root indefinitely would let a revoked notary act forever.
+  function test_aSupersededNotaryRootExpires() public {
+    bytes32 old = ledger.notaryRoot();
+    vm.prank(postman);
+    ledger.registerNotary(keccak256('notary-2-commitment'), decoyLeaf, REGISTRY_ID, _decoyProof());
 
-    vm.expectRevert(TitleLedger.InvalidNotarySignature.selector);
-    ledger.mintTitle(descHash, jurisdiction, 0, REGISTRY_ID, notary, notaryProof, sig, keccak256('hc'));
+    assertTrue(ledger.isValidNotaryRoot(old), 'a just-superseded root should still be usable');
+    vm.warp(block.timestamp + ledger.NOTARY_ROOT_VALIDITY() + 1);
+    assertFalse(ledger.isValidNotaryRoot(old), 'a superseded root never expired');
   }
 
   // ── addLegend ───────────────────────────────────────────────────────────────────────────
@@ -435,7 +471,7 @@ contract TitleLedgerTest is Test {
 
     bytes32 legendMsg = keccak256(abi.encodePacked('TITLE_LEDGER_LEGEND', address(ledger), titleId, 'subject to mortgage'));
     bytes memory sig = _sign(NOTARY_PK, legendMsg);
-    ledger.addLegend(titleId, 'subject to mortgage', notaryProof, sig);
+    ledger.addLegend(titleId, 'subject to mortgage', ledger.notaryRoot(), NOTARY_PROOF);
 
     string[] memory legends = ledger.getRestrictionLegends(titleId);
     assertEq(legends.length, 1);
@@ -446,19 +482,27 @@ contract TitleLedgerTest is Test {
     bytes32 legendMsg = keccak256(abi.encodePacked('TITLE_LEDGER_LEGEND', address(ledger), uint256(999), 'x'));
     bytes memory sig = _sign(NOTARY_PK, legendMsg);
 
+    // Hoisted: `ledger.notaryRoot()` is an EXTERNAL call, and inline it would be made AFTER
+    // vm.expectRevert arms - so the expectation would be consumed by a call that succeeds,
+    // and the test would pass whatever the function under test did. Same lesson as reading
+    // a role constant before vm.prank, noted in setUp.
+    bytes32 root_ = ledger.notaryRoot();
     vm.expectRevert(TitleLedger.TitleDoesNotExist.selector);
-    ledger.addLegend(999, 'x', notaryProof, sig);
+    ledger.addLegend(999, 'x', root_, NOTARY_PROOF);
   }
 
-  function test_addLegend_revertsOnMintSignatureReplay() public {
-    // A signature captured for mintTitle must NOT authorize addLegend - domain separation check.
-    uint256 titleId = _mintValidTitle(keccak256('hc'));
-    bytes32 descHash = keccak256('42 Khreshchatyk St, Kyiv');
-    bytes32 jurisdiction = keccak256('UA');
-    bytes memory mintSig = _sign(NOTARY_PK, _mintMessage(descHash, jurisdiction, 0));
+  /// ANY ACTIVE NOTARY MAY ENDORSE, not only the one who minted (user decision, 2026-07-31).
+  /// Binding to the minting notary would have meant storing a commitment to them - a persistent
+  /// PSEUDONYM linking every title they touched - and would have left a title permanently
+  /// unamendable if that notary were ever revoked.
+  function test_anyActiveNotaryCanEndorseNotOnlyTheMinter() public {
+    uint256 titleId = _mintValidTitle(keccak256('holder'));
 
-    vm.expectRevert(TitleLedger.InvalidNotarySignature.selector);
-    ledger.addLegend(titleId, 'subject to mortgage', notaryProof, mintSig);
+    vm.prank(postman);
+    ledger.registerNotary(keccak256('notary-2-commitment'), decoyLeaf, REGISTRY_ID, _decoyProof());
+
+    ledger.addLegend(titleId, 'subject to mortgage', ledger.notaryRoot(), NOTARY_PROOF);
+    assertEq(ledger.restrictionLegends(titleId, 0), 'subject to mortgage');
   }
 
   // ── setEncumbered ───────────────────────────────────────────────────────────────────────
@@ -468,18 +512,23 @@ contract TitleLedgerTest is Test {
 
     bytes32 msg_ = keccak256(abi.encodePacked('TITLE_LEDGER_ENCUMBER', address(ledger), titleId, true));
     bytes memory sig = _sign(NOTARY_PK, msg_);
-    ledger.setEncumbered(titleId, true, notaryProof, sig);
+    ledger.setEncumbered(titleId, true, ledger.notaryRoot(), NOTARY_PROOF);
 
     assertTrue(ledger.getTitle(titleId).encumbered);
   }
 
-  function test_setEncumbered_revertsWithoutNotarySignature() public {
-    uint256 titleId = _mintValidTitle(keccak256('hc'));
-    bytes32 msg_ = keccak256(abi.encodePacked('TITLE_LEDGER_ENCUMBER', address(ledger), titleId, true));
-    bytes memory sig = _sign(OTHER_PK, msg_);
-
-    vm.expectRevert(TitleLedger.InvalidNotarySignature.selector);
-    ledger.setEncumbered(titleId, true, notaryProof, sig);
+  /// An encumbrance without an accepted notary proof must not stick - a bare boolean with no
+  /// authorisation would let anyone lock (or fraudulently clear) a lien on someone else's title.
+  function test_setEncumbered_revertsWhenTheNotaryProofIsRejected() public {
+    uint256 titleId = _mintValidTitle(keccak256('holder'));
+    notaryActionVerifier.setShouldVerify(false);
+    // Hoisted: `ledger.notaryRoot()` is an EXTERNAL call, and inline it would be made AFTER
+    // vm.expectRevert arms - so the expectation would be consumed by a call that succeeds,
+    // and the test would pass whatever the function under test did. Same lesson as reading
+    // a role constant before vm.prank, noted in setUp.
+    bytes32 root_ = ledger.notaryRoot();
+    vm.expectRevert(TitleLedger.NotaryNotActive.selector);
+    ledger.setEncumbered(titleId, true, root_, NOTARY_PROOF);
   }
 
   // ── transferTitle / verifyHolderProof ──────────────────────────────────────────────────

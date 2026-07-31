@@ -5746,6 +5746,61 @@ The right criterion is irreversibility, not importance:
 **So: aggregation first - but #16 is a HARD GATE on notary enrolment, not a nice-to-have.** If
 enrolment ships before it, the disclosure is permanent for everyone who enrolled in the interim.
 
+### 2.18bo WHERE THE POSTMAN CAME FROM, AND HOW TO REMOVE IT - name-binding, using circuits we already have
+
+*"where did postman come up in the first place? why is it necessary? is there a better solution that
+cant be a single point of failure or leakage?"* (user, 2026-07-31).
+
+**ORIGIN: IT WAS NEVER DESIGNED FOR THIS.** `REGISTRY_POSTMAN` is `RegistrySourceAnchor`'s role for
+submitting CRE snapshots - the DON's write path. `TitleLedger` REUSED it for notary binding, and its
+own comment says why: *"gated by NOTARY_REGISTRY's own REGISTRY_POSTMAN role... deliberately the SAME
+trust boundary the notary registry itself already rests on, not an additional,
+independently-scrutinized authority."* The intent was **one trust assumption instead of two**, which
+was right - but it quietly gave a snapshot-submission role the power to decide **who is a notary**.
+Those are different powers wearing one hat.
+
+**WHY IT IS THERE: the identity<->register binding gap.** A register entry is public data with no key
+(2.18bm), so SOMEONE must assert "this commitment is that person". The postman is that someone.
+
+**THE THREE LEVERS HAVE THREE DIFFERENT FIXES, and one needs no new trust at all:**
+
+**1. ARBITRARY REVOCATION - fixable NOW, no new party.** `revokeNotary(commitment, predicate)`
+requires no proof of any fault. It should require EVIDENCE: a proof that the register no longer lists
+that entry as active, checked against the CRE-anchored root the contract already trusts. Then
+revocation follows the register rather than an operator's discretion, and the lever disappears. **This
+is the cheapest and most immediately usable of the three, and it is pure contract work.**
+
+**2. IMPERSONATION - removable with circuits ALREADY BUILT.** A register entry carries `fullName` and
+`region`. `query_identity` already proves selective disclosure over a registered document's MRZ,
+including the name field. So a notary can prove, in zero knowledge:
+  (i) they hold a CURRENT registered document (the permissionless, ICAO-verified path);
+  (ii) its name field matches the `fullName` of register entry E;
+  (iii) E is in the active-notary root.
+and bind their own commitment. **No postman asserts anything** - the claim is cryptographic, and the
+attacker now needs a genuine passport whose name matches the target notary's, which is an enormously
+higher bar than compromising an admin key.
+
+*Honest weakness:* names are not unique. Adding `region` narrows it; it does not close it. **But the
+comparison is not against perfection, it is against "one role key can impersonate any notary in the
+country."** Combining with the postman as a SECOND factor - both a proof and the gate - is strictly
+better than either alone and needs no new machinery.
+
+**3. REFUSAL - dissolves once 2 lands.** If enrolment is self-service and cryptographic, there is
+nobody to decline.
+
+**AND THIS SETTLES THE INTERACTION 2.18bn FLAGGED.** The audit-trail problem existed because an
+anonymous enrolment hides POSTMAN impersonation. **With name-binding there is no postman to
+impersonate** - a false enrolment requires a passport matching the victim's name, not an admin key -
+so anonymity no longer trades away accountability. The detection mechanism 2.18bn demanded as a
+prerequisite for #16 is **not needed if #16 is built on name-binding instead of on a postman
+assertion.** That is a strictly better design AND a simpler one, which is usually the sign of being
+right.
+
+**REVISED ORDER FOR TASK #16:** (a) evidence-bound revocation - small, no new trust, do it first;
+(b) name-binding enrolment circuit, reusing `query_identity`'s disclosure machinery; (c) the Poseidon
+mirror and anonymous enrolment on top, which is now safe because there is no unaudited assertion left
+to hide.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

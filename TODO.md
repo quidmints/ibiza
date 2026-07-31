@@ -4799,6 +4799,73 @@ Asked whether an older agenda still applies. Checked rather than assumed:
   the SDK's surface now" was WRONG: the SDK has no NFC surface at all (2.18aq). The integration is
   against jmrtd and NFCPassportReader, not against rarime's SDK.
 
+### 2.18aw APPLYING THE BLACKLIST AND PSEUDONYM LENSES TO `propertyKey` - one lens condemns it, the other will not transplant
+
+*"im not sure who should hold the registry key. what is the consequence of approaching it like we did
+the blacklist and the labels"* (user, 2026-07-31). Worth doing, and it produces a harder answer than
+"pick a holder".
+
+**FACTS VERIFIED FIRST.** `titleOfProperty` is a PUBLIC mapping keyed by `propertyKey`, so every key
+in use is readable on-chain. `TitleLedger` and 2.15 both state a notary *"holds no protocol key and
+performs no protocol computation"*. So the key-holder cannot be the notary, and the outputs are not
+hidden - only their preimages are.
+
+**LENS 1 (2.13b, invert so it fails OPEN): THE REGISTRY-KEY HOLDER IS AN ALLOWLIST WEARING A
+DIFFERENT HAT.** 2.13b's objection to an allowlist was not that it is a list - it is that **inaction
+censors**: a postman who simply never admits you excludes you without ever acting, indistinguishably
+from being slow. A `registryKey` holder is exactly that. Nothing can be minted without them
+computing a value, so declining to compute is censorship with no act to point at, no rule to bind,
+and no appeal. **So "who should hold it" is not an open slot to fill - filling it reintroduces
+precisely the failure the ASP redesign existed to remove.** That is the first consequence, and it is
+a condemnation of the mechanism rather than a difficulty in staffing it.
+
+**LENS 2 (2.13c, public set + opaque membership): THE SAME TENSION APPEARS, BUT THE SECRET HAS THE
+WRONG SHAPE.** 2.13c resolved "the list must be secret" against "non-inclusion must be trustlessly
+provable" by making the SET public and each ENTRY an opaque PRF output. The critical structural
+detail is that `s` is **PER-USER**: a prover needs only their own secret, and no one else's.
+
+`propertyKey` cannot be built that way, because of what it is FOR. Uniqueness works by COLLISION:
+two independent parties minting over the same property must compute the SAME value, or the duplicate
+is not detected. That requires the key to be shared by **everyone who might ever mint**. A secret
+that every potential minter must hold is not a secret - and once it is out, the input is
+county-record enumerable, so every property's pseudonym is computable.
+
+Stated as 2.13c stated its own: **"opaque to the public" and "duplicates collide" cannot both hold.**
+Every option below is a choice about which one bends.
+
+**AND THE RESOLUTION 2.13c ACTUALLY USED WILL NOT TRANSPLANT.** Epoch pseudonyms work because they
+ROTATE - `PRF(s, T)` deliberately breaks linkage across epochs. A title's uniqueness must be
+**PERMANENT**: a title minted in 2026 has to collide with a fraudulent one minted in 2031. Rotating
+the key gives the same property different keys in different epochs, so cross-epoch double-minting
+becomes undetectable. The one mechanism that fixed the blacklist is the one thing this problem cannot
+use.
+
+**THE SYMMETRY THAT MAKES THIS UNCOMFORTABLE, and it is the crux.** The lost detection path - an
+owner cannot check whether their own property has been titled here - and the enumeration attack are
+**THE SAME CAPABILITY**. Both are "compute the key from the public legal description and look it up".
+There is no arrangement that lets an owner check their own property without letting an adversary walk
+the county register. Any design must choose.
+
+**OPTIONS, with what each costs:**
+
+- **A - BARE PUBLIC HASH.** Uniqueness holds; no key-holder exists, so no one can censor by inaction;
+  **owners regain the detection path**. Cost: the ledger is enumerable from county records - an
+  observer learns which real properties are titled here, though not who holds them (`holderCommitment`
+  is separate and stays private). This is the ONLY option that keeps uniqueness with no key-holder.
+- **B - KEYED PSEUDONYM, shared key.** Confidential against outsiders, but the key-holders are a
+  permissioned minter set: 2.13b's allowlist, restored. Fails closed by omission.
+- **C - ATTESTED UNIQUENESS INSTEAD OF CRYPTOGRAPHIC.** Store a SALTED commitment (confidential, no
+  collisions) and move uniqueness to the notary attesting *"I checked the register; this parcel has no
+  live title"*. Cost: uniqueness stops being cryptographically impossible and becomes attested -
+  a deceived or colluding notary can double-mint and nothing on-chain detects it. Defensible, because
+  notaries are already the trust anchor for every other legal fact here and are now revocable
+  (2.18am) - but it is a real reduction and must not be presented as equivalent.
+
+**NOT DECIDED HERE.** This is a design choice with a privacy/detectability trade at its centre, and
+it is yours. What I can say from the analysis: **B is the option the project's own prior reasoning
+already rejects**, so the live choice is between A and C - between an enumerable ledger that anyone
+can audit, and a confidential one whose uniqueness rests on a revocable human attestation.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

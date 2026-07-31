@@ -408,7 +408,7 @@ pub fn query_identity(
 
 
     // selector decoding
-    let selector_bits = selector.to_be_bits::<18>();
+    let selector_bits = selector.to_be_bits::<19>();
 
     // ----------------------
     // Passport data decoding
@@ -422,7 +422,7 @@ pub fn query_identity(
     nullifier_hasher.write(sk_identity);
     nullifier_hasher.write(sk_iden_hasher.finish());
     nullifier_hasher.write(event_id);
-    let nullifier = nullifier_hasher.finish() * selector_bits[17] as Field;
+    let nullifier = nullifier_hasher.finish() * selector_bits[18] as Field;
 
 
     // First value is result of comparation, other is selector bit
@@ -435,48 +435,48 @@ pub fn query_identity(
     // --------------------------
     // Timestamp lowerbound check
     let mut n1 = (timestamp as u64 >= timestamp_lowerbound as u64) as u8;
-    let mut n2 = selector_bits[9] as u8;
+    let mut n2 = selector_bits[10] as u8;
     assert((n1 + (1 - n2) - n1 * (1 - n2)) == 1, "Timestamp lowerbound");
 
     // Timestamp upperbound check
 
     n1 = (timestamp as u64 <= timestamp_upperbound as u64) as u8;
-    n2 = selector_bits[8] as u8;
+    n2 = selector_bits[9] as u8;
 
     assert((n1 + (1 - n2) - n1 * (1 - n2)) == 1, "Timestamp upperbound");
 
     //---------------------------------
     // Identity counter lowerbound check
     n1 = (identity_counter as u64 >= identity_count_lowerbound as u64) as u8;
-    n2 = selector_bits[7] as u8;
+    n2 = selector_bits[8] as u8;
     assert((n1 + (1 - n2) - n1 * (1 - n2)) == 1, "Identity counter lowerbound");
 
     // Identity counter upperbound
     n1 = (identity_counter as u64 <= identity_count_upperbound as u64) as u8;
-    n2 = selector_bits[6] as u8;
+    n2 = selector_bits[7] as u8;
     assert((n1 + (1 - n2) - n1 * (1 - n2)) == 1, "Identity counter upperbound");
 
     //---------------------------------
     // Expiration date lowerbound: expirationDateLowerbound < expirationDate
     n1 = (expiration_date as u64 >= expiration_date_lowerbound as u64) as u8;
-    n2 = selector_bits[5] as u8;
+    n2 = selector_bits[6] as u8;
 
     assert((n1 + (1 - n2) - n1 * (1 - n2)) == 1, "Expiration date lowerbound");
 
     // Expiration date upperbound: expirationDate < expirationDateUpperbound
     n1 = (expiration_date as u64 <= expiration_date_upperbound as u64) as u8;
-    n2 = selector_bits[4] as u8;
+    n2 = selector_bits[5] as u8;
     assert((n1 + (1 - n2) - n1 * (1 - n2)) == 1, "Expiration date upperbound");
     
     //---------------------------------
     // Birth date lowerbound: birthDateLowerbound < birthDate
     n1 = date_is_less(birth_date_lowerbound, birth_date, current_date) as u8;
-    n2 = selector_bits[3] as u8;
+    n2 = selector_bits[4] as u8;
     assert((n1 + (1 - n2) - n1 * (1 - n2)) == 1, "Birth date lowerbound");
 
     // Birth date lowerbound: birthDateLowerbound < birthDate
     n1 = date_is_less(birth_date, birth_date_upperbound, current_date) as u8;
-    n2 = selector_bits[2] as u8;
+    n2 = selector_bits[3] as u8;
     assert((n1 + (1 - n2) - n1 * (1 - n2)) == 1, "Birth date upperbound");
 
     // dg1 commitment
@@ -497,18 +497,18 @@ pub fn query_identity(
     let _ = citizenship_check(
         citizenship,
         citizenship_mask,
-        selector_bits[1],
+        selector_bits[0],
     );
 
 
-    birth_date *= selector_bits[16] as Field;
-    expiration_date *= selector_bits[15] as Field;
-    name *= selector_bits[14] as Field;
-    name_residial *= selector_bits[14] as Field;
-    nationality *= selector_bits[13] as Field;
-    citizenship *= selector_bits[12] as Field;
-    sex *= selector_bits[11] as Field;
-    doc_number *= selector_bits[10] as Field;
+    birth_date *= selector_bits[17] as Field;
+    expiration_date *= selector_bits[16] as Field;
+    name *= selector_bits[15] as Field;
+    name_residial *= selector_bits[15] as Field;
+    nationality *= selector_bits[14] as Field;
+    citizenship *= selector_bits[13] as Field;
+    sex *= selector_bits[12] as Field;
+    doc_number *= selector_bits[11] as Field;
 
     (
         nullifier, birth_date, expiration_date, name, name_residial, nationality, citizenship, sex, doc_number,
@@ -534,6 +534,17 @@ pub fn query_identity(
 // 15 - birth date upperbound
 // 16 - personal number hash
 // 17 - doc type
+// 18 - enforce the citizenship mask (sec. 2.18an)
+//
+// BIT 18 EXISTS BECAUSE THE CITIZENSHIP CHECK USED TO BORROW BIT 16. It had no bit of its own and
+// read the one meaning "personal number hash", so in TD1 - which returns a personal number, unlike
+// TD3 - asking "are you a citizen of X?" ALSO disclosed the holder's national ID number hash, and
+// asking for the ID number silently imposed a citizenship constraint that made proving impossible.
+//
+// WIDENING FROM 18 TO 19 BITS CHANGES NO CALLER. The selector is big-endian, so the index is
+// `width - 1 - bit`: adding a bit shifts every INDEX in this file by one while leaving every
+// documented bit's VALUE untouched. A caller passing 2**16 still means "personal number hash". The
+// only new thing is 2**18.
 
 // Passport encoding time is UTF-8 "YYMMDD"
 // Timestamps has 2 times of encoding: 
@@ -573,7 +584,7 @@ pub fn query_identity_td1(
     Field, // UTF-8 encoded | "ID"
 ) {
     // selector decoding
-    let selector_bits = selector.to_be_bits::<18>();
+    let selector_bits = selector.to_be_bits::<19>();
 
     // ----------------------
     // ID card data decoding
@@ -599,7 +610,7 @@ pub fn query_identity_td1(
     nullifier_hasher.write(sk_identity);
     nullifier_hasher.write(sk_iden_hasher.finish());
     nullifier_hasher.write(event_id);
-    let nullifier = nullifier_hasher.finish() * selector_bits[17] as Field;
+    let nullifier = nullifier_hasher.finish() * selector_bits[18] as Field;
 
 
     // First value is result of comparation, other is selector bit
@@ -612,48 +623,48 @@ pub fn query_identity_td1(
     // --------------------------
     // Timestamp lowerbound check
     let mut n1 = (timestamp as u64 >= timestamp_lowerbound as u64) as u8;
-    let mut n2 = selector_bits[9] as u8;
+    let mut n2 = selector_bits[10] as u8;
     assert((n1 + (1 - n2) - n1 * (1 - n2)) == 1, "Timestamp lowerbound");
 
     // Timestamp upperbound check
 
     n1 = (timestamp as u64 <= timestamp_upperbound as u64) as u8;
-    n2 = selector_bits[8] as u8;
+    n2 = selector_bits[9] as u8;
 
     assert((n1 + (1 - n2) - n1 * (1 - n2)) == 1, "Timestamp upperbound");
 
     //---------------------------------
     // Identity counter lowerbound check
     n1 = (identity_counter as u64 >= identity_count_lowerbound as u64) as u8;
-    n2 = selector_bits[7] as u8;
+    n2 = selector_bits[8] as u8;
     assert((n1 + (1 - n2) - n1 * (1 - n2)) == 1, "Identity counter lowerbound");
 
     // Identity counter upperbound
     n1 = (identity_counter as u64 <= identity_count_upperbound as u64) as u8;
-    n2 = selector_bits[6] as u8;
+    n2 = selector_bits[7] as u8;
     assert((n1 + (1 - n2) - n1 * (1 - n2)) == 1, "Identity counter upperbound");
 
     //---------------------------------
     // Expiration date lowerbound: expirationDateLowerbound < expirationDate
     n1 = (expiration_date as u64 >= expiration_date_lowerbound as u64) as u8;
-    n2 = selector_bits[5] as u8;
+    n2 = selector_bits[6] as u8;
 
     assert((n1 + (1 - n2) - n1 * (1 - n2)) == 1, "Expiration date lowerbound");
 
     // Expiration date upperbound: expirationDate < expirationDateUpperbound
     n1 = (expiration_date as u64 <= expiration_date_upperbound as u64) as u8;
-    n2 = selector_bits[4] as u8;
+    n2 = selector_bits[5] as u8;
     assert((n1 + (1 - n2) - n1 * (1 - n2)) == 1, "Expiration date upperbound");
     
     //---------------------------------
     // Birth date lowerbound: birthDateLowerbound < birthDate
     n1 = date_is_less(birth_date_lowerbound, birth_date, current_date) as u8;
-    n2 = selector_bits[3] as u8;
+    n2 = selector_bits[4] as u8;
     assert((n1 + (1 - n2) - n1 * (1 - n2)) == 1, "Birth date lowerbound");
 
     // Birth date lowerbound: birthDateLowerbound < birthDate
     n1 = date_is_less(birth_date, birth_date_upperbound, current_date) as u8;
-    n2 = selector_bits[2] as u8;
+    n2 = selector_bits[3] as u8;
     assert((n1 + (1 - n2) - n1 * (1 - n2)) == 1, "Birth date upperbound");
 
     // dg1 commitment
@@ -674,18 +685,18 @@ pub fn query_identity_td1(
     let _ = citizenship_check(
         citizenship,
         citizenship_mask,
-        selector_bits[1],
+        selector_bits[0],
     );
 
-    birth_date *= selector_bits[16] as Field;
-    expiration_date *= selector_bits[15] as Field;
-    name *= selector_bits[14] as Field;
-    nationality *= selector_bits[13] as Field;
-    citizenship *= selector_bits[12] as Field;
-    sex *= selector_bits[11] as Field;
-    doc_number_hash *= selector_bits[10] as Field;
-    personal_number_hash *= selector_bits[1] as Field;
-    doc_type *= selector_bits[0] as Field;
+    birth_date *= selector_bits[17] as Field;
+    expiration_date *= selector_bits[16] as Field;
+    name *= selector_bits[15] as Field;
+    nationality *= selector_bits[14] as Field;
+    citizenship *= selector_bits[13] as Field;
+    sex *= selector_bits[12] as Field;
+    doc_number_hash *= selector_bits[11] as Field;
+    personal_number_hash *= selector_bits[2] as Field;
+    doc_type *= selector_bits[1] as Field;
 
     (
         nullifier, birth_date, expiration_date, name, nationality, citizenship, sex, doc_number_hash, personal_number_hash, doc_type
@@ -997,7 +1008,7 @@ mod disclosure_tests {
     /*
      * THE FLAGSHIP. The comment block above `query_identity_td1` documents the selector as
      * "0 - nullifier, 1 - birth date, 2 - expiration date, ...", while the CODE indexes
-     * `selector.to_be_bits::<18>()` - big-endian, so documented bit k lives at index 17 - k.
+     * `selector.to_be_bits::<19>()` - big-endian, so documented bit k lives at index 18 - k.
      *
      * That off-by-inversion is invisible: pick the wrong end and every field still gets multiplied
      * by SOME bit, the proof still verifies, and the caller gets a different field than it asked
@@ -1059,7 +1070,7 @@ mod disclosure_tests {
     /*
      * THE NULLIFIER COLLISION HAZARD, documented by test rather than left to be discovered.
      *
-     * `nullifier = Poseidon3(...) * selector_bits[17]`, so with bit 0 CLEAR the nullifier is 0 - not
+     * `nullifier = Poseidon3(...) * selector_bits[18]`, so with bit 0 CLEAR the nullifier is 0 - not
      * absent, ZERO, for every user. A relying party doing double-spend prevention on this value
      * without checking that bit 0 was set would treat all holders as one person. That is a caller
      * obligation the circuit cannot enforce, and the only defence is that it is written down.
@@ -1318,57 +1329,75 @@ mod td1_disclosure_tests {
     }
 
     /*
-     * === THE DEFECT: ONE SELECTOR BIT GATES TWO UNRELATED THINGS (sec. 2.18an) ===
+     * === THE DEFECT THAT WAS HERE, AND THE FIX (sec. 2.18an) ===
      *
-     * `selector_bits[1]` is read TWICE in `query_identity_td1`:
+     * `query_identity_td1` used to read `selector_bits[1]` TWICE - once to gate `citizenship_check`
+     * and once to unmask `personal_number_hash`. Under the old 18-bit selector, index 1 was
+     * documented bit 16, "personal number hash": the citizenship check had NO BIT OF ITS OWN and
+     * borrowed that one. TD3 escaped it only because `query_identity` returns no personal number, so
+     * index 1 had a single reader there.
      *
-     *     citizenship_check(citizenship, citizenship_mask, selector_bits[1]);   // enforce a mask
-     *     personal_number_hash *= selector_bits[1] as Field;                    // DISCLOSE the ID
+     * Both directions were harmful, and one was a privacy leak:
+     *   1. Asking for the personal number silently ENFORCED a citizenship constraint - bit set, no
+     *      mask, `citizenship_check` wanting exactly one match and getting none, so the proof could
+     *      not be produced at all and the error named citizenship.
+     *   2. THE LEAK: asking only "are you a citizen of X?" - a yes/no question - ALSO disclosed the
+     *      holder's national ID number hash, because the only way to turn the check on was to set
+     *      the bit that unmasked it. The user chose one thing and disclosed two; the proof verified
+     *      perfectly and nothing anywhere reported a problem.
      *
-     * Per the documented selector - big-endian, so documented bit k sits at index 17-k - index 1 is
-     * bit 16, "personal number hash". The citizenship check has NO BIT OF ITS OWN and borrows that
-     * one. TD3 gets away with it because `query_identity` returns no personal number at all, so
-     * index 1 has a single reader there; TD1 returns one, and the two collide.
+     * FIXED, NOT PINNED. The first write-up of this claimed a fix meant a coordinated ABI change
+     * across the wallet, `PublicSignalsBuilder` and rarime's tooling, because "all 18 bits are
+     * assigned". THAT WAS WRONG, and checking took one grep: `PublicSignalsBuilder` only STORES the
+     * selector integer at signal index 12 and never decomposes it, so nothing outside this file
+     * interprets bit positions at all.
      *
-     * BOTH DIRECTIONS ARE HARMFUL, and the two tests below pin one each:
+     * The selector is BIG-ENDIAN, so an index is `width - 1 - bit`. Widening 18 -> 19 therefore
+     * shifts every INDEX in this file by one while leaving every documented bit's VALUE untouched: a
+     * caller passing 2**16 still means "personal number hash", and 2**18 is simply new. The
+     * citizenship check now owns documented bit 18, i.e. `selector_bits[0]`.
      *
-     *   1. ASKING FOR THE PERSONAL NUMBER SILENTLY ENFORCES A CITIZENSHIP CONSTRAINT. With the bit
-     *      set and no mask, `citizenship_check` requires exactly one match and gets none, so the
-     *      proof CANNOT BE PRODUCED. A caller who wants an ID number and does not care about
-     *      citizenship simply cannot make a proof, and the error names citizenship.
-     *
-     *   2. ASKING ABOUT CITIZENSHIP FORCES DISCLOSURE OF THE PERSONAL NUMBER. This is the serious
-     *      direction. A verifier asking only "are you a citizen of X?" - a yes/no question -
-     *      receives the holder's NATIONAL ID NUMBER hash as well, because the only way to turn the
-     *      check on is to set the bit that also unmasks it. The user chose one thing and disclosed
-     *      two, the proof verifies perfectly, and nothing anywhere reports a problem.
-     *
-     * Direction 2 is exactly the failure this suite exists to catch: *a selector mask can be wrong
-     * for every passport ever tried and still verify*. A passport test exercises signatures; it
-     * never asks which fields came out.
-     *
-     * PINNED, NOT FIXED. Splitting them needs a free selector bit, and all 18 are assigned - so the
-     * fix is either a 19-bit selector or reassigning a documented meaning. Both change the public
-     * ABI shared with the wallet, the on-chain PublicSignalsBuilder and rarime's own tooling, so it
-     * is a coordinated change and not a one-line edit. These tests state the CURRENT behaviour so
-     * the coupling cannot be mistaken for intent, and so the fix has a failing target to aim at.
+     * The two tests below are the old defect tests, rewritten to assert the FIXED behaviour - which
+     * is what the retired ones instructed. They fail if the two ever share a bit again.
      */
-    #[test(should_fail_with = "Citizenship check failed")]
-    fn test_asking_for_the_personal_number_silently_enforces_a_citizenship_constraint() {
-        // 65536 == index 1 set == documented bit 16, "personal number hash". No citizenship mask,
-        // because this caller has no interest in citizenship. It cannot produce a proof.
-        let _ = query_with(65536, 0);
+    #[test]
+    fn test_the_personal_number_can_be_requested_without_a_citizenship_constraint() {
+        // 65536 == documented bit 16 alone. Under the defect this ABORTED with "Citizenship check
+        // failed"; a caller wanting an ID number and indifferent to nationality could not prove.
+        let (_, _, _, _, _, citizenship, _, _, personal, _) = query_with(65536, 0);
+
+        assert(personal != 0, "bit 16 did not disclose the personal number");
+        assert(citizenship == 0, "bit 16 leaked citizenship, which it does not gate");
     }
 
+    /// THE LEAK, CLOSED. Enforcing citizenship must disclose NOTHING by itself.
     #[test]
-    fn test_asking_about_citizenship_forces_the_personal_number_to_be_disclosed() {
-        // The ONLY way to turn the citizenship check on is index 1 - the personal-number bit.
-        // Mask bit 0 == "ABW", which this DG1's citizenship matches, so the check is satisfiable.
-        let (_, _, _, _, _, _, _, _, personal, _) = query_with(65536, 1);
+    fn test_asking_about_citizenship_no_longer_discloses_the_personal_number() {
+        // 262144 == 2**18, the citizenship check's own bit. Mask bit 0 == "ABW", which this DG1
+        // matches, so the constraint is satisfied - and nothing is unmasked by satisfying it.
+        let (nullifier, birth, expiry, name, nationality, citizenship, sex, doc, personal, doc_type) =
+            query_with(262144, 1);
 
         assert(
-            personal != 0,
-            "if this now passes with personal == 0 the coupling is FIXED - delete this test and see sec. 2.18an",
+            personal == 0,
+            "enforcing citizenship still leaks the PERSONAL NUMBER - the bits are coupled again",
         );
+        assert(citizenship == 0, "the citizenship VALUE leaked; bit 18 enforces, bit 5 discloses");
+        assert(nullifier == 0, "citizenship enforcement leaked the nullifier");
+        assert(birth == 0, "citizenship enforcement leaked the birth date");
+        assert(expiry == 0, "citizenship enforcement leaked the expiration date");
+        assert(name == 0, "citizenship enforcement leaked the name");
+        assert(nationality == 0, "citizenship enforcement leaked nationality");
+        assert(sex == 0, "citizenship enforcement leaked sex");
+        assert(doc == 0, "citizenship enforcement leaked the document number");
+        assert(doc_type == 0, "citizenship enforcement leaked the document type");
+    }
+
+    /// And the constraint still BITES - a mask the citizenship does not match must refuse. Without
+    /// this the test above would pass just as well if bit 18 did nothing at all.
+    #[test(should_fail_with = "Citizenship check failed")]
+    fn test_the_citizenship_constraint_still_rejects_a_non_matching_mask() {
+        // Bit 18 set, mask bit 1 == "AFG", but this DG1 says "ABW".
+        let _ = query_with(262144, 2);
     }
 }

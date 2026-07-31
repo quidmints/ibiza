@@ -4739,6 +4739,66 @@ would silently permute the caller's leaves - including the ones about to be subm
 Nobody yet calls `registerNotary` - the postman needs a notary's commitment, which the notary derives
 from a secret they generate, and no tool does that. Task #13's remaining work.
 
+### 2.18au A NOTARY KEEPS ONE KEY - fold the notary secret into sk_identity
+
+*"secret they generate? how is this different from regular PP or rarimo flow? can we fold it in?"*
+(user, 2026-07-31). The right question, and the answer is that it should never have been a separate
+secret. **Folded in.**
+
+**WHAT WAS WRONG.** `notary_action` took a free `notary_secret`. That quietly invented a THIRD thing
+for a person to keep: `sk_identity` for their identity, the escrowed revocation secret for the pool,
+and now a notary key. **A secret that can be lost independently is a way to lose a professional role
+independently** - and it was unnecessary, because `TitleLedger`'s own design note already says a
+notary is a registered identity like any other user, revocable by the same machinery.
+
+**THE FLOW IS ALREADY IN THE REPO.** `escrow_envelope::derive_revocation_secret` does exactly this:
+`Poseidon(sk_identity, DOMAIN)`, with the domain separator checked against its own ASCII string so a
+magic number cannot be copied wrong. `derive_notary_secret` is the same shape under
+`"pp:notary-secret:v1"`, and lives in `pp::envelope` beside `secret_commitment` so both the circuit
+and any future wallet code share ONE definition.
+
+**THE DOMAIN SEPARATOR IS WHAT MAKES FOLDING SAFE, and it is the subtle part.** `TitleLedger`
+deliberately refuses to reuse the POOL commitment, because publishing it would link a notary's public
+professional role to their private financial identity - buying revocability by destroying the privacy
+the pool exists to provide. Deriving under a DIFFERENT domain yields a commitment that is an
+unrelated field element: without `sk_identity` nobody can connect the two. So the role becomes
+revocable through the same identity machinery **without** publishing the link. Pinned by
+`test_the_notary_commitment_is_unrelated_to_the_pool_commitment`, which asserts both the secrets and
+the commitments differ, and that neither equals `sk_identity` itself.
+
+**THE CIRCUIT NOW TAKES `sk_identity`**, deriving the commitment two hops deep, so the prover cannot
+supply it directly - every active notary's commitment is public in the tree, and a free commitment
+would let anyone name one and act as them. Regenerated the verifier and a real proof (the fixture
+root moved, as it must when the derivation changes); 5 circuit tests, 87 `pp` tests, 380 forge tests.
+
+**WHAT THIS DOES NOT SOLVE.** Nobody yet calls `registerNotary`: the postman still needs the
+notary's commitment, which is now `secret_commitment(derive_notary_secret(sk_identity))` - derivable
+by the notary's own wallet from the key they already hold, but no wallet code does that yet. The
+secret-management problem is gone; the plumbing is not.
+
+### 2.18av THE OLDER LIST, RE-CHECKED - most of it moved, two items still real
+
+Asked whether an older agenda still applies. Checked rather than assumed:
+
+- **§2.1 wallet-side withdrawal witness assembly - DONE** (2026-07-27). `src/pp/` now holds
+  `withdrawWitness.ts`, `stateTree.ts`, `discovery.ts`, `notes.ts`, `identityProof.ts`, `deposit.ts`,
+  `prove.ts`, `relay.ts`. It is no longer "the top of the critical path"; what it lacks is TESTS, not
+  existence - see 2.18ak.
+- **The `propertyKey` gap - STILL REAL, and still unassigned.** `TitleLedger` line 64 continues to
+  say *"WHO COMPUTES IT IS UNRESOLVED"*, pointing at 2.16b. The two consequences stand: the mint path
+  is unimplementable as written because no party holds `registryKey`, and a property owner cannot
+  check whether their own property has been titled here - they can spot a fraudulent entry in the
+  state register but not in ours, which is a detection path we simply lose. **Untouched by any of
+  today's work**, and it is a design decision rather than a coding task.
+- **§2.4c share-denominated notes, §2.5 predicate-bound revocation** - both still open, both
+  contract/circuit shaped, neither blocked on hardware.
+- **§3 pure TS/Solidity items** - denomination splitting, ERC-5564 stealth withdrawals, the
+  SpvTreasuryAdapter stables leg, the orphaned `bitcoin.nr`. Still unblocked.
+- **"Front-load the device work"** - partly overtaken. The NFC *config* is done (2.18ap) and the MRZ
+  key derivation is done (2.18ar), but the premise that one can "write the NFC integration against
+  the SDK's surface now" was WRONG: the SDK has no NFC surface at all (2.18aq). The integration is
+  against jmrtd and NFCPassportReader, not against rarime's SDK.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

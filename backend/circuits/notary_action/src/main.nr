@@ -23,7 +23,7 @@
 // So this circuit is `withdraw_identity`'s identity section with the note-spending half removed:
 // prove knowledge of the secret behind a commitment that sits in the notary tree carrying
 // STATUS_CLEAN, bound to the action being authorised.
-use pp::envelope::secret_commitment;
+use pp::envelope::{derive_notary_secret, secret_commitment};
 use pp::smt::smt_verifier_full;
 
 /// MUST equal the notary registry contract's `treeHeight_` and the wallet's depth constant. 32
@@ -57,9 +57,16 @@ fn main(
     // comparing against the prover's. What the circuit owes is that the proof COMMITS to whatever
     // was passed, which `pub` gives in the transcript whether or not a gate reads it.
     action_context: pub Field,
-    // The notary's secret. Its commitment is the tree key, so knowledge of the preimage IS the
-    // authorisation - there is no address and no signature anywhere in this path.
-    notary_secret: Field,
+    // The notary's IDENTITY key - the same `sk_identity` they already hold as an ordinary user of
+    // this system. NOT a separate notary key (sec. 2.18au).
+    //
+    // An earlier version took a free `notary_secret`, which quietly invented a THIRD secret to keep:
+    // `sk_identity`, the escrowed revocation secret, and a notary key. A secret that can be lost
+    // independently is a way to lose a professional role independently, and it was unnecessary -
+    // a notary is already a registered identity here. Deriving under a distinct domain separator
+    // keeps the notary commitment unlinkable from the pool commitment, so the role is revocable
+    // through the same machinery without publishing the link `TitleLedger` refuses to publish.
+    sk_identity: Field,
     // Inclusion witness, straight from the registry's own getProof().
     siblings: [Field; NOTARY_TREE_DEPTH],
 ) {
@@ -69,10 +76,11 @@ fn main(
     // diagnostic that would have caught it is already background noise. Costs no constraints.
     let _ = action_context;
 
-    // The key is DERIVED from the secret, never a free input. Letting the prover supply the key
-    // directly would make this vacuous: every active notary's commitment is public in the tree, so
-    // they would name one and act as them. Knowledge of the preimage is the whole gate.
-    let commitment = secret_commitment(notary_secret);
+    // The key is DERIVED, never a free input. Letting the prover supply the commitment directly
+    // would make this vacuous: every active notary's commitment is public in the tree, so they would
+    // name one and act as them. Knowledge of the preimage is the whole gate - and the preimage is
+    // now two derivations deep, from the identity key nobody else holds.
+    let commitment = secret_commitment(derive_notary_secret(sk_identity));
 
     let active = smt_verifier_full::<NOTARY_TREE_DEPTH>(
         notary_root,
@@ -97,19 +105,19 @@ fn main(
 // Nothing is faked and no fixture is needed.
 mod wiring_tests {
     use super::{main, NOTARY_TREE_DEPTH, STATUS_CLEAN};
-    use pp::envelope::secret_commitment;
+    use pp::envelope::{derive_notary_secret, secret_commitment};
     use poseidon::poseidon::PoseidonHasher;
     use std::hash::Hasher;
 
-    global A_SECRET: Field = 8675309;
+    global AN_IDENTITY_KEY: Field = 8675309;
     global AN_ACTION: Field = 424242;
 
     /// The single-leaf root: Poseidon(key, value, 1), the leaf convention `smt_verifier_full` uses.
     /// Recomputed here rather than imported so that a change to that convention breaks these tests
     /// loudly instead of letting them agree with a moved target.
-    fn root_holding(secret: Field, status: Field) -> Field {
+    fn root_holding(sk_identity: Field, status: Field) -> Field {
         let mut hasher = PoseidonHasher::default();
-        hasher.write(secret_commitment(secret));
+        hasher.write(secret_commitment(derive_notary_secret(sk_identity)));
         hasher.write(status);
         hasher.write(1);
         hasher.finish()
@@ -117,7 +125,7 @@ mod wiring_tests {
 
     #[test]
     fn test_an_active_notary_can_authorise_an_action() {
-        main(root_holding(A_SECRET, STATUS_CLEAN), AN_ACTION, A_SECRET, [0; NOTARY_TREE_DEPTH]);
+        main(root_holding(AN_IDENTITY_KEY, STATUS_CLEAN), AN_ACTION, AN_IDENTITY_KEY, [0; NOTARY_TREE_DEPTH]);
     }
 
     /// THE POINT OF THE WHOLE CIRCUIT. Anonymity must not become "anyone may act": someone who does
@@ -125,7 +133,7 @@ mod wiring_tests {
     /// commitments in it are public too.
     #[test(should_fail_with = "not an active notary")]
     fn test_a_stranger_cannot_authorise_an_action() {
-        main(root_holding(A_SECRET, STATUS_CLEAN), AN_ACTION, A_SECRET + 1, [0; NOTARY_TREE_DEPTH]);
+        main(root_holding(AN_IDENTITY_KEY, STATUS_CLEAN), AN_ACTION, AN_IDENTITY_KEY + 1, [0; NOTARY_TREE_DEPTH]);
     }
 
     /// REVOCATION IS THE FAULT MECHANISM - the reason no custodian quorum is needed. A leaf holding
@@ -133,7 +141,7 @@ mod wiring_tests {
     /// without anyone learning who they were.
     #[test(should_fail_with = "not an active notary")]
     fn test_a_revoked_notary_cannot_authorise_an_action() {
-        main(root_holding(A_SECRET, 1), AN_ACTION, A_SECRET, [0; NOTARY_TREE_DEPTH]);
+        main(root_holding(AN_IDENTITY_KEY, 1), AN_ACTION, AN_IDENTITY_KEY, [0; NOTARY_TREE_DEPTH]);
     }
 
     /// A notary who is genuinely active in ANOTHER tree cannot act against this root. This is what
@@ -141,7 +149,7 @@ mod wiring_tests {
     /// depends on.
     #[test(should_fail_with = "not an active notary")]
     fn test_a_proof_against_the_wrong_root_fails() {
-        main(root_holding(A_SECRET + 99, STATUS_CLEAN), AN_ACTION, A_SECRET, [0; NOTARY_TREE_DEPTH]);
+        main(root_holding(AN_IDENTITY_KEY + 99, STATUS_CLEAN), AN_ACTION, AN_IDENTITY_KEY, [0; NOTARY_TREE_DEPTH]);
     }
 
     /// The action context is a PASS-THROUGH and must not be constrained here - any value proves,
@@ -150,7 +158,7 @@ mod wiring_tests {
     /// binding a proof to an action, which is the defect sec. 2.18ah fixed in the withdrawal path.
     #[test]
     fn test_any_action_context_proves_because_the_contract_substitutes_its_own() {
-        main(root_holding(A_SECRET, STATUS_CLEAN), 0, A_SECRET, [0; NOTARY_TREE_DEPTH]);
-        main(root_holding(A_SECRET, STATUS_CLEAN), AN_ACTION + 7, A_SECRET, [0; NOTARY_TREE_DEPTH]);
+        main(root_holding(AN_IDENTITY_KEY, STATUS_CLEAN), 0, AN_IDENTITY_KEY, [0; NOTARY_TREE_DEPTH]);
+        main(root_holding(AN_IDENTITY_KEY, STATUS_CLEAN), AN_ACTION + 7, AN_IDENTITY_KEY, [0; NOTARY_TREE_DEPTH]);
     }
 }

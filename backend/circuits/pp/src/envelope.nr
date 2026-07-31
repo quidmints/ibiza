@@ -207,3 +207,74 @@ fn test_secret_commitment_is_deterministic_and_separating() {
     assert(secret_commitment(9) == secret_commitment(9), "commitment is not deterministic");
     assert(secret_commitment(9) != secret_commitment(10), "two secrets share one commitment");
 }
+
+/// Domain separator for the NOTARY secret: the big-endian bytes of "pp:notary-secret:v1".
+///
+/// Checked against the string in `test_notary_domain_is_the_string_it_claims_to_be` - a magic number
+/// nobody can re-derive is a magic number that gets copied wrong.
+global NOTARY_SECRET_DOMAIN: Field = 2507459921430853321618988341583531743668500017;
+
+/// A notary's secret, DERIVED from their identity key rather than generated separately.
+///
+/// WHY DERIVED (sec. 2.18au). `notary_action` first took a free `notary_secret`, which quietly
+/// invented a THIRD thing for a person to keep: `sk_identity` for their identity, the escrowed
+/// revocation secret for the pool, and now a notary key. A secret that can be lost independently is
+/// a way to lose a professional role independently - and it is unnecessary, because a notary is
+/// already a registered identity in this system. This is exactly the shape `derive_revocation_secret`
+/// already uses, and reusing it means a notary keeps ONE key, the same one every other user keeps.
+///
+/// THE DOMAIN SEPARATOR IS WHAT MAKES IT SAFE. `TitleLedger` deliberately refuses to reuse the pool
+/// commitment, because publishing that value would link a notary's public professional role to their
+/// private financial identity. Deriving under a DIFFERENT domain gives a commitment that is an
+/// unrelated field element: nobody without `sk_identity` can connect the two, so the role is
+/// revocable through the same identity machinery without the linkage the pool exists to prevent.
+pub fn derive_notary_secret(sk_identity: Field) -> Field {
+    let mut hasher = PoseidonHasher::default();
+    hasher.write(sk_identity);
+    hasher.write(NOTARY_SECRET_DOMAIN);
+    hasher.finish()
+}
+
+#[test]
+fn test_notary_domain_is_the_string_it_claims_to_be() {
+    let s: [u8; 19] = [
+        112, 112, 58, 110, 111, 116, 97, 114, 121, 45, 115, 101, 99, 114, 101, 116, 58, 118, 49,
+    ]; // "pp:notary-secret:v1"
+    let mut acc: Field = 0;
+    for i in 0..19 {
+        acc = acc * 256 + s[i] as Field;
+    }
+    assert(acc == NOTARY_SECRET_DOMAIN, "NOTARY_SECRET_DOMAIN is not the documented string");
+}
+
+/// THE SEPARATION PROPERTY, and the whole reason a domain separator exists. A notary's commitment
+/// must not equal their POOL commitment, or the ledger would publish the very link
+/// `TitleLedger`'s own comment refuses to publish.
+#[test]
+fn test_the_notary_commitment_is_unrelated_to_the_pool_commitment() {
+    let sk: Field = 987654321;
+
+    // The pool's derivation, reproduced here rather than imported: escrow_envelope is a binary
+    // crate, so this states the value it must differ from instead of depending on it.
+    let mut pool_hasher = PoseidonHasher::default();
+    pool_hasher.write(sk);
+    pool_hasher.write(10769458381189379141499981179385028620184879844130715185); // "pp:revocation-secret:v1"
+    let pool_secret = pool_hasher.finish();
+
+    let notary_secret = derive_notary_secret(sk);
+
+    assert(notary_secret != pool_secret, "the notary secret collides with the pool revocation secret");
+    assert(
+        secret_commitment(notary_secret) != secret_commitment(pool_secret),
+        "the notary commitment equals the pool commitment - the roles are linkable",
+    );
+    assert(notary_secret != sk, "the notary secret is the identity key itself");
+}
+
+/// Deterministic: one identity yields one notary commitment, so revoking it revokes the person
+/// rather than one of several keys they might hold.
+#[test]
+fn test_the_notary_secret_is_deterministic_and_identity_specific() {
+    assert(derive_notary_secret(42) == derive_notary_secret(42));
+    assert(derive_notary_secret(42) != derive_notary_secret(43));
+}

@@ -4319,6 +4319,57 @@ zero); the personal number is requestable alone; and
 without it, the first test would pass just as well if bit 18 did nothing whatsoever. 80 `noir_dl`
 tests, 376 forge tests, ABIs clean.
 
+### 2.18ao THE CRE SCRAPER'S FIRST TESTS - and three defects they found
+
+*"is there anything you can do before you do puppeteer?"* (user, 2026-07-31). Yes:
+`backend/cre/notary_registry` was ~500 lines of OUR OWN code with zero tests, deciding WHO COUNTS AS A
+NOTARY - and since sec. 2.18am it is load-bearing for privacy too, because the anonymity set is built
+from what it publishes.
+
+**WHAT CONSENSUS DOES NOT COVER.** sec. 2.15a chose CRE over TLSNotary because
+`cre.ConsensusIdenticalAggregation` requires every DON node to produce a BYTE-IDENTICAL result. That
+protects against a rogue NODE. It does nothing about **a parser that is wrong the same way
+everywhere** - every node agrees, and they agree on the wrong set. Consensus covers the FETCH; the
+MEANING is untested, and sec. 2.15a said so itself ("scrapers rot").
+
+**THE TAG THAT MADE IT UNTESTABLE.** `main.go` is `//go:build wasip1` because it links the CRE
+runtime, so NONE of the parsing logic could run on a host machine. Moved the pure parts - the XML/zip
+decode, the active filter, `leafHash`, `merkleRoot` - into an untagged `registry.go` that imports
+nothing but stdlib and keccak. Not a mock and not a rewrite: the network call stays in `main.go` and
+still calls the extracted function. Both `GOOS=wasip1` and host builds verified. **13 tests.**
+
+**THREE DEFECTS, all found by writing the tests rather than by reading:**
+
+1. **A STATUS CASING CHANGE SILENTLY DROPS NOTARIES.** The filter is an exact compare against
+   `"active"`. A migrated portal emitting `"Active"` drops those records with no error. Total failure
+   is caught - `onSchedule` refuses to publish an empty root - but a PARTIAL change is not, and mixed
+   casing is exactly how a partial change arrives. **This is the under-counting direction, which is
+   the dangerous one**: extra notaries would be caught by anyone comparing against the public
+   register, whereas missing ones silently strip real people of the ability to act, and nothing
+   downstream can distinguish "not a notary" from "the parser dropped you". NOT "fixed" by
+   lowercasing, because case-folding is a GUESS about the register's vocabulary - if the real status
+   set is Ukrainian, ASCII folding admits nobody and hides that the mapping was never verified. Needs
+   a real export, which task #12 has to obtain per country anyway.
+
+2. **`leafHash` CONCATENATES FIELDS WITH NO SEPARATOR.** keccak(regNumber || fullName || region ||
+   status) means reg `"12"` + name `"3X"` collides with reg `"123"` + name `"X"`. Unreachable with
+   Ukrainian data because registration numbers are numeric and names are not - but **that is an
+   argument about the DATA, not the construction**, and it stops holding the moment a jurisdiction
+   uses alphanumeric registration numbers. The fix is a length-prefixed or delimited encoding, and it
+   must land BEFORE a second country, since it changes every leaf.
+
+3. **DUPLICATE RECORDS ARE NOT DEDUPLICATED, and the contract rejects the result.**
+   `RegistrySourceAnchor` requires strictly ascending leaves (its own line 97 says so); sorting
+   duplicates yields equal neighbours, not strict ascent. So ONE duplicated row upstream makes the
+   entire snapshot unpublishable - a safe failure, but a LIVENESS one: every notary in the country
+   stops being refreshed because of a registrar's data-entry slip. Deduplication belongs in
+   `activeLeaves`.
+
+**All three are pinned as CURRENT behaviour with retirement instructions in the test bodies**, so a
+fix has a failing target and cannot be quietly edited to match new behaviour. They are not fixed here
+because 1 needs a real export and 2 and 3 change every leaf - i.e. they should land together, with
+task #12, as one migration rather than three separate breaks.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

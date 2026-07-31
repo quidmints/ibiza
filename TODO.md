@@ -4066,8 +4066,35 @@ visible - `Registration2.registerViaNoir` and `AQueryProofExecutor` now state wh
 entrypoint, that `registerCertificate` is signature-gated and belongs to NEITHER, and that new
 capability goes to the Noir side.
 
-**NOT SCHEDULED.** Six documents is a real dependency and blocks on the same thing sec. 2.18ad does.
-Revisit when a real card or passport exists; convergence is then deletion, not a port.
+**THE ORDERED PLAN - steps 1-4 need no document, 5 does, and 6 MUST NOT PRECEDE 5.** *"is this first
+step to getting away from groth16?"* (user, 2026-07-30). Yes, first of six:
+
+1. **VERIFY THE PREMISE** (unblocked, needs a fetch of rarime's public Circom repo). That their Circom
+   circuits instantiate each profile with explicit `EC_LEN`/`SA_LEN` is **an INFERENCE, not a checked
+   fact.** The circuits must carry concrete lengths somewhere, but that repo's layout has not been
+   looked at. If the premise is false the plan collapses back to "needs documents", so verify before
+   building anything. Flagged this loudly because three claims in this session (sec. 2.18h, this
+   section's own first count, sec. 2.18ak) were read off the nearest artifact instead of the thing
+   they measured.
+2. **PORT** the six parameter tuples into six Noir wrapper crates, as `register_identity_td1` was
+   built (sec. 2.18ac). Mechanical.
+3. **IN-CIRCUIT CONSISTENCY TESTS** per profile, mirroring the TD1 cross-checks that `dg1_hash` and
+   `dgCommit` agree with the light path at the same length. Catches transcription errors.
+4. **`bb` CODEGEN** for six Honk verifiers. Mechanical.
+5. **BLOCKED - VALIDATE each against one real document.** Steps 2-4 prove the circuits are
+   SELF-CONSISTENT, not that they read a real SOD correctly. A wrong `SA_LEN` passes every test in
+   step 3 and still hashes the wrong byte span - the same shape as the selector mask in sec. 2.18al:
+   consistent with itself, wrong about the world.
+6. **ONLY THEN DELETE:** `register`, `reissueIdentity`, `_verifyCircomZKProof`, the
+   `Groth16VerifierHelper` import, `InvalidCircomProof`, `AQueryProofExecutor.execute`, the 35
+   per-passport verifier contracts, and the wallet's `zkPoints` plumbing (`IdentityVault.ts`,
+   `RegistrationSimple.json`).
+
+**WHY STEP 6 CANNOT JUMP THE QUEUE.** Deleting a path rarime validated against real passports, in
+favour of our unvalidated port, is a REGRESSION rather than a migration. sec. 2.18ad item 4 already
+states the principle: a verifier that has never accepted a proof is a liability. Porting moves the
+blocker from "we do not know the numbers" to "we have not validated them" - real progress, and still
+not permission to delete.
 
 ### 2.18ak TEST COVERAGE, COUNTED PROPERLY - and why the first count was wrong
 
@@ -4177,6 +4204,49 @@ document and no network, and it has no tests at all. Nothing about it is blocked
 it feeds `TitleLedger`'s notary side, not the passport query path. And even for `title_holder`, the
 circuit proves set membership against a root - where the root comes from is orthogonal to whether the
 circuit is wired correctly.
+
+### 2.18am THE NOTARY IS NAMED ON-CHAIN - the application claimed the opposite
+
+*"openable by a quorum of custodians against a proven fault"?* (user, 2026-07-31). Quoted from
+FUNDING-APPLICATION.md, and the question mark was right. **Three claims in one sentence, all false.**
+
+The sentence read: *"which notary acted is never published: they prove membership of the licensed set
+without naming a member, their identity travelling encrypted, openable by a quorum of custodians
+against a proven fault."* What the code does:
+
+| claim | reality |
+|---|---|
+| "never published" | `TitleEntry.notary` is an `address` inside `mapping(uint256 => TitleEntry) public titles` - directly readable. Worse, THREE events emit `address indexed notary` (`TitleMinted`, `LegendAdded`, `EncumbranceSet`). **`indexed` makes it a searchable topic**, so "every title this notary touched" is one log query. Not merely published - INDEXED FOR LOOKUP. |
+| "membership without naming a member" | `_requireActiveNotary(registryId_, notary_, proof_)` takes the notary's ADDRESS plus a Merkle proof. It is inclusion for a NAMED member, not anonymous set membership. |
+| "identity travelling encrypted, openable by a quorum" | **No threshold or quorum cryptography exists anywhere in this repo.** The only sealing is `pp::envelope`, used at exactly one call site - `escrow_envelope/src/main.nr:215` - to seal the BORROWER's revocation secret. And it is not a quorum: `open_payload(envelope, controller_secret)` takes ONE key. |
+
+**AND A FOURTH EXPOSURE THE SENTENCE DID NOT EVEN CLAIM TO SOLVE.** `notaryDataHashOf` is a PUBLIC
+mapping from `holderRoot` to `keccak(regNumber, fullName, region, status)`. Every preimage component
+comes from the official register - which is public by construction, since sec. 2.15a's whole design is
+a decentralised oracle network SCRAPING it. So the hash is enumerable: compute it for every notary in
+the register and match. `TitleLedger`'s own comment concedes the input, noting `holderRoot` "is
+already public in the registration events".
+
+**WHY THIS ONE MATTERED MORE THAN THE OTHER CORRECTIONS.** It is a SAFETY claim about people the same
+paragraph says "can be punished for serving a system like this", in a document asking for money. The
+other errors this session cost effort; this one could cost somebody their liberty if anyone relied on
+it. Fixed immediately rather than noted - the application now says the notary is named on-chain today
+and that anonymising them is designed, not built (997/1000 words, down 2).
+
+**WHAT BUILDING IT WOULD ACTUALLY TAKE** - recorded so the sentence is never restored without them:
+1. Anonymous set membership: prove "I am in the active-notary snapshot" WITHOUT passing an address.
+   `title_holder` already proves a commitment against a root, so the shape exists; the notary path
+   simply does not use it.
+2. Drop `address indexed notary` from all three events and the public `titles` mapping - the
+   membership proof is worthless while an indexed topic names them anyway.
+3. `notaryDataHashOf` must stop being a public enumerable map of register-derived preimages.
+4. A CUSTODIAN SET AND A THRESHOLD SCHEME THAT DO NOT EXIST - who holds shares, what "proven fault"
+   means procedurally, and what stops the quorum colluding. This is the largest piece and it is a
+   governance design, not a circuit.
+
+Note 4 is why this was not simply built today: a quorum whose membership and fault procedure are
+undefined is not a privacy mechanism, it is a promise. The same objection sec. 2.19 makes about
+underwriting discretion applies here - **a power that sits somewhere can be leaned on.**
 
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 

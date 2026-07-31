@@ -49,7 +49,7 @@ sex or ethnicity, because there is no one in the system with the power to refuse
 
 ---
 
-## 2. Implementation: approach, activities, and milestones *(999/1000 words)*
+## 2. Implementation: approach, activities, and milestones *(997/1000 words)*
 
 **Every part of the software is written and ships with this application**, proving and verifying
 on-chain today. It has not had an audit, a real document, or value at stake — the three gaps the
@@ -119,9 +119,9 @@ every applicant; run by the owner it discloses nothing — they supply details a
 holds. So the owner runs it on their own device and submits a proof: what reaches the chain is that
 a genuine deed exists, bound to identifiers naming neither party nor parcel.
 
-**Notaries can be punished for serving a system like this**, so which notary acted is never
-published: they prove membership of the licensed set without naming a member, their identity
-travelling encrypted, openable by a quorum of custodians against a proven fault.
+**Notaries can be punished for serving a system like this.** Today the acting notary is named
+on-chain: an address in the title entry, and an indexed event topic. Anonymising them — set
+membership without naming a member — is designed, not built.
 
 **We fund loans; nobody underwrites them — the central choice.** Underwriting means judging a
 person, and whoever holds that judgment can refuse: on faith, politics, sex, name. A promise never

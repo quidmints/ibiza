@@ -151,6 +151,9 @@ TARGETS=(
   # WAS 12: `holder_root` and `dg1_hash` were dropped in TODO.md sec. 2.18 - both were per-person
   # identifiers that linked every user's identity to their pool handle in registration calldata.
   "escrow_envelope:${CONTRACTS_DIR}/registry/verifiers/EscrowEnvelopeHonkVerifier.sol:EscrowEnvelopeHonkVerifier:11"
+  # 2 public inputs: notary_root, action_context. Anonymous notary authorisation (sec. 2.18am),
+  # replacing `address notary_` plus an ECDSA signature - which named the acting notary on-chain.
+  "notary_action:${CONTRACTS_DIR}/title/NotaryActionHonkVerifier.sol:NotaryActionHonkVerifier:2"
 )
 
 for target in "${TARGETS[@]}"; do

@@ -5865,6 +5865,59 @@ challenge window's comparison becomes simpler and stronger, because a challenger
 register rather than a filtered view they cannot independently reconstruct. **These two should be
 designed together**, which is another reason (a) is not a quick win to land first.
 
+### 2.18bq THE POSTMAN CANNOT BE REMOVED WHILE CRE REPLACES TLSNotary - the trade 2.15a made, seen properly
+
+Four objections, all correct, and the fourth reaches further than the refactor they were about.
+
+**1. "how can k independent submitters agree if they might not have information outside their
+jurisdiction?"** They cannot, and my *"ideally across jurisdictions"* was hand-waving. A submitter in
+Warsaw verifies Ukraine's register no better than anyone else - **they fetch the same URL.** What
+m-of-n actually buys is that one corrupt operator cannot unilaterally publish a fabricated set,
+because the others fetched the real thing and would produce a different root. **That is independence
+of FETCH, not of KNOWLEDGE**, and jurisdiction diversity buys coercion-resistance, not accuracy. Worth
+having; not what I implied.
+
+**2. "using an hour that does nothing isn't ideal - no component should be doing nothing."** Right.
+`ROOT_ACTIVATION_DELAY` today delays and nothing more: it creates a window in which a bad snapshot
+COULD be noticed, with no mechanism to act on noticing. **That is half a feature**, and the standing
+rule applies - either it does work or it should not exist. Wire the challenge to it, or delete it.
+
+**3. "you can't publish the full register if you don't know all the names in advance?"** The bulk
+export DOES give every entry, so publishing all of them with `status` as a leaf field is possible.
+**But completeness is unprovable**: no one reading a snapshot can tell whether entries were OMITTED.
+That is precisely why full-register-with-status is the right change - it converts revocation from an
+ABSENCE claim (unprovable, and defeated by an incomplete scrape) into a PRESENCE claim (*"this entry
+says terminated"*), which survives incompleteness. The objection strengthens the fix rather than
+blocking it.
+
+**4. "don't relocate rather than remove the postman." THE DEEPEST FINDING, and it is about 2.15a.**
+
+The spec originally specified **TLSNotary** over the register. 2.15a replaced it with CRE, arguing *"we
+already have the property that buys, by a cheaper route"* because consensus requires every DON node to
+fetch independently and agree byte-for-byte.
+
+**Those are not the same property, and the difference is exactly the postman.**
+- **TLSNotary proves THE DATA CAME FROM THE REGISTER** - a cryptographic transcript of the TLS session
+  with the government's own server, bound to its certificate. No publisher is trusted, because the
+  proof is about the SOURCE.
+- **CRE proves ONLY THAT THE NODES AGREE.** 2.18ao already recorded that consensus *"cannot make them
+  agree CORRECTLY"* - and the corollary was never drawn: with nothing tying the report to the
+  register, **someone must be trusted to have fetched honestly. That someone is the postman.**
+
+**So the postman is not an implementation wart. It is the exact cost of the 2.15a trade**, and no
+amount of m-of-n, name-binding or challenge windows removes it - each only narrows who must be
+trusted or raises the odds of noticing. **The only construction that REMOVES it is one that proves
+provenance**: TLSNotary, or a register that publishes signed data, or any scheme where the
+government's own key underwrites the bytes.
+
+**WHAT THIS MEANS FOR THE ORDER OF WORK.** Building m-of-n, the challenge window and anonymous
+enrolment on the current foundation is not wrong, but it is **defence in depth around a trusted
+publisher**, and should be described that way rather than as removing one. **The decision to re-take
+is 2.15a itself**: whether TLSNotary's cost is worth the property CRE cannot provide. That is a
+genuine trade with real numbers on both sides - MPC-TLS is expensive and brittle against portal
+changes, which is why it was dropped - but it should be re-taken knowing that what was given up was
+*the removal of the trusted publisher*, not merely some machinery.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

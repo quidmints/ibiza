@@ -502,13 +502,31 @@ an optimisation) and on-device proving time, which needs the phone.
 wrong property), not Aligned (§2.4f — same work, plus a dependency on someone else's roadmap).
 **N=16**, 16-wide tree if wider.
 
-**But do NOT start it.** §2.1 comes first: until wallet-side witness assembly exists **no user can
-withdraw at all**, and aggregation optimises a path that does not yet work end to end. Building the
-optimisation before the thing being optimised is backwards, and §2.1 is unblocked today.
+**STATUS CORRECTED 2026-07-31 — this section contradicted itself.** It opened by saying the stated
+blocker "no longer holds and nothing technical is in the way", then five lines later repeated the
+original instruction verbatim: *"But do NOT start it. §2.1 comes first: until wallet-side witness
+assembly exists no user can withdraw at all."* A reader got opposite instructions from one section,
+and the second was written when §2.1 was still open.
 
-Everything external that was blocking this is now cleared — §2.3 landed the toolchain and
-ZK-under-recursion is verified working on beta.13 + bb 1.2.0. **The remaining gate is sequencing,
-not capability.**
+**BOTH STATED PRECONDITIONS ARE NOW MET, verified rather than assumed:**
+- **§2.1 wallet-side witness assembly — DONE** (2026-07-27). `src/pp/` holds `withdrawWitness.ts`,
+  `stateTree.ts`, `discovery.ts`, `notes.ts`, `identityProof.ts`, `deposit.ts`, `prove.ts`,
+  `relay.ts`. Withdrawal works end to end against a real pool.
+- **§2.5b ragequit — DONE** (2026-07-27). It was named as the thing that should sensibly precede
+  aggregation, being a correctness hole rather than an optimisation. It is closed, ported to Noir,
+  and has a real proof verified on-chain.
+- **§2.3 toolchain — DONE.** ZK-under-recursion verified on beta.13 + bb 1.2.0.
+
+**SO THE ONLY REMAINING GATE IS THE EXPLICIT INSTRUCTION** (user, 2026-07-27: *"we are building our
+own aggregator but dont do this yet"*), and every reason given for it has since been satisfied. **The
+aggregator does not exist** — there is no `backend/circuits/agg*` — so this is genuinely unstarted,
+not partially built. It is the largest single remaining piece of work in the repo, and worth
+re-confirming as a deliberate decision rather than inheriting a deferral whose stated grounds are
+gone.
+
+**WHAT IT IS WORTH, for that decision:** ~68k gas/withdrawal at N=16 versus the current
+~200k+ single-proof verification — the difference between a pool that is usable for ordinary amounts
+and one that is not. Nothing about it is blocked on a document, a phone, or the OPRF.
 
 Design settled AND the toolchain now works: ZK-under-recursion verified end-to-end on
 beta.13 + bb 1.2.0 (two runs of one witness give different proofs; the recursion proof verifies

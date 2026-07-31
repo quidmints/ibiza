@@ -4708,6 +4708,14 @@ missing = cited - defined          # must be empty
 
 Exclude `*.circuit` and `*.json` - compiled artifacts contain byte sequences that match the pattern.
 
+**AND EXCLUDE BACKTICKED SPECIMENS, or the check reports itself.** Re-running this on 2026-07-31 flagged
+`2.12` and `2.27` as dangling. They are not: the ONLY remaining occurrences are the quoted examples in
+the table above, inside backticks, documenting the very pointers this section fixed. **A naive audit
+cannot distinguish a CITATION from a QUOTED SPECIMEN of a broken one**, so it will flag this section
+forever - and the danger is that someone "fixes" it by editing the documentation until its own
+examples no longer illustrate anything. Strip inline-code spans before matching, or whitelist this
+section. Verified after excluding them: **zero real dangling citations across 144 sections.**
+
 **THE LESSON IS ABOUT WHERE REASONING LANDS.** A commit message is not durable context: it is
 findable only by someone who already knows which commit to read. Everything load-bearing has to be in
 the tracked file, and a citation is a PROMISE that it is - so an unkept one is a specific, checkable

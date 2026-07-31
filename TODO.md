@@ -5638,6 +5638,54 @@ is trusting one operator outright. Neither describes `k`.
 separate enclave, ideally on mixed vendors - which is defence in depth rather than a substitute, and
 inherits both sets of complexity. Do not read "we could use a TEE" as "we could skip the DKG".
 
+### 2.18bm ENROLMENT NAMES THE NOTARY - the leak I traded away without noticing
+
+*"the fact that we searched a particular identity to confirm that they are a notary is a leak that
+they are a provider on our platform"* (user, 2026-07-31). **Correct, and 2.18am called that trade
+deliberate when it should have called it a gap.**
+
+**WHAT IS ACTUALLY SOLVED - action time.** `notary_action` proves membership in the notary tree in
+zero knowledge, and ANY active notary may endorse (no minting-notary binding, 2.18am). So a title
+records THAT an active notary acted and never WHICH, and because there is no per-notary pseudonym,
+nothing links the titles one notary touched. **"Who they provide for" does not leak** - not per title,
+not across titles.
+
+**WHAT IS NOT SOLVED - enrolment.** `registerNotary(notaryCommitment, notaryDataHash, registryId,
+registryProof)` puts **`notaryDataHash` in calldata**, and that hash is
+`keccak(regNumber, fullName, region, status)` over a register that is **public by construction**
+(2.18ao). So anyone can compute it for every notary in the country and match: **enrolment publicly
+names who joined the platform.**
+
+**AND THAT IS THE MORE DANGEROUS FACT, which is why I got the trade backwards.** The threat this
+design exists for is notaries being punished for serving the system - and a prosecutor does not need
+to know which notary signed which title. **A list of everyone enrolled is the whole target set**, and
+it is exactly what enrolment publishes. Protecting action-time while publishing the roster protects
+the wrong thing: I wrote *"registration stays public and verified, deliberately"* in 2.18am, reasoning
+that it kept the postman from inventing notaries. That reasoning was sound and the conclusion was
+still wrong, because it never asked what the disclosure COSTS.
+
+**THE FIX IS THE PATTERN ALREADY BUILT, MOVED ONE STEP EARLIER.** Registration should carry a ZK proof
+of *"this commitment belongs to SOME member of the active-notary snapshot"* rather than the leaf
+itself - the identical anonymous-set-membership shape as `notary_action`, applied at admission. Then
+enrolment reveals only that the set grew by one.
+
+Two consequences worth stating:
+- **The anonymity set is the whole register**, which is far larger than the enrolled set - so this is
+  strictly stronger than hiding among fellow users of the platform.
+- **The postman can be removed from the flow entirely.** If the notary proves membership themselves,
+  nobody needs to attest on their behalf - which also retires the 2.13b inaction-censorship objection
+  that the postman gate carries today.
+
+**THE ONE REAL COST: the CRE snapshot is a KECCAK tree** (2.18ao chose keccak deliberately, as
+`MerkleProof.verify` compatible and not then ZK-consumed). Proving keccak-Merkle inclusion in Noir is
+expensive - roughly one keccak per level. Either accept that cost, or mirror the snapshot into a
+Poseidon SMT and prove against that, which is cheap in-circuit and adds a mirroring step whose
+correctness is publicly checkable against the keccak root. **The second is almost certainly right**,
+and it is the same shape as the identity registry.
+
+**NOT BUILT.** It needs a circuit, a contract change to `registerNotary`, and the mirror. Recorded now
+because the current design would otherwise ship having published the list it exists to protect.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

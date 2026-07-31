@@ -5592,6 +5592,52 @@ rather than corrupt (2.18bj); (c) distributed key generation and the quorum depl
 operational rather than cryptographic; (d) migrate `_usedDocumentHash`'s key to the OPRF output.
 **Only (d) touches this repo's contracts**, and it is one line once (a)-(c) exist.
 
+### 2.18bl DO THE CHAINLINK NODES LEAK? And should a TEE hold `k` instead? No - and the reason is decisive.
+
+**WHAT THE CRE NODES SEE TODAY: ONLY PUBLIC DATA.** `notary_registry` fetches a GOVERNMENT REGISTER
+that is public by construction - sec. 2.15a's whole design depends on it being public, since that is
+what makes independent verification possible - and publishes a Merkle root plus leaves. **There is no
+user data in the workflow at all**, so today's answer is not "mitigated", it is "nothing to leak".
+
+**IF AN OPRF RAN ON THEM, THE CONTENT WOULD STILL BE SAFE, BY CONSTRUCTION.** A node sees `r * H(x)`
+for a uniformly random blinding factor `r`. That is a uniformly random group element to them -
+learning the document from it is the discrete-log problem. **Blinding is not a mitigation bolted on;
+it is the mechanism.**
+
+**THE REAL RESIDUAL IS METADATA, and it should be named rather than waved at.** Nodes would see WHO
+queries (network origin), WHEN, and HOW OFTEN. No cryptography removes that. Two things bound it:
+- **The OPRF query happens ONCE PER DOCUMENT AT REGISTRATION, never per withdrawal.** So the exposure
+  is a single query per document lifetime, not a running signal - which is a categorically smaller
+  surface than a per-action oracle.
+- Anything that decouples network identity from the query (Tor, a relay, batching) reduces it
+  further, and none of it is novel work.
+
+**SHOULD A SWITCHBOARD-STYLE TEE HOLD `k` INSTEAD? NO, AND ONE PROPERTY DECIDES IT.**
+`k` **MUST NEVER ROTATE** (2.18ax): uniqueness has to hold across decades, so a rotated key silently
+un-collides old documents against new ones. **A key that can never rotate must not live anywhere whose
+compromise is RETROACTIVE AND TOTAL.**
+
+That is exactly what a TEE break is. SGX has been broken repeatedly and publicly - Foreshadow,
+Plundervolt, SGAxe, AEPIC, Downfall - and such breaks are typically discovered YEARS after the
+hardware shipped. If `k` leaks even once, every document ever registered becomes enumerable
+retroactively AND forever, because the key cannot be rotated away from the compromise. **A threshold
+scheme has no equivalent failure**: an attacker must break `t` independent holders simultaneously, and
+a single compromised share reveals nothing.
+
+**AND IT WOULD REINTRODUCE A REJECTED DEPENDENCY.** SGX attestation roots to Intel; SEV to AMD. That
+is a US hardware vendor in the trust path for users whose threat model is a hostile state - the same
+objection sec. 2.22c raised against recovery SDKs that gate on Google or Apple. (Note this repo's
+sibling SPV tree DOES already carry Intel SGX attestation material for the Lightning side, so the
+technology is not unfamiliar here - but that path secures a different property, and its trust root
+was acceptable there in a way it is not for a non-rotatable global key.)
+
+**WHERE A TEE WOULD GENUINELY BE BETTER:** anything short-lived, rotatable, or where the alternative
+is trusting one operator outright. Neither describes `k`.
+
+**IF ONE IS USED ANYWAY, the only defensible form is threshold-OF-enclaves** - each share inside a
+separate enclave, ideally on mixed vendors - which is defence in depth rather than a substitute, and
+inherits both sets of complexity. Do not read "we could use a TEE" as "we could skip the DKG".
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

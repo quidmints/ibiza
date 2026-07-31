@@ -5318,6 +5318,40 @@ uncomputable from the document, which still means a threshold party. **That is n
 prize for a much larger cost**, and the decision should be re-taken on those terms rather than the
 ones in 2.18bc.
 
+**AUDITED FROM ALL SIDES AFTERWARDS, and the audit found a hazard I had introduced.**
+
+1. **Did deleting it break the security property its comment claimed?** The stale comment warned that
+   without the lookup *"a caller could invent a DG1, escrow against it, and land a commitment in the
+   identity tree backed by no real document - which would make the tree's scarcity guarantee, and
+   therefore the entire blacklist, worthless."* That is a real property, so I verified the
+   replacement rather than trusting a test comment: `IdentityRegistry` line 271 requires
+   `registrationSmt.isRootValid(registrationRoot_)`, and its own note says the alternative would let
+   a prover *"build a tree containing whatever leaf they liked and prove inclusion in that."* The
+   escrow circuit proves inclusion of the document leaf; the contract confirms the root came from the
+   REAL state keeper, whose only writer is `HolderRegistration`, which does the ICAO check.
+   **Property intact.**
+
+2. **STORAGE LAYOUT - THE HAZARD I CREATED.** `HolderStateKeeper` is UUPS-upgradeable and slots are
+   assigned by DECLARATION ORDER, so removing a variable from the MIDDLE shifts everything after it.
+   `lastDocumentInvalidationAt` was declared immediately after the deleted mapping, and
+   `IdentityRegistry` line 277 reads it to enforce `RegistrationRootPredatesAnInvalidation`. **A
+   shifted read returns 0, that guard never fires, and a revoked document can escrow against its
+   pre-revocation root forever** - the same silent class as sec. 2.18b/e, reintroduced by a change
+   made for privacy. No deployment exists in this repo, so a clean deletion would have been safe
+   today; a `bytes32 private __deprecated_holderOfDocumentHash` placeholder makes it safe even if an
+   instance exists somewhere unrecorded. One unused slot against a silently disabled revocation
+   guard is not a close call.
+
+3. **Dangling interface?** None - no `IHolderStateKeeper` or other declaration still exposes the
+   removed getter, so no caller can compile against a function that no longer exists.
+
+4. **Does the remaining bool enable more than stated?** Combined with holding the document, it tells
+   the holder *"this person uses this protocol"*. That is a real disclosure for this threat model and
+   is not eliminated - it is the one bit the OPRF would remove.
+
+5. **Renewal path** still marks `_usedDocumentHash[newDocumentHash_]`, so anti-replay covers renewed
+   documents and the deletion did not open a re-binding window there.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

@@ -102,6 +102,23 @@ contract HolderStateKeeper is StateKeeper {
 
 
     /**
+     * @notice RESERVED - the slot formerly holding `_holderOfDocumentHash` (dg1Hash => holderRoot),
+     *         deleted in sec. 2.18bg. **Do not remove and do not reuse.**
+     *
+     * WHY A PLACEHOLDER AND NOT A CLEAN DELETION. This contract is UUPS-upgradeable, and storage
+     * slots are assigned by DECLARATION ORDER. Removing a variable from the middle shifts every
+     * variable after it - here `lastDocumentInvalidationAt`, which `IdentityRegistry` reads to
+     * enforce `RegistrationRootPredatesAnInvalidation`. A shifted read would return 0, the guard
+     * would never fire, and **a revoked document could escrow against its pre-revocation root
+     * forever** - the same class of silent hole as sec. 2.18b/e.
+     *
+     * No deployment of this contract exists in the repo, so a clean deletion would be safe TODAY.
+     * The placeholder costs one unused slot and makes the change safe even if an instance exists
+     * somewhere not recorded here - which is the cheaper side of that bet by a wide margin.
+     */
+    bytes32 private __deprecated_holderOfDocumentHash;
+
+    /**
      * @notice When a document last STOPPED being current, by revocation or renewal. Appended after
      *         all prior storage, so the proxy layout is unaffected.
      *

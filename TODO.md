@@ -4410,6 +4410,57 @@ them missing is safe and visible - `TestAnUndeclaredRegistryRefusesToPublish` pi
 `TestANonLatinVocabularyWorksOnceDeclared` proves the mechanism handles non-Latin scripts using its
 own declared vocabulary rather than guessed-at real ones. **19 Go tests.**
 
+### 2.18ap THE WALLET IS REACT NATIVE, NOT WEB - puppeteer does not apply, and NFC is unconfigured
+
+*"check it"* (user, 2026-07-31), after I proposed puppeteer for the wallet and then hedged that I had
+not verified it was a web app. I had not, and it is not.
+
+**WHAT IT ACTUALLY IS.** `react-native 0.86.0` + `expo ~57.0.8`, `newArchEnabled: true`. `app.json`
+declares no `platforms` and no `web` block; the `webpack.config.js` present is stock Expo web
+scaffolding, not a configured target. The scripts are `expo run:ios --device` /
+`expo run:android --device` - **device-first, explicitly.**
+
+**SO PUPPETEER IS THE WRONG TOOL, not merely a weaker one.** Puppeteer drives a browser. This app has
+no browser build, and its critical paths are native modules that no browser can load. The React
+Native equivalents are Detox or Maestro, both of which drive a simulator or a real device. That is a
+correction to my own suggestion, not a refinement of it.
+
+**AND A SIMULATOR CANNOT REACH THE PARTS MOST LIKELY TO BREAK.** Ten `src/` files import native-only
+capability: `expo-secure-store` (hardware keystore, Face ID - `recovery.ts`, `store.ts`,
+`IdentityVault.ts`, `root.ts`) and `@rarimo/rarime-rn-sdk` (Noir proving via prebuilt AARs -
+`prove.ts`, `withdrawWitness.ts`, `circuits.ts`, `sdk/*`). **NFC does not exist on any simulator at
+all**, so the passport read can only ever be exercised on real hardware. The user's instinct that
+"things can happen there that dont happen on a simulator" is right, and stronger than stated: some
+things cannot happen on a simulator in principle.
+
+**THE FINDING THAT MATTERS MORE THAN THE TOOL CHOICE: NFC IS NOT CONFIGURED ANYWHERE.** Checked at
+every layer rather than inferred from one grep -
+
+| layer | NFC present? |
+|---|---|
+| `app.json` `plugins` | no - only `./app.plugin.js` and `expo-secure-store` |
+| our `app.plugin.js` | no - it only adds a Gradle `flatDir` for the SDK's AARs |
+| SDK `app.plugin.js` | no - zero matches |
+| SDK `android/**/AndroidManifest.xml` | no - the manifest is literally `<manifest></manifest>` |
+| SDK iOS podspec / Swift | no matches |
+
+Reading an eMRTD chip needs, on iOS, the `com.apple.developer.nfc.readersession.formats` entitlement
+with `TAG`, an `NFCReaderUsageDescription`, and the eMRTD AID in
+`com.apple.developer.nfc.readersession.iso7816.select-identifiers`; on Android,
+`android.permission.NFC` plus the reader intent filters. **None of that exists.**
+
+**WHY THIS REORDERS THE BLOCKED WORK.** sec. 2.18ad item 1 is "blocked on a real document". That is
+INCOMPLETE: with a passport in hand today the app still could not read it, because the entitlement
+that permits the read is absent and the build would be rejected at runtime rather than at compile
+time. **Configuring NFC is a prerequisite for item 1 and needs no document, no phone and no
+passport** - it is a config change, verifiable by a build. It should land BEFORE a document is
+sourced, or the first real-document session gets spent discovering this.
+
+**RELATED, ALREADY FLAGGED IN-FILE.** `app.plugin.js`'s own comment says its Gradle change has
+"NOT VERIFIED BY A REAL ANDROID BUILD - no JDK/Android SDK/NDK on the machine this was written on".
+So the native build path is unverified end to end, and the NFC config would join it. Both need a
+machine with the Android/iOS toolchains - CI or a dev box, not necessarily a phone.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

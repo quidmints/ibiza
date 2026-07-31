@@ -22,6 +22,22 @@ import {MerkleProof} from '@openzeppelin/contracts/utils/cryptography/MerkleProo
  * the proof is for "123 / Jane Doe / Kyiv / active". Regenerate with:
  *   cd backend/cre/notary_registry && GOOS=darwin go test -run EmitSolidity ./...
  */
+/*
+ * TRAP FOR THE POSEIDON MIRROR (sec. 2.18bm, task #16). This suite exists because Go and Solidity can
+ * disagree about Merkle construction SILENTLY - sorted pairs, odd-node promotion - and only a
+ * cross-language fixture catches it.
+ *
+ * Anonymous enrolment adds a SECOND tree: a Poseidon mirror of the same leaf set, so the circuit can
+ * prove inclusion cheaply (keccak costs ~one hash per level in-circuit). **That mirror needs its own
+ * equivalent of this file.** Nothing automatically ties the two trees together: they could hold
+ * different leaf sets, or agree on the set and disagree on ordering, and every test on each side
+ * would still pass while a proof against the mirror asserted membership in a set the keccak root
+ * never contained.
+ *
+ * The check to write: recompute BOTH roots from the SAME published leaves and require the mirror to
+ * be a faithful image - not "the mirror is internally consistent", which is what a mirror-only test
+ * would prove and is exactly the vacuous shape sec. 2.18ag warns about.
+ */
 contract NotaryRegistryProofTest is Test {
   function _fixture() internal view returns (bytes32 root_, bytes32 leaf_, bytes32[] memory proof_) {
     string memory raw = vm.readFile('test/fixtures/notary_registry_proof.txt');

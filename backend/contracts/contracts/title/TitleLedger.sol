@@ -303,6 +303,13 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
     ) external {
         if (!NOTARY_REGISTRY.hasRole(NOTARY_REGISTRY.REGISTRY_POSTMAN(), msg.sender)) revert OnlyRegistryPostman();
         if (notaryCommitment_ == bytes32(0) || notaryDataHash_ == bytes32(0)) revert ZeroNotaryIdentity();
+        // TRAP FOR WHOEVER IMPLEMENTS ANONYMOUS ENROLMENT (sec. 2.18bm, task #16): this entire check
+        // MOVES INTO THE CIRCUIT, and `notaryDataHash_` and `registryProof_` leave the ABI with it.
+        // They cannot merely be hidden - `notaryDataHash_` is `keccak(regNumber, fullName, region,
+        // status)` over a PUBLIC register, so anyone can compute it for every notary in the country
+        // and match. Its presence in CALLDATA is the leak, so the parameter has to go, not the
+        // getter. Leaving this verify here "as well, for safety" would reinstate the disclosure the
+        // circuit was built to remove.
         if (!MerkleProof.verify(registryProof_, NOTARY_REGISTRY.latestActiveRoot(registryId_), notaryDataHash_)) {
             revert NotaryNotActive();
         }

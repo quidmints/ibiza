@@ -4385,6 +4385,31 @@ export" to learn the vocabulary. **It does not - it needs the unknown case to be
 16 Go tests, up from 13. The three defect tests were rewritten to assert the FIXED behaviour, which
 is what their own retirement instructions said to do rather than editing them to match.
 
+**AND THE TRANSLATION LAYER, which is a SPEC requirement rather than an edge case.** *"any local
+languages need to be translated as part of the cre scraping spec"* (user, 2026-07-31). Right - a
+register writes statuses IN ITS OWN LANGUAGE. Ukraine's does not have to say `"active"` and Iran's
+certainly will not, so treating the English words as universal is the same mistake as treating one
+country's SOD layout as universal, and it fails the same way: silently, by dropping people.
+
+`statusVocabularies` now maps `registryKey -> (the register's own string -> meaning)`, matched after
+Unicode-aware case folding so Cyrillic and Arabic-script entries fold correctly. Adding a country is
+adding a table entry. `RegistryKey` moved into `Config` and the on-chain `registryId` is derived from
+it, so **a deployment cannot scrape one country's portal while publishing under another's
+identifier** - and one root per jurisdiction is what stops membership in "some register" standing in
+for authority in a SPECIFIC one (task #12).
+
+**NOT DONE AT RUNTIME, AND THAT IS FORCED.** Machine translation inside a DON cannot reach consensus:
+every node must produce a byte-identical result, and a translation service is neither deterministic
+nor identical across nodes. The mapping has to be a fixed, reviewable table shipped with the workflow.
+
+**THE UKRAINIAN ENTRIES ARE DELIBERATELY ABSENT.** I do not know what the Ministry of Justice register
+actually writes, and inventing plausible Cyrillic is exactly the sec. 2.18k fabrication: a wrong
+mapping either admits nobody (loud, recoverable) or assigns the WRONG MEANING to a real status
+(silent, and it decides who may act). An undeclared registry refuses to publish outright, so leaving
+them missing is safe and visible - `TestAnUndeclaredRegistryRefusesToPublish` pins that, and
+`TestANonLatinVocabularyWorksOnceDeclared` proves the mechanism handles non-Latin scripts using its
+own declared vocabulary rather than guessed-at real ones. **19 Go tests.**
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

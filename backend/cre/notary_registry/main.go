@@ -46,7 +46,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/smartcontractkit/cre-sdk-go/capabilities/blockchain/evm"
 	"github.com/smartcontractkit/cre-sdk-go/capabilities/networking/http"
@@ -66,6 +65,11 @@ type Config struct {
 	// See OPERATOR TODO #1 above - deliberately left for the deployer to fill in, not guessed.
 	RegistryEndpointURL string `json:"registryEndpointUrl"`
 
+	// Which register this deployment scrapes. Selects the status vocabulary (see
+	// statusVocabularies) and derives the on-chain registryId, so a deployment cannot scrape one
+	// country's portal while publishing under another's identifier.
+	RegistryKey string `json:"registryKey"`
+
 	// Cron schedule (standard 5-field cron expression). Defaults to daily - matches the "not
 	// necessarily real-time" framing this mechanism is built around; a bulk export doesn't
 	// change intra-day, so polling more often than the source republishes it buys nothing.
@@ -76,11 +80,13 @@ func (c *Config) applyDefaults() {
 	if c.Schedule == "" {
 		c.Schedule = "0 0 * * *" // daily
 	}
+	if c.RegistryKey == "" {
+		c.RegistryKey = defaultRegistryKey
+	}
 }
 
 // keccak256("UA_NOTARY_REGISTRY") - the registryId RegistrySourceAnchor keys this list's
 // snapshots under. A constant, not per-config, because it identifies the LIST, not a deployment.
-var registryID = crypto.Keccak256Hash([]byte("UA_NOTARY_REGISTRY"))
 
 // ═══════════════════════════════════════════════════════════════════
 //  Registry schema (placeholder pending a real sample export - see OPERATOR TODO #2)
@@ -168,7 +174,7 @@ func onSchedule(config *Config, runtime cre.Runtime, _ *cron.Payload) (string, e
 	// An unknown status ABORTS rather than silently omitting that notary (sec. 2.18ao). Publishing a
 	// snapshot that quietly excludes someone is censorship by parse error; refusing to publish is a
 	// visible outage that a human fixes.
-	leaves, err := activeLeaves(records)
+	leaves, err := activeLeaves(records, config.RegistryKey)
 	if err != nil {
 		logger.Error(fmt.Sprintf("[notary_registry] %v", err))
 		return "", err
@@ -187,7 +193,7 @@ func onSchedule(config *Config, runtime cre.Runtime, _ *cron.Payload) (string, e
 	// leaves ARE the on-chain data-availability layer (see the ABI comment above) - no IPFS CID,
 	// no external pinning service. The contract recomputes and verifies this exact root from
 	// `leaves` itself; `root` here is only used for the log line above, not submitted separately.
-	payload, err := snapshotABI.Pack(registryID, leaves)
+	payload, err := snapshotABI.Pack(registryIDFor(config.RegistryKey), leaves)
 	if err != nil {
 		return "", fmt.Errorf("abi pack failed: %w", err)
 	}

@@ -22,6 +22,10 @@ import (
 	"testing"
 )
 
+// The vocabulary these tests exercise. Kept as a constant so a future rename of the Ukrainian entry
+// does not silently turn every test into a "no vocabulary declared" error that still passes.
+const testRegistry = "UA_NOTARY_REGISTRY"
+
 const twoActiveNotaries = `<?xml version="1.0" encoding="UTF-8"?>
 <registry>
   <record><reg_number>123</reg_number><full_name>Jane Doe</full_name><region>Kyiv</region><status>active</status></record>
@@ -67,11 +71,11 @@ func TestParsesAZippedExportIdentically(t *testing.T) {
 		t.Fatalf("plain parse failed: %v", err)
 	}
 
-	zippedLeaves, err := activeLeaves(zipped)
+	zippedLeaves, err := activeLeaves(zipped, testRegistry)
 	if err != nil {
 		t.Fatalf("zipped active filter: %v", err)
 	}
-	plainLeaves, err := activeLeaves(plain)
+	plainLeaves, err := activeLeaves(plain, testRegistry)
 	if err != nil {
 		t.Fatalf("plain active filter: %v", err)
 	}
@@ -127,7 +131,7 @@ func TestOnlyActiveNotariesBecomeLeaves(t *testing.T) {
 		{RegistrationNumber: "3", Status: "terminated"},
 		{RegistrationNumber: "4", Status: "active"},
 	}
-	leaves, err := activeLeaves(records)
+	leaves, err := activeLeaves(records, testRegistry)
 	if err != nil {
 		t.Fatalf("known statuses must not error: %v", err)
 	}
@@ -150,7 +154,7 @@ func TestAStatusCasingChangeNoLongerDropsNotaries(t *testing.T) {
 		{RegistrationNumber: "3", Status: "ACTIVE"},
 		{RegistrationNumber: "4", Status: "  active  "},
 	}
-	leaves, err := activeLeaves(records)
+	leaves, err := activeLeaves(records, testRegistry)
 	if err != nil {
 		t.Fatalf("casing variants must not error: %v", err)
 	}
@@ -173,7 +177,7 @@ func TestAnUnknownStatusRefusesTheSnapshotRatherThanOmittingTheNotary(t *testing
 		{RegistrationNumber: "1", Status: "active"},
 		{RegistrationNumber: "2", Status: "\u0434\u0456\u044e\u0447\u0438\u0439"}, // "diyuchyi" - Ukrainian for active
 	}
-	if _, err := activeLeaves(records); err == nil {
+	if _, err := activeLeaves(records, testRegistry); err == nil {
 		t.Fatal("an unrecognised status was silently skipped - that is censorship by parse error")
 	}
 }
@@ -184,7 +188,7 @@ func TestKnownInactiveStatusesAreSkippedWithoutError(t *testing.T) {
 		{RegistrationNumber: "2", Status: "Suspended"},
 		{RegistrationNumber: "3", Status: "TERMINATED"},
 	}
-	leaves, err := activeLeaves(records)
+	leaves, err := activeLeaves(records, testRegistry)
 	if err != nil {
 		t.Fatalf("known inactive statuses must not error: %v", err)
 	}
@@ -277,7 +281,7 @@ func TestDuplicateRecordsAreDeduplicated(t *testing.T) {
 	dup := NotaryRecordXML{RegistrationNumber: "1", FullName: "Jane", Region: "Kyiv", Status: "active"}
 	other := NotaryRecordXML{RegistrationNumber: "2", FullName: "John", Region: "Lviv", Status: "active"}
 
-	leaves, err := activeLeaves([]NotaryRecordXML{dup, other, dup})
+	leaves, err := activeLeaves([]NotaryRecordXML{dup, other, dup}, testRegistry)
 	if err != nil {
 		t.Fatalf("duplicates must not error: %v", err)
 	}
@@ -296,7 +300,7 @@ func TestSubmittedLeavesAreStrictlyAscending(t *testing.T) {
 		{RegistrationNumber: "2", FullName: "John", Region: "Lviv", Status: "active"},
 		{RegistrationNumber: "3", FullName: "Ann", Region: "Odesa", Status: "active"},
 	}
-	leaves, err := activeLeaves(records)
+	leaves, err := activeLeaves(records, testRegistry)
 	if err != nil {
 		t.Fatalf("active filter: %v", err)
 	}
@@ -306,5 +310,60 @@ func TestSubmittedLeavesAreStrictlyAscending(t *testing.T) {
 		if bytes.Compare(leaves[i-1][:], leaves[i][:]) >= 0 {
 			t.Fatalf("leaves are not strictly ascending at %d - RegistrySourceAnchor would reject the snapshot", i)
 		}
+	}
+}
+
+// ---- the translation layer ------------------------------------------------------------------
+
+/*
+ * A REGISTER WRITES STATUSES IN ITS OWN LANGUAGE, and the mapping to protocol meaning is declared
+ * per jurisdiction (sec. 2.18ao). This proves the mechanism handles a non-Latin vocabulary - the
+ * point being that Ukraine's and Iran's registers will not say "active", and assuming they do is
+ * how notaries get silently dropped.
+ *
+ * NOTE WHAT IS NOT HERE: the REAL Ukrainian status strings. I do not know what the Ministry of
+ * Justice register writes, and inventing plausible Cyrillic would be the sec. 2.18k fabrication -
+ * a wrong mapping either admits nobody (loud) or assigns the wrong meaning (silent, and it decides
+ * who may act). This test declares its OWN vocabulary to exercise the code path.
+ */
+func TestANonLatinVocabularyWorksOnceDeclared(t *testing.T) {
+	const key = "TEST_CYRILLIC_REGISTRY"
+	statusVocabularies[key] = map[string]statusMeaning{
+		"\u0434\u0456\u044e\u0447\u0438\u0439":             meaningActive,
+		"\u0437\u0443\u043f\u0438\u043d\u0435\u043d\u043e": meaningInactive,
+	}
+	defer delete(statusVocabularies, key)
+
+	records := []NotaryRecordXML{
+		{RegistrationNumber: "1", Status: "\u0414\u0406\u042e\u0427\u0418\u0419"}, // upper case - must still fold
+		{RegistrationNumber: "2", Status: "\u0437\u0443\u043f\u0438\u043d\u0435\u043d\u043e"},
+	}
+	leaves, err := activeLeaves(records, key)
+	if err != nil {
+		t.Fatalf("a declared Cyrillic vocabulary must work: %v", err)
+	}
+	if len(leaves) != 1 {
+		t.Fatalf("want 1 active leaf from the Cyrillic vocabulary, got %d", len(leaves))
+	}
+}
+
+/*
+ * AND A JURISDICTION WITH NO DECLARED VOCABULARY CANNOT PUBLISH AT ALL.
+ *
+ * This is the fail-closed property that makes the missing Ukrainian entries safe to leave missing:
+ * an undeclared register refuses outright rather than publishing whatever happens to match English.
+ */
+func TestAnUndeclaredRegistryRefusesToPublish(t *testing.T) {
+	records := []NotaryRecordXML{{RegistrationNumber: "1", Status: "active"}}
+	if _, err := activeLeaves(records, "IR_NOTARY_REGISTRY"); err == nil {
+		t.Fatal("an undeclared registry published using the English vocabulary by accident")
+	}
+}
+
+// The on-chain registryId must follow the registry key, so a deployment cannot scrape one country's
+// portal while publishing under another's identifier.
+func TestTheRegistryIdFollowsTheRegistryKey(t *testing.T) {
+	if registryIDFor("UA_NOTARY_REGISTRY") == registryIDFor("IR_NOTARY_REGISTRY") {
+		t.Fatal("two registries share an on-chain identifier")
 	}
 }

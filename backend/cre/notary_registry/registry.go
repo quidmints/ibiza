@@ -113,19 +113,67 @@ func leafHash(r NotaryRecordXML) [32]byte {
 		crypto.Keccak256([]byte(r.RegistrationNumber)),
 		crypto.Keccak256([]byte(r.FullName)),
 		crypto.Keccak256([]byte(r.Region)),
-		crypto.Keccak256([]byte(normalizeStatus(r.Status))),
+		crypto.Keccak256([]byte(normalizeStatus(r.Status))), // normalised, so casing cannot fork the leaf
 	)
 }
 
-// The statuses this register is known to emit. The XML type's own comment names these three.
+// ---------------------------------------------------------------------------------------------
+//  STATUS VOCABULARY - the translation layer.
+//
+//  A register writes statuses IN ITS OWN LANGUAGE. Ukraine's does not have to say "active", and
+//  Iran's certainly will not. Treating the English words as universal is the same mistake as
+//  treating one country's SOD layout as universal, and it fails the same way: silently, by dropping
+//  people. So the mapping from a register's own vocabulary to protocol meaning is DECLARED PER
+//  JURISDICTION and is part of the scraping spec, not an implementation detail.
+//
+//  WHY NOT TRANSLATE AT RUNTIME. Machine translation inside a DON workflow cannot reach consensus -
+//  every node must produce a byte-identical result, and a translation service is neither
+//  deterministic nor identical across nodes. The mapping has to be a fixed, reviewable table that
+//  ships with the workflow.
+// ---------------------------------------------------------------------------------------------
+
+// The registry this deployment scrapes. ONE JURISDICTION PER DEPLOYMENT, deliberately: a single
+// root mixing several countries' notaries would let membership in "some register" stand in for
+// authority in a SPECIFIC one, which is not a property any relying party could check (task #12).
+const defaultRegistryKey = "UA_NOTARY_REGISTRY"
+
+func registryIDFor(registryKey string) [32]byte {
+	return crypto.Keccak256Hash([]byte(registryKey))
+}
+
+type statusMeaning int
+
 const (
-	statusActive     = "active"
-	statusSuspended  = "suspended"
-	statusTerminated = "terminated"
+	meaningActive statusMeaning = iota + 1
+	meaningInactive
 )
 
+// statusVocabularies maps registryKey -> (the register's own status string -> what it MEANS).
+// Keys are compared after `normalizeStatus`, so entries are lowercase and untrimmed variants are
+// handled for free. `strings.ToLower` is Unicode-aware, so Cyrillic and Arabic-script entries fold
+// correctly.
+//
+// UNPOPULATED ENTRIES ARE NOT A BUG, THEY ARE THE POINT. An unrecognised status refuses the whole
+// snapshot (see activeLeaves), so a jurisdiction whose vocabulary has not been declared cannot
+// publish a partially-correct one. Adding a country means adding a table entry here, taken from a
+// REAL export - never guessed.
+var statusVocabularies = map[string]map[string]statusMeaning{
+	// The three values the export was assumed to emit - this workflow's XML type documents them.
+	//
+	// THE UKRAINIAN-LANGUAGE ENTRIES ARE DELIBERATELY ABSENT. I do not know what the Ministry of
+	// Justice register actually writes, and inventing plausible Cyrillic here would be exactly the
+	// fabrication sec. 2.18k refuses: a wrong mapping either admits nobody (loud, recoverable) or
+	// maps a status to the wrong meaning (silent, and it decides who may act). Until a real export
+	// is read, an unknown status correctly refuses to publish.
+	"UA_NOTARY_REGISTRY": {
+		"active":     meaningActive,
+		"suspended":  meaningInactive,
+		"terminated": meaningInactive,
+	},
+}
+
 // normalizeStatus trims and lowercases, so a portal migration that starts emitting "Active" does not
-// change what a record MEANS.
+// change what a record MEANS. Unicode-aware, so it folds non-Latin scripts too.
 func normalizeStatus(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
@@ -157,26 +205,34 @@ func normalizeStatus(s string) string {
 // duplicates yields equal neighbours, not strict ascent, so one duplicated row upstream used to make
 // the entire snapshot unpublishable. Safe, but a liveness failure - every notary in the country
 // stops being refreshed over a registrar's data-entry slip.
-func activeLeaves(records []NotaryRecordXML) ([][32]byte, error) {
+func activeLeaves(records []NotaryRecordXML, registryKey string) ([][32]byte, error) {
+	vocabulary, ok := statusVocabularies[registryKey]
+	if !ok {
+		return nil, fmt.Errorf(
+			"no status vocabulary declared for registry %q - a register's statuses are in its own "+
+				"language and must be translated in statusVocabularies before it can publish",
+			registryKey)
+	}
+
 	leaves := make([][32]byte, 0, len(records))
 	seen := make(map[[32]byte]struct{}, len(records))
 
 	for _, r := range records {
-		switch normalizeStatus(r.Status) {
-		case statusActive:
+		switch vocabulary[normalizeStatus(r.Status)] {
+		case meaningActive:
 			leaf := leafHash(r)
 			if _, dup := seen[leaf]; dup {
 				continue
 			}
 			seen[leaf] = struct{}{}
 			leaves = append(leaves, leaf)
-		case statusSuspended, statusTerminated:
+		case meaningInactive:
 			continue
 		default:
 			return nil, fmt.Errorf(
-				"unknown notary status %q for registration %q - refusing to publish a snapshot that "+
-					"would silently omit this notary; the register's status vocabulary has changed",
-				r.Status, r.RegistrationNumber)
+				"unknown status %q for registration %q in registry %q - refusing to publish a "+
+					"snapshot that would silently omit this notary; declare it in statusVocabularies",
+				r.Status, r.RegistrationNumber, registryKey)
 		}
 	}
 	return leaves, nil

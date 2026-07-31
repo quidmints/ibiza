@@ -165,7 +165,14 @@ func onSchedule(config *Config, runtime cre.Runtime, _ *cron.Payload) (string, e
 	// useful. This tree has no update/removal semantics of its own (unlike PP's LeanIMT or
 	// rarime's SMT); each publish is a fresh full rebuild from the current export instead, so
 	// dropped/reinstated entries are simply reflected in the next scheduled snapshot.
-	leaves := activeLeaves(records)
+	// An unknown status ABORTS rather than silently omitting that notary (sec. 2.18ao). Publishing a
+	// snapshot that quietly excludes someone is censorship by parse error; refusing to publish is a
+	// visible outage that a human fixes.
+	leaves, err := activeLeaves(records)
+	if err != nil {
+		logger.Error(fmt.Sprintf("[notary_registry] %v", err))
+		return "", err
+	}
 	if len(leaves) == 0 {
 		err := fmt.Errorf("zero active notaries parsed from a %d-record export - refusing to publish an empty root", len(records))
 		logger.Error(fmt.Sprintf("[notary_registry] %v", err))

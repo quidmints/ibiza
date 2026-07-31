@@ -4365,10 +4365,25 @@ still calls the extracted function. Both `GOOS=wasip1` and host builds verified.
    stops being refreshed because of a registrar's data-entry slip. Deduplication belongs in
    `activeLeaves`.
 
-**All three are pinned as CURRENT behaviour with retirement instructions in the test bodies**, so a
-fix has a failing target and cannot be quietly edited to match new behaviour. They are not fixed here
-because 1 needs a real export and 2 and 3 change every leaf - i.e. they should land together, with
-task #12, as one migration rather than three separate breaks.
+**ALL THREE FIXED, and defect 1's excuse was wrong too.** *"why cant we sandbox what we need to run
+the logic here and see if it works? fix the defects"* (user, 2026-07-31). I had said 1 "needs a real
+export" to learn the vocabulary. **It does not - it needs the unknown case to be LOUD.**
+
+- **1.** Statuses are normalised (trim + lowercase), so a migrated portal emitting `"Active"` no
+  longer drops anyone. And the part case-folding alone would NOT have fixed: anything outside the
+  known set `{active, suspended, terminated}` now **refuses the entire snapshot** instead of skipping
+  that record. A Ukrainian-language status is a visible outage a human fixes, not a person quietly
+  losing the ability to act. That needed no export at all - only the recognition that "I do not know
+  the vocabulary" should fail closed rather than silently.
+- **2.** `leafHash` hashes each field FIRST -
+  `keccak(keccak(reg), keccak(name), keccak(region), keccak(status))` - so every part is fixed-width
+  and no boundary is ambiguous. `TitleLedger.registerNotary`'s `notaryDataHash_` doc updated in the
+  same commit, since both sides must agree.
+- **3.** `activeLeaves` deduplicates, and a new test asserts the property that motivated it: the
+  submitted leaves are STRICTLY ascending, which is what `RegistrySourceAnchor` actually checks.
+
+16 Go tests, up from 13. The three defect tests were rewritten to assert the FIXED behaviour, which
+is what their own retirement instructions said to do rather than editing them to match.
 
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 

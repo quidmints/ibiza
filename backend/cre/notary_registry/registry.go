@@ -17,6 +17,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -96,8 +97,37 @@ func parseRegistryExport(body []byte) ([]NotaryRecordXML, error) {
 //	actually work.
 //
 // ═══════════════════════════════════════════════════════════════════
+// leafHash commits to all four fields UNAMBIGUOUSLY.
+//
+// WAS keccak(reg || name || region || status) - a bare concatenation with no separator, so reg "12"
+// with name "3X" hashed identically to reg "123" with name "X" (sec. 2.18ao). Unreachable with
+// Ukrainian data, because registration numbers are numeric and names are not - but that is an
+// argument about the DATA, not about the construction, and it stops holding the moment a
+// jurisdiction issues alphanumeric registration numbers, which task #12 makes likely.
+//
+// Hashing each field FIRST makes every part fixed-width (32 bytes), so no boundary is ambiguous and
+// no delimiter has to be forbidden from appearing inside a name. `notaryDataHash` in
+// TitleLedger.registerNotary is this value; both sides must change together, and both did.
 func leafHash(r NotaryRecordXML) [32]byte {
-	return crypto.Keccak256Hash([]byte(r.RegistrationNumber), []byte(r.FullName), []byte(r.Region), []byte(r.Status))
+	return crypto.Keccak256Hash(
+		crypto.Keccak256([]byte(r.RegistrationNumber)),
+		crypto.Keccak256([]byte(r.FullName)),
+		crypto.Keccak256([]byte(r.Region)),
+		crypto.Keccak256([]byte(normalizeStatus(r.Status))),
+	)
+}
+
+// The statuses this register is known to emit. The XML type's own comment names these three.
+const (
+	statusActive     = "active"
+	statusSuspended  = "suspended"
+	statusTerminated = "terminated"
+)
+
+// normalizeStatus trims and lowercases, so a portal migration that starts emitting "Active" does not
+// change what a record MEANS.
+func normalizeStatus(s string) string {
+	return strings.ToLower(strings.TrimSpace(s))
 }
 
 // activeLeaves keeps only ACTIVE notaries and hashes each to a leaf.
@@ -107,15 +137,49 @@ func leafHash(r NotaryRecordXML) [32]byte {
 // ability to act, which is censorship by parse error rather than by decision. `onSchedule` refuses
 // to publish when this returns nothing, so total failure is loud - but a PARTIAL match is not, and
 // exact-string "active" is what makes that possible (see the status tests).
-func activeLeaves(records []NotaryRecordXML) [][32]byte {
+// activeLeaves keeps only ACTIVE notaries, hashes each to a leaf, and DEDUPLICATES.
+//
+// AN UNKNOWN STATUS IS AN ERROR, NOT A SKIP - the fix for the worst defect in sec. 2.18ao. The old
+// code compared exactly against "active", so a migrated portal emitting "Active" dropped those
+// notaries with NO error at all. Total failure was loud (onSchedule refuses an empty root) but a
+// PARTIAL change was silent, and mixed casing is exactly how a partial change arrives.
+//
+// UNDER-COUNTING IS THE DANGEROUS DIRECTION. Extra notaries would be caught by anyone comparing the
+// snapshot against the public register; MISSING ones silently strip real people of the ability to
+// act, and nothing downstream can distinguish "not a notary" from "the parser dropped you".
+//
+// CASE-FOLDING ALONE WOULD HAVE BEEN A GUESS. If the register's real vocabulary turns out to be
+// Ukrainian, folding ASCII case admits nobody extra and hides that the mapping was never verified.
+// So anything outside the known set REFUSES THE WHOLE SNAPSHOT rather than quietly excluding one
+// person - which is the difference between a scraper that rots loudly and one that rots silently.
+//
+// DEDUPLICATION is here because RegistrySourceAnchor requires STRICTLY ascending leaves: sorting
+// duplicates yields equal neighbours, not strict ascent, so one duplicated row upstream used to make
+// the entire snapshot unpublishable. Safe, but a liveness failure - every notary in the country
+// stops being refreshed over a registrar's data-entry slip.
+func activeLeaves(records []NotaryRecordXML) ([][32]byte, error) {
 	leaves := make([][32]byte, 0, len(records))
+	seen := make(map[[32]byte]struct{}, len(records))
+
 	for _, r := range records {
-		if r.Status != "active" {
+		switch normalizeStatus(r.Status) {
+		case statusActive:
+			leaf := leafHash(r)
+			if _, dup := seen[leaf]; dup {
+				continue
+			}
+			seen[leaf] = struct{}{}
+			leaves = append(leaves, leaf)
+		case statusSuspended, statusTerminated:
 			continue
+		default:
+			return nil, fmt.Errorf(
+				"unknown notary status %q for registration %q - refusing to publish a snapshot that "+
+					"would silently omit this notary; the register's status vocabulary has changed",
+				r.Status, r.RegistrationNumber)
 		}
-		leaves = append(leaves, leafHash(r))
 	}
-	return leaves
+	return leaves, nil
 }
 
 // merkleRoot builds an OpenZeppelin-MerkleProof-compatible root: leaves sorted, each internal

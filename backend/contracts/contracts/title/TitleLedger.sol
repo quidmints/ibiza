@@ -274,7 +274,10 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
      * @notice Admit a notary to the anonymity set.
      * @param notaryCommitment_ `Poseidon(notary_secret)` - the leaf key `notary_action` derives
      *        from the secret it proves knowledge of. The secret NEVER appears on-chain.
-     * @param notaryDataHash_ keccak(regNumber, fullName, region, status) - the register entry
+     * @param notaryDataHash_ the register entry's leaf, as backend/cre/notary_registry builds it:
+     *        keccak(keccak(regNumber), keccak(fullName), keccak(region), keccak(status)). Each field
+     *        is hashed FIRST so every part is fixed-width - a bare concatenation let reg "12" with
+     *        name "3X" collide with reg "123" with name "X" (sec. 2.18ao).
      * @param registryId_ which RegistrySourceAnchor snapshot to prove against
      * @param registryProof_ Merkle proof of `notaryDataHash_` in that snapshot's active root
      *

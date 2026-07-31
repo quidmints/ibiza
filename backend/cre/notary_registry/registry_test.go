@@ -62,9 +62,21 @@ func TestParsesAZippedExportIdentically(t *testing.T) {
 	if err != nil {
 		t.Fatalf("zipped parse failed: %v", err)
 	}
-	plain, _ := parseRegistryExport([]byte(twoActiveNotaries))
+	plain, err := parseRegistryExport([]byte(twoActiveNotaries))
+	if err != nil {
+		t.Fatalf("plain parse failed: %v", err)
+	}
 
-	if merkleRoot(activeLeaves(zipped)) != merkleRoot(activeLeaves(plain)) {
+	zippedLeaves, err := activeLeaves(zipped)
+	if err != nil {
+		t.Fatalf("zipped active filter: %v", err)
+	}
+	plainLeaves, err := activeLeaves(plain)
+	if err != nil {
+		t.Fatalf("plain active filter: %v", err)
+	}
+
+	if merkleRoot(zippedLeaves) != merkleRoot(plainLeaves) {
 		t.Fatal("the zipped and plain paths produced different roots for the same register")
 	}
 }
@@ -115,43 +127,73 @@ func TestOnlyActiveNotariesBecomeLeaves(t *testing.T) {
 		{RegistrationNumber: "3", Status: "terminated"},
 		{RegistrationNumber: "4", Status: "active"},
 	}
-	if got := len(activeLeaves(records)); got != 2 {
-		t.Fatalf("want 2 active leaves, got %d", got)
+	leaves, err := activeLeaves(records)
+	if err != nil {
+		t.Fatalf("known statuses must not error: %v", err)
+	}
+	if len(leaves) != 2 {
+		t.Fatalf("want 2 active leaves, got %d", len(leaves))
 	}
 }
 
 /*
- * THE CENSORSHIP-BY-PARSE-ERROR CASE, PINNED AS CURRENT BEHAVIOUR.
+ * THE CENSORSHIP-BY-PARSE-ERROR CASE, NOW FIXED (sec. 2.18ao).
  *
- * The status test is an EXACT string compare against "active". A register that starts emitting
- * "Active", "ACTIVE", " active" or a Ukrainian-language status drops those notaries SILENTLY. Total
- * failure is caught - `onSchedule` refuses to publish an empty root - but a PARTIAL change is not,
- * and a mixed-casing export is exactly how a partial change arrives.
- *
- * This is not a hypothetical about a hostile registrar; it is what happens when a portal is
- * migrated. Recorded as a test rather than "fixed" by lowercasing, because case-folding would be a
- * GUESS about the register's vocabulary: if the real status set turns out to be Ukrainian, folding
- * ASCII case admits nobody extra and hides that the mapping was never verified. What is needed is
- * the actual status vocabulary from a real export - see task #12, which has to answer the same
- * question per country anyway.
+ * The filter used to compare exactly against "active", so a migrated portal emitting "Active"
+ * dropped those notaries with NO error. Statuses are now normalised, so the same register survives
+ * a casing change.
  */
-func TestAStatusCasingChangeSilentlyDropsNotaries(t *testing.T) {
+func TestAStatusCasingChangeNoLongerDropsNotaries(t *testing.T) {
 	records := []NotaryRecordXML{
 		{RegistrationNumber: "1", Status: "active"},
-		{RegistrationNumber: "2", Status: "Active"}, // same register, migrated portal
+		{RegistrationNumber: "2", Status: "Active"},
 		{RegistrationNumber: "3", Status: "ACTIVE"},
+		{RegistrationNumber: "4", Status: "  active  "},
 	}
-	got := len(activeLeaves(records))
-	if got != 1 {
-		t.Fatalf(
-			"want 1 (current exact-match behaviour), got %d - if this now returns 3 the matching was "+
-				"relaxed; confirm the real status vocabulary first and update sec. 2.18ao",
-			got,
-		)
+	leaves, err := activeLeaves(records)
+	if err != nil {
+		t.Fatalf("casing variants must not error: %v", err)
+	}
+	if len(leaves) != 4 {
+		t.Fatalf("a casing change still drops notaries: want 4, got %d", len(leaves))
 	}
 }
 
-// ── the Merkle root: it must agree with what the CONTRACT computes ──────────────────────────
+/*
+ * AND THE PART CASE-FOLDING ALONE WOULD NOT HAVE FIXED.
+ *
+ * If the register's vocabulary changes to something outside the known set - a Ukrainian-language
+ * status, a new "inactive" - folding case admits nobody and the notary is silently omitted. That is
+ * the same silent under-count in a different costume. An unknown status now REFUSES THE WHOLE
+ * SNAPSHOT, so the failure is a visible outage a human fixes rather than a person quietly losing
+ * the ability to act.
+ */
+func TestAnUnknownStatusRefusesTheSnapshotRatherThanOmittingTheNotary(t *testing.T) {
+	records := []NotaryRecordXML{
+		{RegistrationNumber: "1", Status: "active"},
+		{RegistrationNumber: "2", Status: "\u0434\u0456\u044e\u0447\u0438\u0439"}, // "diyuchyi" - Ukrainian for active
+	}
+	if _, err := activeLeaves(records); err == nil {
+		t.Fatal("an unrecognised status was silently skipped - that is censorship by parse error")
+	}
+}
+
+func TestKnownInactiveStatusesAreSkippedWithoutError(t *testing.T) {
+	records := []NotaryRecordXML{
+		{RegistrationNumber: "1", Status: "active"},
+		{RegistrationNumber: "2", Status: "Suspended"},
+		{RegistrationNumber: "3", Status: "TERMINATED"},
+	}
+	leaves, err := activeLeaves(records)
+	if err != nil {
+		t.Fatalf("known inactive statuses must not error: %v", err)
+	}
+	if len(leaves) != 1 {
+		t.Fatalf("want 1 active leaf, got %d", len(leaves))
+	}
+}
+
+// ---- the Merkle root: it must agree with what the CONTRACT computes ------------------------
 
 /*
  * THE ROOT IS ORDER-INDEPENDENT, which is what makes the workflow's output well-defined.
@@ -190,9 +232,6 @@ func TestAnEmptyRegisterProducesTheZeroRoot(t *testing.T) {
 
 /*
  * CHANGING ANY FIELD CHANGES THE LEAF - the property the whole snapshot rests on.
- *
- * `leafHash` concatenates reg number, name, region and status. If two different notaries could
- * collide, or if a status change did not move the leaf, a revoked notary would stay provably active.
  */
 func TestEveryFieldIsBoundIntoTheLeaf(t *testing.T) {
 	base := NotaryRecordXML{RegistrationNumber: "123", FullName: "Jane Doe", Region: "Kyiv", Status: "active"}
@@ -212,41 +251,60 @@ func TestEveryFieldIsBoundIntoTheLeaf(t *testing.T) {
 }
 
 /*
- * FIELD CONCATENATION IS AMBIGUOUS - a real (if narrow) collision, recorded rather than assumed away.
+ * THE CONCATENATION AMBIGUITY, NOW FIXED (sec. 2.18ao).
  *
- * `leafHash` keccaks the four fields CONCATENATED with no separator, so two different records whose
- * fields split differently at the same boundary hash identically. Here reg "12" + name "3X" and reg
- * "123" + name "X" produce the same bytes.
- *
- * WHY IT IS NOT URGENT: registration numbers are numeric and names are not, so the boundary is not
- * reachable with real data. WHY IT IS STILL WRONG: that is an argument about the DATA, not about the
- * construction, and it stops holding the moment a register uses alphanumeric registration numbers -
- * which task #12's other jurisdictions may well do. The fix is a length-prefixed or delimited
- * encoding, and it must land BEFORE a second country, since it changes every leaf.
+ * `leafHash` used to keccak the four fields concatenated with no separator, so reg "12" + name "3X"
+ * hashed identically to reg "123" + name "X". Each field is now hashed first, making every part
+ * fixed-width, so no boundary is ambiguous.
  */
-func TestFieldConcatenationIsAmbiguousAcrossTheRegNumberNameBoundary(t *testing.T) {
+func TestFieldsCannotBeReSplitAcrossTheRegNumberNameBoundary(t *testing.T) {
 	left := NotaryRecordXML{RegistrationNumber: "12", FullName: "3X", Region: "Kyiv", Status: "active"}
 	right := NotaryRecordXML{RegistrationNumber: "123", FullName: "X", Region: "Kyiv", Status: "active"}
 
-	if leafHash(left) != leafHash(right) {
-		t.Fatal("the concatenation ambiguity is FIXED - adopt a delimited encoding note in sec. 2.18ao and delete this test")
+	if leafHash(left) == leafHash(right) {
+		t.Fatal("two different notaries still collide across the reg-number/name boundary")
 	}
 }
 
 /*
- * DUPLICATE RECORDS PRODUCE DUPLICATE LEAVES, which the CONTRACT rejects.
+ * THE SAME NOTARY LISTED TWICE MUST NOT BREAK THE SNAPSHOT (sec. 2.18ao).
  *
- * `RegistrySourceAnchor` requires strictly ascending leaves, and sorting duplicates yields equal
- * neighbours rather than strict ascent - so a register that lists one notary twice makes the whole
- * snapshot unpublishable. That is a safe failure (loud, not silent) but it is a LIVENESS risk: one
- * duplicated row upstream stops every notary in the country from being refreshed. Deduplication
- * belongs in `activeLeaves`; this test states today's behaviour so the fix has a target.
+ * RegistrySourceAnchor requires STRICTLY ascending leaves, and sorting duplicates yields equal
+ * neighbours rather than strict ascent - so one duplicated row upstream used to make the whole
+ * country's snapshot unpublishable. A safe failure, but a liveness one.
  */
-func TestDuplicateRecordsAreNotDeduplicated(t *testing.T) {
+func TestDuplicateRecordsAreDeduplicated(t *testing.T) {
 	dup := NotaryRecordXML{RegistrationNumber: "1", FullName: "Jane", Region: "Kyiv", Status: "active"}
-	leaves := activeLeaves([]NotaryRecordXML{dup, dup})
+	other := NotaryRecordXML{RegistrationNumber: "2", FullName: "John", Region: "Lviv", Status: "active"}
 
-	if len(leaves) != 2 || leaves[0] != leaves[1] {
-		t.Fatal("duplicates are now deduplicated - good; update sec. 2.18ao and delete this test")
+	leaves, err := activeLeaves([]NotaryRecordXML{dup, other, dup})
+	if err != nil {
+		t.Fatalf("duplicates must not error: %v", err)
+	}
+	if len(leaves) != 2 {
+		t.Fatalf("want 2 deduplicated leaves, got %d", len(leaves))
+	}
+}
+
+/*
+ * AND THE PROPERTY DEDUPLICATION EXISTS FOR: the submitted leaves must be STRICTLY ascending, which
+ * is what the contract checks. Sorting alone does not give that when duplicates are present.
+ */
+func TestSubmittedLeavesAreStrictlyAscending(t *testing.T) {
+	dup := NotaryRecordXML{RegistrationNumber: "1", FullName: "Jane", Region: "Kyiv", Status: "active"}
+	records := []NotaryRecordXML{dup, dup,
+		{RegistrationNumber: "2", FullName: "John", Region: "Lviv", Status: "active"},
+		{RegistrationNumber: "3", FullName: "Ann", Region: "Odesa", Status: "active"},
+	}
+	leaves, err := activeLeaves(records)
+	if err != nil {
+		t.Fatalf("active filter: %v", err)
+	}
+	merkleRoot(leaves) // sorts in place, exactly as onSchedule relies on before submitting
+
+	for i := 1; i < len(leaves); i++ {
+		if bytes.Compare(leaves[i-1][:], leaves[i][:]) >= 0 {
+			t.Fatalf("leaves are not strictly ascending at %d - RegistrySourceAnchor would reject the snapshot", i)
+		}
 	}
 }

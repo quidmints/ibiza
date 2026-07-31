@@ -84,22 +84,22 @@ contract HolderStateKeeper is StateKeeper {
     // --- appended storage (after all StateKeeper storage — safe for the proxy layout) ---
     mapping(bytes32 => DocumentBond) internal _documents; // documentKey => bond
     mapping(bytes32 => bytes32[]) internal _holderDocuments; // holderRoot => documentKeys
-    mapping(bytes32 => bool) internal _usedDocumentHash; // anti-replay for the hash variant
-
     /**
-     * @notice Which holder a document hash is bound to. Appended after all prior storage, so the
-     *         proxy layout is unaffected.
+     * @notice Whether a document hash has been consumed. THE ONLY REMAINING DOCUMENT-KEYED STATE.
      *
-     * WHY THIS EXISTS. `_usedDocumentHash` records THAT a document hash was consumed but not BY
-     * WHOM, which is enough for anti-replay and not enough for escrow (sec. 2.13k). The
-     * escrow circuit proves an MRZ hashes to `dg1Hash` and that `holder_root` derives from
-     * `sk_identity` - it does NOT and CANNOT prove the passport is genuine, because the ICAO
-     * signature chain is checked during REGISTRATION, not escrow. Without this lookup a caller
-     * could invent a DG1, escrow against it, and land a commitment in the identity tree backed by
-     * no real document - which would make the tree's scarcity guarantee, and therefore the entire
-     * blacklist, worthless.
+     * A BOOL, DELIBERATELY - it records THAT a document was used and never BY WHOM. `dg1Hash` is
+     * computable by anyone who handles the document (BAC needs only the printed MRZ), so any value
+     * stored under it is readable by that person via `eth_getStorageAt`, whatever Solidity
+     * visibility claims. Keeping the value a bool bounds that leak to a single bit: *this document
+     * is registered here*. It cannot yield the holder, the rest of their documents, or the size of
+     * their set - which matters because blacklisting acts on the IDENTITY, so naming the identity
+     * would name the unit sanctions apply to (sec. 2.18be).
+     *
+     * REMOVING EVEN THAT BIT needs the key itself to be uncomputable from the document - an OPRF
+     * under a threshold key (sec. 2.18bc). Not built. Everything cheaper than that is already done.
      */
-    mapping(bytes32 => bytes32) internal _holderOfDocumentHash; // dg1Hash => holderRoot
+    mapping(bytes32 => bool) internal _usedDocumentHash;
+
 
     /**
      * @notice When a document last STOPPED being current, by revocation or renewal. Appended after
@@ -132,11 +132,11 @@ contract HolderStateKeeper is StateKeeper {
      *
      * WHAT THIS DOES AND DOES NOT BUY. Un-indexing turns one targeted query into "fetch and decode
      * every event this contract ever emitted", which defeats casual and bulk lookup at real cost.
-     * It does NOT defeat a determined adversary who scrapes the whole log, and it does NOT hide
-     * contract STORAGE - `_holderOfDocumentHash` remains readable via `eth_getStorageAt` whatever
-     * Solidity visibility says. The complete fix is to make the anti-replay key uncomputable from
-     * the document itself (the OPRF in sec. 2.18bc); this is the part available without it, and it
-     * is deliberately kept rather than dismissed as insufficient.
+     * It does NOT defeat a determined adversary who scrapes the whole log. **The storage leak that
+     * used to sit beside it is GONE**: `_holderOfDocumentHash` (dg1Hash => holderRoot) has been
+     * deleted (sec. 2.18bg). What remains keyed on a document is `_usedDocumentHash`, a BOOL - so a
+     * seized document reveals THAT it is registered somewhere in this system, and nothing about
+     * which identity holds it, how many other documents that identity holds, or what they are.
      */
     event DocumentAdded(bytes32 holderRoot, bytes32 documentKey, bytes32 docType);
     event DocumentRenewed(
@@ -178,7 +178,6 @@ contract HolderStateKeeper is StateKeeper {
         if (documentHash_ != bytes32(0)) {
             require(!_usedDocumentHash[documentHash_], "HolderStateKeeper: document hash used");
             _usedDocumentHash[documentHash_] = true;
-            _holderOfDocumentHash[documentHash_] = holderRoot_;
         }
 
         _bindDocument(documentKey_, holderRoot_, docType_, dgCommit_, notAfter_, 0);
@@ -210,7 +209,6 @@ contract HolderStateKeeper is StateKeeper {
         if (newDocumentHash_ != bytes32(0)) {
             require(!_usedDocumentHash[newDocumentHash_], "HolderStateKeeper: document hash used");
             _usedDocumentHash[newDocumentHash_] = true;
-            _holderOfDocumentHash[newDocumentHash_] = holderRoot_;
         }
 
         // Supersede the old leaf (keeps it provably non-current in the tree).
@@ -286,14 +284,6 @@ contract HolderStateKeeper is StateKeeper {
         }
     }
 
-    /**
-     * @notice The holder a document hash is bound to, or zero if that hash was never registered.
-     * @dev Read by the identity registry to confirm an escrow is backed by a REAL, ICAO-verified
-     *      document rather than an invented MRZ. See `_holderOfDocumentHash`.
-     */
-    function holderOfDocumentHash(bytes32 documentHash_) external view returns (bytes32) {
-        return _holderOfDocumentHash[documentHash_];
-    }
 
     function _bindDocument(
         bytes32 documentKey_,

@@ -5271,6 +5271,53 @@ true**, and no event change can make it true - the complete fix is making the an
 uncomputable from the document itself (the OPRF, 2.18bc). This is the part available without that
 decision, kept rather than dismissed for being partial.
 
+### 2.18bg THE COMPLETE FIX WAS DELETION, NOT AN OPRF - the leak was dead code
+
+*"we shouldnt depend on events. do the complete fix"* (user, 2026-07-31). Right on both counts, and
+investigating produced a far better answer than the one I had proposed.
+
+**I HAD THE FIX WRONG.** 2.18bc concluded the complete fix was an OPRF under a threshold key - new
+machinery, a liveness dependency, and a quorum this project does not have. Before building that I
+checked what `_holderOfDocumentHash` (dg1Hash => holderRoot) is actually FOR. **Nothing calls it.**
+The only surviving references were TEST COMMENTS describing what the contract *used to* do:
+*"That worked while the contract only checked `holderOfDocumentHash`; since [then] the leaf VALUE
+carries the soundness"*. Its own doc comment still explained why it was indispensable - and was
+STALE, describing a design that had already moved into the `registrationSmt` leaf.
+
+**SO THE COMPLETE FIX WAS TO DELETE IT.** The mapping, its public getter and both writes are gone.
+382 forge tests pass, client ABIs clean. **The worst leak in the identity path was vestigial code
+nobody had removed** - which is why the honest move was to check the mechanism before building
+cryptography to defend it.
+
+**WHAT A SEIZED DOCUMENT REVEALS NOW.** Only `_usedDocumentHash`, a BOOL, remains keyed on something
+a document-holder can compute. So the leak is bounded to **one bit - "this document is registered
+here"** - and yields nothing about WHICH identity holds it, how many other documents that identity
+holds, or what they are. Given that blacklisting acts on the IDENTITY (2.18be), removing the
+identity link removes the ability to name the unit sanctions apply to. That is the difference between
+"this person and their entire document set are identified" and "this passport appears in some
+system".
+
+**AND EVENTS ARE NO LONGER LOAD-BEARING FOR THIS**, which was the user's actual objection. The
+de-indexing in 2.18bf was a mitigation for a leak that no longer exists; it stays because a public
+`holderRoot` topic is still worth not publishing, but **nothing about the fix now depends on how logs
+are indexed.** Storage was always the real surface - `eth_getStorageAt` ignores Solidity visibility -
+and storage is where the fix landed.
+
+**PINNED BY TWO TESTS, ONE OF THEM MUTATION-CHECKED:**
+- `test_noPublicFunctionMapsADocumentHashToItsHolder` probes the deployed ABI rather than the source,
+  so a future getter under a DIFFERENT NAME would still be caught - a grep would not. **Verified
+  non-vacuous:** re-adding a `holderOfDocumentHash` getter makes it fail with its own named message.
+- `test_theAntiReplayGuardStillRejectsAReusedDocumentHash` - privacy must not have been bought by
+  weakening the guard that stops one physical passport binding to two identities, which is what
+  defeats an identity-level blacklist by construction. **Note the trap it avoids:** `documentHash_`
+  is the SECOND parameter of `addDocument`, and every existing test passes `bytes32(0)` there, which
+  SKIPS the anti-replay path entirely - a test copied from its neighbours would have asserted nothing.
+
+**WHAT REMAINS FOR THE OPRF.** Only the one bit. Removing even that needs the anti-replay key to be
+uncomputable from the document, which still means a threshold party. **That is now a much smaller
+prize for a much larger cost**, and the decision should be re-taken on those terms rather than the
+ones in 2.18bc.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

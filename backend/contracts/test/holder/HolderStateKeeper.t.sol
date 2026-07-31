@@ -231,6 +231,51 @@ contract HolderStateKeeperTest is Test {
         assertEq(p2.value, revokedMarker, "revoked leaf == Poseidon1(REVOKED mod F) marker");
         assertTrue(p2.value != expected, "marker can't match circuit reconstruction");
     }
+
+  /*
+   * THE DOCUMENT-KEYED LEAK IS BOUNDED TO ONE BIT (sec. 2.18bg).
+   *
+   * `dg1Hash` is computable by anyone who handles the document - BAC needs only the MRZ printed on
+   * the page - so ANY value stored under it is readable by that person via `eth_getStorageAt`,
+   * regardless of Solidity visibility. There used to be a `_holderOfDocumentHash` mapping to
+   * `holderRoot`, which made a seized passport a one-call lookup to its owner's ENTIRE document set;
+   * it was already vestigial (the soundness moved into the registrationSmt leaf value) and is now
+   * deleted.
+   *
+   * This test pins the property so it cannot come back by accident: the state keeper must expose NO
+   * function that maps a document hash to a holder. It is written against the ABI rather than the
+   * source, because a future getter with a different name would defeat a grep.
+   */
+  function test_noPublicFunctionMapsADocumentHashToItsHolder() public view {
+    // Any such getter takes a bytes32 and returns a bytes32. Probe the two names that existed or
+    // would be natural, and require both to be absent from the deployed contract.
+    string[2] memory gone = ['holderOfDocumentHash(bytes32)', 'holderOf(bytes32)'];
+
+    for (uint256 i = 0; i < gone.length; ++i) {
+      (bool ok,) = address(sk).staticcall(
+        abi.encodeWithSelector(bytes4(keccak256(bytes(gone[i]))), bytes32(uint256(0xD0C)))
+      );
+      assertFalse(ok, string.concat('a document-hash-to-holder getter is reachable: ', gone[i]));
+    }
+  }
+
+  /// And the anti-replay bool still WORKS - privacy must not have been bought by dropping the guard
+  /// that stops one physical passport binding to two identities, which is what defeats an
+  /// identity-level blacklist by construction.
+  function test_theAntiReplayGuardStillRejectsAReusedDocumentHash() public {
+    bytes32 dg1 = keccak256('a-real-document');
+
+    // `documentHash_` is the SECOND parameter - the dg1Hash the guard keys on. Existing tests pass
+    // bytes32(0) there, which SKIPS the anti-replay path entirely, so a test that copied them would
+    // have asserted nothing.
+    vm.prank(REG);
+    sk.addDocument(keccak256('doc-1'), dg1, HOLDER, DOC_PASSPORT, DG_A, 0);
+
+    vm.prank(REG);
+    vm.expectRevert(bytes('HolderStateKeeper: document hash used'));
+    sk.addDocument(keccak256('doc-2'), dg1, keccak256('other-holder'), DOC_PASSPORT, DG_B, 0);
+  }
+
 }
 
 /// Minimal, real evidence registry: records each (sender, root) statement once. Same dedup

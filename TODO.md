@@ -5801,6 +5801,52 @@ right.
 mirror and anonymous enrolment on top, which is now safe because there is no unaudited assertion left
 to hide.
 
+### 2.18bp THE DEEPER POSTMAN DEPENDENCY - it controls the REGISTER, so name-binding relocates the power rather than removing it
+
+*"are you sure there isnt a deeper fix with our postman dependency across the rest of the scope it
+touches?"* (user, 2026-07-31). There is, and **it invalidates the claim I made one section ago.**
+
+**I ANALYSED THE POSTMAN ONLY THROUGH `TitleLedger`.** Enumerating the whole surface shows its real
+power is upstream: `RegistrySourceAnchor.publishSnapshot(registryId_, leaves_)` and `onReport` are
+both `onlyRole(REGISTRY_POSTMAN)`, and **they decide WHAT THE REGISTER SAYS.**
+
+**THE CONTRACT VERIFIES ROOT-AGAINST-LEAVES, NOT LEAVES-AGAINST-REALITY.** `_computeRoot` derives the
+root from the submitted leaves, so a published root always corresponds to a real, available leaf set -
+the property the header claims, and it is true. **But nothing checks those leaves are the government
+register.** A corrupt postman can publish a snapshot containing invented notaries, or omitting real
+ones. sec. 2.18ao already said consensus makes every node agree but *"cannot make them agree
+CORRECTLY"* - and I did not carry that forward to the contract's trust model.
+
+**SO 2.18bo IS WRONG WHERE IT MATTERS.** I claimed name-binding removes the postman, because an
+attacker would need a passport matching the target notary's name. **They would not: the postman can
+insert a register entry bearing the ATTACKER'S name**, after which the attacker self-enrols entirely
+legitimately, with a valid ZK proof, against a root the contract trusts. Name-binding moves the
+postman from *"who is a notary"* to *"what the register says"* - **and the second still determines the
+first.** The fix is real but it is a narrowing, not a removal, and I should not have called it a
+removal.
+
+**THE DEEPER FIX, AND THE MECHANISM IS ALREADY HALF-BUILT.** `ROOT_ACTIVATION_DELAY` is one hour -
+**a challenge window with no challenger.** Two additions, neither of which needs a new trusted party:
+
+1. **m-of-n PUBLICATION.** Require k independent submitters to agree on a snapshot before it can
+   activate - different operators, ideally different jurisdictions. One key becomes a quorum. This is
+   the same argument that decided against a TEE for the OPRF key (2.18bl): a single holder whose
+   compromise is total and undetectable is the thing to eliminate, not to guard.
+2. **A CHALLENGE BOUND TO THE EXISTING DELAY.** The register is PUBLIC, so anyone can compare the
+   published leaves against it. Let any party halt activation by pointing at a leaf that is not in the
+   register, or a register entry the snapshot omits. **The verifier is a human reading a public
+   register**, which is exactly the audience this design already assumes - and it uses the hour that
+   is already there and currently does nothing.
+
+**WHY THIS ORDERING MATTERS FOR #16.** Anonymous enrolment (#16) hides which entry was used, so it
+also hides a fabricated entry being used. **Publishing integrity must be fixed BEFORE enrolment
+anonymity**, or #16 converts a detectable forgery into an undetectable one - the same trap 2.18bn
+identified, one layer up, and one I would have walked into again having just declared it settled.
+
+**REVISED ORDER, replacing 2.18bo's:** (a) evidence-bound revocation; (b) m-of-n publication and the
+challenge window; (c) name-binding enrolment; (d) anonymity on top. Only after (b) does (d) stop
+hiding the thing that matters.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

@@ -6059,6 +6059,47 @@ Until it lands, pinning names the code but the code does not yet prove provenanc
 precondition for that work, not a substitute for it** - and it is the half that had to exist first,
 since verification is worthless if the verifying code can be swapped silently.
 
+### 2.18bu THE CRE HTTP CAPABILITY DOES NOT EXPOSE TLS - checked, and it blocks 2.18bs as designed
+
+*"do not write code from scratch. something must exist. whatever scraper is using will reveal the
+tls"* (user, 2026-07-31). Right principle - do not build a TLS stack - so I checked what the existing
+client already hands back. **It hands back nothing about the session.**
+
+**`http.Response` HAS EXACTLY FOUR FIELDS** (`capabilities/networking/http@v1.4.0/client.pb.go:279`):
+`StatusCode`, `Headers` (deprecated), `Body`, `MultiHeaders`. **No certificate, no session transcript,
+no cipher suite, no key material.**
+
+**SO THE TLS TERMINATES OUTSIDE THE WORKFLOW.** The handshake happens in the CRE node's HOST runtime;
+only the decrypted body crosses into the wasm sandbox. The workflow therefore **cannot see, capture or
+attest to the session** - and since the http capability IS the workflow's network access, it cannot
+open its own socket to do TLS itself either. **2.18bs's architecture - "each DON node verifies the
+register's TLS session inside the workflow" - is not implementable on this SDK.** That was a
+reasonable inference and it is wrong, and finding out cost one file read rather than a Go integration.
+
+**THE HONEST CONSEQUENCE:** what the nodes agree on is still *"the body our host runtime handed us"*.
+Consensus over that is agreement, not provenance - exactly 2.18ao's objection, still standing. **The
+postman's power is narrowed by workflow pinning (2.18bt) and not yet removed**, because pinning proves
+WHICH CODE RAN, and the code cannot prove where the bytes came from.
+
+**THREE ROUTES THAT USE EXISTING WORK RATHER THAN NEW CRYPTO, in order of how much they ask of us:**
+1. **An external zkTLS attestor** (Reclaim, Opacity, Pluto and similar all run attestor networks
+   today). The workflow FETCHES an attestation of the register's response instead of fetching the
+   response, and verifies that attestation - a signature or succinct proof, not a TLS stack. **This is
+   the "something must exist" answer**, and its cost is a dependency on that network's availability
+   and trust model, which must be weighed rather than assumed benign.
+2. **Ask upstream to surface the certificate chain and transcript** on `http.Response`. Small change,
+   entirely in Chainlink's gift, and it would let the workflow verify provenance directly with no
+   third party. Worth raising regardless of which route ships - **it is the only one that removes a
+   party rather than swapping one**.
+3. **Accept consensus-over-fetch as the property**, keep pinning as the audit trail, and be explicit
+   in the funding application that the register anchor rests on the DON's honesty rather than on
+   cryptographic provenance. **Not preferred, but it is what is TRUE today**, and 2.18am's lesson is
+   that publishing a stronger claim than the code supports is the failure mode that matters.
+
+**WHAT MUST NOT HAPPEN:** shipping while describing the anchor as provenance-verified. That is the
+`FUNDING-APPLICATION` error of 2.18am repeated at a different layer - a safety claim the code does not
+support - and it would be worse here because the whole notary-privacy argument is downstream of it.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

@@ -4714,7 +4714,19 @@ the table above, inside backticks, documenting the very pointers this section fi
 cannot distinguish a CITATION from a QUOTED SPECIMEN of a broken one**, so it will flag this section
 forever - and the danger is that someone "fixes" it by editing the documentation until its own
 examples no longer illustrate anything. Strip inline-code spans before matching, or whitelist this
-section. Verified after excluding them: **zero real dangling citations across 144 sections.**
+section.
+
+**AND I GOT THIS WRONG ON THE FIRST PASS, in a way worth keeping.** I wrote *"verified: zero real
+dangling"* in the same command whose output then printed `2.27` - **asserting the result before
+reading it.** The remaining hit is line 4692, a quotation of `codegen-verifiers.sh`'s OLD text carried
+in *emphasis* marks rather than backticks, so stripping inline code did not reach it. It is still a
+specimen, not a live pointer.
+
+**THE METHOD THEREFORE NEEDS BOTH**: strip inline-code spans AND quoted passages, or simply whitelist
+this section - it is the one place where broken pointers appear ON PURPOSE. **Current true state:
+zero live dangling citations across 144 sections; two quoted specimens inside 2.18as, both
+intentional.** Stated that way because "zero dangling" without the qualifier is the kind of clean
+number that gets trusted and is wrong.
 
 **THE LESSON IS ABOUT WHERE REASONING LANDS.** A commit message is not durable context: it is
 findable only by someone who already knows which commit to read. Everything load-bearing has to be in

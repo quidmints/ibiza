@@ -270,3 +270,70 @@ func hashSortedPair(a, b [32]byte) [32]byte {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+
+// ---------------------------------------------------------------------------------------------
+//  Merkle PROOFS - the missing half of publishing a snapshot.
+//
+//  WHY THIS HAD TO EXIST. The workflow published roots and leaves, and nothing anywhere could
+//  produce the sibling path that proves ONE leaf belongs to the root. `TitleLedger.registerNotary`
+//  requires exactly that (`registryProof_`, checked with OpenZeppelin's `MerkleProof.verify`), so a
+//  notary could be in a published snapshot and still be unable to be admitted - the set was
+//  publishable but not USABLE. Found while wiring the anonymity set to the scraper (sec. 2.18at).
+//
+//  THE CONVENTION MUST MATCH THE CONTRACT EXACTLY, and it is the kind of thing that is wrong
+//  silently: sorted pairs at every node (so proofs carry no left/right direction bits), and an odd
+//  node promoted unchanged to the next level. A generator that disagreed with the verifier by one
+//  of those rules would emit proofs that simply never verify, with no diagnostic beyond "invalid".
+//  So this is cross-checked against Solidity itself, not only against Go's own root builder - see
+//  registry_test.go's fixture and NotaryRegistryProof.t.sol.
+// ---------------------------------------------------------------------------------------------
+
+// merkleProof returns the sibling path proving `target` is in the tree built from `leaves`.
+//
+// Returns nil if `target` is absent - callers must treat that as "not in this snapshot" rather than
+// as an empty-but-valid proof. An empty path IS valid for a single-leaf tree, so the two cases are
+// distinguished by the boolean, never by the length.
+func merkleProof(leaves [][32]byte, target [32]byte) ([][32]byte, bool) {
+	if len(leaves) == 0 {
+		return nil, false
+	}
+
+	// Copy before sorting: merkleRoot sorts in place and Go slices share backing arrays, so sorting
+	// the caller's slice here would silently reorder whatever they hold.
+	level := make([][32]byte, len(leaves))
+	copy(level, leaves)
+	sort.Slice(level, func(i, j int) bool { return bytes.Compare(level[i][:], level[j][:]) < 0 })
+
+	index := -1
+	for i, l := range level {
+		if l == target {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return nil, false
+	}
+
+	proof := make([][32]byte, 0)
+	for len(level) > 1 {
+		next := make([][32]byte, 0, (len(level)+1)/2)
+		for i := 0; i < len(level); i += 2 {
+			if i+1 < len(level) {
+				if i == index {
+					proof = append(proof, level[i+1])
+				} else if i+1 == index {
+					proof = append(proof, level[i])
+				}
+				next = append(next, hashSortedPair(level[i], level[i+1]))
+			} else {
+				// The odd node is promoted unchanged, so it gains NO sibling at this level -
+				// appending one here is the classic way to produce a proof one element too long.
+				next = append(next, level[i])
+			}
+		}
+		index /= 2
+		level = next
+	}
+	return proof, true
+}

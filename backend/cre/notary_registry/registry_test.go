@@ -19,7 +19,12 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"fmt"
+	"os"
+	"strings"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // The vocabulary these tests exercise. Kept as a constant so a future rename of the Ukrainian entry
@@ -366,4 +371,150 @@ func TestTheRegistryIdFollowsTheRegistryKey(t *testing.T) {
 	if registryIDFor("UA_NOTARY_REGISTRY") == registryIDFor("IR_NOTARY_REGISTRY") {
 		t.Fatal("two registries share an on-chain identifier")
 	}
+}
+
+// ---- Merkle proofs: the half that was missing ------------------------------------------------
+
+// verifyLikeSolidity mirrors OpenZeppelin's MerkleProof.verify EXACTLY - fold the leaf with each
+// sibling in sorted order and compare to the root.
+//
+// WRITTEN OUT INDEPENDENTLY rather than calling merkleProof/merkleRoot, so a shared misunderstanding
+// cannot make the tests agree with the generator and both be wrong. The generator is checked against
+// THIS, and this is checked against the real Solidity in NotaryRegistryProof.t.sol.
+func verifyLikeSolidity(proof [][32]byte, root [32]byte, leaf [32]byte) bool {
+	computed := leaf
+	for _, sibling := range proof {
+		if bytes.Compare(computed[:], sibling[:]) <= 0 {
+			computed = crypto.Keccak256Hash(computed[:], sibling[:])
+		} else {
+			computed = crypto.Keccak256Hash(sibling[:], computed[:])
+		}
+	}
+	return computed == root
+}
+
+// EVERY leaf must be provable, at every tree size. Odd sizes are where the promoted-node rule bites:
+// a generator that appends a sibling for a promoted node produces proofs one element too long, and
+// they fail with no diagnostic beyond "invalid".
+func TestEveryLeafIsProvableAtEveryTreeSize(t *testing.T) {
+	for size := 1; size <= 9; size++ {
+		records := make([]NotaryRecordXML, 0, size)
+		for i := 0; i < size; i++ {
+			records = append(records, NotaryRecordXML{
+				RegistrationNumber: string(rune('A' + i)), FullName: "N", Region: "R", Status: "active",
+			})
+		}
+		leaves, err := activeLeaves(records, testRegistry)
+		if err != nil {
+			t.Fatalf("size %d: %v", size, err)
+		}
+		root := merkleRoot(append([][32]byte(nil), leaves...))
+
+		for i, leaf := range leaves {
+			proof, ok := merkleProof(leaves, leaf)
+			if !ok {
+				t.Fatalf("size %d leaf %d: no proof produced", size, i)
+			}
+			if !verifyLikeSolidity(proof, root, leaf) {
+				t.Fatalf("size %d leaf %d: proof does not verify (len %d)", size, i, len(proof))
+			}
+		}
+	}
+}
+
+// A leaf that is NOT in the snapshot must be reported absent, not given an empty proof. An empty
+// path is legitimately valid for a single-leaf tree, so the two cases are only distinguishable by
+// the boolean - conflating them would let a non-notary be admitted against a one-notary snapshot.
+func TestAnAbsentLeafIsReportedAbsentRatherThanGivenAnEmptyProof(t *testing.T) {
+	leaves, _ := activeLeaves([]NotaryRecordXML{
+		{RegistrationNumber: "1", Status: "active"},
+		{RegistrationNumber: "2", Status: "active"},
+	}, testRegistry)
+
+	if _, ok := merkleProof(leaves, [32]byte{0xFF}); ok {
+		t.Fatal("a leaf outside the snapshot was given a proof")
+	}
+}
+
+func TestASingleLeafProofIsEmptyAndValid(t *testing.T) {
+	leaves, _ := activeLeaves([]NotaryRecordXML{{RegistrationNumber: "1", Status: "active"}}, testRegistry)
+	root := merkleRoot(append([][32]byte(nil), leaves...))
+
+	proof, ok := merkleProof(leaves, leaves[0])
+	if !ok {
+		t.Fatal("the only notary in the snapshot was not provable")
+	}
+	if len(proof) != 0 {
+		t.Fatalf("a single-leaf proof should be empty, got %d elements", len(proof))
+	}
+	if !verifyLikeSolidity(proof, root, leaves[0]) {
+		t.Fatal("the single-leaf proof does not verify")
+	}
+}
+
+// merkleProof must not reorder the caller's slice. merkleRoot sorts IN PLACE and Go slices share
+// their backing array, so a generator that did the same would silently permute whatever the caller
+// still holds - including the leaves about to be submitted on-chain.
+func TestGeneratingAProofDoesNotReorderTheCallersLeaves(t *testing.T) {
+	leaves, _ := activeLeaves([]NotaryRecordXML{
+		{RegistrationNumber: "3", Status: "active"},
+		{RegistrationNumber: "1", Status: "active"},
+		{RegistrationNumber: "2", Status: "active"},
+	}, testRegistry)
+
+	before := append([][32]byte(nil), leaves...)
+	_, _ = merkleProof(leaves, leaves[0])
+
+	for i := range before {
+		if before[i] != leaves[i] {
+			t.Fatal("merkleProof reordered the caller's slice")
+		}
+	}
+}
+
+/*
+ * THE CROSS-LANGUAGE CHECK: emit a fixture the SOLIDITY side verifies.
+ *
+ * Everything above proves Go agrees with Go. The convention that actually matters - sorted pairs,
+ * odd-node promotion - lives in OpenZeppelin's MerkleProof.verify, and a generator can be
+ * self-consistent and still disagree with it. So this writes a real snapshot, root and proof to a
+ * fixture that backend/contracts/test/title/NotaryRegistryProof.t.sol reads and checks with the
+ * genuine library. If the two conventions ever diverge, that Forge test fails.
+ *
+ * Deliberately a TEST that writes a fixture rather than a committed generator binary: the fixture is
+ * regenerated by `go test`, so it cannot drift from the code that produced it.
+ */
+func TestEmitSolidityCrossCheckFixture(t *testing.T) {
+	records := []NotaryRecordXML{
+		{RegistrationNumber: "123", FullName: "Jane Doe", Region: "Kyiv", Status: "active"},
+		{RegistrationNumber: "456", FullName: "John Roe", Region: "Lviv", Status: "active"},
+		{RegistrationNumber: "789", FullName: "Ann Poe", Region: "Odesa", Status: "active"},
+		{RegistrationNumber: "999", FullName: "Old Notary", Region: "Kyiv", Status: "terminated"},
+	}
+	leaves, err := activeLeaves(records, testRegistry)
+	if err != nil {
+		t.Fatalf("active filter: %v", err)
+	}
+	root := merkleRoot(append([][32]byte(nil), leaves...))
+
+	target := leafHash(records[0])
+	proof, ok := merkleProof(leaves, target)
+	if !ok {
+		t.Fatal("the target notary was not provable in its own snapshot")
+	}
+	if !verifyLikeSolidity(proof, root, target) {
+		t.Fatal("the fixture proof does not even verify in Go")
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "root %x\n", root)
+	fmt.Fprintf(&b, "leaf %x\n", target)
+	for _, p := range proof {
+		fmt.Fprintf(&b, "proof %x\n", p)
+	}
+	out := "../../contracts/test/fixtures/notary_registry_proof.txt"
+	if err := os.WriteFile(out, []byte(b.String()), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	t.Logf("wrote %s (%d proof elements)", out, len(proof))
 }

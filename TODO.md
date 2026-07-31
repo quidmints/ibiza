@@ -4696,6 +4696,49 @@ the tracked file, and a citation is a PROMISE that it is - so an unkept one is a
 kind of lie. The rule this suggests: **write the section before writing the citation**, and re-run
 the audit above whenever a session adds several.
 
+### 2.18at THE SNAPSHOT WAS PUBLISHABLE BUT NOT USABLE - nothing could prove membership in it
+
+Found while wiring the notary anonymity set (2.18am) to the scraper (2.18ao) - a gap created by
+building both halves in one day and connecting neither.
+
+**THE GAP.** The CRE workflow published roots and leaves. `TitleLedger.registerNotary` requires a
+`registryProof_` and checks it with OpenZeppelin's `MerkleProof.verify`. **Nothing anywhere produced
+that sibling path.** So a notary could appear in a published snapshot and still be impossible to
+admit: the set was publishable and not usable, which no test on either side could notice because
+each half was correct alone.
+
+**THE CONVENTION IS THE RISKY PART, AND IT FAILS SILENTLY.** Two rules have to match the contract
+exactly - sorted pairs at every node (so proofs carry no direction bits), and **an odd node PROMOTED
+unchanged** rather than hashed with itself. Get either wrong and the generator emits proofs that
+never verify, with no diagnostic beyond a boolean false. The promoted-node rule is the easy one to
+get wrong: appending a sibling for a node that has none yields a proof exactly one element too long.
+
+**GO TESTING GO WOULD NOT HAVE CAUGHT IT.** A shared misunderstanding makes a generator and its own
+checker agree and both be wrong - the same trap as sec. 2.18ag's vacuous test and sec. 2.18i's
+same-function cross-check. So the verification is deliberately layered:
+
+1. `verifyLikeSolidity` in the Go tests is **written out independently**, mirroring OZ's fold rather
+   than calling `merkleProof`/`merkleRoot`.
+2. **Every leaf at every tree size 1..9** must be provable and verify - odd sizes are exactly where
+   the promoted-node rule bites.
+3. **A real fixture crosses the language boundary.** `go test -run EmitSolidity` writes the root,
+   leaf and path produced by the REAL generator; `NotaryRegistryProof.t.sol` reads it and checks it
+   with the REAL `MerkleProof` library the contract uses. If the conventions ever diverge, that
+   Forge test fails. Three negatives (wrong leaf, tampered sibling, wrong root) stop it passing
+   vacuously.
+
+**TWO SMALLER TRAPS PINNED AS TESTS.** An ABSENT leaf is reported absent rather than handed an empty
+proof - an empty path is legitimately valid for a single-leaf tree, so conflating the two would let a
+non-notary be admitted against a one-notary snapshot. And `merkleProof` COPIES before sorting:
+`merkleRoot` sorts in place and Go slices share backing arrays, so a generator that did the same
+would silently permute the caller's leaves - including the ones about to be submitted on-chain.
+
+**23 Go tests** (up from 19), **380 forge tests** (up from 376), both wasm and host builds green.
+
+**STILL NOT CONNECTED, and worth saying plainly:** this makes the proof OBTAINABLE, not obtained.
+Nobody yet calls `registerNotary` - the postman needs a notary's commitment, which the notary derives
+from a secret they generate, and no tool does that. Task #13's remaining work.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

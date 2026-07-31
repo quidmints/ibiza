@@ -5672,9 +5672,22 @@ enrolment reveals only that the set grew by one.
 Two consequences worth stating:
 - **The anonymity set is the whole register**, which is far larger than the enrolled set - so this is
   strictly stronger than hiding among fellow users of the platform.
-- **The postman can be removed from the flow entirely.** If the notary proves membership themselves,
-  nobody needs to attest on their behalf - which also retires the 2.13b inaction-censorship objection
-  that the postman gate carries today.
+- **THE POSTMAN CANNOT BE REMOVED - I was wrong to say so, and it matters before anyone builds this.**
+  A register entry is `(regNumber, fullName, region, status)`: **public data with no key attached.**
+  So a ZK proof of *"some leaf is in the active root"* can be produced by ANYONE holding any leaf and
+  path - which is everyone, since the register is public - and they would bind THEIR OWN commitment
+  to it. Self-enrolment would let a stranger become a notary.
+
+  Binding a commitment to a SPECIFIC register entry needs a link between that entry and something only
+  that person holds, and **no such link exists**: it is precisely the OPEN GAP the contract header
+  already names (*"binding a real-world notary's identity to an on-chain signing address... needs an
+  out-of-band process that isn't built yet"*). The postman gate exists because of that gap, not by
+  oversight, and this change does not close it.
+
+  **What the fix DOES achieve is still the important half:** the postman submits a PROOF instead of
+  the leaf, so the chain - and everyone reading it - learns that the set grew by one and nothing more.
+  The postman still knows who; **the public no longer does.** Trust is unchanged, disclosure is
+  removed, and the 2.13b inaction objection against the postman gate stands exactly as before.
 
 **THE ONE REAL COST: the CRE snapshot is a KECCAK tree** (2.18ao chose keccak deliberately, as
 `MerkleProof.verify` compatible and not then ZK-consumed). Proving keccak-Merkle inclusion in Noir is

@@ -5847,6 +5847,24 @@ identified, one layer up, and one I would have walked into again having just dec
 challenge window; (c) name-binding enrolment; (d) anonymity on top. Only after (b) does (d) stop
 hiding the thing that matters.
 
+**AND (a) IS NOT THE CHEAP ITEM I CALLED IT - checked before starting.** I described evidence-bound
+revocation as *"small, no new trust, pure contract work"*. **It is not implementable against the
+current snapshot format at all.** `activeLeaves` publishes leaves ONLY for active notaries
+(`case meaningActive`), so a terminated notary is simply **ABSENT** from the tree - and absence cannot
+be proven with a keccak `MerkleProof`, which shows membership and nothing else. Non-membership needs a
+sorted tree with neighbour proofs, or an SMT.
+
+**So the evidence a revocation would cite does not exist on-chain.** Making it exist means changing
+what the scraper publishes: the FULL register with `status` as a leaf field rather than an
+active-only filter, so "this entry is terminated" becomes a positive membership claim. That is a Go
+change, a contract change, new fixtures, and a re-think of the cross-language check in
+`NotaryRegistryProof.t.sol` - **not one contract edit.**
+
+It also interacts with (b): if the snapshot carries every entry rather than the active subset, the
+challenge window's comparison becomes simpler and stronger, because a challenger checks the whole
+register rather than a filtered view they cannot independently reconstruct. **These two should be
+designed together**, which is another reason (a) is not a quick win to land first.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

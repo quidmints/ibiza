@@ -4244,9 +4244,35 @@ and that anonymising them is designed, not built (997/1000 words, down 2).
    means procedurally, and what stops the quorum colluding. This is the largest piece and it is a
    governance design, not a circuit.
 
-Note 4 is why this was not simply built today: a quorum whose membership and fault procedure are
-undefined is not a privacy mechanism, it is a promise. The same objection sec. 2.19 makes about
-underwriting discretion applies here - **a power that sits somewhere can be leaned on.**
+**ITEM 4 DISSOLVED - THERE IS NO GOVERNANCE TO DESIGN.** *"there is no governance design. we are
+inheriting the ASP structure of PP, why should it be any extension of that"* (user, 2026-07-31). That
+removes the hardest part of the problem, and it does so by correcting the PRIMITIVE rather than by
+descoping: **the ASP answer to a proven fault is REVOCATION, not deanonymisation.** Privacy Pools
+never opens a bad actor's identity - it EXCLUDES them from the association set. Our identity registry
+already works exactly that way: `withdraw_identity` proves inclusion at STATUS_CLEAN, and revoking
+writes a non-zero value no clean-status proof can equal. A revoked notary simply stops being able to
+prove anything, and nobody learns who they were. "Openable by a quorum" was answering a question the
+architecture does not ask.
+
+**BUILT AND PROVEN (commit d7e5dbd).** `backend/circuits/notary_action` - 12,187 opcodes, five tests,
+being `withdraw_identity`'s identity section with the note-spending half removed. Negatives included
+and each one earns its place: a stranger cannot authorise, **a revoked notary cannot authorise** (that
+IS the fault mechanism), a proof against the wrong root fails, and any `action_context` proves -
+because the contract substitutes its own derived value, per sec. 2.18ah. The verifier is generated and
+a REAL proof verifies on-chain (three more tests), rather than shipped unexercised: sec. 2.18ad item 4
+says a verifier that has never accepted a proof is a liability, and unlike the passport circuits this
+one needs no document, so there was no reason to wait.
+
+**STILL EXPOSED - the mechanism exists, the ledger does not use it yet.** Nothing observable has
+changed: `TitleLedger` still names the notary. Wiring is specified on task #13 and is unblocked. It
+forces one design decision worth stating rather than burying: `addLegend`/`setEncumbered` currently
+require THE SAME notary who minted. Under anonymity, storing that notary's commitment would preserve
+the semantics but create a persistent PSEUDONYM linking every title they touched - so a single
+deanonymisation would expose their whole history. Letting ANY ACTIVE notary endorse is unlinkable and
+also removes a liveness trap, where a revoked or unavailable minting notary leaves a title permanently
+unamendable. **Recommend the latter**: the threat model is notaries being punished, so unlinkability
+outranks same-notary semantics - and it matches this contract's own "county recorder" analogy, where a
+different clerk can file an encumbrance.
 
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 

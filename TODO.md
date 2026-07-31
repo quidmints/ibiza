@@ -6461,6 +6461,69 @@ must never precede 5** - deleting a passport-tested path for an unvalidated port
 
 **#12 multi-country** - now specified by 2.18cb.
 
+### 2.18ce THE REAL FILE, FETCHED - our scraper's schema is WRONG, and the export is UNSIGNED
+
+The errand is done. `17-ex_xml_wern.zip` (412 KB) downloaded from `data.gov.ua`, CC-BY licensed,
+containing one 2.7 MB XML dated 2026-07-28. **Facts, not descriptions.**
+
+**THE ACTUAL SCHEMA - and `NotaryRecordXML` matches NONE of it:**
+
+```xml
+<DATA FORMAT_VERSION="1.0"><RECORD>
+  <REGION>Волинська обл.</REGION>
+  <NAME_OBJ>Іваничівська державна нотаріальна контора…</NAME_OBJ>
+  <CONTACTS>…address, phone, email…</CONTACTS>
+  <FIO>Кононенко Людмила Степанівна</FIO>
+  <LICENSE>1209</LICENSE>
+  <INFO></INFO>
+</RECORD></DATA>
+```
+
+Elements are `REGION, NAME_OBJ, CONTACTS, FIO, LICENSE, INFO` - **every one of our four field tags
+(`reg_number`, `full_name`, `region`, `status`) is wrong**, and the record element is `RECORD` inside
+`DATA`, not `record` inside `registry`. **The scraper as written parses this to ZERO records** and
+`parseRegistryExport` correctly errors - so 2.18ao's "schema rot must fail loudly" guard is the only
+reason this would not have shipped silently. **6,159 records.**
+
+**THE STATUS FIELD DOES NOT EXIST - 2.18ca's warning was right.** There is no status element. What
+exists is `INFO`, **empty for 5,759 of 6,159 records**, and carrying exactly one distinct value in the
+other 400: **`тимчасово не діє`** ("temporarily not operating").
+
+**SO THE SEMANTICS ARE THE THIRD FAMILY, not the one we built for** (2.18cb):
+- membership means REGISTERED, not active;
+- **inactivity is expressed by a FREE-TEXT NOTE in an otherwise-empty field**, not by a status
+  vocabulary;
+- and it is *temporary suspension*, not termination - a terminated notary is presumably ABSENT
+  entirely, which is the unprovable-by-Merkle case.
+
+`activeLeaves`' vocabulary layer, its fail-closed unknown-status rule and its Cyrillic folding are all
+**machinery for a field that does not exist.** They are not wrong; they answer a question this
+register does not pose.
+
+**THE EXPORT IS UNSIGNED.** One resource in the dataset, a ZIP; one file inside it, the XML. **No
+`.p7s`, no `.sig`, and no `Signature`/`X509`/`КЕП` marker anywhere in 2.7 MB.** So **2.18bv's route -
+verify the ministry's own signature and remove the postman entirely - IS NOT AVAILABLE FOR UKRAINE.**
+The remaining routes are provenance via a TLS-transcript capability (2.18cc) or an external attestor
+(2.18bu). That is now settled fact rather than an open question.
+
+**`LICENSE` IS UNIQUE ACROSS ALL 6,159 RECORDS**, so it is a usable stable key - which matters for
+`leafHash`, since `FIO` is not unique in a country of this size and 2.18bo's name-binding leans on
+exactly that uniqueness question.
+
+**WHAT MUST NOW CHANGE**, all of it previously recorded as settled:
+1. `NotaryRecordXML` tags -> `RECORD/REGION/NAME_OBJ/CONTACTS/FIO/LICENSE/INFO`.
+2. `activeLeaves` -> "active unless `INFO` is non-empty", with the vocabulary layer repurposed to the
+   NOTE text rather than a status - **and fail-closed on an unrecognised note**, which is the property
+   worth keeping from 2.18ao.
+3. `leafHash` should commit `LICENSE` (unique) rather than assume `reg_number`.
+4. Every fixture and the Go/Solidity cross-check (2.18at) moves with the schema.
+5. 2.18bo's name-binding must reckon with `FIO` collisions; `LICENSE` is the real identifier.
+
+**THE LESSON, since it is the third time this session:** 2.18ca called the field list "evidence, not
+proof" and flagged it rather than promoting it. That was right, and the file proved it - **the
+descriptions were incomplete AND the tag names were all different.** Nothing that reads a remote
+schema should be trusted until the remote artifact is in hand.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

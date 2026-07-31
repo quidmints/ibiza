@@ -6524,6 +6524,47 @@ proof" and flagged it rather than promoting it. That was right, and the file pro
 descriptions were incomplete AND the tag names were all different.** Nothing that reads a remote
 schema should be trusted until the remote artifact is in hand.
 
+### 2.18cf "A HUGE TRANSLATION MAPPING?" - measured: TWO values across 6,159 records
+
+*"youre telling me to avoid real inference we just have a huge translation key value mapping?"* (user,
+2026-07-31). Fair challenge, so it was measured against the real export rather than argued.
+
+**THE ENTIRE UKRAINIAN VOCABULARY IS TWO VALUES:**
+
+| count | value |
+|---|---|
+| 5,759 | `""` (empty - operating) |
+| 400 | `тимчасово не діє` |
+
+**That is the whole table. One non-default entry.** Registers are bureaucratic systems: they emit a
+small closed set of canned phrases from a dropdown, not prose. The 400 suspended notaries share ONE
+string, byte-for-byte. **This is an enum with an inconvenient encoding, not a translation problem** -
+so the premise that avoiding inference means maintaining something huge does not survive contact with
+the data.
+
+**AND THE COST SCALES WITH COUNTRIES, NOT RECORDS.** Twenty jurisdictions at a handful of phrases each
+is ~50-100 entries, curated ONCE, reviewed by someone who reads the language. It is consulted only for
+NON-EMPTY notes - 6.5% of records here.
+
+**WHERE INFERENCE BELONGS, and it does have a place: OFF-CHAIN, IN THE HUMAN LOOP.** When a new note
+appears the snapshot fails closed and names it. **Using an LLM to help a reviewer understand that
+phrase is entirely sensible** - what must never happen is the model's output being the COMMITTED
+artifact. The reviewed mapping is committed; the inference is a research aid. Determinism is preserved
+because what ships is a table a person signed off, not a judgement made at runtime.
+
+**AND IF A REGISTER EVER DID EMIT FREE-FORM PROSE PER RECORD**, the right answer is not inference -
+it is that such a register **cannot be trustlessly anchored** and should be declared unsupported
+(2.18cb's fail-closed rule). A liberty-affecting decision taken by non-deterministic classification of
+ambiguous prose is not a system property anyone can audit, and every node would have to reach the same
+conclusion for consensus to hold, which is exactly what inference cannot promise.
+
+**THE ADJACENT-PHRASE HAZARD MAKES THIS CONCRETE.** `тимчасово не діє` is *"temporarily not
+operating"*. A plausible future note is `діяльність припинено` - *"activity terminated"*. Semantically
+adjacent, operationally opposite: one is suspension pending restoration, the other permanent removal.
+A classifier confident enough to handle the first handles the second, and a subtle miss either strips a
+working notary of the ability to act or keeps a terminated one live. **Neither surfaces as an error.**
+Two entries in a table cost nothing; that failure costs someone their profession.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

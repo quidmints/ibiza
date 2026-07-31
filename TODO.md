@@ -6335,6 +6335,44 @@ nothing is lost if the list is.**
 **Each collapses several design branches, and until one lands, further design in this area is
 building on an assumption.**
 
+### 2.18ca THE UKRAINIAN DATASET, LOCATED - and a field our scraper assumes may not exist
+
+Partial settlement of the errand 2.18bw named. **Hard facts first, then what is still open.**
+
+**THE DATASET EXISTS AND IS IDENTIFIED.** *Єдиний реєстр нотаріусів* (Unified Register of Notaries) on
+`data.gov.ua`, dataset `1603f092-68b3-4c25-afef-8632aed79daf`, resource
+`65e9ad78-0e65-4672-ba42-f7613e0fa493`, named **`17-ex_xml_wern`**, in **XML**. So the premise the
+scraper was built on holds: **a free, bulk, machine-readable export of the notary register exists**,
+and it is not behind the paywall that affects parts of the COMPANY register (2.18bw's worry, which
+applied to the wrong register).
+
+**THE FINDING THAT MATTERS: THE DESCRIBED FIELDS DO NOT INCLUDE A STATUS.** Sources describe the
+record as region, organisation name, contact information, full name, and **notary certificate
+number**. Our `NotaryRecordXML` is `reg_number, full_name, region, status` - the first three map
+cleanly, **and `status` may simply not be there.**
+
+**IF IT IS ABSENT, THREE THINGS FOLLOW, all recorded elsewhere as settled and all built on sand:**
+1. `activeLeaves`' whole vocabulary layer (2.18ao) - the per-jurisdiction status translation, the
+   fail-closed unknown-status rule, the Cyrillic folding - **is machinery for a field that does not
+   exist.** It is not wrong, but it may be answering a question the data never poses.
+2. **Membership in the register would MEAN active** - the register lists notaries, and removal is how
+   a notary stops being one. That makes 2.18bp's revocation-evidence problem WORSE, not better:
+   revocation becomes a pure ABSENCE claim, which is exactly what a keccak Merkle tree cannot prove
+   (2.18bp) - and full-register-with-status, the fix proposed there, is impossible if there is no
+   status to publish.
+3. `leafHash` commits to four fields including `status`. **A schema with three would change every
+   leaf**, and with it every fixture and the cross-language check.
+
+**STILL OPEN, and needing the actual file rather than a description of it:** whether the export
+carries a qualified electronic signature (`.p7s`, КЕП) - the whole of 2.18bv turns on it - and the
+real element names and status vocabulary. **One download settles all of it.** The URL is now known,
+so this is no longer research; it is one fetch by someone able to make it.
+
+**RECORDED AS PARTIAL DELIBERATELY.** The dataset identity is a hard fact. The field list is from
+third-party DESCRIPTIONS of the register, not from the XML - so it is evidence, not proof, and it is
+flagged that way rather than promoted to settled. sec. 2.18ak's lesson: a number read off the nearest
+artifact instead of the thing it measures.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

@@ -124,6 +124,31 @@ i9-9880H is fine). Check before assuming a machine can't run it. `bb.js` (WASM) 
 
 ## 2. Critical path — in this order
 
+> **READ THIS BEFORE COUNTING: SECTION 2 IS A DECISION LOG, NOT A BACKLOG.**
+>
+> It is ~480,000 of this file's ~500,000 characters and holds 146 numbered sections - and **the
+> overwhelming majority record work that is DONE.** Only ~10 headings carry an explicit marker,
+> because the convention names the FINDING rather than the STATE: *"OUT-OF-BOUNDS READ IN
+> X509.extractPublicKey"*, *"THE SNAPSHOT WAS PUBLISHABLE BUT NOT USABLE"*, *"WORKFLOW PINNING
+> IMPLEMENTED"* are all closed. **Counting section headings gives a wildly wrong impression of
+> remaining work** - a mistake made in this very session (2026-07-31) after quoting "144 sections" as
+> if it were a workload.
+>
+> **Its value is the REASONING**: why something was built the way it was, what was tried and
+> rejected, and which earlier conclusions were overturned by what evidence. That is what has to
+> survive a session; the list of things to do is short and lives elsewhere.
+>
+> **THE AUTHORITATIVE OPEN WORK IS:**
+> - **sec. 3** - parallel work, not blocked (~10 bullets)
+> - **sec. 4** - decisions someone has to make (6; these are not tasks and cannot be coded around)
+> - **sec. 5** - blocked externally (2)
+> - **sec. 2.18bz** - the task index, mapping each live task to the section holding its context
+> - and within sec. 2 itself, only: **sec. 2.4/2.4b** (the aggregator, unstarted), **sec. 2.4c**,
+>   **sec. 2.5**, **sec. 2.14/2.16b** (the `propertyKey` decision), and **sec. 2.7** (last).
+>
+> **That is roughly 30 items, of which 6 are decisions rather than work and 2 are externally
+> blocked** - not 146. **sec. 6 is explicitly parked**; do not re-litigate it without a reason.
+
 ### 2.1 Wallet-side withdrawal witness assembly — ✅ DONE 2026-07-27
 
 **Was the blocker on anyone withdrawing at all.** Everything downstream (gas work, aggregation)

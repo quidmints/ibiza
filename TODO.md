@@ -6373,6 +6373,94 @@ third-party DESCRIPTIONS of the register, not from the XML - so it is evidence, 
 flagged that way rather than promoted to settled. sec. 2.18ak's lesson: a number read off the nearest
 artifact instead of the thing it measures.
 
+### 2.18cb ANY COUNTRY'S REGISTER: the adapter must declare SEMANTICS, not just vocabulary
+
+2.18ao built a per-jurisdiction STATUS VOCABULARY. **2.18ca shows that is the wrong level of
+abstraction** - Ukraine's export may carry no status field at all, in which case *membership itself
+means active* and there is no vocabulary to translate. **Registers differ in what they MEAN, not only
+in what they SAY**, and an adapter that only maps words cannot express that.
+
+**SIX AXES ON WHICH A REGISTER CAN DIFFER, each of which has already bitten something:**
+1. **TRANSPORT** - bulk file, paginated API, ZIP-wrapped, or (Iran) possibly no bulk export at all.
+   `parseRegistryExport` already handles raw-vs-zip; pagination would break the byte-identical
+   consensus requirement (2.18ao) because page order may vary per fetch.
+2. **FORMAT** - XML here; CSV and JSON elsewhere. Only the DECODE step should care.
+3. **SCHEMA** - element names. Ukraine's are unknown until the file is fetched (2.18ca).
+4. **SEMANTICS OF INACTIVE - THE ONE THAT BREAKS DESIGNS.** Three families, and they are NOT
+   interchangeable:
+   - *status field* (what we assumed): revocation is a PRESENCE claim - provable.
+   - *membership means active* (what Ukraine may be): revocation is an ABSENCE claim - **not provable
+     against a keccak Merkle tree** (2.18bp), so the whole evidence-bound revocation design collapses
+     for that jurisdiction.
+   - *separate suspension list*: two fetches, and the pair must be consistent as of one instant.
+5. **LANGUAGE AND SCRIPT** - handled (Unicode folding, declared vocabulary, fail-closed on unknown).
+6. **AUTHENTICITY** - signed (`.p7s`/КЕП/XAdES) or not. **Determines whether the postman can be
+   removed at all** (2.18bv) - and it is a per-country answer, so *some jurisdictions may be
+   trustlessly anchorable and others not*. That asymmetry must be visible on-chain, not averaged away.
+
+**SO THE ADAPTER INTERFACE IS: fetch spec + decode + field mapping + INACTIVE-SEMANTICS DECLARATION +
+signature spec.** `statusVocabularies` becomes one field of a larger per-registry record, and the
+inactive-semantics declaration is what downstream contracts must read - because **a jurisdiction whose
+register expresses inactivity by absence cannot support proof-bound revocation**, and shipping it
+alongside one that can, without distinguishing them, would silently give the weaker guarantee
+everywhere.
+
+**FAIL-CLOSED REMAINS THE RULE**: an undeclared registry publishes nothing (2.18ao). Extend it - a
+registry whose inactive-semantics are undeclared must not publish either.
+
+### 2.18cc EXTENDING CRE: author a capability in `smartcontractkit/capabilities`
+
+**The route is known and documented** (2.18by): capabilities live in `smartcontractkit/capabilities`,
+Go, an Nx monorepo, with authoring rules published - schema `$id` must match the resolved package
+path plus name and version; capabilities must not reference other capabilities; no imports from the
+`chainlink` repo.
+
+**WHAT WE WOULD AUTHOR, and why it is small:** a capability that performs the fetch and returns the
+TLS transcript or certificate chain ALONGSIDE the body. It does no cryptography - **verification stays
+in the workflow** (2.18bs), which is what keeps it auditable under the pinning already built (2.18bt).
+The capability only has to stop discarding what the host already possesses.
+
+**THE ONE BLOCKING UNKNOWN IS DEPLOYMENT, NOT AUTHORSHIP.** Writing one and having the production DON
+RUN it are different permissions, and nothing found says third-party capabilities may be deployed.
+**This is the single question for Chainlink**; confidential HTTP's transcript exposure (2.18bx) and an
+external attestor (2.18bu) are the fallbacks if the answer is no.
+
+**DO NOT START AUTHORING BEFORE THAT ANSWER.** A capability we cannot deploy is a fork of Chainlink's
+node software that we would then have to persuade operators to run - a distribution problem, not an
+engineering one, and far larger than the code.
+
+### 2.18cd DURABILITY: the operational detail that lived only in tool state
+
+2.18bz mapped tasks to sections; **it did not carry the HOW.** Task descriptions are TOOL state and
+may not survive a session, so the build steps are mirrored here.
+
+**#16 anonymous notary enrolment** - ordered, and the order is load-bearing (2.18bp/bn):
+1. evidence-bound revocation **- but see 2.18cb: impossible if the register expresses inactivity by
+   absence**, so settle the schema first;
+2. provenance (2.18bv/cc), because anonymity before it converts a detectable forgery into an
+   undetectable one;
+3. name-binding enrolment, reusing `query_identity`'s selective disclosure of the MRZ name field;
+4. Poseidon mirror + anonymity last.
+Traps already written into the code: `TitleLedger.registerNotary` (the `MerkleProof.verify` call moves
+WHOLESALE into the circuit, and `notaryDataHash_`/`registryProof_` leave the ABI - hiding them is not
+enough, calldata is the leak) and `NotaryRegistryProof.t.sol` (the mirror needs its own cross-language
+check, or the two trees can silently disagree).
+
+**#15 passport scanner** - wrap **upstream AndyQ NFCPassportReader (MIT, maintained)** rather than
+rarime's copy, which is ~2 years stale and shares no git history (2.18aq); take its visibility patches
+as a diff. Android is **jmrtd 0.7.27 + scuba-sc-android 0.0.20 + bouncycastle** - **jmrtd is LGPL, the
+only non-permissive licence in the stack, and that is a decision not a default.** Avoid
+`tradle/react-native-passport-reader`: last pushed 2023-12, licence `NOASSERTION`. Config (entitlement,
+AID `A0000002471001`, `android.permission.NFC`) is DONE and tested; the scanner is not.
+
+**#10 Groth16 -> Honk** - steps 1-4 need no document: verify rarime's Circom carries explicit
+`EC_LEN`/`SA_LEN` (an INFERENCE, not checked); port the six tuples as wrapper crates like
+`register_identity_td1`; in-circuit consistency tests mirroring the TD1 cross-checks; `bb` codegen.
+Step 5 (validate against a real document) and step 6 (delete the Circom path) are blocked, **and 6
+must never precede 5** - deleting a passport-tested path for an unvalidated port is a regression.
+
+**#12 multi-country** - now specified by 2.18cb.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

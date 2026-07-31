@@ -5971,6 +5971,53 @@ unnecessary, and the remaining work is: (a) provenance verification in `Registry
 (b) full-register-with-status so revocation is a presence claim; (c) name-binding enrolment;
 (d) anonymity. **(a) makes (b)-(d) safe rather than merely deeper.**
 
+### 2.18bs VERIFY TLS INSIDE THE WORKFLOW - gas stops being the constraint, and workflow pinning becomes everything
+
+*"idk if gas budget is even an issue if the actual tls runs as part of the cre. we just need to make
+sure we have a way of pinning the cre code being executed by the don nodes."* (user, 2026-07-31).
+**That is the right architecture and it dissolves the question I was about to research.**
+
+**GAS WAS THE WRONG CONSTRAINT.** If each DON node verifies the TLS proof DURING its fetch, the
+contract never sees the proof - it sees a consensus report over an ALREADY-VERIFIED result. So
+"which zkTLS construction verifies within our gas budget" is moot; the real constraint is **"which
+verifier compiles to `wasip1` and runs inside the CRE sandbox"**, which is a different and much
+easier question. `notary_registry` is already `//go:build wasip1`, so the shape is known.
+
+**AND IT MAKES CONSENSUS MEAN SOMETHING IT DOES NOT MEAN TODAY.** 2.18ao's objection was that
+`ConsensusIdenticalAggregation` proves nodes AGREE, never that they are RIGHT. With in-workflow
+verification, agreement is over *"the register's own TLS server served these bytes"* - **so the thing
+they agree on is now anchored to the source.** That is the property 2.18bq said only provenance could
+provide, obtained without a single on-chain verification.
+
+**WHICH MOVES THE ENTIRE TRUST QUESTION ONTO WORKFLOW PINNING - and 2.15a already saw this.** It
+states plainly: ***"CRE's consensus protects against a rogue NODE, not against a rogue WORKFLOW"***,
+and lists the mitigations: a deterministic wasm ID so a pointer names a SPECIFIC auditable artifact;
+APPEND-ONLY version history so a swap is permanently visible; a TIMELOCK so a swap can be contested
+before it is load-bearing; and fail-open to the last good version.
+
+**SO THE POSTMAN DOES NOT VANISH - IT BECOMES THE WORKFLOW PUBLISHER, AND THAT IS A GENUINELY WEAKER
+POWER.** Be exact about the difference, because this is the whole argument:
+- **Today** the postman can publish FABRICATED DATA silently. Nothing in the artifact reveals it; you
+  would have to compare against the register yourself.
+- **After** they can only publish a DIFFERENT WORKFLOW - a specific, hash-identified, publicly
+  auditable, append-only-recorded, timelocked artifact. **A malicious change is a published object
+  anyone can read**, not an invisible act.
+
+That is the difference between forging a document and announcing in advance that you intend to.
+
+**AND THE TIMELOCK IS THE COMPONENT THAT DOES REAL WORK** - which resolves the standing rule properly.
+2.18br concluded `ROOT_ACTIVATION_DELAY` should be DELETED because prevention beat detection. That
+holds for the DATA path. But the WORKFLOW path genuinely needs a contest window, because a workflow
+swap cannot be prevented cryptographically - only seen. **So the delay does not disappear; it MOVES
+to where it has a job**: guarding version changes rather than every snapshot.
+
+**ON THE BLACKLIST AND LABEL GOVERNORS - partly, and the distinction matters.** Provenance removes an
+attester wherever the fact is SOURCED EXTERNALLY: a sanctions list, a notary register, a title
+register. If the blacklist is fed by an external published list (OFAC SDN is the example 2.13c names),
+the same construction removes its attester too. It does **NOT** remove anyone for POLICY decisions -
+"this identity is blacklisted because we judge it so" is not a fetch, and no provenance proof can
+underwrite it. **Fetched facts lose their attester; judgements do not.**
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

@@ -5352,6 +5352,57 @@ ones in 2.18bc.
 5. **Renewal path** still marks `_usedDocumentHash[newDocumentHash_]`, so anti-replay covers renewed
    documents and the deletion did not open a re-binding window there.
 
+### 2.18bh "IS THAT BIT EVEN NECESSARY?" - the bit is, but it was never the main leak. My fix was incomplete.
+
+*"leave no unresolved issues. are you sure that bit is even necessary?"* (user, 2026-07-31). Asking
+made me re-derive the surface instead of trusting my own summary, and **the summary was wrong.**
+
+**FIRST, THE BIT ITSELF: YES, NECESSARY.** `_usedDocumentHash` is what stops one physical passport
+binding to two holder roots. Since blacklisting acts on the IDENTITY (2.18be), re-binding a seized or
+owned passport to a FRESH identity escapes the blacklist entirely - and the attacker can do it,
+because they hold the document and can produce a valid registration proof. sec. 2.13b already states
+the general form: *"a negative proof is only meaningful against a scarce identity."* The bit is what
+makes a document scarce. Removing it does not reduce a leak, it removes the guard.
+
+Bucketing it - the `PRECOMMITMENT_BUCKETS` trick used elsewhere in this repo for exactly this shape of
+problem - **does not work here.** Uniqueness checks cannot tolerate collisions: two unrelated
+documents sharing a bucket would make the second registration fail as "already used", locking a
+legitimate holder out permanently. Confidentiality by collision is fine for DISCOVERY and fatal for
+UNIQUENESS.
+
+**BUT THE BIT WAS NEVER THE MAIN LEAK, AND I SAID THE FIX WAS COMPLETE WHEN IT WAS NOT.** Re-deriving
+the surface from scratch:
+
+| path | key | passport-derivable? | leaks |
+|---|---|---|---|
+| `_usedDocumentHash` | `dg1Hash` | **yes** | one bit: registered or not |
+| `_documents` | `documentKey` | **YES** - it is `passport.publicKey` / the proof's `passportHash`, both readable from the chip | **`holderRoot`, via `DocumentBond.holderRoot`** |
+| `registrationSmt` leaf | `Poseidon(documentKey, holderRoot)` | no - needs `holderRoot` | nothing |
+| `_holderDocuments` | `holderRoot` | no - needs `holderRoot` first | nothing (not an entry point) |
+
+**`_documents` IS THE SAME LEAK I JUST CLOSED, THROUGH A SECOND DOOR.** `getDocument(bytes32)` is a
+public getter returning `DocumentBond`, whose first field is `holderRoot`. And - exactly as with the
+mapping I deleted - **removing the getter would be theatre**, because `_documents[documentKey]` has a
+computable slot and `eth_getStorageAt` ignores Solidity visibility. So deleting
+`_holderOfDocumentHash` narrowed nothing in practice while I described it as the complete fix.
+
+**WHY I MISSED IT.** I audited the change I MADE rather than the PROPERTY I claimed. Five angles in
+2.18bg, all about whether the deletion broke something - none asking "what OTHER document-keyed state
+reaches `holderRoot`?" A fix is not verified by checking that it did no harm.
+
+**WHAT AN ACTUAL FIX REQUIRES.** Any mapping from a passport-derivable key to `holderRoot` leaks,
+whatever its visibility. So the key must stop being passport-derivable: `_documents` would have to be
+keyed on `Poseidon(documentKey, holderRoot)`, so that finding a bond requires already knowing the
+holder. That is a real refactor - `revokeDocument`/`renewDocument`/`getDocument` all take
+`documentKey` alone today and would need the pair - and it is NOT blocked on the OPRF, unlike the
+remaining one bit. **Not attempted here rather than half-done**, because it touches the revocation
+path, which is the last thing to change carelessly.
+
+**SO "LEAVE NO UNRESOLVED ISSUES" IS NOT YET TRUE, and saying otherwise would be the more comfortable
+lie.** State of the surface: the identity link is still reachable from a seized document via
+`_documents`; the one-bit existence leak needs a threshold party; the storage-layout hazard from
+2.18bg is closed with a reserved slot; and no event depends on any of it.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

@@ -4984,6 +4984,98 @@ re-produce plus a memorised passphrase, then re-scanning recovers everything dow
 - **Changing the derivation of `sk_identity` is not backward-compatible** with any identity already
   registered, so it is a pre-launch decision.
 
+### 2.18az NEAR-DUPLICATES DEFEAT COLLISION-BASED UNIQUENESS - the flaw under A, C *and* the OPRF
+
+*"what if duplicates wont be perfect duplicates?"* (user, 2026-07-31). **This is the most damaging
+question asked about the title design, and it invalidates a premise every option above shares.**
+
+**HASHES COLLIDE ON BYTES, NOT ON MEANING.** `"42 Khreshchatyk St"`, `"42 Khreshchatyk Street"`,
+`"42 khreshchatyk st."`, `"вул. Хрещатик, 42"` are ONE property and FOUR different hashes. So a second
+title over the same land does not collide, `titleOfProperty` sees a fresh key, and **double-minting
+succeeds silently** - defeated not by cryptography but by whitespace. Every option in 2.18aw and
+2.18ax inherits this: A, C and the OPRF are all deterministic functions of a STRING.
+
+Real registries make it worse, not better: abbreviation variance, Cyrillic/Latin transliteration,
+component ordering, and - specifically for Ukraine - **mass street renaming since 2022**, which means
+the same parcel legitimately has different descriptions before and after.
+
+**AND A HASH CANNOT DETECT NEAR-DUPLICATES BY CONSTRUCTION.** It is all-or-nothing: it cannot report
+"this is 95% the same property". So the mechanism cannot even FLAG a suspicious near-match for human
+review. That is the specific "silent error" shape the user asked about.
+
+**THE FIX IS TO STOP HASHING PROSE.** Key on the **registry-assigned canonical identifier** - Ukraine's
+cadastral number (`8000000000:82:031:0016`), Iran's plaque/registration number - which the state
+registry itself assigns and which the notary already reads when attesting. Consequences:
+- Collisions become meaningful again, because the input is canonical by construction.
+- **It does not fully close.** Parcel SPLITS and MERGES issue new identifiers for land that overlaps
+  old ones, so a merged parcel can be titled while its constituents already are. That needs an
+  explicit rule, not a hash.
+- It makes enumeration EASIER (cadastral numbers are structured and low-entropy), which strengthens
+  the case for the OPRF's rate-limiting rather than weakening it.
+- **The notary attestation stops being optional.** Only a human reading the register can say "this
+  cadastral number is the land this deed describes", and only a human can catch a split/merge case.
+  So uniqueness is cryptographic ON THE IDENTIFIER and attested ON THE MAPPING from deed to
+  identifier. That is a more honest description of what any of these designs can deliver.
+
+**RECORDED AS A CORRECTION TO 2.18aw/2.18ax rather than a footnote:** the comparison there was
+between options that all silently assumed byte-identical inputs. That assumption is false, and no
+choice among A/C/OPRF matters until the INPUT is canonical.
+
+### 2.18ba DOES `recovery.ts` GET ALL THE NOTES BACK? Yes - bounded by a gap limit that fails silently
+
+*"does recovery.ts enable getting all the notes?"* (user, 2026-07-31). Checked rather than assumed.
+
+**THE DERIVATION IS FULLY DETERMINISTIC**, so the mnemonic is sufficient in principle:
+`masterKeysFromMnemonic(mnemonic)` yields `masterNullifier`/`masterSecret`; deposit notes are
+`Poseidon(master, scope, index)`; withdrawal (change) notes are `Poseidon(master, label, index)`.
+Nothing else is needed - no server, no per-note backup.
+
+**BUT DISCOVERY IS A SCAN WITH A GAP LIMIT.** `discovery.ts` documents `scanDepositIndices` as *"how
+many deposit indices to scan per scope (HD gap limit)"*. Notes beyond that limit are **not found, and
+nothing reports that they were missed** - the wallet simply shows a smaller balance. That is the same
+silent-failure shape as 2.18az: an under-count that looks like an answer.
+
+**WORSE FOR CHANGE NOTES**, because they chain: withdrawal notes key on `label`, which comes from a
+DEPOSIT. A deposit missed by the gap limit takes every change note descended from it with it.
+
+**WHAT SHOULD CHANGE** (not done here): the gap limit must be a LOUD boundary rather than a quiet
+one - scan until N consecutive empty indices AND report the highest index found, so a user whose
+notes sit beyond the window sees "scanned to index N" rather than a confidently wrong balance. The
+loop-until-dry shape, applied to recovery.
+
+### 2.18bb DG DATA CANNOT BE MADE SECRET - and nothing beats Active Authentication, because the problem is not AA
+
+*"how do we make the DG data secret... is there something even better than active authentication?"*
+(user, 2026-07-31).
+
+**DG DATA CANNOT BE SECRET.** It is on the chip; BAC/PACE gates reading it behind the MRZ, which is
+PRINTED ON THE PAGE. So the true statement is not "secret" but *"available to anyone who physically
+handles the document, or photographs the data page"* - which includes border control, police, hotels,
+and anyone who steals it. There is no configuration that changes this.
+
+**IS THERE SOMETHING BETTER THAN AA? Yes and no, and the "no" is the important half.**
+- **Chip Authentication (CA)**, part of EAC, is generally considered SUPERIOR to AA: the chip holds a
+  static DH private key and proves genuineness by establishing a shared secret, instead of signing a
+  terminal-supplied challenge. **AA is a signing oracle** - it will sign whatever challenge it is
+  given, which is a known criticism (the "challenge semantics" problem).
+- **But CA does not fix the thing we care about.** Both AA and CA are properties of the CHIP, and a
+  passport is a **BEARER CREDENTIAL**. Anyone in physical possession can run either protocol and
+  derive exactly the same value. **You cannot extract a personal secret from a bearer token.**
+
+**SO THE THREE CAVEATS IN 2.18ay ARE NOT AA'S LIMITATIONS - THEY ARE THE LIMITATION OF THE APPROACH.**
+Being told they are "unacceptable" is fair, and the correct response is not a better chip primitive:
+it is to stop trying to derive an unrecoverable-proof secret from a document that a border guard can
+hold. Any passport-derived key is compromised by the exact adversary this project exists to resist.
+
+**WHAT ACTUALLY DELIVERS "NO UNRECOVERABLE FAILURE MODES" WITHOUT THAT TRADE.** 2.22c rejected
+Web3Auth/Turnkey/Privy/Para for specific reasons - *a share on somebody's server*, and *recovery gated
+behind Google or Apple sign-in*. **It did not reject threshold recovery itself.** Shamir shares held
+by GUARDIANS THE USER CHOOSES - people they know, offline, no company and no US dependency - keep the
+property (any k of n restores the mnemonic) while avoiding every objection 2.22c actually raised.
+Combined with the existing user-held mnemonic backup, that gives two independent recovery paths and no
+single point of loss. **This is the direction to take**, and it is unblocked: it is client-side
+cryptography over a value that already exists.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

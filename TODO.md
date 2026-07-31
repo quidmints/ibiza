@@ -6117,6 +6117,54 @@ WHICH CODE RAN, and the code cannot prove where the bytes came from.
 `FUNDING-APPLICATION` error of 2.18am repeated at a different layer - a safety claim the code does not
 support - and it would be worse here because the whole notary-privacy argument is downstream of it.
 
+### 2.18bv SELF-OBSERVED TLS IS UNREACHABLE - and SOURCE-SIGNED DATA removes the party more completely
+
+*"we need to remove a party. find a way for the workflow to be able to observe its own tls session"*
+(user, 2026-07-31). Chased it, and it is structurally unavailable - but the goal is reachable by a
+better route that 2.18bq already named and I did not pursue.
+
+**WHY SELF-OBSERVATION IS OUT.** `cre-sdk-go/capabilities/networking/` contains exactly one
+capability: **`http`**. There is no TCP, socket or stream primitive, so the workflow has **no
+transport to run a handshake over** - it cannot do TLS itself, and `http.Response` does not surface
+the session the host performed (2.18bu). Reaching self-observed TLS therefore requires an UPSTREAM
+change - a socket capability, or TLS material on the response - and no amount of cleverness inside the
+sandbox substitutes for a transport that is not there.
+
+**BUT TLS IS NOT WHAT WE ACTUALLY WANT, AND THAT IS THE USEFUL PART.**
+- **TLS proves TRANSPORT authenticity**: *"these bytes came from that server, now."* It is bound to a
+  session, so it dies with the connection and must be re-proven every fetch by whoever held the socket.
+- **A SOURCE SIGNATURE proves DATA authenticity**: *"the ministry authored these bytes."* It is bound
+  to the DATA, so it survives caching, mirrors, relays, and even a hostile transport - and **anyone can
+  verify it, at any time, with no privileged position in the connection.**
+
+The second is strictly stronger for this purpose, and 2.18bq already said so in passing: the
+constructions that remove the trusted publisher are *"TLSNotary, or **a register that publishes signed
+data**, or any scheme where the government's own key underwrites the bytes."* I pursued the first two
+and skipped the third, which is the only one needing **no new party at all**.
+
+**HOW IT REMOVES THE PARTY COMPLETELY.** The workflow fetches the export by any means - the existing
+`http` capability, a mirror, a cache, it stops mattering - and **verifies the ministry's signature
+inside the sandbox** against a public key pinned in the contract. Then:
+- **no attestor**, unlike the zkTLS route;
+- **no upstream SDK change**, unlike self-observed TLS;
+- **the postman's power is genuinely gone, not narrowed**: a fabricated entry fails signature
+  verification, so it cannot be published at all. That is prevention, and it is what 2.18bp said only
+  provenance could deliver;
+- consensus still runs over an already-verified result, and 2.18bt's pinning still guarantees WHICH
+  code did the verifying. **Both pieces already built remain load-bearing.**
+
+**THE ONE THING THAT MUST BE CHECKED, and it is factual rather than architectural:** does Ukraine's
+Ministry of Justice actually publish its bulk export with a qualified electronic signature? Ukraine
+operates a national QES infrastructure and official documents commonly carry one, but **whether THIS
+export does is a property of the endpoint, and I cannot determine it from here.** It needs one look at
+the real bulk export - the same single fetch task #12 already needs for the status vocabulary
+(2.18ao), so it is one errand, not two.
+
+**IF IT IS SIGNED**, this is the whole answer and the postman becomes a relay that cannot lie.
+**IF IT IS NOT**, then no construction removes the party without an external attestor, because there is
+nothing authoritative to verify against - and that is a finding worth having explicitly, since it
+bounds what any amount of engineering can achieve here.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

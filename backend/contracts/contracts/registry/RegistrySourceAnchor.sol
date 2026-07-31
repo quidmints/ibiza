@@ -37,9 +37,54 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
     bytes32 public constant REGISTRY_POSTMAN = keccak256("REGISTRY_POSTMAN");
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
 
+    /**
+     * The pinned CRE workflow, append-only (sec. 2.18bs).
+     *
+     * WHY THIS EXISTS. `ConsensusIdenticalAggregation` proves the DON nodes AGREE; it cannot prove
+     * they are RIGHT (sec. 2.18ao). Verifying the register's TLS session INSIDE the workflow fixes
+     * that - agreement becomes agreement on *"the register's own server served these bytes"* - but
+     * only if the workflow that ran is the one that does the verifying. **Consensus protects against
+     * a rogue NODE, never against a rogue WORKFLOW** (sec. 2.15a).
+     *
+     * NO NEW AUTHORITY, DELIBERATELY. Pinning is gated by the EXISTING `OWNER_ROLE`, not a bespoke
+     * publisher role - the same reasoning `TitleLedger` used when it reused `REGISTRY_POSTMAN`
+     * rather than minting an admin key: one trust boundary is auditable, two are a surface. What
+     * makes this SAFE where that was not is that the power differs in kind - an owner here can only
+     * name a hash-identified, publicly auditable artifact on an append-only list after a delay,
+     * never publish data directly.
+     *
+     * APPEND-ONLY is the load-bearing property: a swap is permanently visible rather than a silent
+     * substitution, so "which code produced this snapshot" is answerable for every past root.
+     */
+    struct WorkflowVersion {
+        bytes32 workflowId; // deterministic wasm artifact hash
+        uint64 pinnedAt;
+        uint64 activeFrom;
+    }
+
+    WorkflowVersion[] public workflowVersions;
+
+    event WorkflowPinned(bytes32 indexed workflowId, uint256 index, uint64 activeFrom);
+
+    error ZeroWorkflowId();
+    error WorkflowAlreadyPinned(bytes32 workflowId);
+    error NoActiveWorkflow();
+
     /// Same window Entrypoint.sol uses for ASP roots - gives verifiers/watchers a chance to catch
     /// a bad snapshot before anything can be proven against it.
     uint256 public constant ROOT_ACTIVATION_DELAY = 1 hours;
+
+    /**
+     * How long a newly pinned workflow waits before snapshots may cite it (sec. 2.18bs).
+     *
+     * THE ONE THING A TIMELOCK IS ACTUALLY FOR HERE. Once each DON node verifies the register's TLS
+     * session inside the workflow, fabricated DATA becomes impossible rather than merely detectable -
+     * so the snapshot path needs no contest window. **A workflow SWAP cannot be prevented
+     * cryptographically, only seen**, so this is where a delay earns its keep: it is the interval in
+     * which a malicious version is visible and contestable BEFORE anything relies on it. Without it
+     * the update mechanism is a same-block censorship lever.
+     */
+    uint256 public constant WORKFLOW_ACTIVATION_DELAY = 24 hours;
 
     // Same BN254/SNARK scalar field every other statement key in this fusion is reduced into
     // (Entrypoint._aspStatementKey, EvidenceRegistry.BABY_JUB_JUB_PRIME_FIELD) - duplicated
@@ -100,6 +145,47 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
     /// here, not trusted from the caller - see the contract-level trust-model note. Never
     /// overwrites a prior snapshot - each publish appends, so history (and what was active at any
     /// past timestamp) is preserved, same as Entrypoint's association sets.
+    /**
+     * @notice Pin the CRE workflow whose output this anchor accepts.
+     * @dev Append-only and timelocked; reuses OWNER_ROLE rather than adding a publisher authority.
+     */
+    function pinWorkflow(bytes32 workflowId_) external onlyRole(OWNER_ROLE) returns (uint256 index_) {
+        if (workflowId_ == bytes32(0)) revert ZeroWorkflowId();
+
+        // Re-pinning the SAME id would reset its timelock, which is how a contested version gets
+        // quietly re-armed. The list is append-only in both senses: nothing is removed, and nothing
+        // already named can be renamed.
+        for (uint256 i = 0; i < workflowVersions.length; ++i) {
+            if (workflowVersions[i].workflowId == workflowId_) revert WorkflowAlreadyPinned(workflowId_);
+        }
+
+        index_ = workflowVersions.length;
+        uint64 activeFrom_ = uint64(block.timestamp + WORKFLOW_ACTIVATION_DELAY);
+        workflowVersions.push(
+            WorkflowVersion({workflowId: workflowId_, pinnedAt: uint64(block.timestamp), activeFrom: activeFrom_})
+        );
+        emit WorkflowPinned(workflowId_, index_, activeFrom_);
+    }
+
+    /**
+     * @notice The workflow currently entitled to produce snapshots, or zero before the first one
+     *         becomes active.
+     * @dev FAILS OPEN TO THE LAST GOOD VERSION: a newly pinned version does not displace its
+     *      predecessor until its delay elapses, so a swap cannot silence the registry in the
+     *      meantime - inaction and a contested update both leave the previous version working.
+     */
+    function activeWorkflowId() public view returns (bytes32) {
+        for (uint256 i = workflowVersions.length; i > 0; --i) {
+            WorkflowVersion storage v_ = workflowVersions[i - 1];
+            if (v_.activeFrom <= block.timestamp) return v_.workflowId;
+        }
+        return bytes32(0);
+    }
+
+    function workflowVersionCount() external view returns (uint256) {
+        return workflowVersions.length;
+    }
+
     function publishSnapshot(
         bytes32 registryId_,
         bytes32[] calldata leaves_
@@ -144,6 +230,12 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
         bytes32 registryId_,
         bytes32[] memory leaves_
     ) internal returns (uint256 index_, bytes32 root_) {
+        // A PIN NOTHING CHECKS IS DECORATION. The whole point of naming the workflow is that
+        // snapshots are attributable to auditable code, so publishing must be impossible until a
+        // version is active. Without this line `pinWorkflow` would be a public statement of intent
+        // with no bearing on what the anchor accepts - the shape sec. 2.18bg calls theatre.
+        if (activeWorkflowId() == bytes32(0)) revert NoActiveWorkflow();
+
         root_ = _computeRoot(leaves_);
 
         snapshots[registryId_].push(RegistrySnapshot(root_, block.timestamp));

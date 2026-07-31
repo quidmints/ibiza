@@ -94,6 +94,7 @@ contract TitleLedgerTest is Test {
     bytes memory registryInit =
       abi.encodeCall(RegistrySourceAnchor.initialize, (address(new MockEvidenceRegistry()), admin));
     registry = RegistrySourceAnchor(address(new ERC1967Proxy(address(registryImpl), registryInit)));
+    _activateWorkflow(registry, admin);
     // Read the role constant BEFORE vm.prank - it's itself an external call and would otherwise
     // consume the single-shot prank before grantRole executes (see RegistrySourceAnchor.t.sol).
     bytes32 postmanRole = registry.REGISTRY_POSTMAN();
@@ -156,6 +157,15 @@ contract TitleLedgerTest is Test {
   function _decoyProof() internal view returns (bytes32[] memory p_) {
     p_ = new bytes32[](1);
     p_[0] = notaryDataHash;
+  }
+
+  /// Pin a workflow and warp past its delay, so snapshots can be published (sec. 2.18bs).
+  /// Every test that publishes needs this now - a snapshot with no auditable workflow behind it is
+  /// exactly what the pin exists to refuse.
+  function _activateWorkflow(RegistrySourceAnchor anchor_, address owner_) internal {
+    vm.prank(owner_);
+    anchor_.pinWorkflow(keccak256('notary_registry.wasm@test'));
+    vm.warp(block.timestamp + anchor_.WORKFLOW_ACTIVATION_DELAY() + 1);
   }
 
   function _mintMessage(

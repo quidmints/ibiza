@@ -6018,6 +6018,47 @@ the same construction removes its attester too. It does **NOT** remove anyone fo
 "this identity is blacklisted because we judge it so" is not a fetch, and no provenance proof can
 underwrite it. **Fetched facts lose their attester; judgements do not.**
 
+### 2.18bt WORKFLOW PINNING IMPLEMENTED - on the existing authority, and enforced
+
+*"do the multifile refactor now; we dont need a separate authority for the workflow publisher. reuse
+our existing authorities"* (user, 2026-07-31). Done for the trust-critical half. **390 forge tests**
+(up from 384), ABIs clean.
+
+**WHAT LANDED, in `RegistrySourceAnchor`:**
+- `WorkflowVersion { workflowId, pinnedAt, activeFrom }` in an **APPEND-ONLY** array, so "which code
+  produced this snapshot" is answerable for every past root and a swap is permanently visible rather
+  than a silent substitution.
+- `pinWorkflow(bytes32)` gated by the **EXISTING `OWNER_ROLE`** - no publisher authority was added.
+  What makes reuse safe here, where 2.18bp criticised the same move for `REGISTRY_POSTMAN`, is that
+  **the power differs in kind**: an owner can only name a hash-identified, publicly auditable artifact
+  on an append-only list after a delay. It cannot publish data.
+- `WORKFLOW_ACTIVATION_DELAY = 24 hours`, and **this is where a timelock actually earns its keep**.
+  2.18br concluded `ROOT_ACTIVATION_DELAY` should be deleted because verified provenance makes bad
+  DATA impossible rather than merely detectable. A workflow SWAP cannot be prevented
+  cryptographically - only seen - so the delay MOVED to the path that needs it instead of being
+  deleted or given busywork.
+- **ENFORCED**: `_publishSnapshot` reverts `NoActiveWorkflow` when nothing is active. A pin nothing
+  checks would be a public statement of intent with no bearing on what the anchor accepts - the exact
+  shape 2.18bg calls theatre.
+
+**SIX TESTS, and the first is written against a FRESH anchor** rather than the pinned one from
+`setUp`, because a test that cannot fail is what this suite is least allowed to contain:
+publishing is impossible with no active workflow; a pin is not active until its delay elapses; **a new
+pin does NOT silence the previous version during its own delay** (otherwise pinning is a same-block
+censorship lever); the same id cannot be re-pinned to reset its timelock; pinning is owner-only and
+**unavailable to the postman** - who may publish snapshots but must not choose the code they are
+attributed to; and the zero id is refused.
+
+**TWELVE EXISTING TESTS FAILED WHEN THE ENFORCEMENT LANDED**, which is the enforcement working: every
+suite that publishes now activates a workflow first. That is the correct blast radius, and it is
+recorded because a change that broke nothing would have meant the check was not on the live path.
+
+**WHAT IS STILL NOT DONE, stated plainly:** the workflow does not yet VERIFY the register's TLS
+session - that is the Go half (2.18bs), and it needs a zkTLS verifier that compiles to `wasip1`.
+Until it lands, pinning names the code but the code does not yet prove provenance. **The pin is a
+precondition for that work, not a substitute for it** - and it is the half that had to exist first,
+since verification is worthless if the verifying code can be swapped silently.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

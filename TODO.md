@@ -5076,6 +5076,73 @@ Combined with the existing user-held mnemonic backup, that gives two independent
 single point of loss. **This is the direction to take**, and it is unblocked: it is client-side
 cryptography over a value that already exists.
 
+### 2.18bc WHAT A STOLEN PASSPORT REVEALS TODAY - and why access control would be theatre
+
+*"if someone's passport is stolen can they still break the vulnerability... make sure that a single
+holding of the passport reveals no notes, or anything PP related. keep it as damage-minimised as
+possible"* (user, 2026-07-31). Traced rather than assumed.
+
+**THE GOOD NEWS FIRST, because it is real and was deliberate.** A stolen passport reveals **NO NOTES
+AND NO POOL HANDLE**:
+- Note secrets are `Poseidon(masterNullifier|masterSecret, scope|label, index)`, and the masters come
+  from the MNEMONIC via `masterKeysFromMnemonic` - **HD path index 100 for `sk_identity`, separate
+  indices for the PP masters**. The passport is nowhere in that derivation.
+- `escrow_envelope` **used to publish `holder_root` and `dg1_hash` and no longer does** - dropped in
+  2.18 precisely because they were per-person identifiers linking identity to pool handle in
+  registration calldata. That link is already closed.
+
+So the phone is what protects the money, and a thief with the passport but not the phone gets no
+notes, no balances, no withdrawal history.
+
+**THE LEAK THAT REMAINS, and it is a one-call lookup.** `HolderStateKeeper` exposes
+`holderOfDocumentHash(bytes32) external view` over `_holderOfDocumentHash: dg1Hash => holderRoot`. So
+anyone who holds the document can:
+
+1. read the chip -> DG1 -> compute `dg1Hash` (BAC needs only the printed MRZ),
+2. call `holderOfDocumentHash(dg1Hash)` -> **`holderRoot`**,
+3. and `holderRoot` is an INDEXED topic on `DocumentAdded` / `DocumentRegistered` /
+   `DocumentRenewed` / `DocumentRevoked` - so one log query yields **how many documents that person
+   holds, which types, when each was registered, and every renewal and revocation**.
+
+For the stated threat model that is serious on its own: it tells a border guard, a police officer or
+a thief that this person USES THIS PROTOCOL, and multi-citizenship makes it worse - the whole point
+of one holder key with several documents is that the set is private, and this publishes its size.
+
+**MAKING THE GETTER PRIVATE WOULD BE THEATRE, and this is the important part.** The obvious fix -
+drop `external`, or gate it to the identity registry - **does not work**. The value lives in contract
+STORAGE, and any mapping slot is computable and readable with `eth_getStorageAt` by anyone, whatever
+Solidity's visibility says. Visibility keeps out casual callers; it does not keep out the adversary
+who already has your passport in their hand. **A fix that only removes the getter would look like a
+fix and not be one** - exactly the shape this project keeps catching.
+
+**THE REAL FIX IS THE SAME PRIMITIVE AS `propertyKey`, and the tension is structurally identical:**
+- anti-replay requires a value **deterministic in the DOCUMENT** - the same passport must not bind
+  twice under two holder roots (`test_sameDg1CannotBindToASecondHolderRoot`, and 2.18 records that
+  re-homing defeats any identity blacklist by construction);
+- privacy requires that value **not be computable by whoever holds the document**.
+
+Deterministic-in-a-bearer-readable-input versus not-enumerable is precisely 2.18ax's problem. So key
+the anti-replay on **`OPRF(k, dg1Hash)`** with `k` a threshold key: still deterministic given `k`, so
+re-homing stays blocked; not computable by a passport holder without a query that is **oblivious**
+(the holders never learn which document) and **rate-limited** (bulk checking of a seized stack of
+passports is visible as volume). One primitive, two problems - which is an argument for building it
+properly rather than twice.
+
+**DAMAGE-MINIMISATION AVAILABLE WITHOUT THE OPRF**, ranked by whether they actually help:
+1. **Stop indexing `holderRoot` on the four document events.** Genuine and cheap: it converts "one
+   log query for this person's full history" into "scan and decode every event ever emitted". Does
+   not stop a determined adversary, does raise the cost of the casual one, and costs nothing.
+2. **Do not return `holderRoot` at all** - have the registry pass `dg1Hash` and receive a boolean, so
+   the mapping's VALUE never crosses the ABI. Storage remains readable, so this is a smaller win than
+   it looks, but it removes the value from every trace, log and archive-node RPC response.
+3. **Recovering the phone changes nothing about this leak** - it is on-chain state, not device state.
+   Which is the honest answer to "can they still break it if the phone is recovered": the notes were
+   never at risk from the passport, and the registration history was never protected by the phone.
+
+**RECORDED AS A DEFECT, NOT A DESIGN NOTE.** It is not a break of the pool, and it does not touch
+funds - but it does defeat the multi-citizenship privacy property that one-key-many-documents exists
+to provide, and it is reachable by anyone who handles the document for thirty seconds.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

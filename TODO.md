@@ -5699,6 +5699,53 @@ and it is the same shape as the identity registry.
 **NOT BUILT.** It needs a circuit, a contract change to `registerNotary`, and the mirror. Recorded now
 because the current design would otherwise ship having published the list it exists to protect.
 
+### 2.18bn THE POSTMAN IS A REAL VULNERABILITY - three levers, and anonymity REMOVES the audit trail
+
+*"can the postman be corrupted? is it a vulnerability? is it better to do task 16 after we finish the
+aggregation?"* (user, 2026-07-31). Yes, yes, and yes - with one interaction that must be designed for
+rather than discovered.
+
+**THREE LEVERS A CORRUPT POSTMAN HAS TODAY:**
+1. **IMPERSONATION.** `registerNotary` proves the register ENTRY is real; it does NOT prove the
+   commitment belongs to that person. So a postman can admit a commitment THEY control against any
+   genuine notary's entry and act as that notary indefinitely. This is the OPEN GAP the contract
+   header already names - the identity<->register binding - seen from the attacker's side.
+2. **REFUSAL.** Declining to enrol censors by inaction, indistinguishably from being slow: sec. 2.13b's
+   objection, still live.
+3. **ARBITRARY REVOCATION.** `revokeNotary(commitment, predicate)` is postman-gated and requires **no
+   proof of anything** - not a fault, not a register change. A corrupt postman can silence any notary
+   at will. **This one is NOT recorded anywhere else and is the most immediately usable**, because
+   unlike impersonation it needs no setup.
+
+**THE INTERACTION THAT MATTERS FOR TASK #16: ANONYMOUS ENROLMENT DESTROYS THE ONLY AUDIT TRAIL ON
+LEVER 1.** Today `notaryDataHash` is in calldata, so a notary - or anyone - can in principle notice
+that their register entry was enrolled without their knowledge. **After #16 nobody can**, because the
+chain no longer records which entry was used. Privacy at enrolment and accountability of the enroller
+are in direct tension here, and #16 as specified silently trades the second away.
+
+**SO #16 NEEDS A DETECTION PATH BUILT WITH IT, not after.** The cheapest form: the notary can check
+their OWN enrolment - given their commitment they can verify it is in the tree, and given their
+register entry they can confirm no OTHER commitment claims it. That requires the postman to publish
+something the entry's true holder can check but a third party cannot correlate - a deterministic
+per-entry tag under a key only the notary and postman share, for instance. **Not designed yet.**
+Recording it as a REQUIREMENT of #16 rather than a follow-up, because building #16 without it
+converts a detectable attack into an undetectable one.
+
+**ORDERING: AGGREGATION FIRST. #16 BEFORE THE FIRST REAL NOTARY ENROLS.**
+
+The right criterion is irreversibility, not importance:
+- **Nothing is deployed and no notary has enrolled**, so the enrolment disclosure is accruing NO harm
+  today. It becomes irreversible the moment a real notary enrols - those names are on-chain forever
+  and cannot be un-published.
+- **The aggregator is on the money path**: ~200k gas per withdrawal today versus ~68k at N=16, which
+  is the difference between a pool usable for ordinary amounts and one that is not. It blocks real
+  users now.
+- Aggregation is fully specified and unblocked; #16 still needs a mirror, a circuit, a contract change
+  **and now a detection mechanism that does not exist**.
+
+**So: aggregation first - but #16 is a HARD GATE on notary enrolment, not a nice-to-have.** If
+enrolment ships before it, the disclosure is permanent for everyone who enrolled in the interim.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

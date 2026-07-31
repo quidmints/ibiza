@@ -4564,6 +4564,44 @@ deliberately rather than by default. Avoid `tradle/react-native-passport-reader`
 2023-12 and its licence is `NOASSERTION`, i.e. GitHub could not identify one, which is a legal
 unknown rather than a permissive licence.
 
+### 2.18ar WHAT NEEDS TWO PASSPORTS, AND WHAT DOES NOT
+
+*"so before we can verify that multidocument works, we need two passports and a phone?"* (user,
+2026-07-31). **No** - and the distinction is worth stating precisely, because it decides what is
+worth building now.
+
+**MULTI-DOCUMENT IS ALREADY VERIFIED.** `HolderRegistration.t.sol::test_multiCitizenship_twoDocumentsOneHolder`
+registers two DISTINCT documents - different `dg1Hash`, different keys, one `DOC_PASSPORT` and one
+`DOC_NATIONAL_ID` - under one `holderRoot`, and asserts `getActiveDocumentCount == 2`. Its neighbour
+`test_sameDg1CannotBindToASecondHolderRoot` guards the re-homing attack that would otherwise defeat
+any identity-level blacklist. The LOGIC is done.
+
+**WHAT TWO REAL PASSPORTS WOULD ADD is INGESTION, not logic:** that two genuine SODs, from two real
+issuers, parse and register under one holder key. That is a different claim from "the contract binds
+two documents to one root", and only the first needs hardware.
+
+**SO THE USEFUL PRE-WORK IS EVERYTHING BETWEEN THE MRZ AND THE PROOF THAT IS PURE.** Built the first
+piece: `src/passport/mrzKey.ts` - ICAO 9303 Part 11 check digits and the BAC "MRZ information"
+string. A chip will not talk to you until you prove you can read the printed page, so every scanner
+needs this, and none of it needs a radio.
+
+**PINNED TO THE SPEC'S OWN WORKED EXAMPLE, NOT TO THE IMPLEMENTATION.** The ICAO specimen (document
+`L898902C`, born 690806, expires 940623) must produce `L898902C<369080619406236`; the three check
+digits 3, 1 and 6 were each reproduced by hand from the 7-3-1 weights BEFORE the code was written, so
+the test cannot be satisfied by an implementation that merely agrees with itself. **9 tests via
+`node --test`** - Node 24 strips types natively, so no jest and no new dependency.
+
+**IT IS ALSO THE PART THAT FAILS SILENTLY, which is why it was worth doing first.** A wrong BAC key
+does not error - the chip simply refuses mutual authentication, and the symptom is "scanning didn't
+work", indistinguishable from a bad antenna, a bad read, or an unsupported document. Doing this now
+means that ambiguity is already resolved when someone is finally standing there with a passport.
+Malformed input therefore throws rather than computing a plausible key: a lowercase letter from an
+OCR path would otherwise produce a well-formed key over the wrong value.
+
+**STILL MISSING FROM THIS FILE, deliberately rather than forgotten:** the seed-to-key step
+(SHA-1 -> Kseed -> Kenc/Kmac with 3DES) and PACE. PACE matters - modern documents prefer it and some
+refuse BAC outright - but it needs its own vectors and is better absent than half-done.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

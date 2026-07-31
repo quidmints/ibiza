@@ -6546,11 +6546,30 @@ the data.
 is ~50-100 entries, curated ONCE, reviewed by someone who reads the language. It is consulted only for
 NON-EMPTY notes - 6.5% of records here.
 
-**WHERE INFERENCE BELONGS, and it does have a place: OFF-CHAIN, IN THE HUMAN LOOP.** When a new note
-appears the snapshot fails closed and names it. **Using an LLM to help a reviewer understand that
-phrase is entirely sensible** - what must never happen is the model's output being the COMMITTED
-artifact. The reviewed mapping is committed; the inference is a research aid. Determinism is preserved
-because what ships is a table a person signed off, not a judgement made at runtime.
+**"WHAT HUMAN LOOP?" - THERE ISN'T ONE, AND SAYING SO WAS SLOPPY** (user, 2026-07-31). I described a
+reviewer as though it were an operational step. **It is not: the vocabulary is PRE-CONFIGURED, compiled
+INTO the workflow binary.** There is no runtime moment at which anyone is consulted - the table is
+source code, the binary is built from it, and its hash is what gets pinned.
+
+**WHICH MEANS THE VOCABULARY INHERITS EVERY GUARANTEE 2.18bt ALREADY BUILT, for free:**
+- adding a country's phrases **is** publishing a new workflow version;
+- the version is a **hash-identified, publicly auditable artifact** on an **append-only** list;
+- the **24-hour timelock** is the window in which the new mapping can be read and contested BEFORE it
+  is load-bearing;
+- and **fail-open to the last good version** means a bad or contested vocabulary cannot silence the
+  registry meanwhile.
+
+**AND THE AUTHORITY ALREADY EXISTS - reuse it, do not invent one.** The controller that governs PP's
+blacklist and labels is the same one that lists workflows: `pinWorkflow` is gated by the EXISTING
+`OWNER_ROLE` (2.18bt), deliberately, so **adding a country is the same act, under the same key, with
+the same audit trail as any other governance change.** No reviewer role, no new authority, no
+operational process to document.
+
+**SO THE DIVISION IS BUILD-TIME, NOT RUNTIME.** Inference can help whoever WRITES the table - reading
+an unfamiliar phrase is exactly what a model is good for - but the artifact that ships is the table,
+and it ships through the mechanism that already exists for shipping code. **What the workflow does at
+runtime is refuse anything it was not configured for**, which needs no judgement and produces the same
+answer on every node.
 
 **AND IF A REGISTER EVER DID EMIT FREE-FORM PROSE PER RECORD**, the right answer is not inference -
 it is that such a register **cannot be trustlessly anchored** and should be declared unsupported

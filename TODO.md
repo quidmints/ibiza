@@ -4458,8 +4458,49 @@ sourced, or the first real-document session gets spent discovering this.
 
 **RELATED, ALREADY FLAGGED IN-FILE.** `app.plugin.js`'s own comment says its Gradle change has
 "NOT VERIFIED BY A REAL ANDROID BUILD - no JDK/Android SDK/NDK on the machine this was written on".
-So the native build path is unverified end to end, and the NFC config would join it. Both need a
-machine with the Android/iOS toolchains - CI or a dev box, not necessarily a phone.
+So the native build path is unverified end to end, and the NFC config joins it. Both need a machine
+with the Android/iOS toolchains - CI or a dev box, not necessarily a phone.
+
+**CHALLENGED, AND THE CHALLENGE IMPROVED THE FINDING.** *"im shocked tho are you sure this isnt a
+false negative? the rarimo app was working as far as i can tell"* (user, 2026-07-31). Right to push -
+"it works" is exactly the evidence that should force a re-check. It is NOT a false negative, and
+digging showed my framing was **understated** rather than wrong:
+
+- **No generated native projects exist.** There is no `ios/` or `android/` directory; they are
+  produced by `expo prebuild`, which `package.json` runs with `--clean`. So no hand-edited manifest
+  could be carrying the entitlement.
+- **The SDK is a PROVING sdk, not an NFC one.** `@rarimo/rarime-rn-sdk` exports Noir prover bindings,
+  hash/signature helpers and contract typings; its native payload is `SwoirenbergLib.xcframework`
+  (Swoir, a Noir prover). **Zero NFC references in its entire source**, and its Android manifest is
+  literally `<manifest></manifest>`.
+- **There is no NFC library in this app at all** - zero matches for "nfc" in `package.json`. No
+  `react-native-nfc-manager`, nothing. `@li0ard/tsemrtd` and `mrz` PARSE document data; they do not
+  read a chip.
+- **The wallet already says so.** `App.tsx:70`: *"Live add/renew/revoke need: (1) a scanned passport
+  (RarimePassport from NFC), (2) OUR deployed HolderStateKeeper/HolderRegistration, (3) the forked
+  query circuit"*. It is a shell, and it knows.
+
+**BOTH THINGS ARE TRUE:** Rarimo's own app works - it is a complete shipped product with its own app
+config and its own scanner. `identity-wallet` is a SEPARATE Expo app that consumes their proving SDK
+and was never given a scanner. An iOS entitlement is granted to an app bundle via its own
+entitlements file and provisioning profile; **a library cannot grant itself NFC**, so a working
+upstream app implies nothing about ours.
+
+**SO THE ENTITLEMENT WAS THE SMALLER HALF.** Task #15 as first written said "configure NFC" as though
+config were the only gap. Corrected: config is necessary and nowhere near sufficient - the scanner
+itself (BAC/PACE key derivation, APDU exchange, secure messaging, then handing DGs to `tsemrtd`) does
+not exist. Reading a chip is a real piece of work, not a plist key.
+
+**DONE ANYWAY, AND FIRST, because it is the blocker that fails LATEST.** On iOS the entitlement is
+enforced at RUNTIME: a build without it compiles, installs, launches, and throws only when a reader
+session starts. `app.plugin.js` now adds the `TAG` reader format, the `NFCReaderUsageDescription`,
+the eMRTD AID `A0000002471001` in `select-identifiers`, `android.permission.NFC`, and
+`uses-feature android.hardware.nfc required="false"` (required=true would stop the app installing on
+devices with no radio, and someone who restored from backup can still hold notes and withdraw without
+ever reading a document). **11 tests via `node --test`** - no jest, no new dependency - covering
+idempotence, not clobbering another plugin's NDEF request, and the AID as a pinned literal so a typo
+is a failing test rather than a silent "no chip found" against a real passport. What they cannot
+prove is that the generated project BUILDS; that still needs a toolchain.
 
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 

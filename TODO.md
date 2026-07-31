@@ -5143,6 +5143,81 @@ properly rather than twice.
 funds - but it does defeat the multi-citizenship privacy property that one-key-many-documents exists
 to provide, and it is reachable by anyone who handles the document for thirty seconds.
 
+### 2.18bd CAN THE MNEMONIC BE GUESSED? No - and the check found a real bug next to it
+
+*"what if the mnemonic can be guessed? then all crypto wallets in the world are hackable? are you
+sure that this security is impenetrable?"* (user, 2026-07-31).
+
+**NO, IT IS NOT IMPENETRABLE, and saying otherwise would be the wrong answer.** Nothing is. But the
+mnemonic's brute-force resistance is not the weak link, and the reason is arithmetic rather than
+faith: `root.ts` generates `Mnemonic.fromEntropy(hexlify(randomBytes(32)))` - **32 bytes, 256 bits,
+24 words**, not the common 12. A 2^256 search is not "expensive", it is beyond any physically
+conceivable computation, and even Grover's square-root speed-up leaves 2^128.
+
+**REAL WALLETS ARE NOT BROKEN BY GUESSING SEEDS - THEY ARE BROKEN BY BAD ENTROPY.** Trust Wallet's
+2022 browser-extension flaw and the "Milk Sad" libbitcoin bug both generated seeds from a weak or
+32-bit-seeded RNG, so the search space collapsed from 2^256 to something enumerable. **That, not
+brute force, is the class of bug worth checking for** - so I checked ours.
+
+**THE RESULT IS THE SAFE ONE, and it is structural rather than lucky.** Metro aliases `crypto` to
+`crypto-browserify`; its `randombytes/browser.js` reads `global.crypto || global.msCrypto` and, when
+`getRandomValues` is absent, exports `oldBrowser` - **a function that THROWS**. It does not fall back
+to `Math.random`. So a weak, guessable mnemonic is not a reachable state in this wallet: the failure
+mode is "identity creation fails loudly", never "identity created with 32 bits of entropy".
+
+**BUT THE CHECK FOUND A REAL BUG: `polyfills.ts` WAS NEVER IMPORTED.** The file exists and installs
+`react-native-get-random-values` and `global.Buffer` - and **nothing referenced it**: not `index.ts`,
+not `App.tsx`, not `src/`, not `metro.config.js`, not `babel.config.js`. `index.ts` was three lines
+and imported only `expo` and `./App`. So either identity creation throws on first run, or it works
+only because the Expo runtime happens to provide `getRandomValues` itself - and which of those is
+true cannot be settled without a device build.
+
+**FIXED:**
+1. `index.ts` now imports `"./polyfills"` FIRST, with the position documented as load-bearing rather
+   than stylistic - an import that must precede all others is exactly the kind that gets dropped.
+2. **`react-native-get-random-values` moved from `devDependencies` to `dependencies`.** A RUNTIME
+   polyfill in devDependencies survives only because Metro bundles whatever is imported; an
+   `npm install --production` would omit it.
+3. `root.ts` now asserts `globalThis.crypto?.getRandomValues` before generating, and **names the real
+   cause**. The inherited message is *"Secure random number generation is not supported by this
+   browser. Use Chrome, Firefox or Internet Explorer 11"* - accurate for a browser, baffling in a
+   mobile wallet, and it names neither the polyfill nor the file that should import it. The guard
+   adds no safety; it makes the diagnosis instant.
+
+**WHERE THE ACTUAL RISK LIVES, since "impenetrable" deserves an honest answer:** not in the seed's
+length, but in (a) the entropy source - now checked and fail-loud, (b) storage, which is SecureStore
+behind biometrics with `WHEN_UNLOCKED_THIS_DEVICE_ONLY`, (c) **the user's own backup handling**, which
+no code can defend, and (d) the supply chain - ethers, noble, crypto-browserify and the rarime SDK all
+run before any of our logic does. (d) is the one nobody in this project has audited.
+
+### 2.18be BLACKLISTING IS PER-IDENTITY, NOT PER-DOCUMENT - and the leak is worse because of it
+
+*"REMEMBER THAT BLACKLISTING IS ON AN IDENTITY, NOT A DOCUMENT... ONE OF YOUR DOCS MIGHT BE GOOD
+ANOTHER NOT"* (user, 2026-07-31). Correct, and it sharpens 2.18bc rather than softening it.
+
+**THREE DISTINCT MECHANISMS, and conflating any two produces a wrong design:**
+
+| level | keyed on | what it does | where |
+|---|---|---|---|
+| **document anti-replay** | `dg1Hash` | one physical passport binds to ONE holderRoot, ever | `_usedDocumentHash`, `_holderOfDocumentHash` |
+| **document status** | `documentKey` | one document revoked/renewed/expired, the others unaffected | `revokeDocument`, `renewDocument`, `getActiveDocumentCount` |
+| **identity blacklist** | the identity commitment | the PERSON cannot withdraw | `IdentityRegistry`, `withdraw_identity`'s STATUS_CLEAN |
+
+**So one bad document does NOT taint the identity.** `getActiveDocumentCount(holderRoot)` gates on
+*any* current document, and the pool proves inclusion at STATUS_CLEAN for a commitment derived from
+`sk_identity` - which no document revocation touches. A person with an expired passport and a valid
+ID card keeps acting on the ID card. **That is deliberate and must survive any change here** - the
+OPRF proposal in 2.18bc changes only the ANTI-REPLAY key and must not be read as moving revocation
+to the document level.
+
+**AND IT MAKES THE STOLEN-DOCUMENT LEAK WORSE THAN 2.18bc STATED.** Because blacklisting is
+per-identity, learning `holderRoot` from ONE seized document is enough to name the unit the blacklist
+acts on - and, via the indexed events, to enumerate every OTHER document under it. So the damage from
+holding one document is not "this document is known" but **"this person, and their entire document
+set, is identified"**. For a multi-citizenship holder - the exact user this design exists for, someone
+whose second passport is the way out - a single border inspection exposes the set. That is the
+strongest argument yet for both fixes: the OPRF on the anti-replay key, and de-indexing `holderRoot`.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

@@ -2,7 +2,7 @@
   "name": "identity-wallet",
   "version": "0.1.0",
   "private": true,
-  "description": "Our fork of rarimo — one-key-multiple-documents identity wallet (multi-citizenship + renewed/revoked/expired passports).",
+  "description": "Our fork of rarimo \u2014 one-key-multiple-documents identity wallet (multi-citizenship + renewed/revoked/expired passports).",
   "main": "index.ts",
   "scripts": {
     "android": "npx expo run:android --device",
@@ -36,6 +36,7 @@
     "node-forge": "^1.4.0",
     "react": "19.2.3",
     "react-native": "0.86.0",
+    "react-native-get-random-values": "^2.0.0",
     "superjson": "^2.2.6"
   },
   "devDependencies": {
@@ -47,7 +48,6 @@
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.1",
     "react-native-dotenv": "^3.4.12",
-    "react-native-get-random-values": "^2.0.0",
     "react-native-url-polyfill": "^4.0.0",
     "readable-stream": "^4.7.0",
     "typescript": "~5.9.3"

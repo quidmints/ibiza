@@ -83,6 +83,27 @@ export async function getOrCreateRootMnemonic(): Promise<string> {
     return existing;
   }
 
+  // ASSERT THE CSPRNG BEFORE GENERATING, with a message that names the real cause.
+  //
+  // Without `polyfills.ts` loaded, metro's `crypto` -> crypto-browserify alias resolves randomBytes
+  // to a function that throws "Secure random number generation is not supported by this browser.
+  // Use Chrome, Firefox or Internet Explorer 11" - accurate for a browser, baffling in a mobile
+  // wallet, and it names neither the polyfill nor the file that should have imported it.
+  //
+  // THE FAILURE IS SAFE EITHER WAY, and that is the property worth stating: crypto-browserify
+  // THROWS rather than falling back to Math.random, so a weak, guessable mnemonic is not a reachable
+  // state (sec. 2.18bd). This check exists to make the diagnosis instant, not to add safety.
+  if (typeof globalThis.crypto?.getRandomValues !== "function") {
+    throw new Error(
+      "No cryptographic RNG: crypto.getRandomValues is unavailable. index.ts must import " +
+        "'./polyfills' BEFORE anything else - it installs react-native-get-random-values. " +
+        "Refusing to generate a mnemonic without a CSPRNG.",
+    );
+  }
+
+  // 32 bytes = 256 bits = 24 words. Not 12 (128 bits): the extra margin costs the user nothing to
+  // store and doubles the exponent against any future attack, including Grover's square-root
+  // speed-up, which would take 128-bit entropy to a 2^64 search.
   const phrase = Mnemonic.fromEntropy(hexlify(randomBytes(32))).phrase; // 24 words
   await SecureStore.setItemAsync(ROOT_KEY, phrase, SECURE_ITEM_OPTIONS);
   sessionMnemonic = phrase;

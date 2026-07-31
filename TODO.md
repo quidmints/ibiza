@@ -6071,10 +6071,27 @@ no cipher suite, no key material.**
 
 **SO THE TLS TERMINATES OUTSIDE THE WORKFLOW.** The handshake happens in the CRE node's HOST runtime;
 only the decrypted body crosses into the wasm sandbox. The workflow therefore **cannot see, capture or
-attest to the session** - and since the http capability IS the workflow's network access, it cannot
-open its own socket to do TLS itself either. **2.18bs's architecture - "each DON node verifies the
-register's TLS session inside the workflow" - is not implementable on this SDK.** That was a
-reasonable inference and it is wrong, and finding out cost one file read rather than a Go integration.
+attest to ITS OWN session**, and cannot open a socket to run TLS itself.
+
+**CORRECTION (user, 2026-07-31): *"we can do the fetch by alternative means."* Right - and I drew the
+wrong conclusion from the right evidence.** I wrote that 2.18bs is "not implementable on this SDK".
+What the four fields actually prove is narrower: **the workflow cannot observe its OWN TLS session.**
+It says nothing about whether the workflow can VERIFY a session, because a transcript can arrive as
+ORDINARY BYTES - `Body` is `[]byte` and does not care what those bytes mean.
+
+**SO THE ARCHITECTURE STANDS, with the transcript SOURCED rather than SELF-OBSERVED.** Fetch from an
+endpoint that returns an attested transcript of its own fetch of the register, and the workflow
+verifies THAT inside the sandbox. Every property 2.18bs claimed survives intact:
+- verification happens **in-workflow**, so gas is still not the constraint;
+- consensus is over an **already-verified** result, so agreement is anchored to the source rather than
+  to a host runtime;
+- the verifying code is **pinned** (2.18bt), so a swap is visible.
+
+**WHAT ACTUALLY CHANGES is only WHO OBSERVES THE HANDSHAKE** - an attestor rather than the DON node -
+which converts the question from "is this buildable" to "whose attestation, and what does that party
+have to be trusted for". That is a dependency decision, not an architectural blocker, and it is the
+question route 1 below was already about. **The distinction matters because "not implementable" would
+have closed a line of work that is open.**
 
 **THE HONEST CONSEQUENCE:** what the nodes agree on is still *"the body our host runtime handed us"*.
 Consensus over that is agreement, not provenance - exactly 2.18ao's objection, still standing. **The

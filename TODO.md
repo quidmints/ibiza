@@ -6212,6 +6212,50 @@ an oversight.
 Chainlink. Both are cheap; neither is engineering; and until one of them lands, any further design
 here is building on an assumption.
 
+### 2.18bx CONFIDENTIAL HTTP - an enclave, a DKG we assumed absent, and a possible route to self-observed TLS
+
+Followed up the capability 2.18bw found unused. **It revises three earlier conclusions**, which is why
+it was worth reading rather than noting.
+
+**WHAT IT IS.** Requests execute **inside a secure enclave (TEE)**; secrets are injected via templates
+and held by a **Vault DON using threshold encryption with Chainlink DKG**; decryption shares are
+released to the enclave only after authorization checks and **remote attestation**, recombined inside,
+and discarded after execution. Responses can optionally be encrypted. The stated guarantee is that
+node operators cannot see the secrets - isolation extends past the host OS and hypervisor.
+
+**REVISION 1 - THE DKG INFRASTRUCTURE I SAID DID NOT EXIST, EXISTS.** 2.18bj concluded a threshold
+OPRF *"needs its own deployment and its own distributed key generation - new operational trust and a
+new liveness dependency, not a reuse of existing infrastructure."* **Chainlink already runs a
+DKG-based threshold system with attestation.** That does not make it usable for an OPRF - the Vault
+DON manages SECRETS, and an OPRF needs threshold EVALUATION under a key that never rotates - but the
+cost estimate in 2.18bj was written assuming this had to be built from nothing, and it should be
+re-taken knowing otherwise. **Worth one question to Chainlink alongside the capability question.**
+
+**REVISION 2 - IT MAY BE THE ROUTE TO SELF-OBSERVED TLS.** 2.18bv concluded self-observation is
+unreachable because the workflow has no transport. **But under confidential HTTP the request is made
+FROM INSIDE THE ENCLAVE**, and whatever performs the handshake there is on the trusted side of the
+boundary. Whether the enclave surfaces the transcript or certificate to workflow code is
+**undocumented and is the exact question to ask** - but architecturally this is far closer to
+self-observed TLS than the plain `http` capability, and 2.18bv's "unreachable" was reasoned about the
+wrong capability.
+
+**REVISION 3 - IT BEARS ON THE METADATA RESIDUAL.** 2.18bl said the irreducible leak in any node-run
+fetch is metadata: node operators see WHO queries WHAT and WHEN. If the request is constructed and
+issued inside an enclave, **the operators may not see the URL at all**, which would narrow that
+residual substantially. Again undocumented at the level of detail needed.
+
+**THE TEE OBJECTION FROM 2.18bl STILL STANDS WHERE IT WAS MADE, and the distinction matters.** That
+section argued against a TEE holding the OPRF key `k`, because `k` can never rotate, so a break -
+SGX has had many, discovered years late - is **retroactive and total**. **Nothing here changes that.**
+Confidential HTTP uses an enclave for a SHORT-LIVED operation with a secret that is discarded after
+execution, which is precisely the "short-lived, rotatable" case 2.18bl named as where a TEE is
+genuinely appropriate. **Using it for the fetch is not a reversal; using it for `k` still would be.**
+
+**SO THE CHAINLINK CONVERSATION NOW HAS THREE QUESTIONS, not one:** can a capability be added or does
+`Custom WASM Builds` suffice; **does confidential HTTP expose the TLS transcript or certificate to
+workflow code**; and can the Vault DON's threshold/DKG machinery evaluate an OPRF rather than only
+guard secrets. **All three are cheap to ask and each collapses a design branch.**
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

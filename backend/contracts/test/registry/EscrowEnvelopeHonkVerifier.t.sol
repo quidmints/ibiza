@@ -12,7 +12,7 @@ import {INoirVerifier} from '../../contracts/interfaces/verifiers/INoirVerifier.
  * has never accepted a real proof is a liability, not an asset: when the registry lands and a proof
  * fails, there is no way to tell whether the cause is the new contract or the never-exercised
  * verifier underneath it. WithdrawalHonkVerifier spent a whole phase in exactly that state
- * (sec. 2.12), and this test exists so escrow_envelope never does.
+ * (sec. 2.3), and this test exists so escrow_envelope never does.
  *
  * BOTH FIXTURES ARE READ FROM DISK, and the named constants are CHECKED AGAINST the public-inputs
  * fixture rather than being the source of truth. Hand-transcribing twelve 77-digit field elements is

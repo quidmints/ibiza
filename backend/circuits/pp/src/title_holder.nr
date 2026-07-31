@@ -41,7 +41,7 @@ pub fn title_holder_proof(sk_identity: Field, title_id: Field, expected_commitme
 // self-comparison (computing bn254::hash_2 twice would just prove the function agrees with
 // itself). Run through nargo and PROVED END-TO-END on 2026-07-26: this exact vector is the witness
 // behind the real Honk proof that verifies against the generated Solidity verifier in
-// backend/contracts/test/title/TitleHolderHonkVerifier.t.sol (sec. 2.12).
+// backend/contracts/test/title/TitleHolderHonkVerifier.t.sol (sec. 2.3).
 //   sk_identity = 1234  =>  holder_root = 11639338456537070031828088151704016282968167813614481831572112488559037365741
 //                           (same value identity_asp.nr's own test vector already established)
 //   title_id = 777       =>  holder_commitment = Poseidon2(holder_root, 777)

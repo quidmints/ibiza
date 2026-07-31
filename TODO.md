@@ -3895,7 +3895,7 @@ value was passed. `pub` delivers exactly that, in the transcript, gate or no gat
 `ContextMismatch` on disagreement. The division of labour is deliberate: the circuit binds, the
 contract interprets.
 
-**PROVEN, NOT ARGUED.** sec. 2.12 inferred the binding from `publicInputsSize == 8`, which is evidence
+**PROVEN, NOT ARGUED.** sec. 2.3 inferred the binding from `publicInputsSize == 8`, which is evidence
 about the verification key rather than about behaviour. `WithdrawalHonkVerifier.t.sol` now tampers
 this signal on TWO real proofs - `test_RejectsTamperedContext`, `test_RejectsTamperedWalletContext` -
 and both are rejected by the verifier itself, before any contract-level comparison. Had Noir optimised
@@ -4108,7 +4108,7 @@ inventory and written nowhere. Unrecorded work gets re-derived, so here it is.
 forward to a library gadget. Counting `#[test]` in the wrapper says nothing about the gadget:
 
 - `title_holder` -> `pp::title_holder::title_holder_proof`. Tested in `pp`, and **already proved
-  on-chain** against the generated verifier (`TitleHolderHonkVerifier.t.sol`, sec. 2.12).
+  on-chain** against the generated verifier (`TitleHolderHonkVerifier.t.sol`, sec. 2.3).
 - `register_identity_light_td1` -> `noir_dl::lite::register_identity_light`. Covered by `lite.nr`'s
   known-answer vector plus the TD1 cross-checks in `register_identity_td1` (sec. 2.18ac).
 - `query_identity` / `query_identity_td1` -> `noir_dl::query`. **This one is genuinely uncovered.**
@@ -4204,6 +4204,58 @@ document and no network, and it has no tests at all. Nothing about it is blocked
 it feeds `TitleLedger`'s notary side, not the passport query path. And even for `title_holder`, the
 circuit proves set membership against a root - where the root comes from is orthogonal to whether the
 circuit is wired correctly.
+
+### 2.18al QUERY.NR HAD ZERO TESTS - the file that decides what a proof reveals
+
+**WRITTEN LATE, AND THAT IS THE POINT.** This section did not exist until 2026-07-31: the work landed
+in commit `aaf9b79` and the reasoning went into the COMMIT MESSAGE ONLY, while two other sections
+(2.18ak, 2.18an) cited `sec. 2.18al` as though it were here. A pointer to nothing is worse than no
+pointer, because it reads as though the context was captured. Found by auditing every `sec. 2.x`
+citation against the headings that actually exist - see the end of 2.18as.
+
+**THE FILE.** `noir_dl_lib/src/query.nr`, 883 lines, inherited from rarime at the fork commit with
+zero tests - verified rather than assumed: `rsa.nr` arrived carrying five, so vendoring did not strip
+them (2.18ak). It decides WHAT A PROOF DISCLOSES: selector bits, birth-date and expiry bounds,
+citizenship mask, identity counters.
+
+**WHY REAL-PASSPORT TESTING DOES NOT COVER IT** - the sentence this project keeps coming back to:
+
+> **A selector mask can be wrong for every passport ever tried and still verify.**
+
+A passport test exercises the SIGNATURE path: does this SOD verify, does the DSC chain to a CSCA. A
+proof that reveals the wrong fields still verifies perfectly - prover satisfied, verifier satisfied,
+passport genuine. Nothing cryptographic anywhere looks at which values came out.
+
+**12 TESTS, and what each pins:**
+- **The selector map, bit by bit.** The code indexes `selector.to_be_bits::<18>()` - big-endian, so
+  documented bit k lived at index 17-k. Pick the wrong end and every field is still multiplied by
+  SOME bit: the proof verifies and the caller gets a different field than it asked for. Verified
+  non-vacuous by MUTATION - swapping the birth-date and expiration-date bits fails 3 tests.
+- **An empty selector discloses nothing** - the fail-safe direction, caught on the first run if the
+  masking is ever inverted.
+- **The nullifier is 0 for EVERYONE when its bit is clear.** A relying party doing double-spend
+  prevention on that value without checking the bit would treat all holders as one person. A caller
+  obligation the circuit cannot enforce, so it is written down.
+- **The bounds are OPT-IN, both directions.** `assert(n1 OR NOT n2)` enforces a bound only when its
+  bit is set, so a verifier who wants "born before 1995" and forgets the bit gets a valid proof
+  saying NOTHING about age, with no error. Both the skip and the bite are tested - a bound that
+  rejects everything is not a working bound.
+- **`date_is_less` boundaries**: the two-digit-year pivot at equality, strict-less (an equal date is
+  not less), and month outranking day. An off-by-one there shifts every age comparison by a century
+  for one birth year, and the proof still verifies.
+
+**A DEFECT THE TESTS FOUND ON THE FIRST RUN: zero is not a no-op date bound.** The obvious way to say
+"I do not care about birth date" is to pass 0. It does not skip the check, it ABORTS PROVING -
+`date_is_less` does `to_be_bytes::<6>()` then `date[0] - 48`, so a zero byte underflows a u8. Worse,
+`date_is_less` runs UNCONDITIONALLY, before the gate that decides whether anyone cares, so a caller
+who correctly leaves the bit clear still cannot produce a proof. And it is loud only by ACCIDENT:
+Noir's u8 underflow check is the only thing making it visible - the same arithmetic over a `Field`
+would wrap to an enormous year and silently invert the comparison. Pinned rather than clamped, since
+clamping trades a loud abort for a quietly wrong comparison. The real gap is that no "unused"
+sentinel exists: "000000" parses as year 2000, month 0, day 0.
+
+**THE TD1 HALF came later and found the bigger defect** - one selector bit gating two unrelated
+things, leaking a national ID. See 2.18an.
 
 ### 2.18am THE NOTARY IS NAMED ON-CHAIN - the application claimed the opposite
 
@@ -4601,6 +4653,48 @@ OCR path would otherwise produce a well-formed key over the wrong value.
 **STILL MISSING FROM THIS FILE, deliberately rather than forgotten:** the seed-to-key step
 (SHA-1 -> Kseed -> Kenc/Kmac with 3DES) and PACE. PACE matters - modern documents prefer it and some
 refuse BAC outright - but it needs its own vectors and is better absent than half-done.
+
+### 2.18as FOUR POINTERS TO NOTHING - the audit that found them, and how to repeat it
+
+*"is this all banked in TODO so we can never forget it?"* (user, 2026-07-31). Checking rather than
+answering found that it was NOT, in a way no amount of careful writing would have caught.
+
+**THE FAILURE MODE: a citation to a section that does not exist.** Worse than no citation, because it
+reads as though the context was captured and sends the next reader looking for something that was
+never written. Four of them:
+
+| pointer | cited from | reality |
+|---|---|---|
+| `sec. 2.18al` | 2.18ak, 2.18an | **NEVER WRITTEN.** The work shipped in `aaf9b79`; the reasoning went into the COMMIT MESSAGE ONLY |
+| `sec. 2.12` | `title_holder.nr`, `title_holder/main.nr`, `PP-NOIR-FUSION.md`, `EscrowEnvelopeHonkVerifier.t.sol`, TODO x2 | content lives in **2.3** |
+| `sec. 2.27` | `codegen-verifiers.sh` x3 - the TOOLCHAIN COMPATIBILITY MAP | content lives in **sec. 1** |
+| `sec. 2.13` | several | no bare heading, but 2.13b..2.13z exist - a parent reference, harmless |
+
+**THE `sec. 2.27` ONE WAS THE MOST EXPENSIVE.** `codegen-verifiers.sh` tells anyone tempted to bump a
+version *"DO NOT 'just use a newer version' - see TODO.md sec. 2.27"*, and pointed at nothing. That
+guard exists because some version combinations FAIL SILENTLY - bb 1.2.0 + nargo beta.1 reports a
+successful prove and writes a proof bb's own verifier rejects. A reader who followed the pointer,
+found nothing, and concluded the warning was stale would ship broken artifacts.
+
+**WHAT I FIXED.** Wrote 2.18al from the code and the commit; repointed 2.12 -> 2.3 and 2.27 -> sec. 1
+across all six files. Re-audited: **zero dangling.**
+
+**HOW TO REPEAT IT** - the whole check is one comparison, and it should be run before trusting that a
+session's context is durable:
+
+```python
+defined = set(re.findall(r'^### (2\.\d+[a-z]*)', todo, re.M))
+cited   = set(re.findall(r'sec\. (2\.\d+[a-z]*)', todo + source_tree_text))
+missing = cited - defined          # must be empty
+```
+
+Exclude `*.circuit` and `*.json` - compiled artifacts contain byte sequences that match the pattern.
+
+**THE LESSON IS ABOUT WHERE REASONING LANDS.** A commit message is not durable context: it is
+findable only by someone who already knows which commit to read. Everything load-bearing has to be in
+the tracked file, and a citation is a PROMISE that it is - so an unkept one is a specific, checkable
+kind of lie. The rule this suggests: **write the section before writing the citation**, and re-run
+the audit above whenever a session adds several.
 
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 

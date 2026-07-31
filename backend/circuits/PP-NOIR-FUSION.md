@@ -164,7 +164,7 @@ is flagged, not silently bumped. Full breakdown in the session log; summary:
 > a project fact. `bb` SIGILLs without AVX2/BMI2 (the i3-U330 P0 ran on) and runs fine on a CPU that
 > has them — verified on an i9-9880H. `backend/circuits/codegen-verifiers.sh` is the re-runnable
 > capture of this whole pipeline; prefer it over following the prose below by hand. See TODO.md
-> §2.12 and §1's AVX2 correction.
+> §2.3 and §1's AVX2 correction.
 
 ## P0 — CONFIRMED GO (toolchain spike, run on this dev machine 2026-07-01)
 

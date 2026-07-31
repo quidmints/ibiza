@@ -42,7 +42,7 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------------------------
-# TOOLCHAIN GUARD - do not remove. See TODO.md sec. 2.27 for the full compatibility map.
+# TOOLCHAIN GUARD - do not remove. See TODO.md sec. 1 for the full compatibility map.
 #
 # EXACTLY ONE nargo/bb combination works for this repo. Every neighbouring version fails, and -
 # critically - SOME OF THEM FAIL SILENTLY:
@@ -80,7 +80,7 @@ Install exactly these:
   #     https://github.com/AztecProtocol/aztec-packages/releases/tag/v${REQUIRED_BB}
   #     (bbup also resolves it: it reads the installed nargo)
 
-DO NOT "just use a newer version" - see TODO.md sec. 2.27. Several newer combinations produce
+DO NOT "just use a newer version" - see TODO.md sec. 1. Several newer combinations produce
 artifacts that appear valid and are not. If you are deliberately testing a bump, verify ALL THREE
 before trusting it:
   1. native  'bb verify'  accepts the proof
@@ -225,7 +225,7 @@ for target in "${TARGETS[@]}"; do
          -k target/vk -p target/proof -i target/public_inputs >/dev/null 2>&1; then
       echo "ERROR: ${circuit}: bb generated a proof its own verifier REJECTS." >&2
       echo "       The prover/VK pair is incompatible with this circuit. Do NOT use these" >&2
-      echo "       artifacts. See TODO.md sec. 2.27." >&2
+      echo "       artifacts. See TODO.md sec. 1." >&2
       exit 1
     fi
 

@@ -4890,6 +4890,100 @@ it is yours. What I can say from the analysis: **B is the option the project's o
 already rejects**, so the live choice is between A and C - between an enumerable ledger that anyone
 can audit, and a confidential one whose uniqueness rests on a revocable human attestation.
 
+### 2.18ax A DESIGN WITH BOTH STRENGTHS: an oblivious PRF, and why it is the only shape that fits
+
+*"no unrecoverable failure modes. what is something that has both options' strengths and none of
+their weaknesses. look from all sides."* (user, 2026-07-31).
+
+**THE REQUIREMENTS, stated so a candidate can be checked rather than argued about:**
+
+| | requirement | A (bare hash) | C (salted) |
+|---|---|---|---|
+| R1 | duplicates COLLIDE, so double-minting is detectable | yes | **no** |
+| R2 | an owner can check THEIR OWN property | yes | weak |
+| R3 | the public cannot enumerate the ledger | **no** | yes |
+| R4 | nobody can censor a mint by inaction | yes | yes |
+| R5 | no unrecoverable failure mode | yes | **no** (lost salt) |
+
+**WHY NO SIMPLE FUNCTION CAN SATISFY ALL FIVE.** R1 forces the value to be a DETERMINISTIC function
+of the property alone - any per-holder input breaks collision. R3 forces it to be infeasible to
+compute from public data. A deterministic function of a low-entropy, publicly-enumerable input is
+brute-forceable, full stop. **So the function must contain a secret - and R4 says no one may hold a
+secret whose withholding blocks a mint.** That is the whole problem in three lines, and it is why
+"pick a key-holder" cannot work.
+
+**THE RESOLUTION: MAKE THE SECRET UNUSABLE FOR CENSORSHIP AND UNUSABLE FOR ENUMERATION, RATHER THAN
+UNHELD.** An **oblivious PRF** does exactly that. The minter learns `PRF(k, description)` WITHOUT the
+key-holders learning the description, and without the minter learning `k`. Hold `k` as a THRESHOLD
+key across the DON that already anchors the notary register.
+
+Checked against each requirement:
+- **R1** - the output is deterministic in the description, so two independent minters over the same
+  property get the SAME value and collide. Uniqueness stays CRYPTOGRAPHIC, not attested.
+- **R2** - an owner runs the OPRF on their own description and looks the result up. Detection intact.
+- **R3** - enumeration requires one OPRF query PER CANDIDATE property, served by the threshold. Mass
+  enumeration is therefore RATE-LIMITED and, more importantly, VISIBLE as query volume - the one
+  thing a plaintext key never gives you.
+- **R4, and this is the part that surprised me** - because the protocol is OBLIVIOUS, the key-holders
+  **cannot see which property is being queried**. So they cannot selectively refuse one property or
+  one person. They can only serve everyone or refuse everyone, and blanket refusal is a visible
+  outage rather than silent omission. **Selective censorship becomes structurally impossible**, which
+  is strictly stronger than what 2.13b asked for.
+- **R5** - the user holds NO secret in this scheme. Nothing to lose, nothing to back up.
+
+**WHAT IT ACTUALLY COSTS, stated rather than buried:**
+- **Liveness becomes a dependency.** Minting and checking both need a threshold of the DON online. A
+  key that is never lost but temporarily unreachable is an availability failure, not an
+  unrecoverable one - but it is real, and it is new.
+- **New machinery.** A threshold OPRF (2HashDH-style) is well-understood and deployed elsewhere
+  (Privacy Pass, OPAQUE), but nothing in this repo implements one today.
+- **`k` must never rotate**, for the same reason epoch pseudonyms could not be transplanted (2.18aw):
+  uniqueness must hold across decades, so a rotated key silently un-collides old titles against new
+  ones. That makes `k` a permanent threshold secret - losing it above the threshold would be
+  catastrophic in the R5 sense, so the recovery story for `k` itself has to be part of the design.
+
+**NOT BUILT, AND NOT VERIFIED IN THIS STACK.** The reasoning above is sound about the PRIMITIVE; what
+is unchecked is whether a threshold OPRF composes with CRE's consensus model (every node must produce
+byte-identical output - an OPRF evaluation is deterministic given `k`, so it plausibly does, but
+"plausibly" is not "checked"), and whether the result needs to be proven in-circuit anywhere. Both are
+answerable without hardware.
+
+### 2.18ay LOST PHONE: recovery exists, and the deeper fix is to derive the root from the passport
+
+*"lets say i lost my phone with all my enclave notes. there is no recovery ceremony similar to
+unforgettable sdk possible in theory?"* (user, 2026-07-31).
+
+**IT ALREADY EXISTS, and this was built earlier in this project.** `identity/recovery.ts` backs up
+**the one root mnemonic every other key derives from**. Its own header records why it was needed: the
+phrase was GENERATED and never displayed, and `WHEN_UNLOCKED_THIS_DEVICE_ONLY` deliberately excludes
+it from iCloud/device backups - so a lost, wiped or re-enrolled phone meant a permanently lost
+identity and every pool note gone. **The distinction that made a fix possible: the phrase is NOT a
+non-extractable Secure Enclave key**, it is a value stored in Keychain and readable after biometric
+auth. Recovery was unbuilt, not impossible.
+
+**WHY NOT AN MPC/SOCIAL-RECOVERY SDK (Web3Auth, Turnkey, Privy, Para) - already decided (2.22c).**
+Every one puts a share on somebody's server, and most gate recovery behind Google or Apple sign-in.
+That is the deniable-refusal lever this project exists to remove, and a US-operated dependency for
+exactly the users least able to afford one.
+
+**THE DEEPER FIX, and it composes with everything derived today.** `sk_identity` currently comes from
+the mnemonic, so losing BOTH phone and phrase is still terminal. But the passport is the one credential
+a user still holds after losing a phone. If `sk_identity` were derived from something the CHIP can
+re-produce plus a memorised passphrase, then re-scanning recovers everything downstream -
+`derive_revocation_secret`, `derive_notary_secret`, and a derived title salt all hang off
+`sk_identity`, so one recovery restores the pool notes, the notary role and the title bindings at once.
+
+**THE HONEST CAVEATS, because this is attractive enough to be adopted carelessly:**
+- **DG data is NOT secret.** Anyone who reads your chip has DG1. So chip data alone cannot be the
+  secret; a passphrase is mandatory, and a memorable passphrase is low-entropy against an adversary
+  who has already read your chip. A deliberately slow KDF mitigates, it does not solve.
+- **Active Authentication would be the right primitive and we do not have it.** The AA private key
+  never leaves the chip, so a signature over a FIXED challenge is a secret an attacker cannot extract
+  from a photocopy. But all six of our profiles are `NA` (no DG15, 2.18aj), and AA determinism depends
+  on the signature scheme - RSA PKCS#1 v1.5 is deterministic, ECDSA generally is not unless RFC 6979.
+- **Changing the derivation of `sk_identity` is not backward-compatible** with any identity already
+  registered, so it is a pre-launch decision.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

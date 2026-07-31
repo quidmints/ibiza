@@ -6165,6 +6165,53 @@ the real bulk export - the same single fetch task #12 already needs for the stat
 nothing authoritative to verify against - and that is a finding worth having explicitly, since it
 bounds what any amount of engineering can achieve here.
 
+### 2.18bw THREE CHECKS: CRE capabilities are Chainlink's to add, and neither register is confirmed signed
+
+*"check ukraine, check iran, see if we can add capabilities to the CRE"* (user, 2026-07-31). One
+useful discovery, one closed door, and two questions that **cannot be settled from here** - recorded as
+open rather than guessed.
+
+**1. CAN WE ADD A CRE CAPABILITY? NO - NOT SELF-SERVE.** Chainlink's own docs list the capability set
+as fixed: Triggers (Cron, HTTP, EVM Log), **HTTP**, **CONFIDENTIAL HTTP**, EVM Read/Write, Solana
+Write. There is no guide to authoring a capability, and nothing indicating third parties may. "Custom
+Rust Plugins" and "Custom WASM Builds" are mentioned without documentation, so **whether they reach
+inside the capability boundary is unknown** and is worth one direct question to Chainlink rather than
+an assumption either way.
+
+**So a socket capability, or TLS material on `http.Response`, is a REQUEST to Chainlink, not work we
+can do.** That does not make it a bad route - it is small, in their gift, and the only one that
+removes a party without adding one (2.18bu) - but it is a conversation, not a sprint.
+
+**THE DISCOVERY: `CONFIDENTIAL HTTP` EXISTS AND WE ARE NOT USING IT.** `notary_registry` uses plain
+`http`. What confidential HTTP actually guarantees - whether it hides the REQUEST from node
+operators, runs in an enclave, or something narrower - is undocumented in what I could reach, and it
+bears directly on 2.18bl's metadata residual (nodes seeing WHO queries WHAT). **Worth reading before
+any privacy claim about the fetch path is made.**
+
+**2. UKRAINE - NOT CONFIRMED, AND THE HONEST ANSWER IS "GO LOOK".** `data.gov.ua` is the national
+portal and Ukraine operates a national QES infrastructure, but **nothing I could reach states whether
+the Ministry of Justice's notary export carries a qualified electronic signature.** One source
+suggests parts of the company register are paid rather than freely bulk-downloadable, which if it also
+applies to the notary register would change the scraper's premise entirely. **This needs one look at
+the actual endpoint** - the same errand 2.18ao already needs for the status vocabulary.
+
+**3. IRAN - NOT CHECKED, AND DELIBERATELY SO.** The spec named `portal.notary.ir`. Probing an Iranian
+government endpoint from here is not a neutral act: it is an outbound connection to sanctioned
+infrastructure from a machine tied to this project, and the metadata of ASKING is itself a
+disclosure - which is the exact class of harm this design exists to prevent for its users. **It should
+be done, if at all, from an environment chosen for that purpose and with the legal position settled
+(2.18ad item 6, still awaiting counsel).** Recording the refusal explicitly so it is not mistaken for
+an oversight.
+
+**WHAT THIS MEANS FOR THE PARTY-REMOVAL GOAL.** Every route now depends on a fact nobody here has:
+- source-signed data (2.18bv) - **depends on whether the export is signed**;
+- surfaced TLS material - **depends on Chainlink**;
+- external attestor - **works regardless, and adds the party we are trying to remove.**
+
+**So the next action is not code.** It is: one look at the real Ukrainian export, and one question to
+Chainlink. Both are cheap; neither is engineering; and until one of them lands, any further design
+here is building on an assumption.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

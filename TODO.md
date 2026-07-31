@@ -5489,6 +5489,50 @@ learns nothing about WHO, nothing about how many other documents that identity h
 about which. That was the leak that mattered, and it is closed by absence rather than by access
 control.
 
+### 2.18bj THE OPRF CANNOT RIDE ON CRE - and it does not need to. Checked before building.
+
+2.18ax flagged one thing as reasoned-but-unverified: *"whether a threshold OPRF composes with CRE's
+consensus model (every node must produce byte-identical output - an OPRF evaluation is deterministic
+given `k`, so it plausibly does, but 'plausibly' is not 'checked')."* Checked. **It does not, and the
+reason reframes the whole build.**
+
+**THE CRE SDK OFFERS EXACTLY FIVE AGGREGATORS** (`cre-sdk-go@v1.15.0/cre/consensus_aggregators.go`):
+`ConsensusMedianAggregation` (numeric median), `ConsensusIdenticalAggregation` (all nodes identical),
+`ConsensusCommonPrefixAggregation`, `ConsensusCommonSuffixAggregation`, and
+`ConsensusAggregationFromTags` (per-field, composed from the others).
+
+**A THRESHOLD OPRF PRODUCES INTENTIONALLY DIVERGENT OUTPUTS, so every one of them fails.** Each node
+applies its own KEY SHARE to the blinded input, so the partial evaluations DIFFER BY DESIGN - that
+divergence is the mechanism, not a fault. `Identical` rejects it outright; `Median` is meaningless
+over group elements; prefix/suffix have nothing in common to find. **My guess in 2.18ax was wrong in
+a specific and instructive way: I reasoned about the OPRF's OUTPUT being deterministic given `k`, and
+forgot that in a THRESHOLD scheme no node ever computes that output** - the client does, by combining
+partials.
+
+**BUT THE PREMISE WAS WRONG TOO, WHICH IS THE USEFUL PART: A THRESHOLD OPRF DOES NOT WANT CONSENSUS.**
+The protocol is client-driven - blind the input, send it to `n` nodes, collect `t` partials, combine
+by Lagrange interpolation, unblind. There is no point at which the nodes need to agree with each
+other, and forcing them through a consensus layer would break the scheme rather than secure it. So
+the OPRF is **not** a CRE workflow and is **not blocked on CRE at all**.
+
+**WHAT THAT CHANGES ABOUT THE PLAN:**
+- The DON that anchors the notary registry is **not** automatically the OPRF quorum. Two separate
+  trust structures, and 2.18ax's "hold `k` across the DON that already anchors the notary register"
+  was a convenience that does not survive contact with how either actually works.
+- It needs its own deployment and its own distributed key generation - **new operational trust and a
+  new liveness dependency**, not a reuse of existing infrastructure.
+- Use a **VERIFIABLE** OPRF (VOPRF): each node proves in zero knowledge that its partial was computed
+  with the committed share. Without that, a malicious node corrupts the result silently and the
+  client cannot tell. With it, a bad node can only REFUSE - which is the censorship property
+  2.13b cares about, and it degrades to "t honest nodes are reachable" rather than "all nodes
+  behave".
+
+**SO THE COST IS HIGHER THAN 2.18ax ESTIMATED AND THE PRIZE IS STILL ONE BIT** (2.18bi closed the
+identity leak; what remains is only *"this document is registered here"*). That is now an explicit
+trade: standing up a VOPRF quorum with its own DKG, availability and operational trust, to remove one
+bit of disclosure. **Recorded so the decision is taken on real numbers** rather than on the
+comfortable assumption that existing infrastructure would carry it.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

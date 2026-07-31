@@ -1187,3 +1187,188 @@ mod disclosure_tests {
 }
 
 
+
+// =================================================================================================
+// THE TD1 QUERY PATH - and a defect the TD3 tests above could not have found (sec. 2.18an).
+//
+// TD1 is the LIVE length: `escrow_envelope`, `register_identity_light_td1` and the wallet's circuit
+// registry all use 95-byte DG1. Testing only `query_identity` (93-byte TD3) would have left the path
+// people actually use uncovered, which is how sec. 2.18ac's registration mismatch happened.
+mod td1_disclosure_tests {
+    use super::query_identity_td1;
+    use crate::not_passports_zk_circuits::{extract_dg1_commitment, extract_pk_identity_hash};
+    use poseidon::poseidon::PoseidonHasher;
+    use std::hash::Hasher;
+
+    global SK: Field = 4321;
+    global PK_PASSPORT_HASH: Field = 8765;
+    global IDENTITY_COUNTER: Field = 2;
+    global TIMESTAMP: Field = 1_700_000_000;
+    global EVENT_ID: Field = 77;
+    global EVENT_DATA: Field = 78;
+    global CURRENT_DATE: Field = 0x323630313031; // "260101"
+    global A_SATISFIED_BIRTH_LOWERBOUND: Field = 0x383030313031; // "800101" -> 1980
+
+    /// TD1 offsets, from `td1_dg1_data_extractor`: birth date at [35..41), expiry at [43..49),
+    /// citizenship at [7..10). Citizenship is set to "ABW" - `country_codes[0]` in
+    /// `citizenship_check`, i.e. bitmask bit 0 - so the mask can be made to match on purpose.
+    fn a_dg1() -> [u8; 95] {
+        let mut dg1: [u8; 95] = [0; 95];
+        for i in 0..95 {
+            dg1[i] = 0x30; // ASCII '0' - unrelated fields stay well-formed digits
+        }
+        let birth: [u8; 6] = [0x39, 0x30, 0x30, 0x31, 0x30, 0x31]; // "900101"
+        let expiry: [u8; 6] = [0x33, 0x30, 0x30, 0x31, 0x30, 0x31]; // "300101"
+        for i in 0..6 {
+            dg1[35 + i] = birth[i];
+            dg1[43 + i] = expiry[i];
+        }
+        let abw: [u8; 3] = [0x41, 0x42, 0x57]; // "ABW" == 4276823 == country_codes[0]
+        for i in 0..3 {
+            dg1[7 + i] = abw[i];
+        }
+        dg1
+    }
+
+    fn a_valid_root(dg1: [u8; 95]) -> Field {
+        let dg1_commit = extract_dg1_commitment::<95>(dg1, SK);
+        let sk_iden_hash = extract_pk_identity_hash(SK);
+
+        let mut position_hasher = PoseidonHasher::default();
+        position_hasher.write(PK_PASSPORT_HASH);
+        position_hasher.write(sk_iden_hash);
+        let tree_position = position_hasher.finish();
+
+        let mut value_hasher = PoseidonHasher::default();
+        value_hasher.write(dg1_commit);
+        value_hasher.write(IDENTITY_COUNTER);
+        value_hasher.write(TIMESTAMP);
+        let value = value_hasher.finish();
+
+        let mut leaf_hasher = PoseidonHasher::default();
+        leaf_hasher.write(tree_position);
+        leaf_hasher.write(value);
+        leaf_hasher.write(1);
+        leaf_hasher.finish()
+    }
+
+    fn query_with(
+        selector: Field,
+        citizenship_mask: Field,
+    ) -> (Field, Field, Field, Field, Field, Field, Field, Field, Field, Field) {
+        let dg1 = a_dg1();
+        query_identity_td1(
+            EVENT_ID,
+            EVENT_DATA,
+            a_valid_root(dg1),
+            selector,
+            CURRENT_DATE,
+            0,
+            0xFFFFFFFFFFFF,
+            0,
+            0xFFFFFFFFFFFF,
+            A_SATISFIED_BIRTH_LOWERBOUND,
+            0xFFFFFFFFFFFF,
+            0,
+            0xFFFFFFFFFFFF,
+            citizenship_mask,
+            SK,
+            PK_PASSPORT_HASH,
+            dg1,
+            [0; 80],
+            TIMESTAMP,
+            IDENTITY_COUNTER,
+        )
+    }
+
+    /// Baseline: an empty selector with a non-matching mask discloses nothing and still proves.
+    #[test]
+    fn test_an_empty_selector_discloses_nothing() {
+        let (nullifier, birth, expiry, name, nationality, citizenship, sex, doc, personal, doc_type) =
+            query_with(0, 0);
+
+        assert(nullifier == 0, "empty selector produced a nullifier");
+        assert(birth == 0, "empty selector revealed the birth date");
+        assert(expiry == 0, "empty selector revealed the expiration date");
+        assert(name == 0, "empty selector revealed the name");
+        assert(nationality == 0, "empty selector revealed nationality");
+        assert(citizenship == 0, "empty selector revealed citizenship");
+        assert(sex == 0, "empty selector revealed sex");
+        assert(doc == 0, "empty selector revealed the document number");
+        assert(personal == 0, "empty selector revealed the PERSONAL NUMBER");
+        assert(doc_type == 0, "empty selector revealed the document type");
+    }
+
+    /// Bit 1 (index 16) is the birth date here too, and it must not drag the rest out with it.
+    #[test]
+    fn test_bit_1_alone_reveals_the_birth_date_and_nothing_else() {
+        let (nullifier, birth, expiry, name, nationality, citizenship, sex, doc, personal, doc_type) =
+            query_with(2, 0);
+
+        assert(birth != 0, "bit 1 did not reveal the birth date");
+        assert(nullifier == 0, "bit 1 leaked the nullifier");
+        assert(expiry == 0, "bit 1 leaked the expiration date");
+        assert(name == 0, "bit 1 leaked the name");
+        assert(nationality == 0, "bit 1 leaked nationality");
+        assert(citizenship == 0, "bit 1 leaked citizenship");
+        assert(sex == 0, "bit 1 leaked sex");
+        assert(doc == 0, "bit 1 leaked the document number");
+        assert(personal == 0, "bit 1 leaked the PERSONAL NUMBER");
+        assert(doc_type == 0, "bit 1 leaked the document type");
+    }
+
+    /*
+     * === THE DEFECT: ONE SELECTOR BIT GATES TWO UNRELATED THINGS (sec. 2.18an) ===
+     *
+     * `selector_bits[1]` is read TWICE in `query_identity_td1`:
+     *
+     *     citizenship_check(citizenship, citizenship_mask, selector_bits[1]);   // enforce a mask
+     *     personal_number_hash *= selector_bits[1] as Field;                    // DISCLOSE the ID
+     *
+     * Per the documented selector - big-endian, so documented bit k sits at index 17-k - index 1 is
+     * bit 16, "personal number hash". The citizenship check has NO BIT OF ITS OWN and borrows that
+     * one. TD3 gets away with it because `query_identity` returns no personal number at all, so
+     * index 1 has a single reader there; TD1 returns one, and the two collide.
+     *
+     * BOTH DIRECTIONS ARE HARMFUL, and the two tests below pin one each:
+     *
+     *   1. ASKING FOR THE PERSONAL NUMBER SILENTLY ENFORCES A CITIZENSHIP CONSTRAINT. With the bit
+     *      set and no mask, `citizenship_check` requires exactly one match and gets none, so the
+     *      proof CANNOT BE PRODUCED. A caller who wants an ID number and does not care about
+     *      citizenship simply cannot make a proof, and the error names citizenship.
+     *
+     *   2. ASKING ABOUT CITIZENSHIP FORCES DISCLOSURE OF THE PERSONAL NUMBER. This is the serious
+     *      direction. A verifier asking only "are you a citizen of X?" - a yes/no question -
+     *      receives the holder's NATIONAL ID NUMBER hash as well, because the only way to turn the
+     *      check on is to set the bit that also unmasks it. The user chose one thing and disclosed
+     *      two, the proof verifies perfectly, and nothing anywhere reports a problem.
+     *
+     * Direction 2 is exactly the failure this suite exists to catch: *a selector mask can be wrong
+     * for every passport ever tried and still verify*. A passport test exercises signatures; it
+     * never asks which fields came out.
+     *
+     * PINNED, NOT FIXED. Splitting them needs a free selector bit, and all 18 are assigned - so the
+     * fix is either a 19-bit selector or reassigning a documented meaning. Both change the public
+     * ABI shared with the wallet, the on-chain PublicSignalsBuilder and rarime's own tooling, so it
+     * is a coordinated change and not a one-line edit. These tests state the CURRENT behaviour so
+     * the coupling cannot be mistaken for intent, and so the fix has a failing target to aim at.
+     */
+    #[test(should_fail_with = "Citizenship check failed")]
+    fn test_asking_for_the_personal_number_silently_enforces_a_citizenship_constraint() {
+        // 65536 == index 1 set == documented bit 16, "personal number hash". No citizenship mask,
+        // because this caller has no interest in citizenship. It cannot produce a proof.
+        let _ = query_with(65536, 0);
+    }
+
+    #[test]
+    fn test_asking_about_citizenship_forces_the_personal_number_to_be_disclosed() {
+        // The ONLY way to turn the citizenship check on is index 1 - the personal-number bit.
+        // Mask bit 0 == "ABW", which this DG1's citizenship matches, so the check is satisfiable.
+        let (_, _, _, _, _, _, _, _, personal, _) = query_with(65536, 1);
+
+        assert(
+            personal != 0,
+            "if this now passes with personal == 0 the coupling is FIXED - delete this test and see sec. 2.18an",
+        );
+    }
+}

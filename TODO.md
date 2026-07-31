@@ -4274,6 +4274,50 @@ unamendable. **Recommend the latter**: the threat model is notaries being punish
 outranks same-notary semantics - and it matches this contract's own "county recorder" analogy, where a
 different clerk can file an encumbrance.
 
+### 2.18an ONE SELECTOR BIT GATES TWO UNRELATED THINGS - asking about citizenship leaks a national ID
+
+Found by writing the TD1 half of sec. 2.18al's disclosure suite. `query_identity_td1` reads
+`selector_bits[1]` TWICE:
+
+```noir
+citizenship_check(citizenship, citizenship_mask, selector_bits[1]);   // enforce a mask
+personal_number_hash *= selector_bits[1] as Field;                    // DISCLOSE the ID number
+```
+
+Per the documented selector - big-endian, so documented bit k sits at index 17-k - index 1 is bit 16,
+**"personal number hash"**. The citizenship check has NO BIT OF ITS OWN and borrows that one. TD3 gets
+away with it because `query_identity` returns no personal number at all, so index 1 has a single
+reader there. TD1 returns one, and the two collide.
+
+**BOTH DIRECTIONS ARE HARMFUL, and one of them is a privacy leak:**
+
+1. **Asking for the personal number silently enforces a citizenship constraint.** Bit set, no mask ->
+   `citizenship_check` wants exactly one match and gets none -> **the proof cannot be produced at
+   all**, with an error naming citizenship. A caller who wants an ID number and does not care about
+   nationality is simply stuck.
+2. **Asking about citizenship forces disclosure of the personal number.** The serious one. A verifier
+   asking only *"are you a citizen of X?"* - a yes/no question - also receives the holder's
+   **national ID number hash**, because the only way to turn the check on is to set the bit that
+   unmasks it. The user chose one thing and disclosed two; the proof verifies perfectly; nothing
+   reports a problem.
+
+Direction 2 is precisely what sec. 2.18ak's rule predicts: **a selector mask can be wrong for every
+passport ever tried and still verify.** A passport test exercises signatures. It never asks which
+fields came out.
+
+**PINNED, NOT FIXED - and the reason is not laziness.** Splitting them needs a free selector bit and
+all 18 are assigned, so the fix is either a 19-bit selector or reassigning a documented meaning. Both
+change a public ABI shared with the wallet, the on-chain `PublicSignalsTD1Builder`, and rarime's own
+tooling - a coordinated change, not a one-line edit, and one that invalidates existing proofs. Four
+tests state the CURRENT behaviour so the coupling cannot be mistaken for intent, and so a fix has a
+failing target to aim at. The leak test carries its own retirement instruction: *"if this now passes
+with personal == 0 the coupling is FIXED - delete this test"*.
+
+**WHY TD1 AND NOT ONLY TD3.** TD1 is the LIVE length - `escrow_envelope`,
+`register_identity_light_td1` and the wallet's circuit registry all use 95-byte DG1. Testing only the
+93-byte TD3 path would have left the path people actually use uncovered, which is exactly how
+sec. 2.18ac's registration mismatch happened. 79 `noir_dl` tests now, up from 75.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

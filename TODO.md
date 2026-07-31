@@ -5551,6 +5551,47 @@ trade: standing up a VOPRF quorum with its own DKG, availability and operational
 bit of disclosure. **Recorded so the decision is taken on real numbers** rather than on the
 comfortable assumption that existing infrastructure would carry it.
 
+### 2.18bk THE OPRF IS NOT A CIRCUIT - and the scalar-inverse trap that would have broken it silently
+
+Started implementing and stopped at the first real question: **where does this code run?** Two
+findings, both of which would have cost a rebuild if discovered later.
+
+**1. NO CIRCUIT IS INVOLVED. AT ALL.** A 2HashDH VOPRF has three roles and none of them is a prover:
+- **client (wallet)** blinds `B = r * H(x)`, then unblinds `U = r^-1 * E`
+- **each quorum node** evaluates `E_i = k_i * B` with its key share
+- **the contract** merely STORES the resulting value as the anti-replay key
+
+The circuits never see it. I had drifted toward `pp/src/` because that is where `mul_point` lives, and
+that is the wrong home: **the OPRF belongs in the wallet (TypeScript) and in a node service**, with
+Solidity only as a consumer. Building it in Noir would have produced a correct primitive in a place
+nothing can call from.
+
+**2. THE SCALAR-INVERSE TRAP, which is the reason this is worth writing down.** Unblinding needs
+`r^-1` **modulo the CURVE SUBGROUP ORDER `l`**, not modulo the field. Noir's `Field` is BN254's
+scalar field `Fr`, and BabyJubjub's subgroup order `l` is a DIFFERENT, smaller modulus. So a natural
+`r.inverse()` in Noir computes the inverse in the wrong group and yields `U != k*H(x)`.
+
+**AND THE FAILURE WOULD BE SILENT IN THE WORST POSSIBLE WAY.** A wrong unblinding still returns a
+well-formed curve point. Registration would succeed, the value would look fine - and it would DIFFER
+per blinding factor `r`, so the same document would produce a different key on every registration.
+**That destroys exactly the property the OPRF exists to provide**: determinism in the document, which
+is what makes a document scarce (2.18bi). The anti-replay guard would silently stop working, and
+nothing would report it - one physical passport could bind to unlimited identities, which is the
+blacklist evasion of 2.13b restored in full.
+
+**SO THE IMPLEMENTATION IS TYPESCRIPT, AND THE DEPENDENCY IS ALREADY PRESENT.** `@noble/curves` is a
+wallet dependency today and provides curve groups with correct scalar arithmetic. **RFC 9497** is the
+OPRF standard and specifies exactly this construction with ristretto255 or P-256 - use it rather than
+hand-rolling over BabyJubjub, since the only reason to prefer BabyJubjub is in-circuit friendliness,
+and there is no circuit.
+
+**WHAT REMAINS TO BUILD, in order:** (a) the client blind/unblind and node evaluate over
+`@noble/curves`, with RFC 9497's own test vectors - pure, testable, no infrastructure; (b) the
+zero-knowledge proof of correct evaluation that makes it VERIFIABLE, so a bad node can only refuse
+rather than corrupt (2.18bj); (c) distributed key generation and the quorum deployment, which is
+operational rather than cryptographic; (d) migrate `_usedDocumentHash`'s key to the OPRF output.
+**Only (d) touches this repo's contracts**, and it is one line once (a)-(c) exist.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

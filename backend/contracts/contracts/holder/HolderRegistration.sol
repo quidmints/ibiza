@@ -28,8 +28,9 @@ import {PoseidonSMT} from "../state/PoseidonSMT.sol";
  * not in this repo (§7.5/§7.8).
  */
 contract HolderRegistration is RegistrationSimple {
-    event DocumentRegistered(bytes32 indexed holderRoot, bytes32 documentKey, bytes32 docType);
-    event DocumentRenewedVia(bytes32 indexed holderRoot, bytes32 oldDocumentKey, bytes32 newDocumentKey);
+    /// NOT `indexed` on `holderRoot` - see HolderStateKeeper's DocumentAdded (sec. 2.18bc).
+    event DocumentRegistered(bytes32 holderRoot, bytes32 documentKey, bytes32 docType);
+    event DocumentRenewedVia(bytes32 holderRoot, bytes32 oldDocumentKey, bytes32 newDocumentKey);
 
     /*
      * ── THE PERMISSIONLESS PATH (sec. 2.18g/2.18l/2.18n) ────────────────────────────────

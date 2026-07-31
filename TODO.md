@@ -5218,6 +5218,59 @@ set, is identified"**. For a multi-citizenship holder - the exact user this desi
 whose second passport is the way out - a single border inspection exposes the set. That is the
 strongest argument yet for both fixes: the OPRF on the anti-replay key, and de-indexing `holderRoot`.
 
+### 2.18bf ENTROPY HARDENED, AND `holderRoot` DE-INDEXED
+
+*"make sure the entropy source is as bulletproof as conceivable within the laws of physics. leaks
+must be impossible. do the deindex"* (user, 2026-07-31). Both done; the honest limits of each are
+stated rather than glossed.
+
+**ENTROPY - `src/identity/entropy.ts`, 14 tests.** Seed generation no longer calls one RNG directly:
+
+1. **The CSPRNG is asserted, and its absence names the fix.** The inherited failure was already SAFE
+   (crypto-browserify throws rather than falling back to `Math.random` - 2.18bd), but its message
+   said *"use Chrome, Firefox or Internet Explorer 11"* inside a mobile wallet. This adds no safety,
+   only an instant diagnosis.
+2. **Degenerate output is rejected** - all-zero (an uninitialised buffer), all-0xFF, or any single
+   byte repeated (a stuck counter, a stubbed mock). **This is a sanity check, not a randomness test**,
+   and the distinction is the point: no test can certify 32 bytes are random, since every specific
+   value is equally likely. It catches a source that has plainly STOPPED, and a real CSPRNG hits it
+   with probability 256/2^256 - never, in practice.
+3. **Multiple sources are mixed through keccak-256, not XOR.** XOR would be adequate but preserves
+   position-correlated bias; hashing the concatenation is a randomness EXTRACTOR, so any ONE source
+   with full entropy makes the digest unpredictable no matter what the others did. The source COUNT
+   and NAMES are hashed in for domain separation - without that, one source returning `a || b` would
+   be indistinguishable from two returning `a` and `b`, letting a single compromised source
+   impersonate the whole mix.
+4. **Every source must succeed.** A throwing source ABORTS generation rather than being skipped -
+   silently degrading from two sources to one is exactly how a mixing scheme becomes decorative, and
+   the caller cannot tell from the output.
+
+**THE LIMIT, because "bulletproof within the laws of physics" deserves the caveat:** mixing defends
+against ONE source failing - a polyfill regression, a platform bug, a bad backport - which is the
+realistic case. **It cannot invent entropy if every source is broken the same way.** And nothing here
+defends the seed AFTER generation: storage, the user's backup handling, and the supply chain (ethers,
+noble, crypto-browserify, the rarime SDK all run before our code) are separate, and the last of those
+is unaudited. 256 bits is beyond brute force under any physics we know, including Grover's
+square-root speed-up, which leaves 2^128.
+
+**EVERY GUARD IS TESTED BY BREAKING WHAT IT GUARDS** - a stuck source, a predictable source, a
+throwing source, a short read, a missing polyfill. A mixing scheme never fed a broken source would
+pass identical tests whether or not its checks fired.
+
+**DE-INDEX - five events, `holderRoot` no longer a topic:** `DocumentAdded`, `DocumentRenewed`,
+`DocumentRevoked` (`HolderStateKeeper`), `DocumentRegistered`, `DocumentRenewedVia`
+(`HolderRegistration`). Verified no consumer filters on it - only emit sites exist - so nothing
+breaks; 380 forge tests pass and client ABIs are clean.
+
+**WHAT IT BUYS AND WHAT IT DOES NOT.** It converts "one `eth_getLogs` call returns this person's
+entire document set" into "fetch and decode every event this contract ever emitted" - which defeats
+casual and bulk lookup at real cost. It does **NOT** defeat an adversary who scrapes the whole log,
+and it does **NOT** hide contract STORAGE: `_holderOfDocumentHash` stays readable via
+`eth_getStorageAt` whatever Solidity visibility says. **So "leaks must be impossible" is not yet
+true**, and no event change can make it true - the complete fix is making the anti-replay key
+uncomputable from the document itself (the OPRF, 2.18bc). This is the part available without that
+decision, kept rather than dismissed for being partial.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

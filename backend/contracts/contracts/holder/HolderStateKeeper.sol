@@ -116,13 +116,35 @@ contract HolderStateKeeper is StateKeeper {
      */
     uint64 public lastDocumentInvalidationAt;
 
-    event DocumentAdded(bytes32 indexed holderRoot, bytes32 documentKey, bytes32 docType);
+    /**
+     * DELIBERATELY NOT `indexed` ON `holderRoot` (sec. 2.18bc / 2.18be).
+     *
+     * An indexed topic exists to make lookup cheap, and that is exactly the capability an adversary
+     * needs here. Anyone who handles a document for thirty seconds can read the chip with BAC (the
+     * MRZ is printed on the page), compute `dg1Hash`, resolve it to a `holderRoot`, and then - if
+     * this were indexed - recover THAT PERSON'S ENTIRE DOCUMENT SET in one `eth_getLogs` call: how
+     * many documents, which types, when each was registered, every renewal and revocation.
+     *
+     * WHY THE SET MATTERS MORE THAN ANY ONE DOCUMENT. Blacklisting acts on the IDENTITY, not on a
+     * document, so `holderRoot` names the exact unit sanctions apply to. And multi-citizenship is
+     * the feature this design exists for: for someone whose second passport is the way out, the SIZE
+     * and SHAPE of their document set is the sensitive fact, not any single entry.
+     *
+     * WHAT THIS DOES AND DOES NOT BUY. Un-indexing turns one targeted query into "fetch and decode
+     * every event this contract ever emitted", which defeats casual and bulk lookup at real cost.
+     * It does NOT defeat a determined adversary who scrapes the whole log, and it does NOT hide
+     * contract STORAGE - `_holderOfDocumentHash` remains readable via `eth_getStorageAt` whatever
+     * Solidity visibility says. The complete fix is to make the anti-replay key uncomputable from
+     * the document itself (the OPRF in sec. 2.18bc); this is the part available without it, and it
+     * is deliberately kept rather than dismissed as insufficient.
+     */
+    event DocumentAdded(bytes32 holderRoot, bytes32 documentKey, bytes32 docType);
     event DocumentRenewed(
-        bytes32 indexed holderRoot,
+        bytes32 holderRoot,
         bytes32 oldDocumentKey,
         bytes32 newDocumentKey
     );
-    event DocumentRevoked(bytes32 indexed holderRoot, bytes32 documentKey);
+    event DocumentRevoked(bytes32 holderRoot, bytes32 documentKey);
 
     /**
      * @notice Disable the upstream 1:1 binding so it cannot be mixed with the holder tree.

@@ -5918,6 +5918,59 @@ genuine trade with real numbers on both sides - MPC-TLS is expensive and brittle
 changes, which is why it was dropped - but it should be re-taken knowing that what was given up was
 *the removal of the trusted publisher*, not merely some machinery.
 
+### 2.18br CRE AND TLS PROVENANCE ARE COMPLEMENTARY - and together they REMOVE the postman
+
+*"are you telling me with TLSnotary we dont need CRE? we would still need it regardless"* (user,
+2026-07-31). **Correct, and I posed them as alternatives when they solve different problems.** 2.15a
+made the same error in the other direction - it swapped one for the other as though they were
+substitutes.
+
+**THEY ANSWER DIFFERENT QUESTIONS:**
+- **TLS provenance answers "is this data really from the register?"** - a proof bound to the
+  government server's certificate. It says nothing about scheduling, redundancy, or getting on-chain.
+- **CRE answers "who runs the fetch, on what schedule, with what redundancy, and how does the result
+  reach the contract?"** It says nothing about whether the bytes are authentic - 2.18ao already
+  established consensus cannot make nodes agree CORRECTLY.
+
+**Neither replaces the other. Dropping TLSNotary did not remove a redundant layer; it removed the
+only layer that spoke to authenticity, leaving the postman to stand in for it.**
+
+**THE SYNTHESIS: CRE NODES PRODUCE THE PROVENANCE PROOF AS PART OF THE FETCH, AND THE CONTRACT
+VERIFIES IT.** Then:
+- CRE keeps everything it is good at - cron, independent fetches, aggregation, report delivery.
+- The contract checks the TLS proof instead of trusting the report's provenance.
+- **The postman collapses into a RELAY.** It still submits the transaction, still pays gas, still
+  chooses WHEN - but it **cannot fabricate an entry or omit one undetectably**, because a snapshot
+  without a valid proof is rejected outright. That is removal of the POWER, which is what was asked,
+  rather than relocation of it.
+
+**AND IT SETTLES THE CHALLENGE-WINDOW QUESTION** - *"wire the challenge if it's necessary?"* **It
+becomes unnecessary.** A challenge window is a DETECTION mechanism for forgeries that are possible; if
+the contract verifies provenance, forgery is IMPOSSIBLE rather than merely noticeable. **Prevention
+beats detection**, and it also discharges the standing rule the user restated - `ROOT_ACTIVATION_DELAY`
+stops being an hour that does nothing, because it can simply be **deleted** rather than given a job.
+That is the better resolution of "no component should do nothing": remove the component, not invent
+work for it.
+
+**WHAT REMAINS TRUSTED, stated so this is not overclaimed:** the register itself (if the government
+publishes false data, a proof of provenance faithfully proves false data - no cryptography fixes
+that), and LIVENESS (a relay that submits nothing publishes nothing, which is 2.13b's inaction
+objection surviving in its weakest form - anyone can relay, so it is competitive rather than
+exclusive).
+
+**IMPLEMENTATION NOTE, because "TLSNotary" names the expensive option specifically.** Classic
+TLSNotary is MPC-TLS - expensive and brittle, which is why 2.15a dropped it. The property needed is
+narrower: a succinct, on-chain-verifiable proof that bytes came from a named TLS server. Modern
+zkTLS/web-proof constructions target exactly that and produce proofs cheap enough to verify on-chain.
+**The question to answer before building is which construction verifies within our gas budget**, not
+whether to have provenance at all - that question is now settled.
+
+**THIS SUPERSEDES THE ORDER IN 2.18bp.** m-of-n publication and the challenge window were
+compensating for the missing provenance layer. With provenance verified on-chain they are
+unnecessary, and the remaining work is: (a) provenance verification in `RegistrySourceAnchor`;
+(b) full-register-with-status so revocation is a presence claim; (c) name-binding enrolment;
+(d) anonymity. **(a) makes (b)-(d) safe rather than merely deeper.**
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

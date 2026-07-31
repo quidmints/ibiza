@@ -4854,12 +4854,36 @@ the county register. Any design must choose.
   is separate and stays private). This is the ONLY option that keeps uniqueness with no key-holder.
 - **B - KEYED PSEUDONYM, shared key.** Confidential against outsiders, but the key-holders are a
   permissioned minter set: 2.13b's allowlist, restored. Fails closed by omission.
-- **C - ATTESTED UNIQUENESS INSTEAD OF CRYPTOGRAPHIC.** Store a SALTED commitment (confidential, no
-  collisions) and move uniqueness to the notary attesting *"I checked the register; this parcel has no
-  live title"*. Cost: uniqueness stops being cryptographically impossible and becomes attested -
-  a deceived or colluding notary can double-mint and nothing on-chain detects it. Defensible, because
-  notaries are already the trust anchor for every other legal fact here and are now revocable
-  (2.18am) - but it is a real reduction and must not be presented as equivalent.
+- **C - ATTESTED UNIQUENESS INSTEAD OF CRYPTOGRAPHIC.** Store a SALTED commitment and move
+  uniqueness to the notary attesting *"I checked the register; this parcel has no live title"*.
+  **TWO costs, and I initially recorded only one** - see the correction below.
+  - *Uniqueness stops being cryptographic and becomes attested*: a deceived or colluding notary can
+    double-mint and nothing on-chain detects it. Defensible, since notaries already anchor every
+    other legal fact here and are now revocable (2.18am) - but a real reduction, not an equivalent.
+  - *THE SALT IS A CUSTODY FAILURE.* **A lost salt makes the commitment permanently unopenable, and
+    for a real property title that is unrecoverable.** This is worse than losing a pool note: a lost
+    note costs money, whereas a lost title salt costs the ability to demonstrate that an entry
+    corresponds to your actual home - potentially the collateral behind a loan.
+
+**CORRECTION - I RE-PROPOSED SALTS HAVING DROPPED HALF THE OBJECTION.** *"we had a problem we noticed
+with salts earlier, do you forget?"* (user, 2026-07-31). Yes. `TitleLedger`'s own comment records BOTH
+reasons salts were rejected - *"the salt bought confidentiality by destroying uniqueness"* AND *"a
+lost salt makes a commitment permanently unopenable - for a real property title that is
+unrecoverable. There is no per-title secret here to lose."* I carried the first into option C and
+silently lost the second, which is the exact failure sec. 2.18as was written about: reasoning that
+exists in the repo not reaching the place where a decision gets made.
+
+**THE CUSTODY HALF IS FIXABLE; THE UNIQUENESS HALF IS NOT.** Deriving the salt rather than randomising
+it - `Poseidon(sk_identity, "pp:title-salt:v1")`, the pattern 2.18au just used for the notary secret -
+makes it recoverable from the one key a holder already keeps, so `recovery.ts` restores it and there
+is nothing extra to lose. **But it does NOT restore uniqueness**: a salt derived from the HOLDER still
+differs between two holders minting over the same property, so duplicates still fail to collide.
+Option C therefore remains "uniqueness by attestation", and the derivation only removes its second,
+avoidable cost.
+
+**WHICH SHARPENS THE COMPARISON.** Option A has neither problem - no secret to lose and uniqueness
+intact - and pays only in enumerability. Option C, even with a derived salt, still trades a
+cryptographic guarantee for a human one.
 
 **NOT DECIDED HERE.** This is a design choice with a privacy/detectability trade at its centre, and
 it is yours. What I can say from the analysis: **B is the option the project's own prior reasoning

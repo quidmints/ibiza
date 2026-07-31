@@ -4502,6 +4502,68 @@ idempotence, not clobbering another plugin's NDEF request, and the AID as a pinn
 is a failing test rather than a silent "no chip found" against a real passport. What they cannot
 prove is that the generated project BUILDS; that still needs a toolchain.
 
+### 2.18aq "IS IT ALL A MOCKUP?" - no, but the halves are very different, and the seam is the chip
+
+*"are you sure this is missing? how could any of this work properly without this component? you're
+telling me it's all a mockup basically?"* (user, 2026-07-31). Deserves a precise answer, so: **the
+backend is real and proven; the wallet is explicitly a shell; and the component that joins a physical
+document to either of them does not exist.**
+
+**WHAT IS REAL, and "real" here means a genuine proof verified by a generated verifier, not a mock:**
+`withdraw_identity`, `ragequit`, `escrow_envelope`, `title_holder` and `notary_action` all compile,
+produce real `bb` proofs, and those proofs verify on-chain in Forge tests. 376 forge tests, 80
+`noir_dl`, 84 `pp`, 19 Go, 11 config-plugin. The pool, the identity registry, the title ledger and
+the notary anonymity set are working code with negative tests.
+
+**WHAT IS A SHELL, and says so in its own words.** `README.md`: *"multi-document wallet shell"*,
+`store.ts` *"persistence (in-memory demo; SecureStore sketch for prod)"*. `App.tsx:70`: live
+add/renew/revoke need *"(1) a scanned passport (RarimePassport from NFC), (2) OUR deployed
+HolderStateKeeper/HolderRegistration, (3) the forked query circuit"*. None of the three is done.
+
+**THE HONEST SUMMARY: the cryptography works on SYNTHETIC identities.** Every fixture derives from a
+chosen `sk_identity` (1234 in the withdrawal fixture), never from a passport. That is not a mockup -
+the constraint system, the verifiers and the contracts are all genuine, and a synthetic witness
+exercises them exactly as a real one would. **But nothing has ever ingested a real document**, and
+sec. 2.18ad item 1 has said so from the start. What this session added is WHY: it is not only that we
+lack a document, it is that there is no code that could read one.
+
+**RARIMO'S SCANNER CAN BE REUSED - AS LIBRARIES, NOT AS CODE.** Their apps are native, not React
+Native (`rarime-android-app` is Kotlin, `rarime-ios-app` is Swift), so nothing drops in. What they
+actually use:
+
+| | library | licence |
+|---|---|---|
+| Android | `org.jmrtd:jmrtd:0.7.27` + `net.sf.scuba:scuba-sc-android:0.0.20` + BouncyCastle | **LGPL** (jmrtd) |
+| iOS | `github.com/rarimo/NFCPassportReader` (their own copy of AndyQ's) | MIT |
+
+They did not write a scanner either - they took the two standard ones. So the work is a bridge
+module, not a chip driver.
+
+**DIFFED BEFORE ADOPTING, as instructed** (*"diff before adopting, no shortcuts"*). Findings:
+
+- **rarimo's copy shares NO GIT HISTORY with AndyQ's** - `merge-base` finds nothing and the API
+  reports no parent, so it was created by copying files rather than forking. A "fork" that cannot be
+  diffed by git is worth knowing about before depending on it.
+- Diffed by TREE instead, against upstream at rarimo's own sync point (`de25144`, 2024-07-25, since
+  their last sync commit is "sync with retail NFCPassportReader"). **Six files differ, and the
+  changes are almost entirely VISIBILITY:** `internal` -> `public` on `DataGroup1`, `DataGroup15`,
+  `SOD` (including exposing `asn1`), and ~15 more in `OpenSSLUtils`. `SimpleASN1DumpParser` has ~31
+  changes that are style (`self.` prefixes, paren removal) plus their "update the asn1 parser"
+  commit. `PassportReader` has 4, one being that they still carry `aaChallenge` where upstream
+  renamed it `activeAuthenticationChallenge`.
+- **No cryptographic or protocol divergence.** It is a "make the internals reachable" fork, which is
+  the LOW-RISK kind - and it suggests the same result could be had from upstream directly plus a
+  small shim, avoiding a dependency on a copy nobody upstreams to.
+- **But it is ~2 years stale**: rarimo HEAD is 2024-10-21; upstream is at v2.3.3, 2026-07-28. Every
+  upstream fix since is missing.
+
+**RECOMMENDATION:** wrap upstream AndyQ (MIT, maintained) rather than rarimo's copy, taking only the
+visibility changes as a patch or via a shim. Check jmrtd's LGPL against how we ship Android before
+committing - it is the only non-permissive licence in the stack, and that is a decision to make
+deliberately rather than by default. Avoid `tradle/react-native-passport-reader`: last pushed
+2023-12 and its licence is `NOASSERTION`, i.e. GitHub could not identify one, which is a legal
+unknown rather than a permissive licence.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

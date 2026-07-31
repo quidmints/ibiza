@@ -6256,6 +6256,65 @@ genuinely appropriate. **Using it for the fetch is not a reversal; using it for 
 workflow code**; and can the Vault DON's threshold/DKG machinery evaluate an OPRF rather than only
 guard secrets. **All three are cheap to ask and each collapses a design branch.**
 
+### 2.18by CAPABILITY AUTHORING IS OPEN AND DOCUMENTED - `smartcontractkit/capabilities`
+
+*"custom rust plugins (or go more like it) might be found if you search github"* (user, 2026-07-31).
+**Right, and it reopens the route I closed in 2.18bw.**
+
+**`github.com/smartcontractkit/capabilities`** - Go, an Nx monorepo, actively pushed. It holds the
+capabilities THEMSELVES (Cron, HTTP Action, HTTP Trigger, Consensus, Chain, Read Contract, Workflow
+Event, Load Test Write Target) **and documentation for authoring new ones**: JSON schema rules (`$id`
+must match the package the folder resolves to, plus capability name and version or an interface name)
+and design principles (*"capabilities should not reference other capabilities"*, *"no imports from
+`chainlink` repo"*).
+
+**SO 2.18bw WAS READING THE WRONG ARTIFACT.** The docs describing a fixed capability set describe the
+PRODUCT SURFACE; the codebase is open and its authoring process is written down. **Capability
+authoring is not restricted to Chainlink's engineers.**
+
+**WHAT THIS UNBLOCKS.** A capability that surfaces the TLS transcript could be authored BY US, in Go,
+against a documented schema - which makes **self-observed TLS reachable** (2.18bv called it
+unreachable) with no attestor and no dependency on Chainlink prioritising a request. **The party
+disappears rather than moving**, which is what was asked for.
+
+**TWO THINGS STILL UNKNOWN, flagged rather than assumed:**
+1. **Whether an externally-authored capability can be RUN by the production DON.** Writing one and
+   having node operators execute it are different permissions. The repo proves the CODE is open; it
+   does not prove the DEPLOYMENT is. **This is now the single question for Chainlink**, and the other
+   two (does confidential HTTP surface the transcript; can the Vault DON's DKG evaluate an OPRF)
+   become fallbacks rather than blockers.
+2. **The licence** - a LICENSE file exists; which one was not readable from the page.
+
+**NEXT ACTION: read that repo's authoring docs.** It is a concrete task against a named repository
+rather than an open design question.
+
+### 2.18bz TASK INDEX - where each open task's context actually lives
+
+The task list is TOOL STATE, not repository state - it may not survive a session. 2.18as's lesson
+applies exactly: a pointer is only as durable as the thing it points at. **This is the mapping, so
+nothing is lost if the list is.**
+
+| # | task | context lives in |
+|---|---|---|
+| 6 | permissionless enrolment path (no backend signer) | sec. 2.18g/2.18h; `registerDocumentViaIcao` + `register_identity_td1` built, happy path blocked on a document |
+| 8 | publish the CSCA master root, wire certificate admission | sec. 2.18ad item 5 - needs the REAL published ICAO list; **never fake a root**, not in a fixture, not behind a flag (2.18k) |
+| 10 | Groth16 -> Honk, 6 orphan profiles | **sec. 2.18aj** - the six decoded, and the ordered plan whose steps 1-4 need no document |
+| 12 | multi-country notary registry | **sec. 2.18ao** - the per-jurisdiction status vocabulary, and why Ukrainian entries are deliberately absent |
+| 13 | anonymise the notary | **sec. 2.18am** (built: circuit, verifier, ledger wiring) + **2.18bm** (enrolment still names them) |
+| 15 | passport scanner | **sec. 2.18ap/aq** - config done, scanner absent; wrap upstream AndyQ + jmrtd, diffed in 2.18aq |
+| 16 | anonymous notary enrolment | **sec. 2.18bm** + the traps written into `TitleLedger.registerNotary` and `NotaryRegistryProof.t.sol` |
+| - | the aggregator (N=16) | **sec. 2.4**, status corrected 2026-07-31; unstarted, all preconditions met |
+| - | the OPRF | **2.18ax/bj/bk** - not a circuit, needs RFC 9497 in TypeScript, and 2.18bx revises its cost |
+| - | provenance / removing the postman | **2.18bp -> bq -> br -> bs -> bu -> bv -> bw -> bx -> by**, in that order; each corrects the last |
+
+**THE TWO STANDING ERRANDS, neither of which is engineering:**
+1. **One look at the real Ukrainian bulk export** - settles the status vocabulary (2.18ao), whether it
+   is signed (2.18bv), and whether it is even freely downloadable (2.18bw).
+2. **One question to Chainlink** - can a third-party capability run on the production DON (2.18by).
+
+**Each collapses several design branches, and until one lands, further design in this area is
+building on an assumption.**
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

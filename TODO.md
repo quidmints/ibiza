@@ -5403,6 +5403,72 @@ lie.** State of the surface: the identity link is still reachable from a seized 
 `_documents`; the one-bit existence leak needs a threshold party; the storage-layout hazard from
 2.18bg is closed with a reserved slot; and no event depends on any of it.
 
+### 2.18bi THE BETTER SCARCITY TRICK - store the COMMITMENT, not the value. And the floor beneath it.
+
+*"is there a better scarcity trick? no leaks. no theatre. only complete fixes. investigate
+thoroughly"* (user, 2026-07-31). Investigated from the requirement rather than from the code, and the
+answer splits cleanly in two: **one half is completely fixable with no new trust; the other is a
+genuine floor, not a gap I am avoiding.**
+
+**THE REQUIREMENT PAIR, stated exactly:**
+- **R1 SCARCITY** - one physical document yields at most one identity, or an identity-level blacklist
+  is evadable by re-registering a document under a fresh identity (sec. 2.13b: *"a negative proof is
+  only meaningful against a scarce identity"*).
+- **R2 NO DISCLOSURE** - someone holding the document learns nothing on-chain.
+
+**WHY THE OBVIOUS ESCAPES ALL FAIL, checked one at a time:**
+- *Include a holder secret in the key* -> a second registrant uses a different secret, produces a
+  different key, no collision. **R1 broken.**
+- *Bucket the key* (the `PRECOMMITMENT_BUCKETS` trick used elsewhere here) -> two unrelated documents
+  share a bucket and the second holder is locked out permanently. **Confidentiality-by-collision is
+  right for DISCOVERY and fatal for UNIQUENESS.**
+- *Derive from the chip* (Active or Chip Authentication) -> a passport is a BEARER credential; the
+  adversary holds it and can run the protocol themselves. **R2 unimproved** (2.18bb).
+- *Prove non-membership in-circuit* -> proving "no leaf `Poseidon(documentKey, X)` exists for any
+  X != mine" is a non-membership claim over an unbounded set. **Not expressible.**
+- *Nullifier, as the pool uses for double-spend* -> a pool nullifier is deterministic in a SECRET;
+  this must be deterministic in a PUBLIC document. The analogy breaks exactly there.
+
+**SO R1 FORCES A VALUE DETERMINISTIC IN THE DOCUMENT ALONE, AND ANYONE HOLDING THE DOCUMENT CAN
+COMPUTE IT.** That is not a limitation of the implementation; it is the shape of the requirement.
+
+**THE HALF THAT IS COMPLETELY FIXABLE - AND IT IS THE BIG HALF.** What leaks today is not the
+existence bit but **`holderRoot` itself**, stored in plaintext under a passport-derivable key
+(`_documents[documentKey].holderRoot`, 2.18bh). **Nothing requires storing the VALUE.** Store
+`Poseidon(holderRoot)` instead, and the mapping becomes useless to a reader while remaining fully
+usable to a caller who already knows the holder:
+
+- `renewDocument` **already takes `holderRoot_`** and merely CHECKS it (line 223,
+  `old_.holderRoot == holderRoot_`). Against a stored commitment that becomes
+  `Poseidon(holderRoot_) == old_.holderRootCommitment` - identical cost, identical guarantee.
+- `revokeDocument(documentKey_)` is the **only** site that genuinely READS the value (lines 264, 271,
+  for the SMT index and the event). It takes `holderRoot_` as a parameter and verifies the
+  commitment - and its caller, `HolderRegistration`, knows the holder already.
+- `registrationSmt` is unaffected: its index is already `Poseidon(documentKey, holderRoot)`, which a
+  document-holder cannot compute.
+- `_holderDocuments` is keyed BY `holderRoot`, so it is not an entry point - you need the answer
+  before you can ask.
+
+`holderRoot` is a high-entropy field element derived from a public key, so `Poseidon(holderRoot)` is
+not dictionary-attackable. **This is a complete fix for the identity link, with no new trust, no new
+party, and no theatre** - unlike removing a getter, it defeats `eth_getStorageAt` too, because the
+value simply is not there.
+
+**THE FLOOR: ONE BIT, AND IT IS IRREDUCIBLE WITHOUT A THRESHOLD PARTY.** After that change a
+document-holder can still learn *"this document is registered here"* - because R1 requires a
+publicly-checkable, document-deterministic value, and any such value can be checked by whoever holds
+the document. Removing even that requires the value to be computable ONLY with a key nobody holds
+alone: an OPRF under a threshold key, which is precisely 2.18ax's conclusion arrived at from the
+other direction. **That is a floor imposed by the requirement, not an omission.** It is worth being
+exact about what it discloses: not who you are, not how many documents you hold, not which - only
+that this one document appears in this system.
+
+**NOT IMPLEMENTED IN THIS SESSION, DELIBERATELY.** The change touches `revokeDocument`'s signature and
+therefore the revocation path, which is the last thing to alter at the end of a long session; a
+half-applied storage refactor on an upgradeable contract is worse than a documented one (2.18bg's
+storage hazard was created by exactly that kind of haste). It is the top item, it is fully specified
+above, and it is blocked on nothing.
+
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 
 *"i dont think the origination logic really makes sense?"* (user, 2026-07-29). It does not. Stated

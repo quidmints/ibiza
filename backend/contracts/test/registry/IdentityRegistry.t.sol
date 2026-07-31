@@ -115,6 +115,15 @@ contract IdentityRegistryTest is EscrowFixtureBase {
     );
   }
 
+  /// The holder root of fixture entry `_i`, from the same JSON - required by `revokeDocument` since
+  /// sec. 2.18bi, because the keeper stores only `Poseidon(holderRoot)` and cannot hand it back.
+  function _holderRootAt(uint256 _i) internal view returns (bytes32) {
+    return vm.parseJsonBytes32(
+      vm.readFile('test/fixtures/escrow_documents.json'),
+      string.concat('.documents[', vm.toString(_i), '].holderRoot')
+    );
+  }
+
   /*
    * EMITS the identity inclusion witness the withdrawal fixture is built from.
    *
@@ -209,7 +218,7 @@ contract IdentityRegistryTest is EscrowFixtureBase {
     // Cancel a DIFFERENT document, one second later. The cited root is now stale in the way that
     // matters: it predates an invalidation, while still being inside the one-hour window.
     vm.warp(block.timestamp + 1);
-    sk.revokeDocument(_documentKeyAt(2));
+    sk.revokeDocument(_documentKeyAt(2), _holderRootAt(2));
 
     assertTrue(
       _registrationSmt().isRootValid(rootTheProofCites),

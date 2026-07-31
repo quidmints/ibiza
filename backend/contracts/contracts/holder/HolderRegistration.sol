@@ -253,8 +253,19 @@ contract HolderRegistration is RegistrationSimple {
      *      document permanently impossible. Domain-separating the message avoids depending on
      *      signer randomness for correctness.
      */
+    /**
+     * @param holderRoot_ the identity this document is bound to.
+     *
+     * REQUIRED SINCE sec. 2.18bi, and deliberately NOT part of the signed data. The state keeper
+     * stores only `Poseidon(holderRoot)` - so that a seized passport cannot be resolved to its
+     * owner - and therefore cannot hand the value back. Passing it unsigned is safe because the
+     * keeper checks it against that commitment: a wrong holder reverts, so this parameter cannot
+     * be used to revoke somebody else's document. What authorises the revocation remains the
+     * signature over the PASSPORT, unchanged.
+     */
     function revokeDocumentViaSigner(
         Passport memory passport_,
+        bytes32 holderRoot_,
         bytes memory signature_
     ) external virtual {
         address signer_ = ECDSA.recover(
@@ -265,7 +276,7 @@ contract HolderRegistration is RegistrationSimple {
 
         stateKeeper.useSignature(keccak256(signature_));
 
-        _holderStateKeeper().revokeDocument(passport_.publicKey);
+        _holderStateKeeper().revokeDocument(passport_.publicKey, holderRoot_);
     }
 
     /**

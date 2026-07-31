@@ -5463,11 +5463,31 @@ other direction. **That is a floor imposed by the requirement, not an omission.*
 exact about what it discloses: not who you are, not how many documents you hold, not which - only
 that this one document appears in this system.
 
-**NOT IMPLEMENTED IN THIS SESSION, DELIBERATELY.** The change touches `revokeDocument`'s signature and
-therefore the revocation path, which is the last thing to alter at the end of a long session; a
-half-applied storage refactor on an upgradeable contract is worse than a documented one (2.18bg's
-storage hazard was created by exactly that kind of haste). It is the top item, it is fully specified
-above, and it is blocked on nothing.
+**IMPLEMENTED (2026-07-31). `holderRoot` IS NO LONGER STORED IN PLAINTEXT ANYWHERE.**
+
+- `DocumentBond.holderRoot` -> `holderRootCommitment`, holding `Poseidon(holderRoot)`.
+- `renewDocument` compares the commitment instead of the value - identical cost, identical guarantee,
+  since it already took `holderRoot_` and only ever CHECKED it.
+- `revokeDocument(documentKey_)` -> `revokeDocument(documentKey_, holderRoot_)`, verifying the
+  commitment before using the value for the SMT index and the event.
+- `revokeDocumentViaSigner` gained the same parameter. **Deliberately NOT added to the signed data**:
+  the keeper checks it against the commitment, so a wrong holder reverts and the parameter cannot be
+  used to revoke someone else's document. What authorises the revocation is still the signature over
+  the PASSPORT, unchanged - so the backend's signing format does not move.
+- `_holderCommitment` is ONE definition used by bind, renew and revoke, so the three cannot drift -
+  the lesson of 2.18o, where one rule written three times carried the same defect in all three.
+
+**384 forge tests, ABIs clean.** Two new tests, written to fail against the OLD code rather than
+merely pass against the new: `test_aSeizedDocumentDoesNotRevealItsHoldersIdentity` asserts the stored
+value is NOT the holder root AND IS the commitment; `test_revokingWithTheWrongHolderIsRejected` proves
+the commitment is BINDING rather than decorative - without it, passing the identity as a parameter
+would be an unchecked assertion by the caller.
+
+**WHAT THIS CLOSES.** A seized document yields `documentKey`, and `_documents[documentKey]` is
+readable from storage whatever the getter says - but the identity is no longer in it. So the holder
+learns nothing about WHO, nothing about how many other documents that identity holds, and nothing
+about which. That was the leak that mattered, and it is closed by absence rather than by access
+control.
 
 ### 2.19 THE ORIGINATOR MODEL IS INCOHERENT - the borrower's equity IS the first loss
 

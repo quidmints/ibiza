@@ -113,7 +113,8 @@ contract HolderStateKeeperTest is Test {
         assertEq(docs[1], DOC_B);
 
         HolderStateKeeper.DocumentBond memory a = sk.getDocument(DOC_A);
-        assertEq(a.holderRoot, HOLDER);
+        // The bond stores Poseidon(holderRoot), never the value (sec. 2.18bi).
+        assertEq(a.holderRootCommitment, bytes32(PoseidonUnit1L.poseidon([uint256(HOLDER)])));
         assertEq(a.docType, DOC_PASSPORT);
         assertEq(uint8(a.status), CURRENT);
 
@@ -151,7 +152,11 @@ contract HolderStateKeeperTest is Test {
         assertEq(uint8(sk.getDocument(DOC_A).status), SUPERSEDED);
         HolderStateKeeper.DocumentBond memory c = sk.getDocument(DOC_C);
         assertEq(uint8(c.status), CURRENT);
-        assertEq(c.holderRoot, HOLDER, "continuity: same root");
+        assertEq(
+            c.holderRootCommitment,
+            bytes32(PoseidonUnit1L.poseidon([uint256(HOLDER)])),
+            "continuity: same root"
+        );
         assertEq(c.seq, 1, "next sequence");
         assertEq(sk.getActiveDocumentCount(HOLDER), 2); // B + C
     }
@@ -178,7 +183,7 @@ contract HolderStateKeeperTest is Test {
     function test_revoke() public {
         vm.startPrank(REG);
         sk.addDocument(DOC_A, bytes32(0), HOLDER, DOC_PASSPORT, DG_A, 0);
-        sk.revokeDocument(DOC_A);
+        sk.revokeDocument(DOC_A, HOLDER);
         vm.stopPrank();
 
         assertEq(uint8(sk.getDocument(DOC_A).status), REVOKED);
@@ -188,9 +193,9 @@ contract HolderStateKeeperTest is Test {
     function test_cannot_revoke_twice() public {
         vm.startPrank(REG);
         sk.addDocument(DOC_A, bytes32(0), HOLDER, DOC_PASSPORT, DG_A, 0);
-        sk.revokeDocument(DOC_A);
+        sk.revokeDocument(DOC_A, HOLDER);
         vm.expectRevert("HolderStateKeeper: not current");
-        sk.revokeDocument(DOC_A);
+        sk.revokeDocument(DOC_A, HOLDER);
         vm.stopPrank();
     }
 
@@ -215,7 +220,7 @@ contract HolderStateKeeperTest is Test {
         // revoke → leaf value becomes Poseidon1(REVOKED) marker, which can NEVER equal the
         // Poseidon3 reconstruction → the query circuit auto-rejects a revoked document.
         vm.prank(REG);
-        sk.revokeDocument(DOC_A);
+        sk.revokeDocument(DOC_A, HOLDER);
         SparseMerkleTree.Proof memory p2 = smt.getProof(_leafIndex(DOC_A, HOLDER));
         // Field-reduced (StateKeeper.SNARK_SCALAR_FIELD): keccak256("REVOKED") is > the BN254
         // scalar field order (confirmed: ~5.1x F), so the contract reduces it before hashing -
@@ -231,6 +236,51 @@ contract HolderStateKeeperTest is Test {
         assertEq(p2.value, revokedMarker, "revoked leaf == Poseidon1(REVOKED mod F) marker");
         assertTrue(p2.value != expected, "marker can't match circuit reconstruction");
     }
+
+  /*
+   * A SEIZED DOCUMENT CANNOT BE RESOLVED TO ITS OWNER (sec. 2.18bi).
+   *
+   * `documentKey` IS computable by anyone holding the physical document - it is the passport public
+   * key, or the proof's `passportHash`, both readable from the chip. So `_documents[documentKey]` is
+   * readable by that person via `eth_getStorageAt` no matter what Solidity visibility claims, and
+   * hiding the getter would be theatre. The fix is that the VALUE IS NOT THERE: the bond stores
+   * `Poseidon(holderRoot)`.
+   *
+   * WHY THIS MATTERS MORE THAN ONE DOCUMENT. Blacklisting acts on the IDENTITY (sec. 2.18be), so
+   * `holderRoot` names the unit sanctions apply to - and it is the handle that enumerates every
+   * OTHER document the same person holds. For a multi-citizenship holder, whose second passport is
+   * the way out, that is the whole secret.
+   *
+   * This test is written so it would FAIL against the old plaintext field: it asserts the stored
+   * value is NOT the holder root, and IS the commitment.
+   */
+  function test_aSeizedDocumentDoesNotRevealItsHoldersIdentity() public {
+    vm.prank(REG);
+    sk.addDocument(DOC_A, bytes32(0), HOLDER, DOC_PASSPORT, DG_A, 0);
+
+    HolderStateKeeper.DocumentBond memory bond = sk.getDocument(DOC_A);
+
+    assertTrue(
+      bond.holderRootCommitment != HOLDER,
+      'the bond still exposes the holder root in plaintext'
+    );
+    assertEq(
+      bond.holderRootCommitment,
+      bytes32(PoseidonUnit1L.poseidon([uint256(HOLDER)])),
+      'the bond does not store the expected commitment'
+    );
+  }
+
+  /// And the commitment is BINDING, not decorative: revoking with the wrong holder must revert, or
+  /// passing the identity as a parameter would be an unchecked assertion by the caller.
+  function test_revokingWithTheWrongHolderIsRejected() public {
+    vm.prank(REG);
+    sk.addDocument(DOC_A, bytes32(0), HOLDER, DOC_PASSPORT, DG_A, 0);
+
+    vm.prank(REG);
+    vm.expectRevert(bytes('HolderStateKeeper: holder mismatch'));
+    sk.revokeDocument(DOC_A, bytes32(uint256(0xBAD)));
+  }
 
   /*
    * THE DOCUMENT-KEYED LEAK IS BOUNDED TO ONE BIT (sec. 2.18bg).

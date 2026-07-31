@@ -73,7 +73,24 @@ contract HolderStateKeeper is StateKeeper {
     }
 
     struct DocumentBond {
-        bytes32 holderRoot; // the durable identity (was `identityKey`)
+        /**
+         * `Poseidon(holderRoot)` - THE COMMITMENT, NEVER THE VALUE (sec. 2.18bi).
+         *
+         * `_documents` is keyed on `documentKey`, which IS derivable by anyone holding the physical
+         * document (it is the passport public key, or the proof's `passportHash` - both readable
+         * from the chip). Storing `holderRoot` in the clear therefore made a seized passport a
+         * lookup to its owner's durable identity - the exact unit an identity-level blacklist acts
+         * on (sec. 2.18be), and the handle that enumerates every other document they hold.
+         *
+         * A COMMITMENT CLOSES IT COMPLETELY, unlike hiding the getter. Solidity visibility is not a
+         * privacy control - `eth_getStorageAt` reads any slot whose key you can compute - so the
+         * only real fix is for the value not to be there. `holderRoot` is a high-entropy field
+         * element derived from a public key, so this is not dictionary-attackable.
+         *
+         * EVERY CALLER THAT NEEDS THE IDENTITY ALREADY KNOWS IT and passes it in to be checked
+         * against this commitment; nothing reads it back out.
+         */
+        bytes32 holderRootCommitment;
         bytes32 docType;
         uint64 issueTimestamp;
         uint64 notAfter; // validity window end (0 = none)
@@ -220,7 +237,10 @@ contract HolderStateKeeper is StateKeeper {
         DocumentBond storage old_ = _documents[oldDocumentKey_];
 
         require(old_.status == DocStatus.Current, "HolderStateKeeper: old not current");
-        require(old_.holderRoot == holderRoot_, "HolderStateKeeper: holder mismatch");
+        require(
+            old_.holderRootCommitment == _holderCommitment(holderRoot_),
+            "HolderStateKeeper: holder mismatch"
+        );
         require(_documents[newDocumentKey_].status == DocStatus.None, "HolderStateKeeper: new bound");
 
         if (newDocumentHash_ != bytes32(0)) {
@@ -252,23 +272,40 @@ contract HolderStateKeeper is StateKeeper {
      *         for "current" — see the class-level NatSpec for why this doesn't need an exclusion
      *         (non-membership) proof.
      */
-    function revokeDocument(bytes32 documentKey_) external virtual onlyRegistration {
+    /**
+     * @notice Revoke a document.
+     * @param holderRoot_ the identity this document is bound to.
+     *
+     * TAKEN AS A PARAMETER RATHER THAN READ FROM STORAGE (sec. 2.18bi). The bond stores only
+     * `Poseidon(holderRoot)`, so the value cannot be read back - which is the point: it is what
+     * stops a seized document resolving to its owner. The caller (`HolderRegistration`) already
+     * knows the holder, and the commitment check below makes passing the wrong one impossible, so
+     * this costs a parameter and gives up no guarantee.
+     */
+    function revokeDocument(
+        bytes32 documentKey_,
+        bytes32 holderRoot_
+    ) external virtual onlyRegistration {
         DocumentBond storage doc_ = _documents[documentKey_];
 
         require(doc_.status == DocStatus.Current, "HolderStateKeeper: not current");
+        require(
+            doc_.holderRootCommitment == _holderCommitment(holderRoot_),
+            "HolderStateKeeper: holder mismatch"
+        );
 
         doc_.status = DocStatus.Revoked;
         lastDocumentInvalidationAt = uint64(block.timestamp);
 
         bytes32 index_ = bytes32(
-            PoseidonUnit2L.poseidon([uint256(documentKey_), uint256(doc_.holderRoot)])
+            PoseidonUnit2L.poseidon([uint256(documentKey_), uint256(holderRoot_)])
         );
         registrationSmt.update(
             index_,
             bytes32(PoseidonUnit1L.poseidon([uint256(REVOKED) % SNARK_SCALAR_FIELD]))
         );
 
-        emit DocumentRevoked(doc_.holderRoot, documentKey_);
+        emit DocumentRevoked(holderRoot_, documentKey_);
     }
 
     /**
@@ -302,6 +339,13 @@ contract HolderStateKeeper is StateKeeper {
     }
 
 
+    /// @dev The stored form of an identity. One definition, so the bind/renew/revoke checks cannot
+    ///      drift apart - the lesson of sec. 2.18o, where one rule written three times carried the
+    ///      same defect in all three copies.
+    function _holderCommitment(bytes32 holderRoot_) internal pure returns (bytes32) {
+        return bytes32(PoseidonUnit1L.poseidon([uint256(holderRoot_) % SNARK_SCALAR_FIELD]));
+    }
+
     function _bindDocument(
         bytes32 documentKey_,
         bytes32 holderRoot_,
@@ -311,7 +355,7 @@ contract HolderStateKeeper is StateKeeper {
         uint64 seq_
     ) internal {
         _documents[documentKey_] = DocumentBond({
-            holderRoot: holderRoot_,
+            holderRootCommitment: _holderCommitment(holderRoot_),
             docType: docType_,
             issueTimestamp: uint64(block.timestamp),
             notAfter: notAfter_,

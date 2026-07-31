@@ -2,6 +2,7 @@
 pragma solidity ^0.8.21;
 
 import {Test} from "forge-std/Test.sol";
+import {PoseidonUnit1L} from '../../contracts/libraries/Poseidon.sol';
 
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
@@ -278,7 +279,13 @@ contract HolderRegistrationTest is Test {
         reg.registerDocumentViaNoir(uint256(uint160(address(0xF00D))), p, sk.DOC_PASSPORT(), 0, sig, "");
 
         HolderStateKeeper.DocumentBond memory bond = sk.getDocument(p.publicKey);
-        assertEq(bond.holderRoot, bytes32(uint256(uint160(address(0xF00D)))));
+        // The bond stores Poseidon(holderRoot), never the value (sec. 2.18bi) - so a seized
+        // passport, whose documentKey anyone holding it can compute, cannot be resolved to its
+        // owner's identity. Asserting the COMMITMENT is what pins that.
+        assertEq(
+            bond.holderRootCommitment,
+            bytes32(PoseidonUnit1L.poseidon([uint256(uint160(address(0xF00D)))]))
+        );
         assertEq(bond.docType, sk.DOC_PASSPORT());
         assertEq(uint8(bond.status), 1); // Current
     }
@@ -424,7 +431,10 @@ contract HolderRegistrationTest is Test {
         RegistrationSimple.Passport memory newP = _passport(333, bytes32(uint256(3)), bytes32(uint256(0xD0D0)), bytes32(uint256(0xDD)));
         reg.renewDocumentViaNoir(oldP.publicKey, holderRoot, newP, sk.DOC_PASSPORT(), 0, _sign(SIGNER_PK, newP), "");
 
-        assertEq(sk.getDocument(newP.publicKey).holderRoot, bytes32(holderRoot));
+        assertEq(
+            sk.getDocument(newP.publicKey).holderRootCommitment,
+            bytes32(PoseidonUnit1L.poseidon([holderRoot]))
+        );
     }
 
     /// Renewal must ALSO be covered, or the re-homing attack simply moves to renewDocumentViaNoir.
@@ -460,7 +470,11 @@ contract HolderRegistrationTest is Test {
         assertEq(uint8(sk.getDocument(oldP.publicKey).status), 2); // Superseded
         HolderStateKeeper.DocumentBond memory freshBond = sk.getDocument(newP.publicKey);
         assertEq(uint8(freshBond.status), 1); // Current
-        assertEq(freshBond.holderRoot, bytes32(holderRoot), "continuity: same holder root");
+        assertEq(
+            freshBond.holderRootCommitment,
+            bytes32(PoseidonUnit1L.poseidon([holderRoot])),
+            "continuity: same holder root"
+        );
     }
 
     function test_renewDocumentViaNoir_revertsOnZeroHolderRoot() public {
@@ -487,7 +501,7 @@ contract HolderRegistrationTest is Test {
         // REVOKE-domain-separated message (_revokeSignedData), distinct from registration's, so
         // this doesn't collide with the signature already consumed at registration time.
         bytes memory revokeSig = _signRevoke(SIGNER_PK, p);
-        reg.revokeDocumentViaSigner(p, revokeSig);
+        reg.revokeDocumentViaSigner(p, bytes32(uint256(uint160(address(0xF00D)))), revokeSig);
 
         assertEq(uint8(sk.getDocument(p.publicKey).status), 3); // Revoked
         assertEq(sk.getActiveDocumentCount(bytes32(holderRoot)), 0);
@@ -499,7 +513,7 @@ contract HolderRegistrationTest is Test {
         reg.registerDocumentViaNoir(holderRoot, p, sk.DOC_PASSPORT(), 0, _sign(SIGNER_PK, p), "");
 
         vm.expectRevert("HolderRegistration: caller is not a signer");
-        reg.revokeDocumentViaSigner(p, _signRevoke(OTHER_PK, p));
+        reg.revokeDocumentViaSigner(p, bytes32(uint256(uint160(address(0xF00D)))), _signRevoke(OTHER_PK, p));
     }
 }
 

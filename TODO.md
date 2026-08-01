@@ -1070,6 +1070,18 @@ Disabled **every** `#[test]` attribute across all 17 test-bearing files in `noir
 `nargo compile` succeeds on the same source; only `nargo test` crashes. That rules out the entire
 class of "some test uses a construct beta.26 dislikes".
 
+**⚠️ MODULE-DELETION BISECTION DOES NOT WORK HERE - I proposed it and it fails.** Commenting out the
+first 8 of the 15 `mod` declarations in `lib.nr` produced ordinary COMPILE ERRORS, not a crash,
+because the remaining modules DEPEND on the removed ones. So "did the crash go away?" is unanswerable
+that way - you cannot tell a fixed crash from a crate that no longer type-checks.
+
+**WHAT WOULD ACTUALLY WORK** - build UP, not down: start a fresh crate containing ONE module plus its
+dependencies, confirm `nargo test` succeeds, then add modules until it crashes. Slower per step but
+every step gives a clean yes/no. Alternatively reduce OUTSIDE this crate: the ICE is in
+`noirc_frontend`'s test-mode pass, so a minimal reproduction built from scratch (a few generics /
+comptime constructs) may hit it faster than shrinking a ~16k-line vendored library, and that
+reproduction is also what an upstream issue needs.
+
 **ELIMINATED SO FAR (2026-08-01) - do not re-test these:**
 1. **All `#[test]` bodies.** Disabled every `#[test]` attribute across all 17 test-bearing files -
    ZERO test functions remained - and `nargo test` still ICEd.

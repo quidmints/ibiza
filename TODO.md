@@ -968,6 +968,44 @@ is just not sufficient, and it changed the failure from "cannot prove" to "prove
   toolchain is fixed; do not treat the EIP-170 measurement as transferable (the gate count will
   change once recursion is real, though sec. 2.4pre's N-independence claim suggests the SIZE will not).
 
+**🗺️ THE beta.26 MIGRATION IS ACHIEVABLE - FULL BLOCKER MAP, MEASURED 2026-08-01.** It is not a
+version bump and it is not blocked; it is a bounded, well-understood piece of work. **Everything
+below was tested; the repo was restored to beta.13 + poseidon v0.2.0 afterwards and all six circuits
+rebuild green.**
+
+| step | status on beta.26 |
+|---|---|
+| `poseidon` **v0.2.0** (our pin) | ❌ `Comptime global RATE used in non-comptime code` |
+| **`poseidon` v0.3.0** (latest) | ✅ **`pp` and `noir_dl_lib` COMPILE** - this is the fix for that error |
+| poseidon v0.3.0 on **beta.13** | ❌ `Expected an expression but found '@'` - the two upgrades are ATOMIC, neither works alone |
+| `withdraw_identity`, `ragequit`, `title_holder`, `notary_action` | ❌ **`u1` has been removed, use `bool`** - OUR source, 51 sites |
+| `escrow_envelope` | ❌ **compiler ICE** (panics) - the only genuinely unknown item |
+
+**THE `u1` -> `bool` MIGRATION IS THE REAL WORK, AND IT IS DANGEROUS - do not treat it as
+search-and-replace.** 51 sites, concentrated in **`pp/src/smt.nr`**, which is the SMT verifier every
+identity and title commitment depends on. `u1` is an INTEGER used arithmetically; `bool` is not:
+- `(levels[0] == root) as u1` -> the cast disappears
+- `switcher(l, r, bit: u1)` and any `1 - bit` arithmetic must be rewritten as boolean logic
+- `key.to_le_bits()` returns `[u1; 254]` on beta.13 and `[bool; 254]` on beta.26
+
+A wrong rewrite here does not fail loudly - it silently changes SMT results and forks every
+commitment in the system. **Acceptance: `pp`'s 53 tests and `noir_dl_lib`'s 49 must pass unchanged,
+AND the published vectors (`sk_identity = 1234 -> holder_root` in `identity_asp.nr` /
+`title_holder.nr`) must be byte-identical.** Those vectors exist precisely for this; they are the
+only thing that can prove the rewrite preserved behaviour.
+
+**WHY THIS IS WORTH DOING** (the user asked, 2026-08-01): recursion - and therefore the whole
+aggregation gas win - **only works on beta.26 + bb 5.x**, proven by the soundness harness below.
+beta.13 + bb 1.2.0 silently accepts unsound recursive circuits. So this migration is the gate on
+sec. 2.4 entirely, and it likely brings unrelated fixes across 13 releases.
+
+**ORDER:** (1) upgrade poseidon to v0.3.0 AND nargo to beta.26 together; (2) do the `u1` -> `bool`
+rewrite, checking the published vectors after; (3) diagnose the `escrow_envelope` ICE - it is the
+only unknown, and may be a genuine upstream bug worth reporting; (4) regenerate all verifiers with
+`-t evm` (replaces `--oracle_hash keccak`) and re-check `forge build --sizes`, since the withdrawal
+verifier has ~85 bytes of EIP-170 margin and 5.x codegen may differ; (5) rebuild the aggregator with
+`proof_type = 6` and the 115/458 field sizes, and re-run the soundness harness.
+
 **🔬 SOUNDNESS HARNESS RUN 2026-08-01 - RECURSION GENUINELY BINDS. Five cases, no false positive or
 negative left standing:**
 

@@ -968,7 +968,40 @@ is just not sufficient, and it changed the failure from "cannot prove" to "prove
   toolchain is fixed; do not treat the EIP-170 measurement as transferable (the gate count will
   change once recursion is real, though sec. 2.4pre's N-independence claim suggests the SIZE will not).
 
-**⛔ THE MIGRATION BLOCKER IS AN UPSTREAM COMPILER BUG, NOT OUR CODE (2026-08-01). This is the end of
+**🧭 IT IS A TWO-DIMENSIONAL COMPATIBILITY MATRIX (nargo x poseidon), NOT A SINGLE BISECT.**
+Measured 2026-08-01. "ICE" below means **Internal Compiler Error - the compiler CRASHING**. It is a
+failure, never a goal.
+
+| nargo | poseidon | result |
+|---|---|---|
+| **beta.13** | **v0.2.0** | ✅ **CURRENT AND WORKING** - 7/7 circuits compile, 167/167 tests pass |
+| beta.13 | v0.3.0 | ❌ `Expected an expression but found '@'` (poseidon too NEW) |
+| beta.16 | v0.3.0 | ❌ 70 errors, e.g. `Could not resolve 'wrapping_add'` (poseidon too NEW) |
+| beta.20 | v0.3.0 | ❌ 65 errors, same shape |
+| beta.26 | v0.2.0 | ❌ `Comptime global RATE` (poseidon too OLD) |
+| **beta.26** | **v0.3.0** | ⚠️ 6/7 compile, `pp` **87/87 PASSES**, but `noir_dl_lib` tests and `escrow_envelope` **CRASH the compiler** |
+
+So poseidon v0.3.0 needs a nargo NEWER than beta.20, and beta.26 crashes. **The untested cells are the
+intermediate poseidon tags** - v0.2.1 through v0.2.6 exist - paired with beta.21..beta.25. One of
+those may satisfy both. That is the search, and it is mechanical: for each pair, apply the five known
+source fixes and run `./verify-migration.sh`, which passes only on `RESULT: no coverage lost`.
+
+**WHY AGGREGATION CANNOT SHIP ON beta.13 (the user asked why this matters):** recursion's
+`verify_proof_with_type` **does not bind** there - proven by the soundness harness, where bb 1.2.0
+accepts a batch of all-zero garbage proofs. An aggregator built on it would accept ANY claimed
+withdrawal. Aggregation therefore requires a toolchain where recursion binds, and the only one proven
+to bind so far is beta.26 + bb 5.x - which crashes on two of our crates. **That is the entire
+deadlock, stated plainly.**
+
+**THE THREE WAYS OUT, in order of expected cost:**
+1. **Search the matrix above** (poseidon v0.2.1-v0.2.6 x nargo beta.21-25). Cheapest if a cell works.
+2. **Report the crash upstream** with a reduction from `noir_dl_lib` - it has persisted beta.22 ->
+   beta.26 and will not fix itself.
+3. **Remove the crash's cause locally**: the crash is in `noir_dl_lib`, which is VENDORED rarimo code
+   carrying `bignum`/`big_curve` dependencies. If the crashing construct can be isolated and rewritten,
+   beta.26 becomes usable. `escrow_envelope` crashes too, so check whether both share one root cause.
+
+**⛔ AN UPSTREAM COMPILER BUG, NOT OUR CODE, NOT OUR CODE (2026-08-01). This is the end of
 what can be done locally.**
 
 `noir_dl_lib`'s 80 tests do not vanish because of `u1`/`bool` - they vanish because **`nargo test`

@@ -984,7 +984,40 @@ COMMENTS about copied code, not dependencies. Three crates needed migrating, not
 vk **115** (was 112), proof **458** (was 507), `proof_type` **6** = `PROOF_TYPE_HONK_ZK` (was 0, which
 expects a NON-ZK 410-field proof - the original root cause).
 
-**🔴 THE CONSEQUENCE, MEASURED, NOT ASSUMED: `bb` 1.2.0 CANNOT READ THE beta.26 ARTIFACT** - it errors
+**✅ MIGRATION COMPLETED 2026-08-01 - VERIFIERS AND BUNDLED CIRCUITS ALL REGENERATED ON bb 5.x.**
+The repo is no longer mid-migration on the PP side.
+
+**🎁 THE BIG UNADVERTISED WIN: THE EIP-170 KNIFE-EDGE IS GONE.** bb 5.x emits verifiers ~30% smaller:
+
+| verifier | beta.13 / bb 1.2.0 | beta.26 / bb 5.1.0 | margin |
+|---|---|---|---|
+| Withdrawal | 24,491 | **17,162** | 85 -> **7,414** |
+| Ragequit | ~24,491 | **17,097** | -> **7,479** |
+| TitleHolder | ~24,491 | **17,098** | -> **7,478** |
+| NotaryAction | ~24,491 | **18,051** | -> **6,525** |
+| **Aggregation (N=16)** | 24,492 | **17,723** | 84 -> **6,853** |
+
+Every warning in this repo about "85 bytes of headroom" and "a circuit whose public-input count grows
+WILL push a verifier over EIP-170" is **obsolete on this toolchain**. `optimizer_runs = 1` is likely
+no longer needed for these files either - worth re-testing, since it was chosen for SIZE over
+execution cost and may be costing gas for nothing.
+
+**WALLET-BUNDLED CIRCUITS REFRESHED** (they shrank, so they genuinely changed - a stale bundle would
+have broken on-device proving with nothing pointing at the cause):
+`withdraw_identity` 3,128,023 -> 2,267,990 · `notary_action` 1,572,014 -> 1,149,600 ·
+`title_holder` 354,642 -> 345,868 · `ragequit` 157,454 -> 144,636 bytes.
+
+**STILL OUTSTANDING, and it is now a SHORT list:**
+1. `codegen-verifiers.sh` still GUARDS beta.13 + bb 1.2.0 and uses `--oracle_hash keccak`/`--scheme`.
+   It must be taught the bb 5.x CLI (`-t evm`, `-t noir-recursive`) and TWO toolchains, or it will
+   refuse to run and, if forced, regenerate stale artifacts.
+2. The passport circuits (`noir_dl_lib`, `escrow_envelope`, `query_*`, `register_*`) remain on
+   beta.13 - blocked by the upstream compiler crash, unaffected by this work.
+3. Re-run the on-chain proof fixtures: `test/fixtures/*.proof` were produced by bb 1.2.0 and the
+   regenerated verifiers will reject them. **`forge test` will fail until they are regenerated with
+   bb 5.x** - that is expected, not a regression.
+
+**🔴 SUPERSEDED CONSEQUENCE (now addressed): `bb` 1.2.0 CANNOT READ THE beta.26 ARTIFACT** - it errors
 `Length is too large`. So:
 - **`WithdrawalHonkVerifier.sol` as deployed WILL REJECT proofs from the beta.26-built circuit.** It
   was generated from the beta.13/bb-1.2.0 build. It MUST be regenerated with `bb` 5.x (`-t evm`) and

@@ -46,8 +46,16 @@ global PROOF_LEN: u32 = 507;
 /// over, so an off-by-one here produces a commitment the contract can never reproduce.
 global PUB_LEN: u32 = 7;
 
-/// `std::verify_proof_with_type`'s proof_type for UltraHonk (2 would be UltraRollupHonk).
-global HONK_PROOF_TYPE: u32 = 1;
+/// `std::verify_proof_with_type`'s proof_type for UltraHonk.
+///
+/// **0, AND THIS IS NOT bb's `--honk_recursion` VALUE.** Two unrelated enumerations are easy to
+/// conflate, and doing so costs hours because nothing errors: bb's CLI flag uses 1 = UltraHonk,
+/// 2 = UltraRollupHonk, while the IN-CIRCUIT parameter is Aztec's PROOF_TYPE_* set - 
+/// PROOF_TYPE_HONK = 0, PROOF_TYPE_ROLLUP_HONK = 4, PROOF_TYPE_HONK_ZK = 6
+/// (barretenberg/noir/bb_proof_verification/src/lib.nr). Passing 1 compiles, solves the witness,
+/// and proves - and the proof then fails `bb verify` with `Sumcheck failed!`, with nothing
+/// pointing at the parameter. PROOF_TYPE_HONK_ZK = 6 is NOT usable on beta.13: it fails to build.
+global HONK_PROOF_TYPE: u32 = 0;
 
 /// `State.MAX_TREE_DEPTH`. Mirrored from Solidity; see the range check in `main`.
 global MAX_TREE_DEPTH: u32 = 32;

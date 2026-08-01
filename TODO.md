@@ -671,73 +671,35 @@ a recursive proof. **There may be no evidence recursion has ever worked end-to-e
 the pinned toolchain (beta.13 + bb 1.2.0) supports standalone proving without that implying it
 supports recursion.
 
-**🔴 CONCLUSION 2026-08-01 — `std::verify_proof_with_type` IS BROKEN ON THIS PINNED TOOLCHAIN
-(nargo 1.0.0-beta.13 + bb 1.2.0). The aggregator source is not implicated.** Established by control,
-not inference:
+**✅ SOLVED 2026-08-01 — THE BUG WAS `proof_type`, AND RECURSION WORKS ON THE PINNED TOOLCHAIN.**
+`bb verify` now accepts an aggregation of two REAL `withdraw_identity` proofs on
+nargo 1.0.0-beta.13 + bb 1.2.0. **No toolchain change is needed.**
 
-| experiment | result |
-|---|---|
-| inner recursion proof, verified natively (`bb verify --honk_recursion 1`) | ✅ **verifies** |
-| outer circuit **without** the `verify_proof_with_type` call - identical shape, same 112/507-field inputs, same flags | ✅ **verifies** |
-| outer circuit **with** the call - every variant below | ❌ `Sumcheck failed!` |
+**THE ROOT CAUSE: two unrelated enumerations that are trivially conflated.**
+- bb's **CLI flag** `--honk_recursion` uses `1` = UltraHonk, `2` = UltraRollupHonk.
+- The **in-circuit** `proof_type` argument of `std::verify_proof_with_type` uses Aztec's
+  `PROOF_TYPE_*` set: **`PROOF_TYPE_HONK = 0`**, `PROOF_TYPE_ROLLUP_HONK = 4`,
+  `PROOF_TYPE_HONK_ZK = 6` (`barretenberg/noir/bb_proof_verification/src/lib.nr`).
 
-The control is what makes this conclusive: a circuit taking the SAME `[Field; 112]` vk, `[Field; 507]`
-proof, `key_hash` and public input, doing arithmetic over all of them and proved with the SAME
-`--oracle_hash keccak` pipeline, **verifies**. Adding one `verify_proof_with_type` call is the only
-change that breaks it. So this is not our inputs, not our flags, not the aggregator's size or fold.
+We passed `1` - which is in NEITHER position of the in-circuit set. **Use 0.**
+(`6` is not usable on beta.13: the circuit fails to build.)
 
-**Variants tried, ALL failing identically** - do not re-run these:
-- proof=507 / public_inputs=<circuit's own count>; `key_hash` = 0 **and** = `Poseidon2(vk,112)`
-- proof=491 / public_inputs=17 (pairing-point accumulator moved from the head of the proof into the
-  public inputs)
-- transcripts {keccak, poseidon2} x {`--honk_recursion 1`, none} x {`--init_kzg_accumulator`, none}
-- `--oracle_hash keccak` + `--honk_recursion 1`: writes **no vk at all** while exiting 0
+**WHY IT COST SO MUCH: every stage reports success.** The circuit COMPILES with a wrong
+`proof_type`, `nargo execute` SOLVES the witness, and `bb prove` WRITES a proof. Only `bb verify`
+objects, with `Sumcheck failed!` - which names sumcheck, not the parameter - and it **exits 0** while
+saying so. Same family as the `-k`-on-`prove` and the `--zk`-silently-ignored footguns in sec. 1.
 
-**`nargo execute` SUCCEEDS for every variant, including ones with plainly wrong array lengths.** The
-recursion opcode is discharged as a black box at witness-solving time, so witness success carries NO
-information here and cannot be used to discriminate between variants. Only `bb verify`'s TEXT can -
-and it exits 0 on failure.
+**⚠️ AN EARLIER REVISION OF THIS SECTION CONCLUDED "verify_proof_with_type IS BROKEN ON THIS
+TOOLCHAIN" AND CALLED FOR A VERSION BUMP. THAT WAS WRONG** and is removed rather than left to
+mislead. The reasoning looked strong - a control circuit consuming the same 112/507-field inputs
+verified, the inner proof verified natively, and only adding the call broke it - and every one of
+those observations was correct. They simply do not distinguish "the API is broken" from "we are
+calling it with a bad argument". A control that isolates a CALL does not isolate its ARGUMENTS.
 
-**THE ACTION IS A TOOLCHAIN CHANGE, NOT MORE CIRCUIT WORK.** The user reports (2026-08-01) a working
-recursion toolchain on another machine; get its exact `nargo` and `bb` versions and its verified
-invocation. Note the standing guard in `codegen-verifiers.sh` pins beta.13 + 1.2.0 **for the
-non-recursive circuits** and documents real silent-failure modes on neighbours - so a bump must be
-re-validated against ALL THREE of that script's checks (native verify, non-determinism/ZK, and a
-real proof accepted on-chain) for every existing circuit, not just the aggregator. Recursion working
-is a NEW requirement that the current pin was never chosen to satisfy.
-
-**HINTS GATHERED 2026-08-01 — read these before spending another hour:**
-
-1. **The INNER recursion proof VERIFIES natively.** `bb verify --scheme ultra_honk --honk_recursion 1
-   -k target/vk -p proof -i public_inputs` -> "Proof verified successfully". So the inner proof, the
-   112-field vk and the 507-field proof are all GOOD. **The fault is strictly in-circuit** - in what
-   `std::verify_proof_with_type` is being handed, not in the artifacts.
-2. **`--output_format fields` writes ONLY the JSON files - no binary `proof`/`public_inputs`.** So
-   `bb verify` answers "Unable to open file: target/public_inputs" and looks like a verification
-   failure when nothing was verified at all. Use `bytes_and_fields`. This wasted a cycle here.
-3. **The full outer flag matrix has been tried and ALL fail:** {keccak, poseidon2} x {--honk_recursion 1,
-   none} x {--init_kzg_accumulator, none}. `--oracle_hash keccak` + `--honk_recursion 1` writes **no vk
-   at all** while exiting 0.
-4. **The 16-field pairing-point accumulator NEVER appears.** The outer proof's `public_inputs` stays at
-   1 field under every combination. If recursion requires the outer circuit to expose that accumulator,
-   nothing we passed to bb caused it to be added - which is the most concrete anomaly on this list.
-5. **beta.13 artifacts have NO `recursive` field** (keys: noir_version, hash, abi, bytecode,
-   debug_symbols, file_map, names, brillig_names). Older Noir marked recursion-friendliness there.
-6. **The deleted `noir_dl_lib/src/recursion.nr` is PLONK-era, not a usable recipe** (recoverable at
-   `git show d727889^:backend/circuits/noir_dl_lib/src/recursion.nr`): `std::verify_proof` with
-   vk **114** fields and proof **93** fields. Different scheme, different lengths - it only confirms
-   that lengths are scheme-specific, and that `std::verify_proof` genuinely no longer exists.
-
-**THE ONE DIMENSION NOT YET TESTED** - try this first: the in-circuit `public_inputs` argument may
-need to CARRY the pairing-point accumulator (17 fields for the 1-public-input minimal case, 23 for
-withdraw_identity), or conversely the `proof` argument may need it STRIPPED (507 - 16 = 491). Every
-test so far passed proof=507 and public_inputs=<the circuit's own count>, which is the natural
-reading and may simply be wrong. Hint 4 is the reason to suspect this.
-
-**USER REPORTS A WORKING RECURSION TOOLCHAIN ON ANOTHER MACHINE (2026-08-01)** - get its exact
-`nargo`/`bb` versions and its working invocation before assuming ours can be made to work. See
-[[spv-doc-paths-are-from-another-machine]]: this repo already contains notes from a machine whose
-paths do not exist here, so "we sorted this already" may live in artifacts that were never committed.
+**THE PROOF-LENGTH CONSTANTS IN AZTEC'S `next` BRANCH DO NOT MATCH bb 1.2.0** - do not "fix" ours to
+match them. That library declares `ULTRA_VK_LENGTH_IN_FIELDS = 115`, `RECURSIVE_PROOF_LENGTH = 410`,
+`RECURSIVE_ZK_PROOF_LENGTH = 458`. **Measured on bb 1.2.0: vk = 112 fields, proof = 507.** Take the
+`PROOF_TYPE_*` values from that library; take the LENGTHS from measurement.
 
 **NEXT STEPS, in order:** (1) get noir-lang's own recursion example for beta.13 running UNCHANGED -
 if it fails, the toolchain is the answer and no amount of aggregator work helps; (2) only if it

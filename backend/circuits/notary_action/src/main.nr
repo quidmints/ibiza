@@ -33,7 +33,7 @@ global NOTARY_TREE_DEPTH: u32 = 32;
 
 /// `fnc = 0` selects INCLUSION. Passing 1 would prove the OPPOSITE - that this commitment is ABSENT
 /// from the notary tree - which is what a non-notary can prove and a notary cannot.
-global SMT_INCLUSION: u1 = 0;
+global SMT_INCLUSION: bool = false;
 
 /// The value an active notary's leaf carries. Non-zero means revoked, and the value IS the
 /// predicate, so one inclusion proof answers "is a notary" and "is not revoked" together.
@@ -88,11 +88,11 @@ fn main(
         STATUS_CLEAN,
         0,
         0,
-        0,
+        false,
         SMT_INCLUSION,
         siblings,
     );
-    assert(active == 1, "not an active notary: unregistered, revoked, or a bad inclusion witness");
+    assert(active == true, "not an active notary: unregistered, revoked, or a bad inclusion witness");
 }
 
 // =================================================================================================

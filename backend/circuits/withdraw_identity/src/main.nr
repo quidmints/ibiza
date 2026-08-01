@@ -47,7 +47,7 @@ global IDENTITY_TREE_DEPTH: u32 = 32;
 /// `fnc = 0` selects INCLUSION in smt_verifier_full. Named because passing 1 here would prove the
 /// OPPOSITE - that the identity is absent from the registry - which is what an UNREGISTERED party
 /// can prove and a registered one cannot.
-global SMT_INCLUSION: u1 = 0;
+global SMT_INCLUSION: bool = false;
 
 /// The value a clean identity carries. Non-zero means revoked, and the value IS the predicate.
 ///
@@ -118,10 +118,10 @@ fn main(
     // 2. Value conservation: existing value == withdrawn + carried into the change note.
     // Range-checked to 128 bits (ample for token amounts) via to_le_bits' own constraint, so the
     // subtraction below can't wrap the ~254-bit field and hide a fabricated balance.
-    let _value_bits: [u1; 128] = value.to_le_bits();
-    let _withdrawn_bits: [u1; 128] = withdrawn_value.to_le_bits();
+    let _value_bits: [bool; 128] = value.to_le_bits();
+    let _withdrawn_bits: [bool; 128] = withdrawn_value.to_le_bits();
     let new_value = value - withdrawn_value;
-    let _new_value_bits: [u1; 128] = new_value.to_le_bits();
+    let _new_value_bits: [bool; 128] = new_value.to_le_bits();
 
     // 3. Change note commitment.
     let out = commitment_hasher(new_value, label, out_nullifier, out_secret);
@@ -141,11 +141,11 @@ fn main(
         STATUS_CLEAN,
         0,
         0,
-        0,
+        false,
         SMT_INCLUSION,
         identity_siblings,
     );
-    assert(cleared == 1, "identity is unregistered or revoked, or the inclusion witness is invalid");
+    assert(cleared == true, "identity is unregistered or revoked, or the inclusion witness is invalid");
 }
 
 // =================================================================================================

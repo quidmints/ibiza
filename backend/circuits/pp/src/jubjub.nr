@@ -29,7 +29,7 @@
  * scheme was missing.
  */
 pub fn mul_point(base_x: Field, base_y: Field, scalar: Field) -> (Field, Field) {
-    let bits: [u1; 254] = scalar.to_be_bits::<254>();
+    let bits: [bool; 254] = scalar.to_be_bits::<254>();
 
     let mut result_x = base_x * (bits[0] as Field);
     let mut result_y = base_y * (bits[0] as Field);

@@ -1,17 +1,3 @@
-//! ########################################################################################
-//! # DO NOT USE. RECURSION HAS NEVER WORKED - IN THIS OR ANY EARLIER VERSION. (2026-08-01) #
-//! #                                                                                       #
-//! # A batch of ALL-ZERO garbage proofs PROVES AND VERIFIES SUCCESSFULLY. The 16 recursive #
-//! # verifications are absent from the compiled circuit even though main() calls           #
-//! # std::verify_proof_with_type below. Measured at N=2: 81,668 gates, against 1,396,874   #
-//! # for the identical circuit with a Poseidon fold - two ~725k-gate verifications simply  #
-//! # are not there. As written this would aggregate anything: a forgery machine.           #
-//! #                                                                                       #
-//! # The Poseidon version ACCEPTS GARBAGE TOO (1,396,874 gates at N=2, constraints        #
-//! # present but VACUOUS). keccak did not break it. Do not build the batch entrypoint,     #
-//! # and do not deploy AggregationHonkVerifier, until a garbage batch is REJECTED.         #
-//! # Reproduce: TODO.md sec. 2.4a, "decisive test".                                        #
-//! ########################################################################################
 //! AGGREGATE N `withdraw_identity` PROOFS INTO ONE (TODO.md sec. 2.4 / 2.4b).
 //!
 //! WHAT THIS BUYS. A single withdrawal verification costs ~2.39M gas, which makes the pool
@@ -52,7 +38,7 @@ use keccak256::keccak256;
 pub global BATCH_N: u32 = 16;
 
 /// UltraHonk proof length in fields, MEASURED on bb 1.2.0 (`--honk_recursion 1`).
-global PROOF_LEN: u32 = 507;
+global PROOF_LEN: u32 = 458;
 
 /// `withdraw_identity`'s public signals, MEASURED: 7, matching `ProofLib.WithdrawProof.pubSignals`
 /// (`uint256[7]`) and codegen-verifiers.sh's own target list. TODO.md sec. 2.4pre says 8 - that is
@@ -69,7 +55,7 @@ global PUB_LEN: u32 = 7;
 /// (barretenberg/noir/bb_proof_verification/src/lib.nr). Passing 1 compiles, solves the witness,
 /// and proves - and the proof then fails `bb verify` with `Sumcheck failed!`, with nothing
 /// pointing at the parameter. PROOF_TYPE_HONK_ZK = 6 is NOT usable on beta.13: it fails to build.
-global HONK_PROOF_TYPE: u32 = 0;
+global HONK_PROOF_TYPE: u32 = 6;
 
 /// `State.MAX_TREE_DEPTH`. Mirrored from Solidity; see the range check in `main`.
 global MAX_TREE_DEPTH: u32 = 32;

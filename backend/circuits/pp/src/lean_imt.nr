@@ -24,7 +24,7 @@ pub fn lean_imt_inclusion<let MAX_DEPTH: u32>(
     assert(actual_depth <= MAX_DEPTH);
 
     // Path bits of the leaf index (LSB = level 0), as in Circom's Num2Bits(maxDepth).
-    let indices: [u1; MAX_DEPTH] = leaf_index.to_le_bits();
+    let indices: [bool; MAX_DEPTH] = leaf_index.to_le_bits();
 
     let mut node = leaf;
     for i in 0..MAX_DEPTH {

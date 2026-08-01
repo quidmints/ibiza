@@ -12,7 +12,7 @@ use poseidon::poseidon::PoseidonHasher;
 // `switcher` inlined below - it is 3 lines, and copying it keeps `pp` free of any dependency on
 // the passport library, exactly as jubjub.nr/holder_root.nr already do.
 
-pub fn switcher(l: Field, r: Field, bit: u1) -> (Field, Field){
+pub fn switcher(l: Field, r: Field, bit: bool) -> (Field, Field){
     let aux = (r - l) * (bit as Field);
     (aux + l, -aux + r)
 }
@@ -67,7 +67,7 @@ fn smt_verifier_level(
     st_inew: Field,
     sibling: Field,
     new_1_leaf: Field,
-    lrbit: u1,
+    lrbit: bool,
     child: Field
 ) -> Field{
 
@@ -82,11 +82,11 @@ pub fn smt_verifier<let N_LEVELS: u32>(
     root: Field,
     leaf: Field,
     key: Field,
-    siblings: [Field; N_LEVELS]) -> u1{
+    siblings: [Field; N_LEVELS]) -> bool{
     
     let hash1_new = smt_hash1(key, leaf);
 
-    let key_bits: [u1; 254] = key.to_le_bits();
+    let key_bits: [bool; 254] = key.to_le_bits();
     
     let smt_lev_ins_out = smt_level_ins::<N_LEVELS>(siblings);
 
@@ -104,7 +104,7 @@ pub fn smt_verifier<let N_LEVELS: u32>(
     for i in 1..N_LEVELS{
         levels[N_LEVELS - 1 - i] = smt_verifier_level(sm_outs[N_LEVELS - 1 - i].1, sm_outs[N_LEVELS - 1 - i].0, siblings[N_LEVELS - 1 - i], hash1_new, key_bits[N_LEVELS - 1 - i], levels[N_LEVELS - i]);
     }
-    (levels[0] == root) as u1
+    (levels[0] == root)
 }
 
 
@@ -159,7 +159,7 @@ fn smt_verifier_level_full(
     sibling: Field,
     old_1_leaf: Field,
     new_1_leaf: Field,
-    lrbit: u1,
+    lrbit: bool,
     child: Field,
 ) -> Field {
     let switcher = switcher(child, sibling, lrbit);
@@ -193,10 +193,10 @@ pub fn smt_verifier_full<let N_LEVELS: u32>(
     value: Field,
     old_key: Field,
     old_value: Field,
-    is_old0: u1,
-    fnc: u1,
+    is_old0: bool,
+    fnc: bool,
     siblings: [Field; N_LEVELS],
-) -> u1 {
+) -> bool {
     let fnc_f = fnc as Field;
     let is0_f = is_old0 as Field;
 
@@ -205,7 +205,7 @@ pub fn smt_verifier_full<let N_LEVELS: u32>(
     let hash1_old = smt_hash1(old_key, old_value);
     let hash1_new = smt_hash1(key, value);
 
-    let key_bits: [u1; 254] = key.to_le_bits();
+    let key_bits: [bool; 254] = key.to_le_bits();
     let lev_ins = smt_level_ins::<N_LEVELS>(siblings);
 
     // (top, i0, iold, inew, na), seeded at "still traversing".
@@ -242,7 +242,7 @@ pub fn smt_verifier_full<let N_LEVELS: u32>(
         );
     }
 
-    (levels[0] == root) as u1
+    (levels[0] == root)
 }
 
 /*
@@ -268,7 +268,7 @@ fn ref_siblings_key7() -> [Field; 10] {
 #[test]
 fn test_inclusion_matches_circomlibjs() {
     assert(
-        smt_verifier::<10>(REF_ROOT, 77, 7, ref_siblings_key7()) == 1,
+        smt_verifier::<10>(REF_ROOT, 77, 7, ref_siblings_key7()) == true,
         "inclusion proof for key=7 was rejected",
     );
 }
@@ -280,7 +280,7 @@ fn test_inclusion_matches_circomlibjs() {
 #[test]
 fn test_rejects_wrong_value() {
     assert(
-        smt_verifier::<10>(REF_ROOT, 78, 7, ref_siblings_key7()) == 0,
+        smt_verifier::<10>(REF_ROOT, 78, 7, ref_siblings_key7()) == false,
         "a wrong VALUE was accepted",
     );
 }
@@ -288,7 +288,7 @@ fn test_rejects_wrong_value() {
 #[test]
 fn test_rejects_wrong_key() {
     assert(
-        smt_verifier::<10>(REF_ROOT, 77, 8, ref_siblings_key7()) == 0,
+        smt_verifier::<10>(REF_ROOT, 77, 8, ref_siblings_key7()) == false,
         "a wrong KEY was accepted",
     );
 }
@@ -296,7 +296,7 @@ fn test_rejects_wrong_key() {
 #[test]
 fn test_rejects_wrong_root() {
     assert(
-        smt_verifier::<10>(REF_ROOT + 1, 77, 7, ref_siblings_key7()) == 0,
+        smt_verifier::<10>(REF_ROOT + 1, 77, 7, ref_siblings_key7()) == false,
         "a wrong ROOT was accepted",
     );
 }
@@ -305,7 +305,7 @@ fn test_rejects_wrong_root() {
 fn test_rejects_tampered_sibling() {
     let mut sib = ref_siblings_key7();
     sib[0] = sib[0] + 1;
-    assert(smt_verifier::<10>(REF_ROOT, 77, 7, sib) == 0, "a tampered SIBLING was accepted");
+    assert(smt_verifier::<10>(REF_ROOT, 77, 7, sib) == false, "a tampered SIBLING was accepted");
 }
 
 /*
@@ -318,14 +318,14 @@ fn test_exclusion_empty_slot_matches_circomlibjs() {
     // key=5 is absent and the path terminates at an EMPTY subtree (isOld0 = 1).
     assert(
         smt_verifier_full::<10>(
-            REF_ROOT, 5, 0, 5, 0, 1, 1,
+            REF_ROOT, 5, 0, 5, 0, true, true,
             [
                 3538372437315232912232383076351801231931604997820687320170917796819460581158,
                 7623680454338960526645764969964785413027269598530557012829785131842723566171,
                 12556884404771194108685558266628964754582687227852416218991473495993258837549,
                 0, 0, 0, 0, 0, 0, 0,
             ],
-        ) == 1,
+        ) == true,
         "exclusion proof for absent key=5 (empty slot) was rejected",
     );
 }
@@ -335,12 +335,12 @@ fn test_exclusion_other_leaf_matches_circomlibjs() {
     // key=1024 is absent because key=2 (value 22) occupies the slot the path leads to.
     assert(
         smt_verifier_full::<10>(
-            REF_ROOT, 1024, 0, 2, 22, 0, 1,
+            REF_ROOT, 1024, 0, 2, 22, false, true,
             [
                 14615772771365257397421554110268415743234227304552007892570694122567980124822,
                 0, 0, 0, 0, 0, 0, 0, 0, 0,
             ],
-        ) == 1,
+        ) == true,
         "exclusion proof for absent key=1024 (other leaf occupies slot) was rejected",
     );
 }
@@ -349,7 +349,7 @@ fn test_exclusion_other_leaf_matches_circomlibjs() {
 fn test_full_verifier_still_does_inclusion() {
     // fnc = 0 must reproduce the inclusion gadget's result exactly.
     assert(
-        smt_verifier_full::<10>(REF_ROOT, 7, 77, 0, 0, 0, 0, ref_siblings_key7()) == 1,
+        smt_verifier_full::<10>(REF_ROOT, 7, 77, 0, 0, false, false, ref_siblings_key7()) == true,
         "smt_verifier_full rejected a valid INCLUSION proof",
     );
 }
@@ -361,19 +361,19 @@ fn test_full_verifier_still_does_inclusion() {
  */
 #[test(should_fail_with = "SMT exclusion claimed for a key that is present (old_key == key)")]
 fn test_exclusion_cannot_claim_a_present_key() {
-    let _ = smt_verifier_full::<10>(REF_ROOT, 7, 77, 7, 77, 0, 1, ref_siblings_key7());
+    let _ = smt_verifier_full::<10>(REF_ROOT, 7, 77, 7, 77, false, true, ref_siblings_key7());
 }
 
 #[test]
 fn test_exclusion_rejects_wrong_root() {
     assert(
         smt_verifier_full::<10>(
-            REF_ROOT + 1, 1024, 0, 2, 22, 0, 1,
+            REF_ROOT + 1, 1024, 0, 2, 22, false, true,
             [
                 14615772771365257397421554110268415743234227304552007892570694122567980124822,
                 0, 0, 0, 0, 0, 0, 0, 0, 0,
             ],
-        ) == 0,
+        ) == false,
         "exclusion accepted against a WRONG root",
     );
 }
@@ -384,12 +384,12 @@ fn test_exclusion_rejects_wrong_old_leaf() {
     // root must not match.
     assert(
         smt_verifier_full::<10>(
-            REF_ROOT, 1024, 0, 2, 23, 0, 1,
+            REF_ROOT, 1024, 0, 2, 23, false, true,
             [
                 14615772771365257397421554110268415743234227304552007892570694122567980124822,
                 0, 0, 0, 0, 0, 0, 0, 0, 0,
             ],
-        ) == 0,
+        ) == false,
         "exclusion accepted with a WRONG old_value",
     );
 }
@@ -405,7 +405,7 @@ fn test_exclusion_rejects_wrong_old_leaf() {
 #[test]
 fn test_exclusion_against_the_empty_tree() {
     assert(
-        smt_verifier_full::<20>(0, 12345, 0, 0, 0, 1, 1, [0; 20]) == 1,
+        smt_verifier_full::<20>(0, 12345, 0, 0, 0, true, true, [0; 20]) == true,
         "non-inclusion against an EMPTY revocation tree was rejected",
     );
 }
@@ -414,7 +414,7 @@ fn test_exclusion_against_the_empty_tree() {
 #[test]
 fn test_exclusion_against_empty_tree_any_key() {
     assert(
-        smt_verifier_full::<20>(0, 99999999, 0, 0, 0, 1, 1, [0; 20]) == 1,
+        smt_verifier_full::<20>(0, 99999999, 0, 0, 0, true, true, [0; 20]) == true,
         "non-inclusion against an EMPTY tree failed for a different key",
     );
 }
@@ -447,7 +447,7 @@ global ZERO_VALUE_ROOT: Field =
 fn test_inclusion_with_value_zero_is_provable() {
     // The "registered and clean" case must actually work, or the merged design is dead on arrival.
     assert(
-        smt_verifier_full::<10>(ZERO_VALUE_ROOT, 5, 0, 0, 0, 0, 0, [0; 10]) == 1,
+        smt_verifier_full::<10>(ZERO_VALUE_ROOT, 5, 0, 0, 0, false, false, [0; 10]) == true,
         "a genuine key->0 inclusion proof was rejected",
     );
 }
@@ -456,7 +456,7 @@ fn test_inclusion_with_value_zero_is_provable() {
 fn test_absent_key_cannot_be_proven_present_with_value_zero() {
     // THE TRAP. If this passed, every unregistered identity could withdraw.
     assert(
-        smt_verifier_full::<10>(ZERO_VALUE_ROOT, 6, 0, 0, 0, 0, 0, [0; 10]) == 0,
+        smt_verifier_full::<10>(ZERO_VALUE_ROOT, 6, 0, 0, 0, false, false, [0; 10]) == false,
         "an ABSENT key was proven included with value 0 - the merged tree gate is vacuous",
     );
 }
@@ -466,7 +466,7 @@ fn test_a_revoked_entry_cannot_claim_value_zero() {
     // THE OTHER TRAP. key=7 is present in REF_ROOT with value 77 - stand-in for a revocation
     // predicate. Claiming it holds 0 must fail, or revocation can be shrugged off.
     assert(
-        smt_verifier_full::<10>(REF_ROOT, 7, 0, 0, 0, 0, 0, ref_siblings_key7()) == 0,
+        smt_verifier_full::<10>(REF_ROOT, 7, 0, 0, 0, false, false, ref_siblings_key7()) == false,
         "a leaf with a NON-ZERO value was proven to hold 0 - revocation is escapable",
     );
 }
@@ -475,7 +475,7 @@ fn test_a_revoked_entry_cannot_claim_value_zero() {
 fn test_value_zero_inclusion_still_binds_the_root() {
     // A stale or invented root must not be accepted just because the value is 0.
     assert(
-        smt_verifier_full::<10>(ZERO_VALUE_ROOT + 1, 5, 0, 0, 0, 0, 0, [0; 10]) == 0,
+        smt_verifier_full::<10>(ZERO_VALUE_ROOT + 1, 5, 0, 0, 0, false, false, [0; 10]) == false,
         "key->0 inclusion accepted against the wrong root",
     );
 }

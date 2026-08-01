@@ -1883,6 +1883,23 @@ contract needs each withdrawal's public inputs to recompute the batch commitment
 | 64 | 41,284 | $3.72 |
 | 256 | 13,393 | $1.21 |
 
+**♻️ GAS TABLE RE-DERIVED 2026-08-01 with MEASURED bb 5.x proof sizes** (507 -> 286 fields, 16,224 ->
+9,152 bytes). The proof is BATCH-level calldata so it amortises over N; the 7 public signals are
+PER-withdrawal and do not. Model: `base/N + proof_bytes*16/N + 7*32*16`, base = 2.38M measured.
+
+| N | old model (507-field) | **re-derived (286-field)** | saving |
+|---|---|---|---|
+| 1 | 2,643,168 | **2,530,016** | 113,152 |
+| 4 | 663,480 | **635,192** | 28,288 |
+| **16** | 168,558 | **161,486** | 7,072 |
+| 64 | 44,828 | **43,060** | 1,768 |
+| 256 | 13,895 | **13,453** | 442 |
+
+At 30 gwei / $3,000 ETH: **N=16 = $14.53**, N=64 = $3.88. The smaller proof is worth ~7k gas per
+withdrawal at N=16 - real, but modest, because the proof amortises while the per-withdrawal SIGNAL
+calldata (3,584 gas) does not. **That signal term is now the floor**, and it is why N beyond ~64
+stops paying: at N=256 the base verify is only ~9k of the 13.5k total.
+
 **DECIDED (user, 2026-07-27): N=16.** It captures ~95% of the achievable saving. Beyond it the benefit decays as 1/N while prover
 cost grows linearly, and calldata becomes the floor (a third of the total by N=256). Start at 16;
 widen only if real volume justifies it — **a batch of 3 costs ~800k each, so at low volume the

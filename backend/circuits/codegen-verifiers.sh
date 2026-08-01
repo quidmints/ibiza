@@ -26,6 +26,22 @@
 # standalone on-chain verifier in this fusion must use the keccak transcript on all three of
 # prove / write_vk / write_solidity_verifier.
 #
+# ⚠️ bb 5.x CLI (migrated 2026-08-01). `--scheme` / `--oracle_hash` / `--honk_recursion` ARE GONE.
+# The single flag `-t/--verifier_target` now selects hash AND zk-ness together:
+#     -t evm                 keccak + ZK   <- every on-chain verifier here
+#     -t evm-no-zk           keccak, NO zk (LEAKS THE WITNESS - never for our circuits)
+#     -t noir-recursive      poseidon2 + ZK <- INNER proofs consumed by aggregate_withdrawals
+#     -t noir-recursive-no-zk  poseidon2, no zk
+# `-t evm` must be passed to write_vk, prove, verify AND write_solidity_verifier. Omitting it on the
+# LAST of those silently emits a verifier that disagrees with the proofs - it cost a debugging cycle
+# on 2026-08-01, and the failure surfaces only as a forge revert.
+#
+# ⚠️ EVERY FIXTURE, NOT ONE PER CIRCUIT. `withdraw_identity` alone backs THREE committed proofs
+# (withdraw_identity, withdraw_identity_wallet, withdraw_e2e) from three different witnesses, and
+# ragequit/title_holder each have a second. Regenerating only `<circuit>.proof` leaves the others
+# stale, they keep their OLD byte length, and the resulting forge failures look like a toolchain bug.
+# That is exactly what happened on 2026-08-01 and cost four wrong diagnoses. See FIXTURES below.
+#
 # TOOLCHAIN (pinned, do not drift). These MUST match REQUIRED_NARGO/REQUIRED_BB below - an earlier
 # revision of this header still advertised beta.1 / 0.82.2 while the guard already enforced
 # beta.13 / 1.2.0, so following the header got you rejected by the script twelve lines later:
@@ -61,8 +77,8 @@ set -euo pipefail
 # So this guard is not pedantry about versions - it is the only thing standing between a fresh
 # clone and artifacts that look fine and are not.
 # ---------------------------------------------------------------------------------------------
-REQUIRED_NARGO="1.0.0-beta.13"
-REQUIRED_BB="1.2.0"
+REQUIRED_NARGO="1.0.0-beta.26"
+REQUIRED_BB="5.1.0"
 
 actual_nargo="$(nargo --version 2>/dev/null | sed -n 's/^nargo version = //p' | head -1)"
 actual_bb="$(bb --version 2>/dev/null | tail -1 | sed 's/^v//')"
@@ -173,8 +189,7 @@ for target in "${TARGETS[@]}"; do
   pushd "${CIRCUITS_DIR}/${circuit}" >/dev/null
 
   nargo compile
-  bb_checked target/vk -- bb write_vk --scheme ultra_honk --oracle_hash keccak \
-    -b "target/${circuit}.json" -o target
+  bb_checked target/vk -- bb write_vk -t evm -b "target/${circuit}.json" -o target
   # ZERO KNOWLEDGE IS NON-NEGOTIABLE HERE, and on bb 1.x it is the DEFAULT - so no flag is passed
   # and NOTHING must ever add `--disable_zk`. (On 0.82.2 this needed an explicit `--zk`; an earlier
   # revision of this comment said "--zk IS NOT OPTIONAL" while the command below already, correctly,
@@ -185,8 +200,7 @@ for target in "${TARGETS[@]}"; do
   # exactly the unlinkability both circuits exist to provide. ZK costs ~+51% verify gas and +51
   # field elements of proof - that is the price of the property, not overhead to trim. The
   # determinism self-check below is what actually enforces this. See TODO.md sec. 2.17.
-  bb_checked "${dest}" -- bb write_solidity_verifier --scheme ultra_honk \
-    -k target/vk -o "${dest}"
+  bb_checked "${dest}" -- bb write_solidity_verifier -t evm -k target/vk -o "${dest}"
 
   # bb names every generated contract `HonkVerifier`; give each a distinct name so a single Forge
   # project can hold both. Only the top-level contract is renamed - the file-scoped libraries keep
@@ -223,8 +237,7 @@ for target in "${TARGETS[@]}"; do
     # writes a proof against a DIFFERENT key, which its own verifier then rejects with
     # `SumcheckFailed()`. That single missing flag masqueraded as a bb-version incompatibility for a
     # long time. The self-checks below would catch it, but pass it explicitly.
-    bb_checked target/proof -- bb prove --scheme ultra_honk --oracle_hash keccak \
-      -b "target/${circuit}.json" -w target/witness.gz -k target/vk -o target
+    bb_checked target/proof -- bb prove -t evm -b "target/${circuit}.json" -w target/witness.gz -k target/vk -o target
 
     # ----- SELF-VALIDATION: never emit an artifact we have not checked -----
     # A version guard alone is a proxy. These two checks test the ARTIFACT, so they hold even for a
@@ -232,8 +245,7 @@ for target in "${TARGETS[@]}"; do
 
     # (1) NATIVE VERIFY. bb 1.2.0 + nargo beta.1 reports proving success and emits a proof that bb's
     #     OWN verifier rejects. Only this check catches that; `bb prove`'s exit code does not.
-    if ! bb verify --scheme ultra_honk --oracle_hash keccak \
-         -k target/vk -p target/proof -i target/public_inputs >/dev/null 2>&1; then
+    if ! bb verify -t evm -k target/vk -p target/proof -i target/public_inputs >/dev/null 2>&1; then
       echo "ERROR: ${circuit}: bb generated a proof its own verifier REJECTS." >&2
       echo "       The prover/VK pair is incompatible with this circuit. Do NOT use these" >&2
       echo "       artifacts. See TODO.md sec. 1." >&2
@@ -248,8 +260,7 @@ for target in "${TARGETS[@]}"; do
     rm -rf target/_zkcheck_a target/_zkcheck_b
     mkdir -p target/_zkcheck_a target/_zkcheck_b
     for _d in a b; do
-      bb_checked "target/_zkcheck_${_d}/proof" -- bb prove --scheme ultra_honk --oracle_hash keccak \
-        -b "target/${circuit}.json" -w target/witness.gz -k target/vk \
+      bb_checked "target/_zkcheck_${_d}/proof" -- bb prove -t evm -b "target/${circuit}.json" -w target/witness.gz -k target/vk \
         -o "target/_zkcheck_${_d}" >/dev/null 2>&1
     done
     if cmp -s target/_zkcheck_a/proof target/_zkcheck_b/proof; then
@@ -282,6 +293,56 @@ PYEOF
 
   popd >/dev/null
 done
+
+
+# ─── FIXTURES: every committed proof, not one per circuit ──────────────────────────────────────
+# circuit : witness file : fixture name.  A circuit appears MULTIPLE times when several committed
+# proofs come from it under different witnesses. Regenerating only the first leaves the rest stale.
+EXTRA_FIXTURES=(
+  "withdraw_identity:Prover.wallet.toml:withdraw_identity_wallet"
+  "withdraw_identity:Prover.e2e.toml:withdraw_e2e"
+  "ragequit:Prover.e2e.toml:ragequit_e2e"
+  "title_holder:Prover.titleid1.toml:title_holder_id1"
+)
+
+echo
+echo "==> Extra fixtures (same circuits, different witnesses)"
+for entry in "${EXTRA_FIXTURES[@]}"; do
+  IFS=':' read -r circuit witness fixture <<<"${entry}"
+  pushd "${CIRCUITS_DIR}/${circuit}" >/dev/null
+  if [ ! -f "${witness}" ]; then
+    echo "ERROR: ${circuit}/${witness} missing - ${fixture}.proof cannot be regenerated." >&2
+    exit 1
+  fi
+  cp "${witness}" Prover.toml
+  nargo execute "w_${fixture}" >/dev/null
+  rm -rf "pf_${fixture}"; mkdir -p "pf_${fixture}"
+  bb_checked "pf_${fixture}/proof" -- bb prove -t evm \
+    -b "target/${circuit}.json" -w "target/w_${fixture}.gz" -k target/vk -o "pf_${fixture}"
+  # Same non-negotiable check as the primary fixtures: bb's own verifier must accept it.
+  if ! bb verify -t evm -k target/vk -p "pf_${fixture}/proof" -i "pf_${fixture}/public_inputs" >/dev/null 2>&1; then
+    echo "ERROR: ${fixture}: bb generated a proof its own verifier REJECTS." >&2
+    exit 1
+  fi
+  cp "pf_${fixture}/proof" "${CONTRACTS_DIR}/../test/fixtures/${fixture}.proof"
+  echo "  ${fixture}.proof  ($(( $(wc -c <"pf_${fixture}/proof") / 32 )) fields)"
+  popd >/dev/null
+done
+
+# GUARD: no committed fixture may be left at a stale length. Every .proof under test/fixtures must
+# have been written by THIS run, except the passport ones, which are still built on the old
+# toolchain (see TODO.md sec. 2.4a) and are deliberately excluded.
+echo
+echo "==> Fixture staleness check"
+_stale=0
+for f in "${CONTRACTS_DIR}/../test/fixtures"/*.proof; do
+  case "$(basename "$f")" in escrow_envelope*) continue;; esac
+  if [ "$f" -ot "${CIRCUITS_DIR}/codegen-verifiers.sh" ]; then
+    echo "  STALE: $(basename "$f") was not regenerated by this run" >&2; _stale=1
+  fi
+done
+[ ${_stale} -eq 0 ] || { echo "ERROR: stale fixtures above would fail forge with a misleading length error." >&2; exit 1; }
+echo "  all fixtures fresh"
 
 # Refresh the circuits BUNDLED INTO THE WALLET. These are the same ACIR artifacts the prover runs
 # on-device, and they are published nowhere, so the app ships them (see the wallet's

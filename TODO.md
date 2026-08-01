@@ -8476,8 +8476,20 @@ at registration") has no passport equivalent and needs its own home regardless.
   4. **Say what is NOT protected**: amount and timing correlation survive everything above. The repo
      already concedes the multiset leaks; the USER has never been told.
 
-  **Six mentions of "anonymity set" exist in this file and ZERO in the wallet's user-facing code.**
-  The concept is understood internally and invisible to the person relying on it.
+  **⚠️ CORRECTION (2026-08-02): my claim that the concept is absent from the wallet was a
+  LITERAL-STRING ARTIFACT.** I grepped for "anonymity" and reported zero. Searching the CONCEPT finds
+  it reasoned about explicitly in `src/pp/deposit.ts:35-38`: *"two users depositing the same total in
+  the same unit are indistinguishable... `Mixed` would emit 9 + 9x0.1, a shape few others will
+  share."* The thinking is present and correct. What is genuinely missing is only that it is never
+  SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
+  a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
+
+  **🔴 AND THAT COMMENT REVEALS A FAR WORSE UX PROBLEM: `Uniform` mode turns 9.9 ETH into 99 NOTES
+  OF 0.1** - which, given the sequential `submitDeposits` loop, is **99 transactions and 99 wallet
+  approvals for one deposit**. That is not a rough edge; it is unusable, and it is the DEFAULT-adjacent
+  path for any amount that is not a clean multiple. `depositBatch` is therefore not a nicety - without
+  it `Uniform` cannot ship at all. It also sharpens the timing tension above: 99 notes with randomised
+  delays is a deposit that takes hours.
 
 - 🔴 **`Entrypoint.depositBatch` — SPLITTING IS A UX PROBLEM TODAY, and only a CONTRACT change fixes
   it (2026-08-02).** `submitDeposits` (`src/pp/deposit.ts:209`) is a sequential loop: per planned note

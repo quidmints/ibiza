@@ -795,7 +795,46 @@ An SMT insert at depth 32 is ~32 hashes = **over 1M gas**. Whatever is decided f
 in an `internal`/assembly Poseidon is likely one of the largest single gas wins available in this
 repo, and it needs measuring in its own right.
 
-**✅ RESOLVED 2026-08-01 — INLINING FIXES IT. KEEP POSEIDON; DO NOT SWITCH THE FOLD TO KECCAK.**
+**🔴 RETRACTED 2026-08-01 — INLINING poseidon-solidity IS UNSAFE. The 11x measurement was real; the
+conclusion drawn from it was wrong.** Making `hash` `internal` and migrating `Poseidon.sol` to it
+**broke 31 tests**, with hashes returning ZERO
+(`test_ZeroValueLeafMatchesTheCircuitRoot`: `0x0000... != 0x22cc...`). Reverted; 404 tests green again.
+The inline copies, their generator and their differential suite were DELETED rather than left as a
+trap.
+
+**ROOT CAUSE - the library reads FIXED MEMORY ADDRESSES.** `PoseidonT3.sol:22-23`:
+```
+let state1 := add(mod(mload(0x80), F), ...)
+let state2 := add(mod(mload(0xa0), F), ...)
+```
+`0x80` is where Solidity's ABI decoder places arguments **when the function is the callee of an
+EXTERNAL call**. That is a hidden precondition of being `public`. Inlined, the arguments live wherever
+the caller's memory layout puts them, so it hashes whatever happens to sit at `0x80`.
+
+**WHY THE DIFFERENTIAL SUITE PASSED ANYWAY - a test that was green for the wrong reason.** It called
+the inlined library as the FIRST allocation in a trivial test body, so the array landed at `0x80` by
+coincidence and the hidden precondition was accidentally satisfied. Eight tests, five arities, 512
+fuzz runs, all passing, all meaningless for the property that mattered. **The lesson generalises:
+a differential test must exercise the function in a REALISTIC CALLER, not in isolation** - isolation
+is exactly the condition that can satisfy an unstated assumption.
+
+**THE GAS PROBLEM IS STILL OPEN AND STILL LARGE** (32,549 per 2-input hash; a depth-32 SMT insert is
+over 1M gas). Options, none yet measured:
+1. **Rewrite the assembly** to read from the parameter's actual memory offset instead of `0x80`.
+   That is a real change to audited crypto - it needs the differential suite REBUILT to call it from
+   a caller with pre-allocated memory, which is the case that just failed.
+2. **Use a Poseidon written for internal use** (e.g. an `internal`-first implementation) and pin it
+   against the current one, since the whole repo's commitments depend on the exact function.
+3. **Leave it.** The `public`/DELEGATECALL cost is at least CORRECT, and correctness here is worth
+   more than gas: every circuit, the wallet and every SMT assume ONE Poseidon.
+
+**FOR THE AGGREGATION FOLD SPECIFICALLY, this reopens the keccak question** (sec. 2.4a): with
+Poseidon stuck at ~288k gas/withdrawal, a keccak fold (a few thousand gas on-chain, ~34% more circuit
+gates) is again the leading option. It forks the hash in ONE place, which is a smaller blast radius
+than modifying the Poseidon every commitment depends on. **Decide this before building the batch
+entrypoint.**
+
+**Superseded conclusion, kept so the error is not repeated:**
 Identical maths, `public` -> `internal` (so the compiler inlines instead of DELEGATECALLing), via
 sed'd copies in `contracts/libraries/inline/`:
 

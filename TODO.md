@@ -968,6 +968,40 @@ is just not sufficient, and it changed the failure from "cannot prove" to "prove
   toolchain is fixed; do not treat the EIP-170 measurement as transferable (the gate count will
   change once recursion is real, though sec. 2.4pre's N-independence claim suggests the SIZE will not).
 
+**EVERY INSTALLED bb TESTED 2026-08-01 - NONE BINDS RECURSION.** Six are on this machine; the
+minimal pair was run against all of them with an ALL-ZERO inner proof:
+
+| bb | result on beta.13 artifacts |
+|---|---|
+| 0.82.2 | writes no vk |
+| **0.87.0** | **crashes: "Trying to invert zero in the field"** - cannot consume beta.13 artifacts |
+| 1.0.0 | **garbage ACCEPTED** |
+| **1.2.0 (our pin)** | **garbage ACCEPTED** |
+| 5.0.0 | writes no vk |
+| 5.1.0 | writes no vk |
+
+⚠️ **A NEAR-MISS WORTH RECORDING: 0.87.0 first appeared to REJECT the garbage** ("no proof produced"),
+which looked like the breakthrough. It was a **CLI error** - `-k` is not accepted on `prove` before
+bb 1.x (`codegen-verifiers.sh` records exactly this), so the command never ran. Re-run with that
+version's own syntax and it crashes on both real and garbage alike. **Any future "version X rejects
+garbage" claim must be checked for this**: a tool that fails to RUN looks identical to a constraint
+that fires, and only the real-proof control distinguishes them. Always test BOTH witnesses.
+
+**THE CONCRETE PATH OUT, in order:**
+1. **`nargo` beta.13 is 13 releases behind - latest is v1.0.0-beta.26 (2026-07-30)** and `noirup` is
+   installed at `~/.nargo/bin/noirup`. Install a recent beta into a SEPARATE toolchain and run the
+   minimal pair against it with its matching `bb`. Recursion is heavily used by Aztec, so a working
+   pair certainly exists; ours simply predates the fix or misses a required flag.
+2. Only if that works, plan the migration - and note it is a REAL migration, not a bump:
+   `codegen-verifiers.sh` pins beta.13 + 1.2.0 because neighbouring versions fail SILENTLY for the
+   five standalone circuits (beta.1 emits proofs bb's own verifier rejects; beta.22+ ICEs on
+   `query_identity`/`register_identity`). All three of that script's checks must pass for every
+   circuit before the pin moves.
+3. The `rmin` harness in the scratchpad is the acceptance test and should be committed somewhere
+   durable: inner circuit, outer circuit, and BOTH witnesses (`Prover.real.toml`, `Prover.junk.toml`).
+   Pass = real verifies AND garbage is refused. It is small, fast, and it is the only thing that has
+   reliably told the truth in this investigation.
+
 **THE ONE ACTION: get the working recursion toolchain.** The user reported (2026-08-01) having sorted
 recursion on another machine - obtain its exact `nargo` and `bb` versions and its verified
 invocation. **The acceptance test is fixed and non-negotiable: the minimal pair must REJECT an

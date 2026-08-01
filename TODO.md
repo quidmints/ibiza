@@ -8448,6 +8448,25 @@ at registration") has no passport equivalent and needs its own home regardless.
 
 ## 3. Parallel work — not blocked
 
+- 🔴 **`Entrypoint.depositBatch` — SPLITTING IS A UX PROBLEM TODAY, and only a CONTRACT change fixes
+  it (2026-08-02).** `submitDeposits` (`src/pp/deposit.ts:209`) is a sequential loop: per planned note
+  it calls `entrypoint.deposit(...)` and then **`await tx.wait()`** before the next. So one 3.7314 ETH
+  deposit becomes **N transactions, N wallet approval prompts, and N block confirmations in series** -
+  a six-note split is six signatures and a minute-plus of waiting. That is not a client-side choice:
+  **`Entrypoint` exposes only two `deposit` overloads and no batch entrypoint**, so the wallet has no
+  other surface to call.
+  **THE FIX:** `depositBatch(uint256[] precommitments, uint256[] values)` payable, requiring
+  `sum(values) == msg.value`. One approval, one confirmation, and ONE 21k base cost instead of N.
+  **It costs no privacy** - every note already comes from the same depositor address, so batching
+  changes nothing an observer could not already join; it only stops the wallet paying N times for a
+  linkage it never avoided.
+  **WATCH THE LABEL NONCE:** the current sequential design exists because `label` derives from an
+  incrementing pool nonce and the wallet must attribute labels to notes. Inside one transaction the
+  nonces are still consecutive, so the wallet CAN predict them - but that must be verified against
+  `_deposit`'s actual derivation, not assumed, or the wallet will mis-attribute every note in a batch.
+  **Also preserve:** `usedPrecommitments` pre-checks and the refusal to swallow partial failure - a
+  batch reverting whole is fine, silently skipping a note is not.
+
 - ✅ **Denomination splitting — DONE 2026-07-27** (`src/pp/deposit.ts`). This turned out to be TWO
   gaps: the wallet had **no deposit path at all** — it could discover, prove and withdraw, but never
   create a note. Splitting is the DEFAULT, not an option, since a wallet that quietly deposits

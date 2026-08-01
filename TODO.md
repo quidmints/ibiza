@@ -968,7 +968,33 @@ is just not sufficient, and it changed the failure from "cannot prove" to "prove
   toolchain is fixed; do not treat the EIP-170 measurement as transferable (the gate count will
   change once recursion is real, though sec. 2.4pre's N-independence claim suggests the SIZE will not).
 
-**🚦 MIGRATION RUN 2026-08-01 - GOT 6 OF 7 CIRCUITS COMPILING AND `pp` 87/87 GREEN ON beta.26, THEN
+**🚦 MIGRATION RUN 2 (2026-08-01) - 6/7 COMPILE, `pp` 87/87 GREEN, BUT ALL 80 `noir_dl_lib` TESTS
+VANISHED. Reverted. THE REMAINING WORK IS NOW EXACTLY ONE THING.**
+
+`./verify-migration.sh` output: `pp` ✅ all 87 present and green; `noir_dl_lib` ❌ **TESTS SILENTLY
+DROPPED (80)** - the ENTIRE suite. `nargo compile` for that crate PASSED, because **`nargo compile`
+does not build `#[test]` code**. So the library compiles, the circuits that depend on it compile, and
+80 tests - `sigver` ECDSA across 8 curves, `rsa`/`rsa_pss`, `sha1/224/384/512`, `jubjub`, `smt`,
+`query` disclosure - simply stop existing. **Nothing except this gate would have shown that.**
+
+**THE FIVE SOURCE FIXES ARE NOW COMPLETE AND KNOWN-GOOD** - 6 of 7 circuits compile with them, and
+`pp` passes 87/87, which is strong evidence the SMT rewrite preserves behaviour. Encoded as a
+repeatable script (see the run below); the two forms that caused repeat rounds are:
+- the `== 1` may sit on the **CLOSING line** of a multi-line call (`) == 1,`), not on the line naming
+  the function - a filter keyed on `smt_verifier` misses it;
+- args may be packed onto ONE line (`REF_ROOT, 5, 0, 5, 0, 1, 1,`) as well as one-per-line, and
+  `smt_verifier_full`'s **args 4-5 stay `Field`** while **6-7 become `bool`**.
+
+**WHAT REMAINS - a single, bounded task:** make `noir_dl_lib`'s TEST code compile on beta.26. Run
+`cd noir_dl_lib && nargo test 2>&1 | grep -m5 error` to get the list; it will be the same `u1`/`bool`
+shapes inside `#[test]` bodies plus, quite possibly, its vendored `bignum`/`big_curve` dependencies
+needing their own tag bumps. **`escrow_envelope`'s ICE is the only other open item** and is plausibly
+an upstream compiler bug worth reducing and reporting.
+
+**ALWAYS run `nargo test`, never `nargo compile`, to judge a circuit crate's health.** Compile
+success on a crate with tests is close to meaningless - this run proves it.
+
+**🚦 MIGRATION RUN 1 - GOT 6 OF 7 CIRCUITS COMPILING AND `pp` 87/87 GREEN ON beta.26, THEN
 `verify-migration.sh` SAID **NOT VERIFIED** AND IT WAS REVERTED. The gate worked.**
 
 How far it got, and the exact fixes (all mechanical once found - redo them, do not rediscover them):

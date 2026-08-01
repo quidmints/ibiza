@@ -25,7 +25,7 @@
 mod inner_vk;
 
 use inner_vk::WITHDRAW_IDENTITY_VK;
-use poseidon::poseidon::bn254;
+use keccak256::keccak256;
 
 /// Withdrawals per batch. DECIDED: 16 (sec. 2.4b).
 ///
@@ -63,32 +63,46 @@ global MAX_TREE_DEPTH: u32 = 32;
 /// Index of `state_tree_depth` within the public signals.
 global IDX_STATE_TREE_DEPTH: u32 = 4;
 
-/// Fold one withdrawal's public signals into the running commitment.
+/// The batch commitment: ONE keccak over every withdrawal's signals, big-endian, in order.
 ///
-/// ORDER-BINDING IS THE POINT. The commitment must pin exactly these N signal-sets IN ORDER, so the
-/// contract can walk its calldata and arrive at the same field element. A commutative combiner (a
-/// sum, an XOR) would let a batcher permute withdrawals - or swap one user's recipient context onto
-/// another's nullifier - while still matching. Chaining the accumulator through each hash is what
-/// makes position part of the preimage.
+/// WHY KECCAK AND NOT POSEIDON, WHICH THE REST OF THIS REPO USES. The choice is decided by the
+/// CONTRACT side, not this one. A Poseidon fold costs 287,969 gas PER WITHDRAWAL to recompute
+/// on-chain (measured: PoseidonT6 + PoseidonT5, ~144k each) against a ~152,846 budget for the whole
+/// withdrawal - it would have been 65% of the cost. keccak is a native EVM opcode: ~2k gas for the
+/// entire batch. In here it costs ~511k extra gates on an ~11.6M-gate circuit (+4.4%), and that is
+/// paid by the BATCHER, whose machine already carries ~27 GB - never by the user, whose
+/// `withdraw_identity` proof is untouched.
 ///
-/// ARITY IS DICTATED BY THE CONTRACT, not by taste. There are 8 values to absorb (accumulator + 7
-/// signals) and `poseidon-solidity` tops out at `PoseidonT6` = 5 inputs, so this is hash_5 then
-/// hash_4. Poseidon **v1** (`poseidon::poseidon::bn254`) is used, NOT Poseidon2: v1 is what
-/// `poseidon-solidity` implements and what the rest of this repo already matches against it
-/// (pp/src/commitment.nr). Using Poseidon2 here would compile, prove, and produce a commitment the
-/// contract cannot reproduce.
-fn fold_signals(acc: Field, signals: [Field; PUB_LEN]) -> Field {
-    let a = bn254::hash_5([acc, signals[0], signals[1], signals[2], signals[3]]);
-    bn254::hash_4([a, signals[4], signals[5], signals[6]])
-}
-
-/// The batch commitment over all N withdrawals, from a zero accumulator.
+/// This does NOT contradict Poseidon's use elsewhere. Tree and note commitments are hashed
+/// REPEATEDLY IN-CIRCUIT (a depth-32 path is ~32 hashes: ~8k Poseidon constraints vs ~4.8M keccak),
+/// and they are DURABLE - changing them would strand every existing note. This commitment is hashed
+/// ONCE per batch on each side and is TRANSIENT: it lives for one transaction and is never stored.
 ///
-/// Exposed so the batcher and the contract-side test can compute it the same way the circuit does.
+/// SERIALISATION IS THE SILENT FAILURE MODE. Each signal is 32 big-endian bytes, laid out exactly as
+/// Solidity's `abi.encodePacked(uint256[])`. A mismatch produces a commitment the contract simply
+/// cannot reproduce, with nothing to point at the cause - which is what `BatchCommitmentTest`'s
+/// circuit-emitted fixture exists to catch.
+///
+/// REDUCTION MOD THE FIELD IS AUTOMATIC AND DELIBERATE. keccak yields 256 bits; BN254's field is
+/// ~254, so the contract takes `uint256(keccak256(...)) % SNARK_SCALAR_FIELD` (the same treatment
+/// `PrivacyPool._contextFor` already gives `context`). Accumulating the digest bytes with `Field`
+/// arithmetic below reproduces that exactly, because `Field` operations ARE mod p - no explicit
+/// reduction, and no risk of the two sides reducing differently.
 pub fn batch_commitment(public_inputs: [[Field; PUB_LEN]; BATCH_N]) -> Field {
-    let mut acc: Field = 0;
+    let mut bytes: [u8; BATCH_N * PUB_LEN * 32] = [0; BATCH_N * PUB_LEN * 32];
     for i in 0..BATCH_N {
-        acc = fold_signals(acc, public_inputs[i]);
+        for j in 0..PUB_LEN {
+            let be: [u8; 32] = public_inputs[i][j].to_be_bytes();
+            for k in 0..32 {
+                bytes[(i * PUB_LEN + j) * 32 + k] = be[k];
+            }
+        }
+    }
+    let digest: [u8; 32] = keccak256(bytes, BATCH_N * PUB_LEN * 32);
+
+    let mut acc: Field = 0;
+    for k in 0..32 {
+        acc = acc * 256 + digest[k] as Field;
     }
     acc
 }
@@ -186,3 +200,5 @@ fn depth_that_truncates_to_a_legal_value_is_rejected() {
     // so the aggregator must not.
     assert_depth_in_range(4294967301);
 }
+
+

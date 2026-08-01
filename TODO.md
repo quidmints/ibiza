@@ -928,7 +928,38 @@ in-circuit hash cost is nearly irrelevant; the contract pays real money per hash
 everything. Poseidon is optimised for the side that does not matter here. Inlining cannot rescue it:
 that is a ~3,400 gas saving against ~29,000 of inherent arithmetic per hash (see below).
 
-**THE CHANGE TO MAKE** (not yet applied - do it as the ONE money-path change in its run):
+**⚠️ KECCAK FOLD APPLIED TO THE CIRCUIT 2026-08-01 - AND IT PRODUCED AN UNEXPLAINED ANOMALY. DO NOT
+TREAT IT AS WORKING.** The 5 circuit tests still pass and the fold logic is right, but the falsifiable
+prediction FAILED:
+
+| | before (Poseidon fold) | predicted | **actual** |
+|---|---|---|---|
+| circuit_size | 11,610,552 | ~12.16M | **550,404** |
+| acir_opcodes | 13,211 | - | **55,811** |
+| artifact | 2,285,971 B | - | **1,041,969 B** |
+
+550,404 is almost exactly the keccak fold measured ALONE (550,220). **The 16 recursive verifications
+have disappeared from the circuit**, even though `main` still calls `std::verify_proof_with_type` at
+`src/main.nr:145` and a clean `rm -rf target && nargo compile` reproduces it. ACIR opcodes went UP
+(keccak adds many) while circuit_size collapsed - so this is not a failed compile, it is bb no longer
+expanding the recursion constraints.
+
+**A circuit that silently stops verifying its inner proofs is the single worst failure available
+here** - it would aggregate anything. This MUST be understood before the contract side is touched.
+Hypotheses, none tested: the dependency swap (`poseidon` -> `keccak256`) changed something about how
+the recursion opcode is emitted; `bb gates` needs a flag to expand recursion that the larger circuit
+previously triggered incidentally; or the keccak intrinsic interacts with the recursion opcode's
+handling. **The decisive test is cheap and already built: re-run the N=2 end-to-end
+(witness -> prove -> `bb verify`) from sec. 2.4a. If a proof still verifies against two REAL
+withdraw_identity proofs, the recursion is intact and only the GATE ACCOUNTING changed; if it now
+verifies with GARBAGE inner proofs, the constraints are genuinely gone.** Run that before anything else.
+
+**The contract side was deliberately NOT changed** - `BatchCommitmentLib` is still Poseidon, so the
+circuit and contract now DISAGREE and `BatchCommitmentTest`'s fixture is stale by design. Do not
+"fix" that test until the anomaly above is resolved; it is currently the correct state of a
+half-applied change.
+
+**THE CHANGE TO MAKE** (contract half not yet applied - do it as the ONE money-path change in its run):
 - `aggregate_withdrawals`: replace `fold_signals`/`batch_commitment` with a single keccak over the N x 7
   signals serialised big-endian, exactly as `abi.encodePacked` lays them out, and expose the digest.
   Mind the field/`bytes32` boundary - the public input is a `Field`, so the digest must be reduced

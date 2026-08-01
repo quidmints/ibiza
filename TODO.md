@@ -1857,6 +1857,34 @@ and checks each withdrawal's real signals. The fold was deliberately shaped so i
 `PoseidonT6` = 5 inputs. Using Poseidon2 would have compiled, proved, and produced a commitment the
 contract could never reproduce.
 
+### 2.4c-impl THE BATCH ENTRYPOINT EXISTS (2026-08-01) - built, compiling, PARTLY tested
+
+**`PrivacyPool.withdrawBatch(Withdrawal[], uint256[7][], bytes)`** settles N withdrawals against one
+aggregation proof. Plus `lib/BatchVerifierLib.sol` (verification half) and `lib/BatchCommitmentLib.sol`
+(the keccak fold, pinned to the circuit by a circuit-emitted fixture). **411 forge tests pass.**
+
+**DESIGN POINTS THAT MUST NOT BE UNDONE:**
+- **Every policy check `validWithdrawal` makes is repeated per withdrawal.** The batch proof shows
+  only that N valid `withdraw_identity` proofs exist and that their signals hash to the verifier's one
+  public input. Aggregation amortises the PROOF check; it must NEVER amortise the POLICY checks.
+- **The context comparison in `withdrawBatch` is LOAD-BEARING**, unlike the identically-shaped one in
+  `validWithdrawal` that is labelled DIAGNOSTIC ONLY. `withdraw` binds by SUBSTITUTING context into
+  the verifier inputs; the aggregation verifier takes ONE input, so here the binding is: signals are
+  folded into the committed value, so each set's context must equal the one derived from ITS
+  withdrawal. **Deleting that loop by analogy lets a batcher redirect every payout.**
+- **No `msg.sender == processooor` check**, deliberately - the submitter is the batcher, who is not
+  the payee. Safe because the payout target comes from the PROVEN withdrawal.
+- **The depth check is intentionally ABSENT** here: the aggregation circuit constrains it on the full
+  field, which is stronger. The single path still needs its own.
+- **Root memo:** each DISTINCT state/identity root is checked once, not per withdrawal
+  (`_isKnownRoot` walks history; `isValidRoot` is an external call).
+
+**🔴 UNTESTED, DO NOT DEPLOY ON THE CURRENT SUITE:**
+1. **`withdrawBatch` itself is never called by any test** - all four revert paths unexercised.
+2. **The happy path** needs a real N=16 proof (~27 GB) - impossible on a dev machine.
+3. **Double-spend ACROSS a batch** (two withdrawals sharing a nullifier) is unproven.
+`test/pool/WithdrawBatchGuards.t.sol` pins only the commitment PROPERTIES the guards rest on.
+
 ### 2.4b Aggregation sizing, infra and UX — what N to pick and what it costs
 
 **N=256 flat is INFEASIBLE; tree-structured recursion makes it cheap.** Proving memory measured at

@@ -8448,6 +8448,37 @@ at registration") has no passport equivalent and needs its own home regardless.
 
 ## 3. Parallel work — not blocked
 
+- 🔴🔴 **THE ANONYMITY SET IS THE REAL LIMIT, AND THE WALLET NEVER TELLS THE USER ITS SIZE
+  (2026-08-02). This is the most dangerous gap in the privacy story, because it is a FALSE ASSURANCE
+  rather than a missing feature.**
+
+  Splitting, stealth addresses and ZK proofs all protect the same thing: WHICH deposit a withdrawal
+  came from. **None of them help if there are few deposits to hide among.** At launch the set is
+  approximately one, and the guarantee is approximately zero - while the UI says "private".
+
+  **TIMING MAKES IT WORSE, and the current design maximises the signal.** `submitDeposits` fires N
+  transactions back-to-back from ONE address. In a quiet pool that streak is unmistakably one
+  person's split: an observer reads the count, the denominations and the total. Two users happening
+  to deposit simultaneously is exactly what early volume does NOT provide. (Note the address is
+  shared across the streak anyway - so batching into `depositBatch` costs nothing here. The leak is
+  the STREAK'S EXISTENCE and its shape, not its transaction count.)
+
+  **WHAT MUST BE BUILT - and it is a UX obligation, not a nicety:**
+  1. **Compute and SHOW the current anonymity set** - deposits sharing each denomination, at deposit
+     time and again at withdrawal time. The pool's own state has this; nothing new is needed to
+     measure it.
+  2. **Refuse, or warn hard, below a threshold.** A wallet that accepts a deposit into a set of 3
+     while presenting a privacy UI is lying to its user. Match `allowRemainder: false`'s posture -
+     raise rather than silently do the unsafe thing.
+  3. **Decorrelate timing** - randomised delay between notes, or deposit-on-a-schedule, so a streak
+     is not a signature. Directly at odds with `depositBatch`'s one-click UX; **that tension must be
+     decided deliberately, not settled by whichever gets built first.**
+  4. **Say what is NOT protected**: amount and timing correlation survive everything above. The repo
+     already concedes the multiset leaks; the USER has never been told.
+
+  **Six mentions of "anonymity set" exist in this file and ZERO in the wallet's user-facing code.**
+  The concept is understood internally and invisible to the person relying on it.
+
 - 🔴 **`Entrypoint.depositBatch` — SPLITTING IS A UX PROBLEM TODAY, and only a CONTRACT change fixes
   it (2026-08-02).** `submitDeposits` (`src/pp/deposit.ts:209`) is a sequential loop: per planned note
   it calls `entrypoint.deposit(...)` and then **`await tx.wait()`** before the next. So one 3.7314 ETH

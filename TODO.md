@@ -671,6 +671,41 @@ a recursive proof. **There may be no evidence recursion has ever worked end-to-e
 the pinned toolchain (beta.13 + bb 1.2.0) supports standalone proving without that implying it
 supports recursion.
 
+**🔴 CONCLUSION 2026-08-01 — `std::verify_proof_with_type` IS BROKEN ON THIS PINNED TOOLCHAIN
+(nargo 1.0.0-beta.13 + bb 1.2.0). The aggregator source is not implicated.** Established by control,
+not inference:
+
+| experiment | result |
+|---|---|
+| inner recursion proof, verified natively (`bb verify --honk_recursion 1`) | ✅ **verifies** |
+| outer circuit **without** the `verify_proof_with_type` call - identical shape, same 112/507-field inputs, same flags | ✅ **verifies** |
+| outer circuit **with** the call - every variant below | ❌ `Sumcheck failed!` |
+
+The control is what makes this conclusive: a circuit taking the SAME `[Field; 112]` vk, `[Field; 507]`
+proof, `key_hash` and public input, doing arithmetic over all of them and proved with the SAME
+`--oracle_hash keccak` pipeline, **verifies**. Adding one `verify_proof_with_type` call is the only
+change that breaks it. So this is not our inputs, not our flags, not the aggregator's size or fold.
+
+**Variants tried, ALL failing identically** - do not re-run these:
+- proof=507 / public_inputs=<circuit's own count>; `key_hash` = 0 **and** = `Poseidon2(vk,112)`
+- proof=491 / public_inputs=17 (pairing-point accumulator moved from the head of the proof into the
+  public inputs)
+- transcripts {keccak, poseidon2} x {`--honk_recursion 1`, none} x {`--init_kzg_accumulator`, none}
+- `--oracle_hash keccak` + `--honk_recursion 1`: writes **no vk at all** while exiting 0
+
+**`nargo execute` SUCCEEDS for every variant, including ones with plainly wrong array lengths.** The
+recursion opcode is discharged as a black box at witness-solving time, so witness success carries NO
+information here and cannot be used to discriminate between variants. Only `bb verify`'s TEXT can -
+and it exits 0 on failure.
+
+**THE ACTION IS A TOOLCHAIN CHANGE, NOT MORE CIRCUIT WORK.** The user reports (2026-08-01) a working
+recursion toolchain on another machine; get its exact `nargo` and `bb` versions and its verified
+invocation. Note the standing guard in `codegen-verifiers.sh` pins beta.13 + 1.2.0 **for the
+non-recursive circuits** and documents real silent-failure modes on neighbours - so a bump must be
+re-validated against ALL THREE of that script's checks (native verify, non-determinism/ZK, and a
+real proof accepted on-chain) for every existing circuit, not just the aggregator. Recursion working
+is a NEW requirement that the current pin was never chosen to satisfy.
+
 **HINTS GATHERED 2026-08-01 — read these before spending another hour:**
 
 1. **The INNER recursion proof VERIFIES natively.** `bb verify --scheme ultra_honk --honk_recursion 1

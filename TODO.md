@@ -8490,6 +8490,35 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **🗺️ LEAK INVENTORY (2026-08-02), ordered by how much they actually buy an attacker. Amount
+  uniformity is NOT near the top, and treating it as the privacy story is the mistake.**
+
+  **A. NETWORK LAYER - unaddressed anywhere, and it defeats everything above it.** Every on-chain
+  precaution is void if one party sees your IP at both ends. Nothing in the wallet mentions Tor, a
+  proxy, or per-session RPC rotation. The RPC provider sees the IP that scanned for notes and, if
+  self-submitting, the IP that withdrew. **This is the biggest gap and it is not on any list.**
+
+  **B. THE RELAYER sees a withdrawal before it lands** - recipient, amount, and the connecting IP.
+  It cannot steal (context binds the payout) but it is a full deanonymisation oracle. ERC-4337
+  would REPLACE this party rather than add capability - that, not UX, is its actual argument.
+
+  **C. RPC BUCKET DISCLOSURE - documented and mild.** `discovery.ts` queries only the buckets your
+  candidates fall into, which "tells the RPC provider which buckets you care about"; `scanAllBuckets`
+  downloads everything instead. The comment is honest and the bucket is coarse and shared. **But the
+  private option is OFF by default and the user is never offered the choice.**
+
+  **D. AMOUNT AND TIMING - second-order, and only via SUM-MATCHING.** A lone withdrawal of 0.0731 to
+  a fresh address links to nobody; it becomes evidence only once several withdrawals are ATTRIBUTED
+  to one person and summed against a deposit. Attribution comes from A, B or C - not from the amount.
+  **So amount uniformity is a defence against an attacker who has already won by other means.** That
+  is the case for treating it as low priority on BOTH sides, and it is the user's read, not mine.
+
+  **E. THE ANONYMITY SET** - at launch approximately one, and no defence works below it.
+
+  **WHAT THIS REORDERS.** Deposit splitting (done), `Uniform`, `depositBatch` and withdrawal-side
+  splitting are all attacking (D), the weakest link, while (A) is untouched and (B) has a known
+  replacement nobody has costed. **Do A and B before spending another hour on denominations.**
+
   **🔬 ANALYSED FROM THE MECHANICS (2026-08-02): WITHDRAWAL-SIDE SPLITTING IS NECESSARY; DEPOSIT-SIDE
   IS NOT ONLY UNNECESSARY BUT COUNTERPRODUCTIVE. Two facts in the circuit decide it.**
 

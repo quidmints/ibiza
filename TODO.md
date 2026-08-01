@@ -818,6 +818,41 @@ fuzz runs, all passing, all meaningless for the property that mattered. **The le
 a differential test must exercise the function in a REALISTIC CALLER, not in isolation** - isolation
 is exactly the condition that can satisfy an unstated assumption.
 
+**✅✅ THE GAS PROBLEM IS SOLVED: FOLD WITH KECCAK. MEASURED 2026-08-01, and my own estimate was
+8x too pessimistic.**
+
+| fold | in-circuit gates | on-chain gas/withdrawal |
+|---|---|---|
+| Poseidon v1 (as built) | 39,037 | **287,969** |
+| **keccak256** | **550,220** | **~200** (one keccak over 3,584 bytes for the WHOLE batch) |
+
+**+511,183 gates on an 11,610,552-gate circuit = +4.4%** - not the ~34% guessed earlier. Proving memory
+moves ~27 GB -> ~28 GB, which changes nothing about what hardware is needed. In exchange the on-chain
+recompute collapses from 4,607,508 gas per batch to a couple of thousand.
+
+**So sec. 2.4b's ~152,846 gas/withdrawal target is ACHIEVABLE** - the fold stops being a factor
+(~153k all-in) instead of being 65% of the cost. Measured with
+`keccak256 = { tag = "v0.1.0", git = "https://github.com/noir-lang/keccak256" }`; `std::hash::keccak256`
+does NOT exist on beta.13.
+
+**WHY THIS IS THE RIGHT TRADE AND POSEIDON IS NOT.** The circuit is 99.7% recursive verification, so
+in-circuit hash cost is nearly irrelevant; the contract pays real money per hash, so on-chain cost is
+everything. Poseidon is optimised for the side that does not matter here. Inlining cannot rescue it:
+that is a ~3,400 gas saving against ~29,000 of inherent arithmetic per hash (see below).
+
+**THE CHANGE TO MAKE** (not yet applied - do it as the ONE money-path change in its run):
+- `aggregate_withdrawals`: replace `fold_signals`/`batch_commitment` with a single keccak over the N x 7
+  signals serialised big-endian, exactly as `abi.encodePacked` lays them out, and expose the digest.
+  Mind the field/`bytes32` boundary - the public input is a `Field`, so the digest must be reduced
+  (`% SNARK_SCALAR_FIELD`) the same way `context` already is in `withdraw_identity`.
+- `BatchCommitmentLib`: replace the PoseidonT6/T5 chain with `keccak256(abi.encodePacked(signals))`,
+  reduced identically. Keep every existing test - order-binding, per-signal binding, length-binding
+  and the empty batch all still apply, and the circuit-emitted fixture must be regenerated.
+- The Poseidon inline libraries stay: they are correct, tested, and worth their ~11% everywhere ELSE
+  in the repo (SMT paths), which is a separate concern from the fold.
+
+**Superseded - the Poseidon-inlining investigation, kept so the dead ends are not re-run:**
+
 **✅ SOLVED, AND THE ANSWER IS NOT INLINING (2026-08-01). MEASURED, not inferred:**
 
 | | gas |

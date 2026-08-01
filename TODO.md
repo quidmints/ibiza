@@ -748,6 +748,40 @@ the whole construction.
 scaling by gates gives ~25 GB at N=16 (better than sec. 2.4b's 56 GB estimate, which assumed
 3.4 KB/gate and 16M gates). N=16 COMPILES and gate-counts here; only proving needs the big box.
 
+**🔴 MEASURED 2026-08-01 — THE POSEIDON FOLD COSTS 287,969 GAS/WITHDRAWAL ON-CHAIN. THE HASH
+CHOICE MUST BE REVISITED BEFORE THE BATCH ENTRYPOINT IS BUILT.**
+
+`BatchCommitmentLib` is written, and `BatchCommitmentTest` proves it reproduces the CIRCUIT's value
+exactly (5 tests: fixture match, every one of the 112 signal positions bound, order-binding,
+length-binding, empty batch). The cross-language agreement is real. **The economics are not.**
+
+| | gas/withdrawal |
+|---|---|
+| single withdrawal today | ~3,113,864 |
+| sec. 2.4b target at N=16 | ~152,846 |
+| **the Poseidon recompute ALONE** | **287,969** (4,607,508 for a batch of 16; ~144k per PoseidonT6/T5 hash, 2 per withdrawal) |
+
+So the fold would be **65% of the total cost** and nearly 2x the whole budget - aggregation still
+beats 3.1M, but lands near ~440k instead of ~152k, throwing away most of the saving.
+
+**MY REASONING WAS BACKWARDS.** I chose Poseidon v1 because it is cheap IN-CIRCUIT and matches
+`poseidon-solidity`. But the fold is **0.34% of the circuit** (39,037 of 11,610,552 gates), so
+in-circuit cost was never the binding constraint - **on-chain cost is**, and Poseidon is brutal there
+while keccak is nearly free.
+
+**THE CANDIDATE FIX: fold with keccak256 instead.** On-chain, 16x7 = 112 words is ~3.6 KB, i.e. a
+few thousand gas TOTAL rather than 4.6M. In-circuit it is the reverse - Noir keccak is roughly 150k
+gates per 136-byte block, so ~27 blocks is ~4M gates, a ~34% circuit increase (11.6M -> ~15.6M) and
+proving memory ~27 GB -> ~36 GB. **That trade is strongly worth making** and it is exactly the trade
+the pool's own `context` signal already makes (keccak256 computed on-chain, consumed as a field).
+
+**BEFORE SWITCHING, CHECK ONE THING:** ~144k gas for a single PoseidonT6 hash is anomalously high -
+`poseidon-solidity` advertises ~1.3k for T3. Confirm whether our build is hitting an unoptimised path
+(the library is `public` in `Poseidon.sol` and may not be inlined, and `optimizer_runs = 1` is scoped
+to the verifiers). If a properly-optimised T6 is ~5-8k, the fold drops to ~15k/withdrawal and
+Poseidon stays viable - which would preserve the byte-identical match with `pp/src/commitment.nr`.
+**Measure that before rewriting the circuit's fold.**
+
 **Still not started:** the contract side. `PrivacyPool.withdraw` stays untouched (non-negotiable);
 what is missing is the batch entrypoint that recomputes the commitment from calldata (constraint 4)
 and checks each withdrawal's real signals. The fold was deliberately shaped so it CAN: Poseidon

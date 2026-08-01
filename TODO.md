@@ -8447,8 +8447,12 @@ at registration") has no passport equivalent and needs its own home regardless.
   `poseidonSmt` / `holderRegistration` — the exact file to edit the moment anything deploys.
 - **No backend endpoint produces a revocation signature** — `revokeDocument` takes it as a manual
   external input.
-- **ECDSA (8) Noir suites in the rarime tree have never been run** — deferred as a cost issue,
-  suited to a CI job. (The recursive-proof suites are gone: `recursion.nr` and `bitcoin.nr` were
+- ✅ **ECDSA Noir suites — THEY DO RUN, AND THEY PASS (verified 2026-08-01).** This item said "never
+  been run, deferred as a cost issue". Wrong: `cd noir_dl_lib && nargo test` runs **80 tests in a few
+  minutes**, of which **42 are `sigver::ecdsa::*` / `sigver::curve_*`** - all 8 curves
+  (secp256r1/384r1/521r1, brainpool 256r1/384r1/384t1/512r1/512t1) plus the curve arithmetic. Every
+  name is recorded in `backend/circuits/MIGRATION-BASELINE.txt`. There was never a cost problem;
+  nobody had run them. **Nothing to do here beyond putting `nargo test` in CI.** (The recursive-proof suites are gone: `recursion.nr` and `bitcoin.nr` were
   both deleted as orphaned dead code, so there is nothing left to run there.)
 - ✅ **Biometric-prompt UX fix — VERIFIED LANDED 2026-08-01, and it had introduced a hole.**
   The session cache is real and structural (`sessionMnemonic` at `root.ts:69`, short-circuited at

@@ -17,7 +17,12 @@
 // The escape hatch survives: a user who is being censored can still set `processooor` to their own
 // address and submit directly, paying full gas themselves. That is `buildSelfWithdrawal` below.
 
-import { AbiCoder, Contract, ContractRunner, keccak256, type BytesLike } from "ethers";
+// `ContractRunner` and `BytesLike` are TYPE-only exports of ethers v6, so both must be imported as
+// types. Node's TypeScript stripping erases `import type` but leaves a plain named import in place,
+// and the runtime then fails to resolve it — so with `ContractRunner` imported as a value this
+// module could not be loaded by `node --test` at all, which is why nothing here had tests.
+import { AbiCoder, Contract, keccak256 } from "ethers";
+import type { BytesLike, ContractRunner } from "ethers";
 
 /** BN254 scalar field — `context` is reduced into it because it is a circuit public input. */
 export const SNARK_SCALAR_FIELD =

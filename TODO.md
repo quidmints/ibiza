@@ -8490,6 +8490,37 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **✅ DONE (2026-08-02): `frontend/identity-wallet/src/pp/recipient.ts` + 12 tests.**
+  `buildFreshRelayedWithdrawal(mnemonic, note, entrypoint, scope, fee)` derives the payout address
+  and builds the withdrawal in ONE call, so the UI never asks the user where the money should go -
+  the only safe design, since every answer they could give is linkable. Also gave
+  `buildRelayedWithdrawal` its first caller.
+
+  **THE PATH IS DEEP, AND THAT IS THE DESIGN.** The id is the note's nullifier hash, so recovery
+  needs no stored counter - `discovery.ts` re-finds the note and re-derives the address. First
+  attempt squeezed that into ONE hardened account index (31 bits), which collides at ~1e-4 over a
+  thousand spends; the failure is silent and IS the linkage. The obvious repair - probe to the next
+  free index - was BUILT AND THEN DELETED, because it makes the answer depend on the SET of known
+  notes, so a newly-spent note sorting earlier can shift an ALREADY-PAID note onto a different
+  address: recovery pointing where the money never went. BIP32 caps each LEVEL at 31 bits, not the
+  path, so three levels carry 93 bits and the collision is ~5e-17 over a million withdrawals. No
+  probe, no ordering, no stored set, and each withdrawal derives independently.
+
+  **MUTATION-VERIFIED, and one mutation initially SURVIVED.** Setting the account to 0 - onto PP's
+  master key - broke nothing, because recipients sit three levels deeper than the five-level reserved
+  keys and cannot collide as addresses whatever account they use. The domain-separation claim is
+  STRUCTURAL, so it needed a structural assertion; the address comparison could never have caught it.
+  Four other mutations (dead level, narrowed truncation, unhardened segments, constant index) were
+  caught as written.
+
+  **FIXED IN PASSING: `relay.ts` could not be imported by `node --test` at all.** It imported
+  ethers' `ContractRunner` - a TYPE-only export - as a value, and Node's type stripping leaves that
+  as a runtime import that fails to resolve. **That is why nothing in `pp/` had tests.** Extensionless
+  imports have the same effect under ESM, which is why the new module uses `./notes.ts`.
+
+  **STILL OPEN: nothing calls `buildFreshRelayedWithdrawal` from a screen.** The addressing is
+  solved; the withdrawal UI is not.
+
   **🚨 THE RECIPIENT ADDRESS IS NOBODY'S JOB (2026-08-02). Verified, not inferred.**
 
   **The wallet does not create a fresh address.** `relay.ts` takes `recipient: string` from its

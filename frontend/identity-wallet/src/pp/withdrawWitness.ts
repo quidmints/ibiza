@@ -20,15 +20,15 @@
 //   [3] state_root              [7] context
 
 import {
-  MasterKeys,
-  NoteSecrets,
   commitment as commitmentHash,
   nullifierHash,
   withdrawalSecrets,
-} from "./notes";
-import { RecoveredNote } from "./discovery";
-import { StateTree, MAX_TREE_DEPTH, FIELD } from "./stateTree";
-import { IdentityWitness, IDENTITY_TREE_DEPTH } from "./identityProof";
+} from "./notes.ts";
+import type { MasterKeys, NoteSecrets } from "./notes.ts";
+import type { RecoveredNote } from "./discovery.ts";
+import { StateTree, MAX_TREE_DEPTH, FIELD } from "./stateTree.ts";
+import { IDENTITY_TREE_DEPTH } from "./identityProof.ts";
+import type { IdentityWitness } from "./identityProof.ts";
 import { babyJub, Poseidon } from "@iden3/js-crypto";
 
 /** The circuit range-checks `value`, `withdrawn_value` and `value - withdrawn_value` to 128 bits

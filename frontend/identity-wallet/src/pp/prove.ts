@@ -17,9 +17,13 @@
 // See sec. 1b / sec. 2.1a. Every claim here is reasoned from the code, NOT measured — no
 // device has ever run this path.
 
+// NOT `import type` — used as a value below. This module stays unloadable by `node --test` either
+// way: `../sdk/circuits` reaches expo-file-system, which ships untranspiled TypeScript inside
+// node_modules that Node refuses to strip. It is a thin wrapper over React Native native modules,
+// so it is exercised on a device rather than in unit tests.
 import { NoirCircuitParams } from "@rarimo/rarime-rn-sdk";
-import "../sdk/circuits"; // side effect: registers withdraw_identity + title_holder
-import type { WithdrawWitness } from "./withdrawWitness";
+import "../sdk/circuits.ts"; // side effect: registers withdraw_identity + title_holder
+import type { WithdrawWitness } from "./withdrawWitness.ts";
 
 /** Name registered by src/sdk/circuits.ts. Kept as a constant so a typo is one edit, not two. */
 export const WITHDRAW_CIRCUIT = "withdraw_identity";

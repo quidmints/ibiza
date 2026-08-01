@@ -30,7 +30,8 @@
 
 import { LeanIMT } from "@zk-kit/lean-imt";
 import { Poseidon } from "@iden3/js-crypto";
-import { Contract, ContractRunner, type EventLog } from "ethers";
+import { Contract } from "ethers";
+import type { ContractRunner, EventLog } from "ethers";
 
 /** BN254 scalar field — leaves and internal nodes both live here. */
 export const FIELD =

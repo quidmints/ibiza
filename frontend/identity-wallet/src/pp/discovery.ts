@@ -15,13 +15,12 @@
 
 import { Contract, JsonRpcProvider, EventLog } from "ethers";
 import {
-  MasterKeys,
-  NoteSecrets,
   depositSecrets,
   withdrawalSecrets,
   precommitment,
   nullifierHash,
-} from "./notes";
+} from "./notes.ts";
+import type { MasterKeys, NoteSecrets } from "./notes.ts";
 
 // @contract PrivacyPoolSimple
 const POOL_EVENTS_ABI = [

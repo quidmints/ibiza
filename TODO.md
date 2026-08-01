@@ -8490,6 +8490,32 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **✅ THE `pp/` TEST BLACKOUT, MEASURED AND CLEARED (2026-08-02).** "Fixed in passing" undersold
+  it: SIX of nine `pp/` modules could not be LOADED by `node --test`, from three distinct causes.
+    - **ethers type-only exports imported as values** (`ContractRunner`) - relay.ts, identityProof.ts,
+      stateTree.ts. Node's type stripping erases `import type` but leaves a plain named import as a
+      runtime import that cannot resolve. Same defect for the module's OWN interfaces
+      (`MasterKeys`, `NoteSecrets`, `RecoveredNote`) in deposit/discovery/withdrawWitness.
+    - **Extensionless relative imports** - ESM does not guess `.ts`. discovery, withdrawWitness, prove.
+    - **A TypeScript `enum`** (`DepositMode`) - emits runtime code, which strip-only mode refuses
+      outright. Replaced by a `const` object + union type; used only inside deposit.ts, so contained.
+  **8 of 9 now load.** `prove.ts` cannot and never will under plain Node: `../sdk/circuits` reaches
+  expo-file-system, which ships untranspiled TypeScript inside node_modules. It is a thin wrapper
+  over RN native modules - device-tested, not unit-tested. **That is a real boundary, not a to-do.**
+
+  **✅ FIRST TESTS OVER THE SPLITTING LOGIC (12, mutation-verified 4 ways) - `deposit.test.ts`.**
+  Conservation, single-size uniformity, greedy minimality, and that the refusals actually fire.
+
+  **🐛 AND A REAL DEFECT THE TESTS FOUND: THE NOTE COUNT WAS UNBOUNDED.** Uniform mode emits
+  `value / unit` notes and EVERY NOTE IS A SEPARATE TRANSACTION, so a deposit that is a multiple of
+  only the smallest denomination scales without limit - 1000.1 ETH is 10,001 transactions to sign.
+  The greedy path is unbounded too (1e30 wei is 1e11 notes of 10 ETH). Unchecked, the wallet grinds
+  for hours or dies allocating the array, leaving a PARTIALLY deposited balance. Added
+  `MAX_NOTES_PER_DEPOSIT = 256` with an actionable message naming the denomination to use instead.
+  **The check runs BEFORE allocation in both paths** - the counts worth rejecting are exactly the
+  ones large enough to exhaust memory while being counted, so checking the finished array would mean
+  building the array that is the problem.
+
   **✅ DONE (2026-08-02): `frontend/identity-wallet/src/pp/recipient.ts` + 12 tests.**
   `buildFreshRelayedWithdrawal(mnemonic, note, entrypoint, scope, fee)` derives the payout address
   and builds the withdrawal in ONE call, so the UI never asks the user where the money should go -

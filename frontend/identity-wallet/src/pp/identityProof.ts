@@ -29,7 +29,8 @@
 // introduced, which nothing had exercised before, since the old revocation registry only ever
 // stored non-zero predicates.
 
-import { Contract, ContractRunner } from "ethers";
+import { Contract } from "ethers";
+import type { ContractRunner } from "ethers";
 
 /** MUST equal the circuit's IDENTITY_TREE_DEPTH AND the registry's constructor `treeHeight_`.
  *  A mismatch makes every inclusion proof fail with no useful diagnostic. */

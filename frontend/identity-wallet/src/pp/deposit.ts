@@ -15,9 +15,15 @@
 // shared with everyone else depositing the same total in the same unit. That is the strongest
 // anonymity this design can offer, and it is the default.
 
-import { Contract, ContractRunner, EventLog, Interface, type Log } from "ethers";
-import { MasterKeys, NoteSecrets, depositSecrets, precommitment } from "./notes";
-import { RecoveredNote } from "./discovery";
+// Types are imported SEPARATELY throughout this directory, and relative imports carry their
+// `.ts` extension. Both are required to load under `node --test`: TypeScript stripping erases
+// `import type` but leaves a plain named import of a type as a runtime import that cannot
+// resolve, and ESM does not guess extensions. This is why `pp/` had no tests.
+import { Contract, EventLog, Interface } from "ethers";
+import type { ContractRunner, Log } from "ethers";
+import { depositSecrets, precommitment } from "./notes.ts";
+import type { MasterKeys, NoteSecrets } from "./notes.ts";
+import type { RecoveredNote } from "./discovery.ts";
 
 /** Standard denominations, largest first. Each divides the next, which is what makes greedy optimal. */
 export const DENOMINATIONS: readonly bigint[] = [
@@ -28,7 +34,7 @@ export const DENOMINATIONS: readonly bigint[] = [
 
 export const MIN_DENOMINATION = DENOMINATIONS[DENOMINATIONS.length - 1]!;
 
-export enum DepositMode {
+export const DepositMode = {
   /**
    * Every note the SAME size (the largest denomination that divides the total).
    *
@@ -37,7 +43,7 @@ export enum DepositMode {
    * becomes 99 notes of 0.1. That trade is the point: `Mixed` would emit 9 + 9x0.1, a shape few
    * others will share.
    */
-  Uniform = "uniform",
+  Uniform: "uniform",
 
   /**
    * Fewest notes, mixing denominations.
@@ -45,8 +51,13 @@ export enum DepositMode {
    * ONLY use when transaction cost genuinely outweighs anonymity. The resulting multiset is close
    * to a fingerprint for unusual totals.
    */
-  Mixed = "mixed",
-}
+  Mixed: "mixed",
+} as const;
+
+/** A `const` object rather than a TS `enum`: enums emit runtime code, which Node's strip-only
+ *  TypeScript support refuses outright, making this module unloadable by the test runner. The
+ *  union below keeps `DepositMode` usable as a type exactly as before. */
+export type DepositMode = (typeof DepositMode)[keyof typeof DepositMode];
 
 export interface SplitOptions {
   mode?: DepositMode;
@@ -58,6 +69,40 @@ export interface SplitOptions {
    * rest is split. Emitting one silently would hand the user a false sense of privacy.
    */
   allowRemainder?: boolean;
+}
+
+/**
+ * The most notes one deposit may split into.
+ *
+ * EVERY NOTE IS A SEPARATE TRANSACTION the user signs and pays gas for, and the note count is
+ * `value / unit` — unbounded in the value. A deposit that is a multiple of only the smallest
+ * denomination scales without limit: 1000.1 ETH is 10,001 transactions. Unchecked, the wallet either
+ * grinds for hours or dies allocating the array, and either way the user is left with a partially
+ * deposited balance. Refusing with advice is the only outcome that is not a trap.
+ *
+ * 256 is set above the shapes the module already documents as acceptable (9.9 ETH is 99 notes) and
+ * far below anything a person would sit through.
+ */
+export const MAX_NOTES_PER_DEPOSIT = 256;
+
+/**
+ * Refuse a split that would emit an unusable number of notes, BEFORE building it.
+ *
+ * @dev The check must precede allocation, not follow it: the counts worth rejecting are exactly the
+ *      ones large enough to exhaust memory while being counted.
+ */
+function refuseUnusableNoteCount(value: bigint, count: bigint, unit: bigint): void {
+  if (count <= BigInt(MAX_NOTES_PER_DEPOSIT)) return;
+  const bigger = [...DENOMINATIONS].reverse().find((d) => d > unit && value / d <= BigInt(MAX_NOTES_PER_DEPOSIT));
+  throw new Error(
+    `splitIntoDenominations: ${value} wei would need ${count} notes of ${unit} wei — too many ` +
+      `notes (limit ${MAX_NOTES_PER_DEPOSIT}), and each note is a separate transaction to sign ` +
+      `and pay for. ` +
+      (bigger
+        ? `Deposit a whole multiple of ${bigger} wei instead, `
+        : `Deposit a smaller amount, `) +
+      `or pass mode: Mixed to accept a distinctive note shape in exchange for fewer transactions.`,
+  );
 }
 
 /** Largest denomination that divides `value` exactly, or null if none does. */
@@ -89,8 +134,15 @@ export function splitIntoDenominations(value: bigint, opts: SplitOptions = {}): 
       }
       return splitIntoDenominations(value, { ...opts, mode: DepositMode.Mixed });
     }
-    return new Array(Number(value / unit)).fill(unit);
+    const count = value / unit;
+    refuseUnusableNoteCount(value, count, unit);
+    return new Array(Number(count)).fill(unit);
   }
+
+  // The greedy path is unbounded too — 1e30 wei is 1e11 notes of 10 ETH — so it is checked against
+  // the count it CANNOT go below (every note is at most the largest denomination) before it starts
+  // pushing. Checking the finished array would mean building the array that is the problem.
+  refuseUnusableNoteCount(value, (value + DENOMINATIONS[0]! - 1n) / DENOMINATIONS[0]!, DENOMINATIONS[0]!);
 
   const out: bigint[] = [];
   let left = value;

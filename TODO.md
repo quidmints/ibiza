@@ -968,6 +968,26 @@ is just not sufficient, and it changed the failure from "cannot prove" to "prove
   toolchain is fixed; do not treat the EIP-170 measurement as transferable (the gate count will
   change once recursion is real, though sec. 2.4pre's N-independence claim suggests the SIZE will not).
 
+**📋 THE MIGRATION ORACLE IS COMPLETE AND COMMITTED: `backend/circuits/MIGRATION-BASELINE.txt`.**
+Captured on beta.13 + poseidon v0.2.0 BEFORE any change, which is the only moment it is capturable.
+
+- **`pp` roster: 87 test names.** **`noir_dl_lib` roster: 80 test names** - and note **this file and
+  sec. 2.3 both said 49. The real number is 80.** Had "49 passing" been the acceptance criterion, a
+  migration that silently dropped **31 tests** would have passed it. *That is the entire argument for
+  a roster over a count*, demonstrated on our own stale documentation.
+- **SHA-256 of all 128 circuit source files.** This REPLACED an earlier list of 96 scraped constants:
+  checking that scrape found it had missed **1,530 shorter hex constants and 20-digit decimals**,
+  because it selected literals by LENGTH. A length threshold cannot prove it caught everything, and a
+  migration altering a constant it skipped would pass a gate built on it. Checksums cannot miss
+  anything. They are not pass/fail - the `u1` rewrite legitimately changes most files - they are the
+  exhaustive CHANGE LIST naming which files need a line-by-line constant diff against git.
+
+**HOW TO USE IT.** After migrating: (1) every test name in both rosters must still RUN and PASS -
+a renamed or skipped test passes by not running; (2) for every file whose checksum changed, diff its
+numeric literals against git and confirm only the `u1`/`bool` types moved; (3) the published
+`sk_identity = 1234 -> holder_root` vectors must be byte-identical. All three, or the migration is
+not verified.
+
 **🔧 MIGRATION ATTEMPTED 2026-08-01 - GOT PART-WAY, REVERTED. Exact stopping point recorded so the
 next attempt starts here rather than at the beginning.**
 

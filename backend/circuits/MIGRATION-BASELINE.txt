@@ -8,8 +8,7 @@
 # So the acceptance criterion is this exact roster, name for name, plus identical published vectors.
 # Compare with:  nargo test 2>&1 | grep Testing | ...  (see the capture command in TODO.md sec. 2.4a)
 #
-# STATUS: pp is COMPLETE (87 tests). noir_dl_lib is INCOMPLETE - the capture timed out at 10 min
-# before reaching it, so its 49-test roster must still be captured on beta.13 BEFORE migrating.
+# STATUS: COMPLETE. pp (87) and noir_dl_lib (80) rosters both captured on beta.13.
 #
 
 ## pp test roster
@@ -183,6 +182,89 @@
   smt::test_rejects_wrong_key
   smt::test_rejects_wrong_root
   smt::test_rejects_wrong_value
+
+## noir_dl_lib test roster (captured on beta.13)
+  big_curve::utils::derive_offset_generators::test_compute_and_print_offset_generators
+  bignum::utils::u60_representation_test::test_conversion
+  bignum::utils::u60_representation_test::test_get_bit
+  bignum::utils::u60_representation_test::test_gte
+  bignum::utils::u60_representation_test::test_shl
+  bignum::utils::u60_representation_test::test_shr
+  jubjub::test_add_doubling_matches_babyjub
+  jubjub::test_add_identity_is_neutral
+  jubjub::test_distinct_keys_give_distinct_points
+  jubjub::test_priv_to_pub_is_deterministic
+  jubjub::test_priv_to_pub_matches_babyjub
+  lite::test_dg1_hash_field_matches_the_published_vector
+  query::disclosure_tests::test_a_satisfied_birth_date_bound_passes_when_the_bit_is_set
+  query::disclosure_tests::test_a_year_above_the_current_year_is_last_century
+  query::disclosure_tests::test_a_year_equal_to_the_current_year_is_this_century
+  query::disclosure_tests::test_a_zero_date_bound_aborts_proving_even_when_unrequested
+  query::disclosure_tests::test_an_empty_selector_discloses_nothing
+  query::disclosure_tests::test_an_equal_date_is_not_less
+  query::disclosure_tests::test_an_out_of_range_birth_date_passes_when_its_bound_bit_is_clear
+  query::disclosure_tests::test_bit_0_alone_reveals_the_nullifier_and_nothing_else
+  query::disclosure_tests::test_bit_1_alone_reveals_the_birth_date_and_nothing_else
+  query::disclosure_tests::test_the_month_outranks_the_day
+  query::disclosure_tests::test_the_nullifier_is_zero_for_everyone_when_its_bit_is_clear
+  query::disclosure_tests::test_the_same_out_of_range_birth_date_is_rejected_when_the_bit_is_set
+  query::td1_disclosure_tests::test_an_empty_selector_discloses_nothing
+  query::td1_disclosure_tests::test_asking_about_citizenship_no_longer_discloses_the_personal_number
+  query::td1_disclosure_tests::test_bit_1_alone_reveals_the_birth_date_and_nothing_else
+  query::td1_disclosure_tests::test_the_citizenship_constraint_still_rejects_a_non_matching_mask
+  query::td1_disclosure_tests::test_the_personal_number_can_be_requested_without_a_citizenship_constraint
+  rsa::test_rsa_2048_with_sha1_exp_65537
+  rsa::test_rsa_2048_with_sha256_exp_65537
+  rsa::test_rsa_3072_with_sha1_exp_37187
+  rsa::test_rsa_4096_with_sha256_exp_65537
+  rsa::test_rsa_4096_with_sha256_exp_65537_2
+  rsa_pss::test_verify_rsa_pss_2048_e_3_salt_32_with_sha_256
+  rsa_pss::test_verify_rsa_pss_2048_e_65537_salt_32_with_sha_256
+  rsa_pss::test_verify_rsa_pss_2048_e_65537_salt_48_with_sha_384
+  rsa_pss::test_verify_rsa_pss_2048_e_65537_salt_64_with_sha_256
+  rsa_pss::test_verify_rsa_pss_2048_e_65537_salt_64_with_sha_512
+  sha1::test_sha1_1_chunk
+  sha1::test_sha1_2_chunks
+  sha224::test_sha224_1_chunk
+  sha224::test_sha224_2_chunks
+  sha384::test_sha384_1_chunk
+  sha384::test_sha384_2_chunks
+  sha512::test_sha512_1_chunk
+  sha512::test_sha512_2_chunks
+  sigver::curve_192::test_add_matches_reference
+  sigver::curve_192::test_double_matches_reference
+  sigver::curve_192::test_ecdsa
+  sigver::curve_192::test_mult_agrees_with_double_then_add
+  sigver::curve_192::test_mult_matches_reference
+  sigver::curve_224::test_add
+  sigver::curve_224::test_double
+  sigver::curve_224::test_ecdsa
+  sigver::curve_224::test_mult_matches_reference
+  sigver::curve_224::test_two_mult_matches_reference
+  sigver::curve_384::test_double
+  sigver::curve_384::test_ecdsa
+  sigver::curve_384::test_mult_matches_reference
+  sigver::ecdsa::test_brainpoolp256r1_signature_verification
+  sigver::ecdsa::test_brainpoolp384r1_signature_verification
+  sigver::ecdsa::test_brainpoolp384t1_signature_verification
+  sigver::ecdsa::test_brainpoolp512r1_signature_verification
+  sigver::ecdsa::test_brainpoolp512t1_signature_verification
+  sigver::ecdsa::test_secp256r1_signature_verification
+  sigver::ecdsa::test_secp384r1_signature_verification
+  sigver::ecdsa::test_secp521r1_signature_verification
+  sigver::utils::hash_to_curve::offset_generator
+  smt::test_exclusion_cannot_claim_a_present_key
+  smt::test_exclusion_empty_slot_matches_circomlibjs
+  smt::test_exclusion_other_leaf_matches_circomlibjs
+  smt::test_exclusion_rejects_wrong_old_leaf
+  smt::test_exclusion_rejects_wrong_root
+  smt::test_full_verifier_still_does_inclusion
+  smt::test_inclusion_matches_circomlibjs
+  smt::test_rejects_tampered_sibling
+  smt::test_rejects_wrong_key
+  smt::test_rejects_wrong_root
+  smt::test_rejects_wrong_value
+  TOTAL: 80 tests passed
 
 ## SOURCE CHECKSUMS - the COMPLETE oracle, replacing an earlier scraped-constants list.
 ##

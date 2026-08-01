@@ -1070,6 +1070,16 @@ Disabled **every** `#[test]` attribute across all 17 test-bearing files in `noir
 `nargo compile` succeeds on the same source; only `nargo test` crashes. That rules out the entire
 class of "some test uses a construct beta.26 dislikes".
 
+**ELIMINATED SO FAR (2026-08-01) - do not re-test these:**
+1. **All `#[test]` bodies.** Disabled every `#[test]` attribute across all 17 test-bearing files -
+   ZERO test functions remained - and `nargo test` still ICEd.
+2. **The two vendored test-support modules.** Commented out `pub(crate) mod derive_offset_generators;`
+   (`src/big_curve/utils.nr:2`) and `pub(crate) mod u60_representation_test;`
+   (`src/bignum/utils/mod.nr:3`). Still ICEd.
+
+So the trigger is neither a test function nor the obvious vendored test helpers. It is something in
+the ordinary library source that only the TEST-MODE compilation pass walks.
+
 **WHERE TO LOOK INSTEAD** - the search space is now different and much smaller:
 - `#[cfg(test)]` modules and any test-only `use`/helper that compiles only under test mode.
 - The VENDORED test-support code sitting in `src/`, not in a test module:

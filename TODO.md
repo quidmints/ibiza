@@ -835,6 +835,40 @@ recompute collapses from 4,607,508 gas per batch to a couple of thousand.
 `keccak256 = { tag = "v0.1.0", git = "https://github.com/noir-lang/keccak256" }`; `std::hash::keccak256`
 does NOT exist on beta.13.
 
+**WHY POSEIDON WAS RIGHT ORIGINALLY, AND WHY THE FOLD IS THE EXCEPTION (user asked 2026-08-01).**
+Poseidon is not a legacy choice - it is correct everywhere it is currently used, and must stay:
+- Commitments and tree nodes are hashed **inside circuits, repeatedly**. A depth-32 SMT membership
+  proof is ~32 hashes IN-CIRCUIT: ~8k constraints with Poseidon, roughly **4.8M with keccak**. That
+  ratio is the entire reason ZK-friendly hashes exist.
+- Tree nodes must BE field elements. Poseidon outputs one natively; keccak outputs 256 bits that
+  must be reduced, so every node would carry a reduction step.
+- The circuit, the wallet and the contracts must agree on ONE commitment function
+  (`pp/src/commitment.nr` <-> `poseidon-solidity`). Changing it forks every existing note.
+
+**The fold is the one place the trade inverts**: it is ONE hash per BATCH (not per tree level), it is
+computed once in-circuit and once on-chain, and it sits inside a circuit that is 99.7% recursive
+verification. So in-circuit cost is irrelevant there and on-chain cost is everything - the exact
+opposite of the tree case. **This is a local exception, not a migration**: nothing else changes hash,
+and the fold has no existing consumers to fork.
+
+**CONSEQUENCES OF KECCAK IN THE FOLD - checked, all bounded:**
+1. **Field reduction is REQUIRED and already has precedent.** keccak gives 256 bits, BN254's field is
+   ~254, so the digest must be reduced. `PrivacyPool.sol:97` already does exactly this for `context`:
+   `uint256(keccak256(abi.encode(_withdrawal, SCOPE))) % Constants.SNARK_SCALAR_FIELD`. Follow it
+   verbatim on both sides. Reduction leaves ~2^127 collision resistance - finding a collision still
+   means breaking keccak.
+2. **Byte serialisation must match exactly** (`abi.encodePacked` = 32-byte big-endian per word;
+   `to_be_bytes` in-circuit). A mismatch is SILENT - which is precisely what the circuit-emitted
+   fixture in `BatchCommitmentTest` exists to catch. Same risk class as today, already guarded.
+3. **The public input stays ONE field**, so the verifier's 84-byte EIP-170 margin is untouched.
+4. **No effect on ZK or on recursion** - it is only constraints.
+5. **Calldata is unchanged** - the contract needs the signals in calldata regardless of hash choice.
+
+**`std::hash::keccak256` IS NOT MISSING, it MOVED.** beta.13 removed it from `std` (already recorded
+in `pp/Nargo.toml`'s migration note); the maintained implementation is the first-party package
+`keccak256 = { tag = "v0.1.0", git = "https://github.com/noir-lang/keccak256" }`, which is what the
+550,220-gate measurement used. Nothing needs building or vendoring.
+
 **WHY THIS IS THE RIGHT TRADE AND POSEIDON IS NOT.** The circuit is 99.7% recursive verification, so
 in-circuit hash cost is nearly irrelevant; the contract pays real money per hash, so on-chain cost is
 everything. Poseidon is optimised for the side that does not matter here. Inlining cannot rescue it:

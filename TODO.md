@@ -928,6 +928,41 @@ in-circuit hash cost is nearly irrelevant; the contract pays real money per hash
 everything. Poseidon is optimised for the side that does not matter here. Inlining cannot rescue it:
 that is a ~3,400 gas saving against ~29,000 of inherent arithmetic per hash (see below).
 
+**🔴🔴🔴 RECURSION HAS NEVER WORKED IN ANY VERSION. THE keccak CHANGE DID NOT BREAK IT (2026-08-01).**
+Tested both circuits with ALL-ZERO inner proofs and REAL public inputs:
+
+| circuit | N=2 gates | garbage batch |
+|---|---|---|
+| Poseidon fold, `proof_type = 0` (the "working" version) | 1,396,874 | **ACCEPTED** |
+| keccak fold | 81,668 | **ACCEPTED** |
+
+**So my earlier claim - "bb verify accepts an aggregation of two REAL withdraw_identity proofs, the
+aggregator works" - was MEANINGLESS.** It verified because the circuit accepts anything. Two real
+proofs are not evidence when garbage passes too, and I never ran the negative case before declaring
+success. Retract that claim wherever it is relied on.
+
+The two circuits are broken DIFFERENTLY, which is itself a clue:
+- **Poseidon version:** the ~725k gates per verification ARE present (1.4M at N=2) but are VACUOUS -
+  satisfied by any proof. Constraints emitted, nothing bound.
+- **keccak version:** the constraints are absent entirely (81,668 gates).
+
+So the `proof_type = 0` fix made proofs VERIFY without making recursion SOUND - it moved the failure
+from "cannot prove" to "proves anything", which looks like success at every stage.
+
+**WHAT THIS MEANS FOR sec. 2.4.** The aggregator is NOT partially built - its central security
+property has never held. Everything else stands (the pinned key, the range checks, the fold, the
+N=16 verifier at 84 bytes under EIP-170, the gas analysis), but none of it matters until
+`verify_proof_with_type` actually binds. **Treat the aggregator as UNBUILT for planning purposes.**
+
+**NEXT, and nothing else until this passes:** get a MINIMAL recursion pair to REJECT a garbage inner
+proof - the `rmin` pair from earlier is the right harness, and the acceptance criterion is
+"`bb verify` FAILS on garbage", never "`bb verify` succeeds on a real proof". Only then does the
+question of which fold to use matter again. Likely suspects: bb needs a flag for the OUTER proof to
+enforce recursion constraints (`--honk_recursion` on the outer failed to write a vk with keccak -
+that combination may be exactly what is required and may need a different transcript), or beta.13 +
+bb 1.2.0 emits the opcode without wiring it - which would resurrect the toolchain question that was
+prematurely dismissed when `proof_type` appeared to explain everything.
+
 **🔴🔴 CONFIRMED 2026-08-01: THE CIRCUIT NO LONGER VERIFIES ITS INNER PROOFS. A BATCH OF ALL-ZERO
 GARBAGE PROOFS PROVES AND `bb verify` ACCEPTS IT.** This is not a gate-accounting curiosity - the
 constraints are genuinely absent, and as written the aggregator would accept ANY claimed withdrawal.

@@ -1,5 +1,5 @@
 //! ########################################################################################
-//! # DO NOT USE THIS CIRCUIT. IT DOES NOT VERIFY ITS INNER PROOFS. (2026-08-01)             #
+//! # DO NOT USE. RECURSION HAS NEVER WORKED - IN THIS OR ANY EARLIER VERSION. (2026-08-01) #
 //! #                                                                                       #
 //! # A batch of ALL-ZERO garbage proofs PROVES AND VERIFIES SUCCESSFULLY. The 16 recursive #
 //! # verifications are absent from the compiled circuit even though main() calls           #
@@ -7,8 +7,8 @@
 //! # for the identical circuit with a Poseidon fold - two ~725k-gate verifications simply  #
 //! # are not there. As written this would aggregate anything: a forgery machine.           #
 //! #                                                                                       #
-//! # The ONLY change between working and broken is the fold (Poseidon -> keccak256) and    #
-//! # its dependency swap in Nargo.toml. Bisect that. Do not build the batch entrypoint,    #
+//! # The Poseidon version ACCEPTS GARBAGE TOO (1,396,874 gates at N=2, constraints        #
+//! # present but VACUOUS). keccak did not break it. Do not build the batch entrypoint,     #
 //! # and do not deploy AggregationHonkVerifier, until a garbage batch is REJECTED.         #
 //! # Reproduce: TODO.md sec. 2.4a, "decisive test".                                        #
 //! ########################################################################################

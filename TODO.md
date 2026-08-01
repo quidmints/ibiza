@@ -714,6 +714,36 @@ way Aztec does (poseidon2 over the 112 vk fields) and confirm against a known-go
 before touching the aggregator again.
 **Do not treat the circuit as working until `bb verify` accepts a proof.**
 
+**WHAT THE BIG BOX IS ACTUALLY FOR: `bb prove` AT N=16, AND NOTHING ELSE (measured 2026-08-01).**
+
+| step at **N=16** | on this 16 GB box |
+|---|---|
+| `nargo compile` | ✅ 3 s |
+| `bb gates` (11,610,552) | ✅ |
+| `bb write_vk` | ✅ **116 MB peak** - write_vk is NOT proportional to circuit size the way proving is |
+| `bb write_solidity_verifier` | ✅ (needs only the vk) |
+| generated verifier under EIP-170 + `forge test` of the contract side | ✅ |
+| **`bb prove`** | ❌ **~27 GB** |
+
+So the ENTIRE contract-side path - generating the real N=16 verifier, checking it fits EIP-170, and
+forge-testing the batch entrypoint - can be done here. Only producing an actual N=16 proof cannot.
+
+**NOTHING IS HARDWIRED TO 16.** `BATCH_N` is a single global (`src/main.nr:38`); every array
+dimension and loop bound derives from it, and the pinned inner key is `withdraw_identity`'s
+112-field vk, which is independent of N. So a smaller N is the SAME circuit with fewer iterations,
+and N=2 validating the construction (recursion API shape, fold, order-binding, range checks, against
+two REAL proofs) carries over unchanged.
+
+**The one thing only N=16 can exercise** is proving at that size, where the padded circuit crosses
+into a larger power of two (N=2 pads to ~2^21, N=16 to ~2^24) and needs correspondingly more CRS.
+That is a resource/config difference, not a logic one - but it is the reason "it verified at N=2"
+is not the same claim as "it verifies at N=16".
+
+**THE TREE (N>16) IS GENUINELY NEW CODE, not a bigger N.** A tree node aggregates AGGREGATION proofs,
+so its pinned inner key becomes the aggregator's OWN vk - self-recursion, a different constant and a
+different circuit. It also does not need the big box to validate: a depth-2 tree of 2x2 = 4 exercises
+the whole construction.
+
 **PROVING N=16 NEEDS ~25 GB — not possible on this machine (16 GB).** Measured 3.3 GB peak at N=2;
 scaling by gates gives ~25 GB at N=16 (better than sec. 2.4b's 56 GB estimate, which assumed
 3.4 KB/gate and 16M gates). N=16 COMPILES and gate-counts here; only proving needs the big box.

@@ -968,6 +968,51 @@ is just not sufficient, and it changed the failure from "cannot prove" to "prove
   toolchain is fixed; do not treat the EIP-170 measurement as transferable (the gate count will
   change once recursion is real, though sec. 2.4pre's N-independence claim suggests the SIZE will not).
 
+**✅✅✅ RECURSION BINDS. PROVEN 2026-08-01 on `nargo` v1.0.0-beta.26 + `bb` 5.1.0.**
+
+Minimal pair, `proof_type = 6` (`PROOF_TYPE_HONK_ZK`), 458-field ZK inner proof, real `vk_hash`:
+
+| witness | result |
+|---|---|
+| REAL inner proof | **verifies** |
+| ALL-ZERO inner proof | **REFUSED AT PROVE** - `serialize_to_fields: bn254_commitment point at infinity must be canonical (0,0)` |
+
+Same command, same key, opposite outcomes. **On bb 1.2.0 that identical garbage witness proved AND
+verified.** The failure is a cryptographic assertion inside the recursive verifier, not a CLI error -
+the trap that made bb 0.87.0 look like a fix earlier.
+
+**THE WORKING RECIPE:**
+- `nargo` **v1.0.0-beta.26**, `bb` **5.1.0**
+- INNER: `bb write_vk -b c.json -o target -t noir-recursive` then
+  `bb prove -b c.json -w w.gz -k target/vk -o target -t noir-recursive`
+  -> vk **115** fields, proof **458** fields, plus a **`vk_hash`** file - pass that as `key_hash`,
+  not 0
+- CIRCUIT: `std::verify_proof_with_type(vk, proof, public_inputs, key_hash, **6**)`
+  with `[Field; 115]` and `[Field; 458]`
+- OUTER: `-t evm` (keccak, ZK) for the on-chain proof
+
+**WHY EVERY EARLIER ATTEMPT FAILED:** `proof_type = 0` is `PROOF_TYPE_HONK`, which expects a **NON-ZK**
+410-field proof; we were feeding it the **ZK** 458-field one. bb 1.2.0 accepted the mismatch silently
+and produced a circuit that constrained nothing. bb 5.x reports it
+(`ACIR proof size mismatch. Expected: 410`). The lengths, `proof_type` and ZK-ness are ONE coupled
+choice - pick `6` + ZK + 458, or `0` + non-ZK + 410, never a mix.
+
+**⚠️ ONE HONEST LIMIT ON THIS EVIDENCE.** An all-zero proof is MALFORMED (invalid curve points), so it
+is rejected during parsing. That proves the recursive verifier now genuinely processes the proof -
+which bb 1.2.0 demonstrably did not - but the STRONGEST negative test is a WELL-FORMED but WRONG
+proof: take the real proof and corrupt one field, or use a valid proof from a DIFFERENT circuit.
+**Run that before trusting aggregation with money.** It is a five-minute test on the `rmin` harness.
+
+**MIGRATION IS NOW JUSTIFIED (user: *"if the latest version is the only one that works we should use
+that across all our uses"*)** - and it is a real migration, not a bump. `codegen-verifiers.sh` pins
+beta.13 + 1.2.0 precisely because neighbours fail SILENTLY. Sequence: (1) run the well-formed-wrong
+test above; (2) recompile all five standalone circuits on beta.26 and re-run ALL THREE of that
+script's checks each - native verify, prover non-determinism/ZK, and a real proof accepted on-chain
+by forge; (3) regenerate every verifier (`-t evm` replaces `--oracle_hash keccak`) and re-check
+`forge build --sizes` against EIP-170, since the withdrawal verifier has ~85 bytes of margin and the
+5.x codegen may differ; (4) only then rebuild the aggregator, re-verify the keccak fold with the
+garbage test, and regenerate `AggregationHonkVerifier`.
+
 **🎯 ROOT CAUSE FOUND 2026-08-01 - A ZK/NON-ZK MISMATCH. bb 5.x SAYS IT OUT LOUD.**
 On `nargo` beta.26 + `bb` 5.1.0 the outer circuit fails with a REAL diagnostic, the first one this
 investigation has produced:

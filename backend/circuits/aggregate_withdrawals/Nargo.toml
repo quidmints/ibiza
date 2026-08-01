@@ -1,0 +1,10 @@
+[package]
+name = "aggregate_withdrawals"
+type = "bin"
+authors = [""]
+
+# Recursive aggregation of N `withdraw_identity` proofs into ONE on-chain verification
+# (TODO.md sec. 2.4 / 2.4b). Poseidon is the external noir-lang package - `std::hash::poseidon`
+# does not exist on beta.13.
+[dependencies]
+poseidon = { tag = "v0.2.0", git = "https://github.com/noir-lang/poseidon" }

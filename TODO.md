@@ -496,11 +496,30 @@ public inputs. The verifier's calldata handling scales with public inputs, and 8
 room for that. **A design that surfaces per-withdrawal signals will not fit.** Nothing is lost by
 compressing — the pool still checks each withdrawal's real signals itself.
 
-**4. TRAP — `bb` SIGSEGVs (exit 139) on a wrong in-circuit vk length; it does NOT error.** The
-recursive `verification_key` parameter is **128 fields**, NOT the 55 fields of the on-disk
-`target/vk`. Passing 55 segfaults bb *after* it has already printed "Scheme is: ultra_honk", so
-anything grepping stdout for errors reads it as success. Same family as the `-k`-on-`prove` footgun
-(§1). Proof length is 507 fields, matching `target/proof`.
+**4. TRAP — `bb` SIGSEGVs (exit 139) on a wrong in-circuit vk length; it does NOT error.** It
+segfaults *after* printing "Scheme is: ultra_honk", so anything grepping stdout for errors reads it
+as success. Same family as the `-k`-on-`prove` footgun (§1).
+
+**⚠️ CORRECTED 2026-08-01 — the lengths recorded here were WRONG, which is dangerous in exactly this
+trap.** This section said the in-circuit key is **128 fields** and the on-disk `target/vk` is 55.
+Measured on bb 1.2.0 with `--output_format fields`:
+
+| artifact | fields |
+|---|---|
+| `write_vk --oracle_hash keccak` (the on-chain key) | **111** |
+| `write_vk --honk_recursion 1` (the in-circuit key) | **112** |
+| proof (`--honk_recursion 1`) | **507** ✅ as recorded |
+| public inputs | **7** (see below) |
+
+112 is **structural, not per-circuit** — `ragequit`'s recursion vk is also 112 — while the CONTENTS
+differ per circuit, which is what makes pinning the contents meaningful. Use 112.
+
+**5. The public-signal count is 7, not 8.** This section said the batch commitment folds "every
+inner proof's 8 public signals". `ProofLib.WithdrawProof.pubSignals` is `uint256[7]`,
+`publicInputsBytes32` allocates `new bytes32[](7)`, `codegen-verifiers.sh`'s own target list says
+`withdraw_identity:...:7`, and `bb prove --output_format fields` emits 7. An off-by-one here is not
+cosmetic: the fold must bind exactly the signals the CONTRACT recomputes over, so a commitment over
+8 slots is one the contract can never reproduce.
 
 **5. The recursion API on beta.13 is `std::verify_proof_with_type(vk, proof, public_inputs,
 key_hash, proof_type)`.** `std::verify_proof` does NOT exist and `#[recursive]` is not in scope.
@@ -600,6 +619,49 @@ circuit size is essentially free (44k-gate and 11.8k-gate circuits both ~2.7M):
 **Costs to expect:** prover hardware is the ceiling (few batchers in practice, though entry stays
 permissionless); low volume kills the economics (a batch of 3 costs ~800k each, not 41k); the
 proof-relay layer is new infrastructure whose code must live in **ibiza**, not SPV (§7).
+
+### 2.4a BUILD STARTED 2026-08-01 — circuit exists, compiles, unit-tested. **THE PROOF DOES NOT YET VERIFY.**
+
+`backend/circuits/aggregate_withdrawals/` now exists (it did not before; sec. 2.4 said "there is no
+`backend/circuits/agg*`"). What is DONE and what is NOT, stated separately because the difference
+is the whole status:
+
+**DONE and verified:**
+- Circuit at **N=16**, compiles clean. `main` verifies all N proofs against a **pinned** inner key
+  (`src/inner_vk.nr`, generated) and exposes ONE public input, the batch commitment.
+- **11,610,552 gates measured** at N=16 (`bb gates`), against sec. 2.4b's 16M estimate.
+- 5 Noir unit tests pass: the fold is order-binding (swapping two withdrawals changes the
+  commitment), every one of the 7 signal positions is bound, and the depth range check rejects
+  `MAX_TREE_DEPTH+1` **and** `2^32+5` (the truncation trap, constraint 5).
+- N=2 witness solves, and the circuit's own fold reproduces the public input exactly
+  (`0x0ede2720...af6eae`) — so the commitment construction and the witness are right.
+
+**NOT DONE — `bb verify` REJECTS the outer proof: `Sumcheck failed!`**
+Reproduced at N=2, both with and without `--init_kzg_accumulator` (that flag was the first
+hypothesis; it is not the fix). ⚠️ **`bb verify` EXITS 0 ON FAILURE** — the printed text is the only
+signal, the same shape as the `-k`-on-`prove` footgun. `bb check` cannot help: it answers
+"API function check_witness not implemented" for ultra_honk.
+
+**PRIME SUSPECT: `key_hash`, which is currently passed as 0.** `std::verify_proof_with_type`'s
+fourth argument is the hash of the inner verification key. A wrong value need not fail witness
+SOLVING (the recursion constraints are discharged by the backend, and `nargo execute` succeeded),
+but would produce an unsatisfied constraint the prover then cannot prove — which is exactly the
+observed shape: witness solves, fold matches, outer proof fails sumcheck. Next step is to obtain the
+real vk hash rather than guess: check whether bb emits one alongside `write_vk`, or compute it the
+way Aztec does (poseidon2 over the 112 vk fields) and confirm against a known-good recursion example
+before touching the aggregator again.
+**Do not treat the circuit as working until `bb verify` accepts a proof.**
+
+**PROVING N=16 NEEDS ~25 GB — not possible on this machine (16 GB).** Measured 3.3 GB peak at N=2;
+scaling by gates gives ~25 GB at N=16 (better than sec. 2.4b's 56 GB estimate, which assumed
+3.4 KB/gate and 16M gates). N=16 COMPILES and gate-counts here; only proving needs the big box.
+
+**Still not started:** the contract side. `PrivacyPool.withdraw` stays untouched (non-negotiable);
+what is missing is the batch entrypoint that recomputes the commitment from calldata (constraint 4)
+and checks each withdrawal's real signals. The fold was deliberately shaped so it CAN: Poseidon
+**v1** via `bn254::hash_5` then `hash_4`, because `poseidon-solidity` implements v1 and tops out at
+`PoseidonT6` = 5 inputs. Using Poseidon2 would have compiled, proved, and produced a commitment the
+contract could never reproduce.
 
 ### 2.4b Aggregation sizing, infra and UX — what N to pick and what it costs
 

@@ -968,6 +968,36 @@ is just not sufficient, and it changed the failure from "cannot prove" to "prove
   toolchain is fixed; do not treat the EIP-170 measurement as transferable (the gate count will
   change once recursion is real, though sec. 2.4pre's N-independence claim suggests the SIZE will not).
 
+**🔧 MIGRATION ATTEMPTED 2026-08-01 - GOT PART-WAY, REVERTED. Exact stopping point recorded so the
+next attempt starts here rather than at the beginning.**
+
+Applied together: `poseidon` v0.2.0 -> **v0.3.0**, `nargo` beta.13 -> **beta.26**, and a scripted
+`u1` -> `bool` rewrite across 15 files (`[u1;` -> `[bool;`, `: u1` -> `: bool`, `-> u1` -> `-> bool`,
+`) as u1` -> `)`, `global X: bool = 0/1` -> `false/true`).
+
+**RESULT:**
+- ✅ **`pp` and `noir_dl_lib` COMPILE** on beta.26 - the library layer migrates cleanly. The scripted
+  rewrite is CORRECT as far as the compiler is concerned for the library sources.
+- ❌ **`pp`'s own TESTS do not compile: 40 errors.** The rewrite covered `src/` but the test bodies
+  use the same `u1` patterns and were not all reached. **This is where the next attempt starts.**
+- ❌ `noir_dl_lib` tests hit a **compiler ICE** ("This is a bug... consider opening one").
+- ❌ The 4 dependent circuits fail with `Types in a binary operation should match, but found bool` -
+  callers comparing a now-`bool` result against an integer. Mechanical, but only worth doing after
+  the tests pass.
+- ❌ `escrow_envelope` still ICEs at compile.
+
+**WHY IT WAS REVERTED RATHER THAN PUSHED THROUGH: the tests are the ONLY thing that can prove the
+`u1` -> `bool` rewrite preserved SMT behaviour**, and they did not run. Landing an unverified rewrite
+of `pp/src/smt.nr` - the verifier every identity and title commitment depends on - would be exactly
+the silent fork this file warns about everywhere else. A compiling circuit proves nothing here.
+**Reverted; beta.13 + poseidon v0.2.0 restored, all seven circuits compile, `pp` 87/87 tests pass.**
+
+**NEXT ATTEMPT, starting from the known stopping point:** (1) redo the scripted rewrite but include
+`#[test]` bodies - the 40 `pp` errors are the checklist; (2) get `pp` 87/87 and `noir_dl_lib` green,
+**and confirm the published `sk_identity = 1234 -> holder_root` vectors are byte-identical** - that is
+the acceptance criterion, not compilation; (3) fix the 4 callers; (4) the two ICEs (`escrow_envelope`
+compile, `noir_dl_lib` test) may be genuine upstream bugs - reduce and report if they persist.
+
 **🗺️ THE beta.26 MIGRATION IS ACHIEVABLE - FULL BLOCKER MAP, MEASURED 2026-08-01.** It is not a
 version bump and it is not blocked; it is a bounded, well-understood piece of work. **Everything
 below was tested; the repo was restored to beta.13 + poseidon v0.2.0 afterwards and all six circuits

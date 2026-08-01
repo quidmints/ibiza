@@ -1,0 +1,185 @@
+# BASELINE FOR THE beta.26 MIGRATION - the ORACLE, captured BEFORE any change.
+#
+# WHY THIS FILE EXISTS. The u1 -> bool rewrite touches pp/src/smt.nr, the SMT verifier every identity
+# and title commitment depends on. A wrong rewrite does NOT fail loudly - it silently changes results
+# and forks every commitment in the system. "It compiles" and even "the tests pass" are both weaker
+# than they look: a test that was SKIPPED or RENAMED during the migration passes by not running.
+#
+# So the acceptance criterion is this exact roster, name for name, plus identical published vectors.
+# Compare with:  nargo test 2>&1 | grep Testing | ...  (see the capture command in TODO.md sec. 2.4a)
+#
+# STATUS: pp is COMPLETE (87 tests). noir_dl_lib is INCOMPLETE - the capture timed out at 10 min
+# before reaching it, so its 49-test roster must still be captured on beta.13 BEFORE migrating.
+#
+
+## pp test roster
+  commitment::test_matches_poseidon_solidity
+  envelope::test_a_different_ephemeral_gives_a_different_ciphertext
+  envelope::test_ciphertext_actually_hides_the_payload
+  envelope::test_controller_key_matches_babyjub
+  envelope::test_each_slot_gets_a_DIFFERENT_mask
+  envelope::test_notary_domain_is_the_string_it_claims_to_be
+  envelope::test_seal_then_open_roundtrips
+  envelope::test_secret_commitment_is_deterministic_and_separating
+  envelope::test_the_notary_commitment_is_unrelated_to_the_pool_commitment
+  envelope::test_the_notary_secret_is_deterministic_and_identity_specific
+  envelope::test_the_wrong_controller_key_does_not_open_it
+  envelope::test_zero_ephemeral_is_rejected
+  envelope::test_zero_ephemeral_would_have_leaked_the_payload
+  identity_asp::test_matches_wallet_profile_key_derivation
+  jubjub::test_add_doubling_matches_babyjub
+  jubjub::test_add_identity_is_neutral
+  jubjub::test_distinct_keys_give_distinct_points
+  jubjub::test_mul_point_arbitrary_base_matches_babyjub
+  jubjub::test_mul_point_by_zero_returns_the_sentinel_not_the_identity
+  jubjub::test_priv_to_pub_agrees_with_mul_point
+  jubjub::test_priv_to_pub_is_deterministic
+  jubjub::test_priv_to_pub_matches_babyjub
+  lean_imt::test_fuzz_0_size1_index0
+  lean_imt::test_fuzz_1_size2_index0
+  lean_imt::test_fuzz_10_size5_index0
+  lean_imt::test_fuzz_11_size5_index1
+  lean_imt::test_fuzz_12_size5_index2
+  lean_imt::test_fuzz_13_size5_index3
+  lean_imt::test_fuzz_14_size5_index4
+  lean_imt::test_fuzz_15_size6_index0
+  lean_imt::test_fuzz_16_size6_index1
+  lean_imt::test_fuzz_17_size6_index2
+  lean_imt::test_fuzz_18_size6_index3
+  lean_imt::test_fuzz_19_size6_index4
+  lean_imt::test_fuzz_2_size2_index1
+  lean_imt::test_fuzz_20_size6_index5
+  lean_imt::test_fuzz_21_size7_index0
+  lean_imt::test_fuzz_22_size7_index1
+  lean_imt::test_fuzz_23_size7_index2
+  lean_imt::test_fuzz_24_size7_index3
+  lean_imt::test_fuzz_25_size7_index4
+  lean_imt::test_fuzz_26_size7_index5
+  lean_imt::test_fuzz_27_size7_index6
+  lean_imt::test_fuzz_28_size8_index0
+  lean_imt::test_fuzz_29_size8_index1
+  lean_imt::test_fuzz_3_size3_index0
+  lean_imt::test_fuzz_30_size8_index2
+  lean_imt::test_fuzz_31_size8_index3
+  lean_imt::test_fuzz_32_size8_index4
+  lean_imt::test_fuzz_33_size8_index5
+  lean_imt::test_fuzz_34_size8_index6
+  lean_imt::test_fuzz_35_size8_index7
+  lean_imt::test_fuzz_36_size13_index0
+  lean_imt::test_fuzz_37_size13_index1
+  lean_imt::test_fuzz_38_size13_index6
+  lean_imt::test_fuzz_39_size13_index11
+  lean_imt::test_fuzz_4_size3_index1
+  lean_imt::test_fuzz_40_size13_index12
+  lean_imt::test_fuzz_41_size37_index0
+  lean_imt::test_fuzz_42_size37_index1
+  lean_imt::test_fuzz_43_size37_index18
+  lean_imt::test_fuzz_44_size37_index35
+  lean_imt::test_fuzz_45_size37_index36
+  lean_imt::test_fuzz_5_size3_index2
+  lean_imt::test_fuzz_6_size4_index0
+  lean_imt::test_fuzz_7_size4_index1
+  lean_imt::test_fuzz_8_size4_index2
+  lean_imt::test_fuzz_9_size4_index3
+  lean_imt::test_matches_lean_imt_sol_three_leaves
+  smt::test_a_revoked_entry_cannot_claim_value_zero
+  smt::test_absent_key_cannot_be_proven_present_with_value_zero
+  smt::test_exclusion_against_empty_tree_any_key
+  smt::test_exclusion_against_the_empty_tree
+  smt::test_exclusion_cannot_claim_a_present_key
+  smt::test_exclusion_empty_slot_matches_circomlibjs
+  smt::test_exclusion_other_leaf_matches_circomlibjs
+  smt::test_exclusion_rejects_wrong_old_leaf
+  smt::test_exclusion_rejects_wrong_root
+  smt::test_full_verifier_still_does_inclusion
+  smt::test_inclusion_matches_circomlibjs
+  smt::test_inclusion_with_value_zero_is_provable
+  smt::test_rejects_tampered_sibling
+  smt::test_rejects_wrong_key
+  smt::test_rejects_wrong_root
+  smt::test_rejects_wrong_value
+  smt::test_value_zero_inclusion_still_binds_the_root
+  title_holder::test_matches_wallet_derivation
+  TOTAL: 87 tests passed
+
+## noir_dl_lib test roster
+  big_curve::utils::derive_offset_generators::test_compute_and_print_offset_generators
+  bignum::utils::u60_representation_test::test_conversion
+  bignum::utils::u60_representation_test::test_get_bit
+  bignum::utils::u60_representation_test::test_gte
+  bignum::utils::u60_representation_test::test_shl
+  bignum::utils::u60_representation_test::test_shr
+  jubjub::test_add_doubling_matches_babyjub
+  jubjub::test_add_identity_is_neutral
+  jubjub::test_distinct_keys_give_distinct_points
+  jubjub::test_priv_to_pub_is_deterministic
+  jubjub::test_priv_to_pub_matches_babyjub
+  lite::test_dg1_hash_field_matches_the_published_vector
+  query::disclosure_tests::test_a_satisfied_birth_date_bound_passes_when_the_bit_is_set
+  query::disclosure_tests::test_a_year_above_the_current_year_is_last_century
+  query::disclosure_tests::test_a_year_equal_to_the_current_year_is_this_century
+  query::disclosure_tests::test_a_zero_date_bound_aborts_proving_even_when_unrequested
+  query::disclosure_tests::test_an_empty_selector_discloses_nothing
+  query::disclosure_tests::test_an_equal_date_is_not_less
+  query::disclosure_tests::test_an_out_of_range_birth_date_passes_when_its_bound_bit_is_clear
+  query::disclosure_tests::test_bit_0_alone_reveals_the_nullifier_and_nothing_else
+  query::disclosure_tests::test_bit_1_alone_reveals_the_birth_date_and_nothing_else
+  query::disclosure_tests::test_the_month_outranks_the_day
+  query::disclosure_tests::test_the_nullifier_is_zero_for_everyone_when_its_bit_is_clear
+  query::disclosure_tests::test_the_same_out_of_range_birth_date_is_rejected_when_the_bit_is_set
+  query::td1_disclosure_tests::test_an_empty_selector_discloses_nothing
+  query::td1_disclosure_tests::test_asking_about_citizenship_no_longer_discloses_the_personal_number
+  query::td1_disclosure_tests::test_bit_1_alone_reveals_the_birth_date_and_nothing_else
+  query::td1_disclosure_tests::test_the_citizenship_constraint_still_rejects_a_non_matching_mask
+  query::td1_disclosure_tests::test_the_personal_number_can_be_requested_without_a_citizenship_constraint
+  rsa_pss::test_verify_rsa_pss_2048_e_3_salt_32_with_sha_256
+  rsa_pss::test_verify_rsa_pss_2048_e_65537_salt_32_with_sha_256
+  rsa_pss::test_verify_rsa_pss_2048_e_65537_salt_48_with_sha_384
+  rsa_pss::test_verify_rsa_pss_2048_e_65537_salt_64_with_sha_256
+  rsa_pss::test_verify_rsa_pss_2048_e_65537_salt_64_with_sha_512
+  rsa::test_rsa_2048_with_sha1_exp_65537
+  rsa::test_rsa_2048_with_sha256_exp_65537
+  rsa::test_rsa_3072_with_sha1_exp_37187
+  rsa::test_rsa_4096_with_sha256_exp_65537
+  rsa::test_rsa_4096_with_sha256_exp_65537_2
+  sha1::test_sha1_1_chunk
+  sha1::test_sha1_2_chunks
+  sha224::test_sha224_1_chunk
+  sha224::test_sha224_2_chunks
+  sha384::test_sha384_1_chunk
+  sha384::test_sha384_2_chunks
+  sha512::test_sha512_1_chunk
+  sha512::test_sha512_2_chunks
+  sigver::curve_192::test_add_matches_reference
+  sigver::curve_192::test_double_matches_reference
+  sigver::curve_192::test_ecdsa
+  sigver::curve_192::test_mult_agrees_with_double_then_add
+  sigver::curve_192::test_mult_matches_reference
+  sigver::curve_224::test_add
+  sigver::curve_224::test_double
+  sigver::curve_224::test_ecdsa
+  sigver::curve_224::test_mult_matches_reference
+  sigver::curve_224::test_two_mult_matches_reference
+  sigver::curve_384::test_double
+  sigver::curve_384::test_ecdsa
+  sigver::curve_384::test_mult_matches_reference
+  sigver::ecdsa::test_brainpoolp256r1_signature_verification
+  sigver::ecdsa::test_brainpoolp384r1_signature_verification
+  sigver::ecdsa::test_brainpoolp384t1_signature_verification
+  sigver::ecdsa::test_brainpoolp512r1_signature_verification
+  sigver::ecdsa::test_brainpoolp512t1_signature_verification
+  sigver::ecdsa::test_secp256r1_signature_verification
+  sigver::ecdsa::test_secp384r1_signature_verification
+  sigver::ecdsa::test_secp521r1_signature_verification
+  sigver::utils::hash_to_curve::offset_generator
+  smt::test_exclusion_cannot_claim_a_present_key
+  smt::test_exclusion_empty_slot_matches_circomlibjs
+  smt::test_exclusion_other_leaf_matches_circomlibjs
+  smt::test_exclusion_rejects_wrong_old_leaf
+  smt::test_exclusion_rejects_wrong_root
+  smt::test_full_verifier_still_does_inclusion
+  smt::test_inclusion_matches_circomlibjs
+  smt::test_rejects_tampered_sibling
+  smt::test_rejects_wrong_key
+  smt::test_rejects_wrong_root
+  smt::test_rejects_wrong_value

@@ -968,6 +968,43 @@ is just not sufficient, and it changed the failure from "cannot prove" to "prove
   toolchain is fixed; do not treat the EIP-170 measurement as transferable (the gate count will
   change once recursion is real, though sec. 2.4pre's N-independence claim suggests the SIZE will not).
 
+**🎯 ROOT CAUSE FOUND 2026-08-01 - A ZK/NON-ZK MISMATCH. bb 5.x SAYS IT OUT LOUD.**
+On `nargo` beta.26 + `bb` 5.1.0 the outer circuit fails with a REAL diagnostic, the first one this
+investigation has produced:
+
+> `create_honk_recursion_constraints: ACIR proof size mismatch. Expected: 410`
+
+**410 is Aztec's `RECURSIVE_PROOF_LENGTH` (NON-ZK). 458 is `RECURSIVE_ZK_PROOF_LENGTH` (ZK).** And
+the proof_type constants split the same way: **`PROOF_TYPE_HONK = 0` expects a NON-ZK inner proof;
+`PROOF_TYPE_HONK_ZK = 6` expects the ZK one.** We have been feeding a **ZK** inner proof to
+`proof_type = 0`. The in-circuit verifier was being handed a proof of the wrong shape all along -
+which is exactly the kind of thing bb 1.2.0 accepted silently and bb 5.x refuses with a message.
+
+**bb 5.x + beta.26 also produces artifacts that MATCH the published library constants**, which
+bb 1.2.0 never did: vk = **115** fields (`ULTRA_VK_LENGTH_IN_FIELDS = 115`, ours was 112), proof =
+**458** ZK / **410** non-ZK. It also emits a **`vk_hash` file** - the `key_hash` argument we were
+passing as 0 and guessing at. Three independent numbers agreeing with the documentation is strong
+evidence this is the intended pairing.
+
+**THE TWO CANDIDATE FIXES, to try in this order on beta.26 + bb 5.x:**
+1. **`proof_type = 6` (`PROOF_TYPE_HONK_ZK`) with the 458-field ZK proof.** PREFERRED - it keeps the
+   inner proof zero-knowledge. (On beta.13 `6` failed to build; that may simply be its age.)
+2. `proof_type = 0` with a **non-ZK** inner proof (`-t noir-recursive-no-zk`, 410 fields).
+   ⚠️ **A non-ZK inner proof LEAKS THE WITNESS to the batcher** - `nullifier`, `secret`, `label`,
+   `value`, `sk_identity`. That destroys exactly the unlinkability the pool exists for. **Only
+   acceptable if the inner proof never leaves the user's device, which it does not in this design.**
+   Treat as a fallback and document loudly if taken.
+
+Also pass the real `vk_hash` (bb 5.x writes it) rather than 0, and re-check `public_inputs` for
+1 + 16.
+
+**bb 5.x CLI, for whoever continues:** no `--scheme` / `--oracle_hash` / `--honk_recursion`. Use
+`-t/--verifier_target`: **`noir-recursive`** (poseidon2, ZK) or `noir-recursive-no-zk` for INNER
+proofs, **`evm`** (keccak, ZK) for the outer/on-chain proof. `--output_format json` emits a vk.json
+carrying `bb_version`/`scheme` metadata, but `prove -k` needs the BINARY vk.
+
+⚠️ **beta.13 was restored again** after this test (`noirup` overwrites in place).
+
 **✅ THE DIAGNOSIS IS NOW COMPLETE AND PRECISE (2026-08-01). The accumulator cannot be propagated on
 beta.13 + bb 1.2.0 BY EITHER OF THE TWO MECHANISMS THAT EXIST. Nothing else is wrong.**
 

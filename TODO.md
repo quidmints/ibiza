@@ -8490,6 +8490,44 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **🚨 THE RECIPIENT ADDRESS IS NOBODY'S JOB (2026-08-02). Verified, not inferred.**
+
+  **The wallet does not create a fresh address.** `relay.ts` takes `recipient: string` from its
+  caller; there is no derivation function in `frontend/identity-wallet/src` (searched
+  derive*Address/recipientAddress/freshAddress - zero hits). And `buildRelayedWithdrawal` has NO
+  CALLER, so nothing drives a withdrawal end-to-end yet - the same class of gap as `Entrypoint.relay()`
+  sitting unused before sec. 2.20.
+
+  **Every ordinary answer a user has is wrong.** Their existing wallet is the linked address. An
+  exchange deposit address is KYC'd. So today the pool's privacy rests on the user independently
+  knowing to generate a throwaway key - and most will not.
+
+  **THE FIX IS CHEAP AND THE MACHINERY IS PRESENT.** The root mnemonic is already there.
+  `notes.ts` uses BIP44 accounts 0 and 1 for the PP master keys, so recipients need their OWN
+  non-colliding range (e.g. `m/44'/60'/(1000+i)'/0/0`). Determinism is what makes this one-click:
+  a fresh address per withdrawal is still recoverable from the same seed phrase, so "fresh" never
+  means "another key to back up". Rarimo already owns that seed - this is the natural place for it.
+
+  **THE TRAP ONE HOP LATER, AND IT IS ASSET-DEPENDENT.**
+    - **ETH:** the fresh address receives ETH and can pay its own gas. Self-sufficient. Fine.
+    - **ERC-20** (`PrivacyPoolComplex` exists, so this is real): the address holds USDC and ZERO ETH.
+      To move it, it needs gas. Sending gas from any address you control **RE-LINKS IT** - the exact
+      linking transaction the relayer was built to avoid, moved one hop downstream.
+      **The relayer solves the withdrawal. NOTHING solves the first spend.**
+
+  **THIS CORRECTS THE 4337 ARGUMENT BANKED ABOVE**, which framed it as replacing the relayer. That
+  is secondary. The real case: a 4337 smart account as recipient, with a paymaster taking its fee in
+  the WITHDRAWN TOKEN, means the fresh address never needs ETH at all - ever. That closes the
+  ERC-20 dead end, which nothing else does.
+
+  **AND IT ANSWERS THE 5564 QUESTION: stealth addresses are the WRONG TOOL HERE.** ERC-5564 solves
+  "a third party pays me without linking", via announcements the recipient scans. In a withdrawal the
+  user controls both ends and knows the payout in advance, so plain HD derivation is strictly simpler
+  and leaks less (no announcement to scan, no extra registry). 5564 would only earn its place if
+  outsiders were paying INTO a pool identity. **Not a gap. A non-requirement.**
+
+  **ORDER: recipient derivation first (small, unblocks everything), then 4337 for the ERC-20 spend.**
+
   **🗺️ LEAK INVENTORY (2026-08-02), ordered by how much they actually buy an attacker. Amount
   uniformity is NOT near the top, and treating it as the privacy story is the mistake.**
 

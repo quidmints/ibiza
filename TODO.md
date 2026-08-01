@@ -968,6 +968,41 @@ is just not sufficient, and it changed the failure from "cannot prove" to "prove
   toolchain is fixed; do not treat the EIP-170 measurement as transferable (the gate count will
   change once recursion is real, though sec. 2.4pre's N-independence claim suggests the SIZE will not).
 
+**✅ THE DIAGNOSIS IS NOW COMPLETE AND PRECISE (2026-08-01). The accumulator cannot be propagated on
+beta.13 + bb 1.2.0 BY EITHER OF THE TWO MECHANISMS THAT EXIST. Nothing else is wrong.**
+
+There are exactly two ways a pairing-point accumulator can leave a circuit, and both were tested:
+
+1. **The CIRCUIT returns it.** Probed directly: `let acc: u8 = std::verify_proof_with_type(...)` gives
+   `error: Expected type u8, found type ()`. **The function returns UNIT on beta.13** - there is no
+   value to return from `main`, so this route does not exist in the language here.
+2. **The BACKEND adds it**, which is what `--honk_recursion` is for ("Ensures a pairing point
+   accumulator is added to the public inputs", per bb's own `--help`). On bb 1.2.0 that flag on the
+   OUTER proof **writes no vk at all**, under every transcript and with/without
+   `--init_kzg_accumulator`.
+
+So the outer proof's `public_inputs` stays at **1 field** instead of 1 + 16, the deferred pairing
+check never runs, and any inner proof - real or all-zero - satisfies what remains. **That is the whole
+bug.** It is not the fold, not `proof_type` (0 is correct), not the pinned key, not the circuit logic,
+and not something we wrote.
+
+**HOW TO READ THE OUTPUTS - the three that misled me, so they are not misread again:**
+- **`bb verify` says "Proof verified successfully" AND exits 0 on failure.** Success here means "the
+  outer proof is valid for this circuit", which is TRUE even when the circuit constrains nothing.
+  **It is not evidence that inner proofs were checked.** Only a REJECTED garbage batch is.
+- **`nargo execute` succeeding is meaningless for recursion** - the opcode is discharged as a black
+  box and never validates its inputs. It solved happily for all-zero proofs at every stage.
+- **`public_inputs` field count is the real instrument.** 1 = no accumulator = deferred check absent.
+  1 + 16 = accumulator carried. **Check this number first in any future attempt**; it would have
+  found the bug in minutes rather than hours, and it is the one output that never lied.
+
+**THE FIX IS A TOOLCHAIN WITH A WORKING `--honk_recursion` (or an API returning the accumulator).**
+`nargo` v1.0.0-beta.26 compiles both minimal circuits unchanged, so the source needs no edit; the
+work is driving it with a matching `bb` 5.x, whose CLI differs entirely (`--verifier_target`,
+`--output_format`; no `--scheme`/`--oracle_hash`/`--honk_recursion`). **Acceptance, in order:**
+(1) outer `public_inputs` == 1 + 16; (2) the real proof verifies; (3) the all-zero proof is REFUSED.
+All three, or it is not fixed.
+
 **🔑 THE HIDDEN ASSUMPTION IN MY OWN TEST, FOUND 2026-08-01 (user: *"maybe the way you are testing it
 is the issue"*). This reframes everything above and is the most useful thing in this section.**
 

@@ -8470,9 +8470,15 @@ at registration") has no passport equivalent and needs its own home regardless.
   2. **Refuse, or warn hard, below a threshold.** A wallet that accepts a deposit into a set of 3
      while presenting a privacy UI is lying to its user. Match `allowRemainder: false`'s posture -
      raise rather than silently do the unsafe thing.
-  3. **Decorrelate timing** - randomised delay between notes, or deposit-on-a-schedule, so a streak
-     is not a signature. Directly at odds with `depositBatch`'s one-click UX; **that tension must be
-     decided deliberately, not settled by whichever gets built first.**
+  3. **~~Decorrelate deposit timing with randomised delays~~ - WRONG, AND THE "TENSION" WITH ONE-CLICK
+     UX WAS INVENTED (corrected 2026-08-02).** Privacy Pools deposits are **public by design**: the
+     deposit is always visible and always tied to the depositor's address. A streak therefore reveals
+     nothing the individual deposits do not already reveal, and delaying them buys nothing while
+     making the wallet unusable (see the 99-note case). **`depositBatch` and one-click UX cost no
+     privacy - build them.** The leak that matters is on the WITHDRAWAL side: whether a withdrawal
+     can be tied back to a specific deposit, which is governed by the ANONYMITY SET and by AMOUNT
+     matching, neither of which deposit timing touches. Spend the effort on withdrawal-side
+     denomination discipline and on surfacing set size, not on delays.
   4. **Say what is NOT protected**: amount and timing correlation survive everything above. The repo
      already concedes the multiset leaks; the USER has never been told.
 

@@ -8490,7 +8490,25 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
-  **🔴 AND THAT COMMENT REVEALS A FAR WORSE UX PROBLEM: `Uniform` mode turns 9.9 ETH into 99 NOTES
+  **🔵 `Uniform` MAY BE SOLVING A NON-PROBLEM - re-examine before building `depositBatch` around it
+  (2026-08-02).** `deposit.ts:35-38` justifies `Uniform` by saying `Mixed` emits "9 + 9x0.1, a shape
+  few others will share". But that is DEPOSIT-side shape, and **deposits are public by design** - the
+  same error as the retracted timing argument above.
+
+  Anonymity in this pool is **per-note at WITHDRAWAL time**: a 0.1 note withdrawn on its own is
+  indistinguishable from every other 0.1 note in the pool, whatever else its depositor deposited. The
+  depositor's overall shape is already public and cannot be hidden, so paying for uniformity across
+  it buys nothing. On that reading `Mixed` gives each note the SAME per-denomination anonymity as
+  `Uniform`, at 18 transactions instead of 99.
+
+  **DO NOT ACT ON THIS WITHOUT CHECKING IT** - it is a reasoning result, not a measurement, and two
+  of my adjacent claims today were wrong. The thing to verify: whether any withdrawal-side linkage
+  actually consumes the deposit shape - e.g. if a user withdraws all notes together, or if the ASP /
+  label structure ties a note back to its deposit transaction. If either is true, `Uniform` earns its
+  cost and the fix is elsewhere. If neither is, `Uniform` can be dropped and the 99-note case
+  disappears without needing `depositBatch` to rescue it.
+
+  **🔴 THE 99-NOTE CASE, if `Uniform` survives that check: it turns 9.9 ETH into 99 NOTES
   OF 0.1** - which, given the sequential `submitDeposits` loop, is **99 transactions and 99 wallet
   approvals for one deposit**. That is not a rough edge; it is unusable, and it is the DEFAULT-adjacent
   path for any amount that is not a clean multiple. `depositBatch` is therefore not a nicety - without

@@ -968,6 +968,43 @@ is just not sufficient, and it changed the failure from "cannot prove" to "prove
   toolchain is fixed; do not treat the EIP-170 measurement as transferable (the gate count will
   change once recursion is real, though sec. 2.4pre's N-independence claim suggests the SIZE will not).
 
+**🔑 THE HIDDEN ASSUMPTION IN MY OWN TEST, FOUND 2026-08-01 (user: *"maybe the way you are testing it
+is the issue"*). This reframes everything above and is the most useful thing in this section.**
+
+I assumed a garbage inner proof must fail INSIDE the circuit. **Honk recursion does not work that
+way.** The in-circuit verifier performs Fiat-Shamir and sumcheck, then **DEFERS the expensive final
+pairing check into a PAIRING-POINT ACCUMULATOR**, which must be carried out of the circuit as public
+inputs and checked by whoever verifies the OUTER proof.
+
+**So "garbage accepted" does NOT prove the constraints are missing.** It is equally consistent with
+the constraints being fine and the ACCUMULATOR NEVER BEING PROPAGATED - in which case the deferred
+check simply never runs. And the accumulator is exactly what has been missing all along: **the outer
+proof's `public_inputs` is 1 field under EVERY flag combination tried** (`--honk_recursion 1`,
+`--honk_recursion 2`, `--init_kzg_accumulator`, both transcripts, alone and combined), never the
+1 + 16 that a propagated accumulator would give. Every combination that might add it writes **no vk
+at all** on bb 1.2.0.
+
+**Therefore the correct diagnosis is narrower and more hopeful than "recursion is broken":** we have
+never succeeded in getting bb 1.2.0 to EMIT a circuit that carries its pairing-point accumulator. The
+in-circuit constraints may well be correct. **The thing to fix is accumulator propagation, not the
+circuit.** Note this also explains the 550,404-gate keccak result differently: with no accumulator to
+constrain, the optimiser has even more freedom to drop work.
+
+**LATEST TOOLCHAIN TRIED, AND WHY IT STOPPED (2026-08-01).** `nargo` v1.0.0-beta.26 (latest,
+2026-07-30) installed via `noirup`; the minimal inner AND outer circuits **both compile unchanged**,
+so the recursion API is still `std::verify_proof_with_type`. The blocker is `bb`: the 5.x line has a
+**completely different CLI** - no `--scheme`, no `--oracle_hash`, no `--honk_recursion`; instead
+`-b/--bytecode_path`, `-o/--output_path`, `--verifier_target`, `--output_format`. So beta.26 needs a
+matching bb driven the 5.x way, which is the next session's first task and is NOT a large job:
+recompile the minimal pair, generate inner artifacts with the 5.x syntax, rebuild the outer for
+whatever vk/proof LENGTHS 5.x reports (they will differ from 112/507), then run the real-vs-garbage
+pair. **Check `public_inputs` for 1 + 16 fields - that single number tells you immediately whether
+the accumulator is finally being carried.**
+
+⚠️ **The pinned `nargo` beta.13 was RESTORED** (`noirup` overwrites `~/.nargo/bin/nargo` in place; it
+was backed up first and `withdraw_identity` re-verified as building afterwards). Anyone repeating this
+MUST back up and restore, or every pinned circuit in the repo silently changes compiler.
+
 **EVERY INSTALLED bb TESTED 2026-08-01 - NONE BINDS RECURSION.** Six are on this machine; the
 minimal pair was run against all of them with an ALL-ZERO inner proof:
 

@@ -795,7 +795,32 @@ An SMT insert at depth 32 is ~32 hashes = **over 1M gas**. Whatever is decided f
 in an `internal`/assembly Poseidon is likely one of the largest single gas wins available in this
 repo, and it needs measuring in its own right.
 
-**FOR THE FOLD SPECIFICALLY, the keccak switch is now the leading option** (a few thousand gas
+**✅ RESOLVED 2026-08-01 — INLINING FIXES IT. KEEP POSEIDON; DO NOT SWITCH THE FOLD TO KECCAK.**
+Identical maths, `public` -> `internal` (so the compiler inlines instead of DELEGATECALLing), via
+sed'd copies in `contracts/libraries/inline/`:
+
+| | public (today) | internal (inlined) |
+|---|---|---|
+| T3 + T5 + T6, one call each | **324,921** | **~29,000** |
+
+**~11x cheaper**, and `PoseidonInlineGasTest::test_InlineMatchesPublic` confirms the inlined copy
+returns the IDENTICAL hash - so nothing forks. That puts the aggregation fold at roughly **~25k
+gas/withdrawal instead of 287,969**, which is comfortable against the 152k target and removes the
+only reason to consider keccak. Keccak would have bought a smaller win while forking the hash the
+circuit, the wallet, `pp/src/commitment.nr` and every SMT already agree on.
+
+**THE REPO-WIDE WIN IS THE REAL PRIZE, and it is bigger than the aggregator.** Every Poseidon call in
+`PoseidonSMT`, `StateKeeper`, `IdentityRegistry`, `HolderStateKeeper` and `TitleLedger` currently pays
+the DELEGATECALL price. A depth-32 SMT insert is ~32 hashes: **over 1M gas today, ~90k inlined.**
+
+**NEXT (do this before the batch entrypoint):** the copies in `contracts/libraries/inline/` are a
+MEASUREMENT ARTEFACT produced by `sed` from `lib/poseidon-solidity` - they are not a migration.
+Decide deliberately how to land it: vendor the files properly (with provenance + a differential test
+against the upstream `public` version for every arity, not just T3), or upstream/patch. **Do not ship
+sed'd copies**, and do not migrate call sites until the differential test covers each arity, because
+a Poseidon that is fast and subtly wrong silently forks every commitment in the system.
+
+**Superseded — the keccak option, kept so the reasoning is not re-run:** (a few thousand gas
 on-chain vs 4.6M, at ~34% more circuit gates) - but decide it AFTER measuring an `internal`/assembly
 Poseidon, because that would also preserve the byte-identical match with `pp/src/commitment.nr` that
 the circuit, the wallet and the SMT all already rely on. Superseded note: ~144k gas for a single PoseidonT6 hash is anomalously high -

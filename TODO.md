@@ -642,7 +642,39 @@ hypothesis; it is not the fix). ⚠️ **`bb verify` EXITS 0 ON FAILURE** — th
 signal, the same shape as the `-k`-on-`prove` footgun. `bb check` cannot help: it answers
 "API function check_witness not implemented" for ultra_honk.
 
-**PRIME SUSPECT: `key_hash`, which is currently passed as 0.** `std::verify_proof_with_type`'s
+**⚠️ THE SUSPECT WAS WRONG, AND THE FAULT IS NOT IN THE AGGREGATOR.** Isolated 2026-08-01 with a
+MINIMAL recursion pair (`fn main(x: Field, y: pub Field) { assert(x * 2 == y); }` verified by a
+9-line outer circuit). **The minimal case fails identically** - so nothing about the aggregator's
+size, fold, pinned key or range checks is implicated. Iterating on it takes seconds, not minutes;
+rebuild it before touching `aggregate_withdrawals` again.
+
+**RULED OUT by experiment, do not re-try these:**
+- `key_hash = 0` **and** `key_hash = Poseidon2(vk, 112)` (= `0x0673ba21...81156` for the minimal
+  inner key). Both fail identically, so the fourth argument is not the cause.
+- `--init_kzg_accumulator` on write_vk + prove. No effect; the outer proof still exposes ONE public
+  input, never the 16-field pairing-point accumulator recursion is supposed to add.
+- `--oracle_hash keccak` **and** the default poseidon2 transcript. Both fail, so this is not the
+  documented "inner poseidon2 / outer keccak" split going wrong.
+- `--honk_recursion 1` together with `--oracle_hash keccak` on the OUTER proof: bb writes **no vk at
+  all** (exit 0, missing artifact - the failure mode `bb_checked` exists to catch). That combination
+  appears to be rejected outright.
+
+**THE DIAGNOSTIC FACT:** `nargo execute` SUCCEEDS every time, while the resulting proof always fails
+sumcheck. Witness solving therefore does **not** validate the recursion constraints - it discharges
+them as a black box and trusts the inputs. So "the witness solved" is worth nothing here as evidence,
+and only `bb verify`'s TEXT is (it exits 0 on failure).
+
+**AND RE-READ 2.4pre's EVIDENCE BEFORE TRUSTING IT.** That spike is described as having built an
+N-proof aggregator, generated its Solidity verifier and compiled it - all of which measures verifier
+BYTECODE SIZE, which needs no working proof. Nothing in that section claims `bb verify` ever accepted
+a recursive proof. **There may be no evidence recursion has ever worked end-to-end in this repo**, and
+the pinned toolchain (beta.13 + bb 1.2.0) supports standalone proving without that implying it
+supports recursion.
+
+**NEXT STEPS, in order:** (1) get noir-lang's own recursion example for beta.13 running UNCHANGED -
+if it fails, the toolchain is the answer and no amount of aggregator work helps; (2) only if it
+passes, diff its flags and input shapes against the minimal pair above. Superseded suspect, kept so
+it is not re-tried: `std::verify_proof_with_type`'s
 fourth argument is the hash of the inner verification key. A wrong value need not fail witness
 SOLVING (the recursion constraints are discharged by the backend, and `nargo execute` succeeded),
 but would produce an unsatisfied constraint the prover then cannot prove — which is exactly the

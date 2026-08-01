@@ -8490,6 +8490,37 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **🔬 ANALYSED FROM THE MECHANICS (2026-08-02): WITHDRAWAL-SIDE SPLITTING IS NECESSARY; DEPOSIT-SIDE
+  IS NOT ONLY UNNECESSARY BUT COUNTERPRODUCTIVE. Two facts in the circuit decide it.**
+
+  1. **Partial spend is supported.** `withdraw_identity/src/main.nr:123`: `new_value = value -
+     withdrawn_value`, with a change commitment created. A withdrawal takes an ARBITRARY amount from
+     a note, up to its value.
+  2. **`label` is NOT a public signal.** The seven are `new_commitment`, `existing_nullifier_hash`,
+     `withdrawn_value`, `state_root`, `state_tree_depth`, `identity_root`, `context`. **A withdrawal
+     never reveals which deposit funded it.**
+
+  **WHY WITHDRAWAL-SIDE IS NEEDED.** `withdrawn_value` IS public. Withdraw 0.0731 and that figure is
+  distinctive on its own - no anonymity set contains it. Withdrawing only in standard denominations
+  is what makes each withdrawal common. This is the half that is missing.
+
+  **WHY DEPOSIT-SIDE BUYS NOTHING.** Given (2), a withdrawal of X could have come from ANY note worth
+  >= X; the anonymity set is every such note, regardless of how its depositor arranged theirs. The
+  depositor's own shape is public anyway (deposits are public by design), so uniformity across it
+  hides nothing that was hidden.
+
+  **AND WHY IT IS ACTIVELY HARMFUL.** Given (1), one large note can fund a withdrawal of any size,
+  while N small notes CONSTRAIN each withdrawal to <= note value - forcing MORE withdrawals. So
+  splitting deposits: costs N deposit transactions, then forces extra withdrawal transactions, each
+  adding gas and another public `withdrawn_value` to correlate. It makes the side that actually leaks
+  noisier in order to tidy the side that does not leak.
+
+  **THIS INVERTS THE ✅ ABOVE.** Deposit splitting is marked DONE and defaults to ON. On this analysis
+  the default is backwards. **VERIFY BEFORE ACTING** - this is reasoning from two code facts, not a
+  measurement, and several adjacent claims of mine were wrong today. The way to falsify it: find any
+  mechanism that links a withdrawal to a specific deposit. If none exists, deposit splitting should
+  default OFF and `Uniform`/`depositBatch` both become moot.
+
   **🔵 `Uniform` MAY BE SOLVING A NON-PROBLEM - re-examine before building `depositBatch` around it
   (2026-08-02).** `deposit.ts:35-38` justifies `Uniform` by saying `Mixed` emits "9 + 9x0.1, a shape
   few others will share". But that is DEPOSIT-side shape, and **deposits are public by design** - the

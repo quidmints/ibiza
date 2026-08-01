@@ -8490,6 +8490,32 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **🔴 A REAL BUG THE NEW TESTS FOUND: `StateTree.proof()` PRODUCED INVALID WITHDRAWAL PATHS.**
+  It returned `LeanIMT.generateProof`'s siblings paired with the caller's TRUE `leafIndex`. Those do
+  not go together: the library COMPRESSES the sibling list, omitting every level where the node
+  carries up, and returns its OWN recomputed index for that compressed list - its comment says so
+  outright ("the index might be different from the original index of the leaf").
+  **The circuit expects the opposite.** `backend/circuits/pp/src/lean_imt.nr` walks all 32 levels
+  from `leaf_index.to_le_bits()` and carries up wherever the sibling is 0, so it needs a
+  LEVEL-ALIGNED array with an explicit 0 at each carry-up. Fed the compressed one, it walks the wrong
+  pair order and reconstructs a root the pool never held.
+  **Why it survived: the two agree exactly when no carry-up occurs - i.e. on power-of-two-sized
+  trees. It works in the tidiest case and fails on most real ones.** Any withdrawal from a tree whose
+  size is not a power of two, for any leaf with a carry-up, would have produced a proof rejected
+  on-chain with nothing pointing back at the wallet.
+  **Fixed** by building the levels from the public leaves and emitting 0 at each carry-up, plus a
+  guard that the rebuilt levels reproduce the library's root.
+
+  **THE TEST THAT FOUND IT IS THE ONE THAT DOES NOT TRUST ITSELF.** `LeanIMT.verifyProof` would have
+  agreed with `generateProof` and proved nothing - the library agreeing with itself, the Go-testing-Go
+  trap from NotaryRegistryProofTest. The path is instead walked by an INDEPENDENT reimplementation of
+  the circuit's rule. And the suite now pins the CROSS-LANGUAGE fixture from
+  `test_matches_lean_imt_sol_three_leaves`, a root whose comment records that `LeanIMT.sol`'s own
+  `root()` was asserted equal to it ON-CHAIN - so the wallet's Poseidon is checked against Solidity's,
+  not against more TypeScript. **12 tests; mutation-verified, including replaying the original bug.**
+  (The rebuilt-root guard is deliberately NOT test-covered: it fires only if the library diverges from
+  our rebuild, which no test can induce without breaking the library.)
+
   **✅ THE `pp/` TEST BLACKOUT, MEASURED AND CLEARED (2026-08-02).** "Fixed in passing" undersold
   it: SIX of nine `pp/` modules could not be LOADED by `node --test`, from three distinct causes.
     - **ethers type-only exports imported as values** (`ContractRunner`) - relay.ts, identityProof.ts,

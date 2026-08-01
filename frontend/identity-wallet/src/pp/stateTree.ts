@@ -125,7 +125,40 @@ export class StateTree {
       );
     }
 
-    const { siblings } = this.tree.generateProof(Number(leafIndex));
+    // NOT `LeanIMT.generateProof`. That returns a COMPRESSED sibling list — it omits the levels
+    // where the node carries up — together with a RECOMPUTED index matching that compressed list
+    // ("the index might be different from the original index of the leaf", its own comment). Pairing
+    // those siblings with the caller's true `leafIndex`, which is what this method returned before,
+    // misaligns the two for any leaf whose path contains a carry-up: the circuit then walks the
+    // wrong pair order and reconstructs a root the pool never held.
+    //
+    // It went unnoticed because the two agree exactly when no carry-up occurs, i.e. on
+    // power-of-two-sized trees — so it works in the tidiest case and fails on most real ones.
+    //
+    // The circuit (backend/circuits/pp/src/lean_imt.nr) walks ALL MAX_DEPTH levels from
+    // `leaf_index.to_le_bits()` and carries up wherever the sibling is 0, so what it needs is a
+    // LEVEL-ALIGNED array with an explicit 0 at each carry-up. Building the levels here, from the
+    // public leaves, is what produces that alignment.
+    const siblings: bigint[] = [];
+    let level: bigint[] = this.tree.leaves;
+    let index = Number(leafIndex);
+    for (let d = 0; d < this.tree.depth; d++) {
+      const siblingIndex = index % 2 === 0 ? index + 1 : index - 1;
+      siblings.push(level[siblingIndex] ?? 0n); // absent sibling => 0 => carry up
+      const next: bigint[] = [];
+      for (let i = 0; i < level.length; i += 2) {
+        next.push(i + 1 < level.length ? hash2(level[i]!, level[i + 1]!) : level[i]!);
+      }
+      level = next;
+      index >>= 1;
+    }
+
+    // Rebuilding the levels duplicates the library's construction, and a silent divergence would
+    // produce a well-formed proof of the wrong tree. Cheap to rule out, so ruled out.
+    if (level.length !== 1 || level[0] !== this.root) {
+      throw new Error("StateTree: rebuilt levels disagree with the tree root");
+    }
+
     const padded = [...siblings, ...Array(maxDepth - siblings.length).fill(0n)];
 
     return { leafIndex, siblings: padded, depth: this.tree.depth, root: this.root };

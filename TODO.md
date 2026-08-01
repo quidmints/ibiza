@@ -851,6 +851,36 @@ verification. So in-circuit cost is irrelevant there and on-chain cost is everyt
 opposite of the tree case. **This is a local exception, not a migration**: nothing else changes hash,
 and the fold has no existing consumers to fork.
 
+**WHO PAYS THE +511k GATES, AND WHY IT IS THE RIGHT PARTY (user asked 2026-08-01).**
+The fold is in the AGGREGATION circuit, which only the **batcher** runs. The USER proves only
+`withdraw_identity` - 44,176 gates, ~1.3 s desktop, 15-40 s on the A16 - and that is **completely
+unchanged**. So the added cost lands on the party that already needs a ~28 GB machine and minutes of
+proving, and that is paid through PP's relay fee, while the hard constraint (sec. 2.4b: user-side
+proving must run on a budget phone) is untouched.
+
+Concretely for the batcher: 11.6M -> 12.16M gates, ~27 -> ~28 GB, ~4.4% more proving time. Against
+saving ~288k gas on EVERY withdrawal they settle, which is what they are paid out of. The incentive
+points the same way as the design.
+
+**IT SCALES.** In a 16-wide tree (sec. 2.4b), only LEAF nodes fold raw signals; a parent aggregates 16
+leaf proofs and folds 16 field elements, not 16x7. On-chain, N=256 means keccak over ~57 KB of
+calldata = ~11k gas for the whole batch, still negligible. Nothing about this choice degrades as N grows.
+
+**"NO EXISTING CONSUMERS" - PRECISELY WHAT THAT MEANS, AND WHAT COMES LATER.**
+Today `batch_commitment` and `BatchCommitmentLib` are new code with **zero callers**: the batch
+entrypoint does not exist, no batcher software computes it, no wallet reads it. So changing the hash
+NOW forks nothing at all. **Later there WILL be consumers** - the batch entrypoint, the batcher that
+assembles batches off-chain, possibly the wallet if it checks its withdrawal was included, and any
+tree implementation. **So the free window is now, before those are written.**
+
+**BUT THE LOCK-IN IS WEAK EVEN AFTER THAT, AND THIS IS THE KEY STRUCTURAL POINT:**
+the batch commitment is **TRANSIENT** - it exists for the duration of ONE transaction and is never
+stored. Changing it later would invalidate only in-flight batches, not any funds or state. Contrast
+the NOTE commitment (`pp/src/commitment.nr`), which is **DURABLE**: it defines leaves living in the
+state tree forever, so changing that hash would strand every existing note. That difference - not
+convenience - is the real reason the fold may use a different hash while the tree may not, and it is
+the sentence to check any future "let us unify the hashes" proposal against.
+
 **CONSEQUENCES OF KECCAK IN THE FOLD - checked, all bounded:**
 1. **Field reduction is REQUIRED and already has precedent.** keccak gives 256 bits, BN254's field is
    ~254, so the digest must be reduced. `PrivacyPool.sol:97` already does exactly this for `context`:

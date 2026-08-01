@@ -17,8 +17,8 @@
 //! censored by every batcher still self-submits at full gas, so refusal costs money, never access.
 //!
 //! THE ORACLE SPLIT, and the wallet obligation it creates. Inner proofs use the poseidon2
-//! transcript (`--honk_recursion 1`); the outer proof uses keccak, because that is what the
-//! generated Solidity verifier accepts. So a proof made FOR a batcher is not directly
+//! transcript (`bb -t noir-recursive`); the outer proof uses keccak (`bb -t evm`), because that is
+//! what the generated Solidity verifier accepts. So a proof made FOR a batcher is not directly
 //! self-submittable. **The wallet must retain the witness until the withdrawal confirms** and
 //! re-prove with keccak (~1.3 s) if it ever needs the escape hatch. An optimising refactor that
 //! drops that retention silently removes the escape hatch.
@@ -32,12 +32,18 @@ use keccak256::keccak256;
 /// SIZING IS A PROVER-MEMORY DECISION, NOT AN ON-CHAIN ONE. Honk's verifier is a fixed algorithm,
 /// so the generated Solidity is the same size for N=1 and N=16 (sec. 2.4pre measured +/-2 bytes) -
 /// N grows the CIRCUIT, not the contract. What N costs is the batcher's RAM: in-circuit UltraHonk
-/// verification is order 1M gates each at ~3.4 KB/gate, so N=16 is ~56 GB. N=64 would be ~225 GB
-/// and N=256 ~899 GB, which is not one machine - past 16 the answer is a 16-wide TREE of these
-/// circuits (depth 2 reaches 256, depth 3 reaches 4096), where every node stays at ~56 GB.
+/// verification is ~725k gates each. MEASURED at ~2.36 KB/gate (3.3 GB peak proving N=2), so N=16 is
+/// ~27 GB - not the ~56 GB an earlier 3.4 KB/gate estimate gave. N=32 extrapolates to ~55 GB. Past
+/// 16 the answer is still a 16-wide TREE (depth 2 reaches 256, depth 3 reaches 4096), where every
+/// node stays bounded, rather than one wider flat circuit.
 pub global BATCH_N: u32 = 16;
 
-/// UltraHonk proof length in fields, MEASURED on bb 1.2.0 (`--honk_recursion 1`).
+/// UltraHonk **ZK** proof length in fields, MEASURED on bb 5.1.0 (`-t noir-recursive`).
+///
+/// THIS IS COUPLED TO `HONK_PROOF_TYPE` AND MUST MOVE WITH IT. 458 is Aztec's
+/// `RECURSIVE_ZK_PROOF_LENGTH` and pairs with `PROOF_TYPE_HONK_ZK = 6`; the NON-ZK pair is 410 with
+/// `PROOF_TYPE_HONK = 0`. Mixing them is what produced `ACIR proof size mismatch. Expected: 410`.
+/// (bb 1.2.0 emitted 507 here - a length that belongs to no supported combination on 5.x.)
 global PROOF_LEN: u32 = 458;
 
 /// `withdraw_identity`'s public signals, MEASURED: 7, matching `ProofLib.WithdrawProof.pubSignals`
@@ -48,13 +54,19 @@ global PUB_LEN: u32 = 7;
 
 /// `std::verify_proof_with_type`'s proof_type for UltraHonk.
 ///
-/// **0, AND THIS IS NOT bb's `--honk_recursion` VALUE.** Two unrelated enumerations are easy to
-/// conflate, and doing so costs hours because nothing errors: bb's CLI flag uses 1 = UltraHonk,
-/// 2 = UltraRollupHonk, while the IN-CIRCUIT parameter is Aztec's PROOF_TYPE_* set - 
-/// PROOF_TYPE_HONK = 0, PROOF_TYPE_ROLLUP_HONK = 4, PROOF_TYPE_HONK_ZK = 6
-/// (barretenberg/noir/bb_proof_verification/src/lib.nr). Passing 1 compiles, solves the witness,
-/// and proves - and the proof then fails `bb verify` with `Sumcheck failed!`, with nothing
-/// pointing at the parameter. PROOF_TYPE_HONK_ZK = 6 is NOT usable on beta.13: it fails to build.
+/// **6 = `PROOF_TYPE_HONK_ZK`, AND THIS IS NOT bb's `--honk_recursion` VALUE.** Two unrelated
+/// enumerations are trivially conflated and doing so costs hours, because nothing errors: bb's CLI
+/// flag used 1 = UltraHonk / 2 = UltraRollupHonk, while the IN-CIRCUIT parameter is Aztec's
+/// PROOF_TYPE_* set - `PROOF_TYPE_HONK = 0`, `PROOF_TYPE_ROLLUP_HONK = 4`, `PROOF_TYPE_HONK_ZK = 6`
+/// (barretenberg/noir/bb_proof_verification/src/lib.nr).
+///
+/// WE USE **6** BECAUSE OUR INNER PROOFS ARE ZK, which is bb's default and non-negotiable here: a
+/// non-ZK inner proof leaks `nullifier`, `secret`, `label`, `value` and `sk_identity` to whoever
+/// holds it. 6 pairs with the 458-field proof above; 0 expects a 410-field NON-ZK proof.
+///
+/// History, so it is not re-derived: passing 1 compiles, solves the witness AND proves, then fails
+/// `bb verify` with `Sumcheck failed!` - naming sumcheck, never the parameter. Passing 0 with a ZK
+/// proof was worse: on bb 1.2.0 it produced a circuit that verified GARBAGE batches.
 global HONK_PROOF_TYPE: u32 = 6;
 
 /// `State.MAX_TREE_DEPTH`. Mirrored from Solidity; see the range check in `main`.

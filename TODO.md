@@ -8490,6 +8490,23 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **✅ THE WITNESS HANDED TO THE PROVER IS NOW PINNED TO THE CIRCUIT (16 tests).**
+  `withdrawWitness.test.ts` asserts the keys of `inputs` are EXACTLY `withdraw_identity::main`'s 17
+  parameters, and that `pubSignals` is its seven public ones in declaration order. Noir binds BY
+  NAME: a renamed or dropped key is not a TypeScript error and not a circuit compile error, it is a
+  proof that never happens - so this is the same class of cross-artifact check as the lean-imt.sol
+  fixture, pinned against the circuit source rather than against more TypeScript. Also covers value
+  conservation into the change note, that the change note is re-derivable as
+  `withdrawalSecrets(keys, label, k)` (get this wrong and the remainder is unspendable forever, with
+  nothing saying so until the user comes back for it), and every refusal.
+  **It consumes `stateProof.leafIndex` and `.siblings` from one object, so the StateTree fix below
+  propagates cleanly** - that was the open blast-radius question and it is closed.
+
+  **A NO-OP MUTATION, WORTH RECORDING.** Swapping the change note's derivation from
+  `withdrawalSecrets` to `depositSecrets` changes NOTHING - all 16 still pass, because the two are
+  literally the same function (pinned in notes.test.ts). That is not a test gap; it is the
+  scope/label collision hazard demonstrated rather than argued.
+
   **🔴 A REAL BUG THE NEW TESTS FOUND: `StateTree.proof()` PRODUCED INVALID WITHDRAWAL PATHS.**
   It returned `LeanIMT.generateProof`'s siblings paired with the caller's TRUE `leafIndex`. Those do
   not go together: the library COMPRESSES the sibling list, omitting every level where the node

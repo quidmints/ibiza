@@ -968,6 +968,38 @@ is just not sufficient, and it changed the failure from "cannot prove" to "prove
   toolchain is fixed; do not treat the EIP-170 measurement as transferable (the gate count will
   change once recursion is real, though sec. 2.4pre's N-independence claim suggests the SIZE will not).
 
+**⛔ THE MIGRATION BLOCKER IS AN UPSTREAM COMPILER BUG, NOT OUR CODE (2026-08-01). This is the end of
+what can be done locally.**
+
+`noir_dl_lib`'s 80 tests do not vanish because of `u1`/`bool` - they vanish because **`nargo test`
+ICEs**:
+
+```
+ice: all function ids should have metadata
+compiler/noirc_frontend/src/node_interner/function.rs:176
+```
+
+**That is the SAME ICE `codegen-verifiers.sh` records for beta.22+, and it is STILL PRESENT at
+beta.26.** It also causes the `escrow_envelope` compile failure. So both remaining blockers are one
+upstream bug, and there is no source change on our side that clears them.
+
+**OUR MIGRATION WORK IS COMPLETE AND CORRECT.** With poseidon v0.3.0 + beta.26 + the five source
+fixes: **6 of 7 circuits compile and `pp` passes 87/87**. The `u1` -> `bool` rewrite is done and
+behaviour-preserving as far as any test we can run shows.
+
+**THE OPTIONS, none of which are more local editing:**
+1. **Report the ICE upstream** with a reduction from `noir_dl_lib` (it has survived at least beta.22
+   -> beta.26, so it is unlikely to fix itself). This is the honest path.
+2. **Bisect beta.14..beta.25** for a version that has BOTH working recursion (`proof_type = 6` +
+   115/458 field sizes) AND no ICE. Mechanical but slow; `noirup --version` makes each step cheap,
+   and `verify-migration.sh` judges each one.
+3. **Stay on beta.13 and accept no aggregation.** The pool works today; aggregation is the
+   optimisation that has never been live.
+
+**DO NOT attempt more `u1`/`bool` edits** - that work is finished, and the failure it appeared to
+cause was always this ICE wearing a different mask (a crashed `nargo test` produces no test names,
+which the gate correctly reports as "all 80 dropped").
+
 **🚦 MIGRATION RUN 2 (2026-08-01) - 6/7 COMPILE, `pp` 87/87 GREEN, BUT ALL 80 `noir_dl_lib` TESTS
 VANISHED. Reverted. THE REMAINING WORK IS NOW EXACTLY ONE THING.**
 

@@ -968,6 +968,39 @@ is just not sufficient, and it changed the failure from "cannot prove" to "prove
   toolchain is fixed; do not treat the EIP-170 measurement as transferable (the gate count will
   change once recursion is real, though sec. 2.4pre's N-independence claim suggests the SIZE will not).
 
+**✅ AGGREGATION LANDED 2026-08-01 (commit `e2ecd88`) - AND IT CREATED A SPLIT TOOLCHAIN THAT MUST BE
+CLOSED BEFORE ANYTHING IS DEPLOYED. Read both halves.**
+
+**WHAT LANDED.** The aggregator BINDS its inner proofs: two REAL `withdraw_identity` proofs are
+ACCEPTED, an all-zero batch is REFUSED at prove. On bb 1.2.0 both were accepted. `pp` 87/87,
+`withdraw_identity` 5/5, `aggregate_withdrawals` 5/5, all on **nargo beta.26 + bb 5.1.0**.
+
+**THE UNLOCK was that the aggregation path is INDEPENDENT of the crates that crash beta.26.**
+`withdraw_identity` -> `pp` -> `poseidon`, full stop; the `noir_dl_lib` references inside `pp` are
+COMMENTS about copied code, not dependencies. Three crates needed migrating, not the whole repo.
+
+**Changes:** `poseidon` v0.2.0 -> v0.3.0, `keccak256` v0.1.0 -> v0.1.3, the `u1` -> `bool` rewrite in
+`pp`/`withdraw_identity`/`notary_action`, and the aggregator retargeted to the REAL recursion shapes -
+vk **115** (was 112), proof **458** (was 507), `proof_type` **6** = `PROOF_TYPE_HONK_ZK` (was 0, which
+expects a NON-ZK 410-field proof - the original root cause).
+
+**🔴 THE CONSEQUENCE, MEASURED, NOT ASSUMED: `bb` 1.2.0 CANNOT READ THE beta.26 ARTIFACT** - it errors
+`Length is too large`. So:
+- **`WithdrawalHonkVerifier.sol` as deployed WILL REJECT proofs from the beta.26-built circuit.** It
+  was generated from the beta.13/bb-1.2.0 build. It MUST be regenerated with `bb` 5.x (`-t evm`) and
+  re-checked against EIP-170 - it had only ~85 bytes of margin and 5.x codegen may differ.
+- **The wallet's bundled `withdraw_identity.circuit` must be refreshed too**, or on-device proofs will
+  not verify against the new verifier. `codegen-verifiers.sh` already copies it; that script's
+  toolchain GUARD still pins beta.13 + 1.2.0 and is now WRONG for this path.
+- `ragequit`, `title_holder`, `notary_action` share `pp`, so they are on the beta.26 side as well and
+  their verifiers need the same treatment. The PASSPORT circuits (`noir_dl_lib`, `escrow_envelope`,
+  `query_*`, `register_*`) remain on beta.13 and are unaffected.
+
+**SO THE HONEST STATUS: aggregation is UNBLOCKED and PROVEN SOUND, but the repo is mid-migration.**
+Nothing is deployable until every beta.26-side verifier is regenerated with bb 5.x and
+`codegen-verifiers.sh` is updated to drive two toolchains (or the passport circuits are migrated too,
+which needs the upstream compiler crash fixed). **Do not deploy from this state.**
+
 **🧭 IT IS A TWO-DIMENSIONAL COMPATIBILITY MATRIX (nargo x poseidon), NOT A SINGLE BISECT.**
 Measured 2026-08-01. "ICE" below means **Internal Compiler Error - the compiler CRASHING**. It is a
 failure, never a goal.

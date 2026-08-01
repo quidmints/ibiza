@@ -671,6 +671,39 @@ a recursive proof. **There may be no evidence recursion has ever worked end-to-e
 the pinned toolchain (beta.13 + bb 1.2.0) supports standalone proving without that implying it
 supports recursion.
 
+**HINTS GATHERED 2026-08-01 — read these before spending another hour:**
+
+1. **The INNER recursion proof VERIFIES natively.** `bb verify --scheme ultra_honk --honk_recursion 1
+   -k target/vk -p proof -i public_inputs` -> "Proof verified successfully". So the inner proof, the
+   112-field vk and the 507-field proof are all GOOD. **The fault is strictly in-circuit** - in what
+   `std::verify_proof_with_type` is being handed, not in the artifacts.
+2. **`--output_format fields` writes ONLY the JSON files - no binary `proof`/`public_inputs`.** So
+   `bb verify` answers "Unable to open file: target/public_inputs" and looks like a verification
+   failure when nothing was verified at all. Use `bytes_and_fields`. This wasted a cycle here.
+3. **The full outer flag matrix has been tried and ALL fail:** {keccak, poseidon2} x {--honk_recursion 1,
+   none} x {--init_kzg_accumulator, none}. `--oracle_hash keccak` + `--honk_recursion 1` writes **no vk
+   at all** while exiting 0.
+4. **The 16-field pairing-point accumulator NEVER appears.** The outer proof's `public_inputs` stays at
+   1 field under every combination. If recursion requires the outer circuit to expose that accumulator,
+   nothing we passed to bb caused it to be added - which is the most concrete anomaly on this list.
+5. **beta.13 artifacts have NO `recursive` field** (keys: noir_version, hash, abi, bytecode,
+   debug_symbols, file_map, names, brillig_names). Older Noir marked recursion-friendliness there.
+6. **The deleted `noir_dl_lib/src/recursion.nr` is PLONK-era, not a usable recipe** (recoverable at
+   `git show d727889^:backend/circuits/noir_dl_lib/src/recursion.nr`): `std::verify_proof` with
+   vk **114** fields and proof **93** fields. Different scheme, different lengths - it only confirms
+   that lengths are scheme-specific, and that `std::verify_proof` genuinely no longer exists.
+
+**THE ONE DIMENSION NOT YET TESTED** - try this first: the in-circuit `public_inputs` argument may
+need to CARRY the pairing-point accumulator (17 fields for the 1-public-input minimal case, 23 for
+withdraw_identity), or conversely the `proof` argument may need it STRIPPED (507 - 16 = 491). Every
+test so far passed proof=507 and public_inputs=<the circuit's own count>, which is the natural
+reading and may simply be wrong. Hint 4 is the reason to suspect this.
+
+**USER REPORTS A WORKING RECURSION TOOLCHAIN ON ANOTHER MACHINE (2026-08-01)** - get its exact
+`nargo`/`bb` versions and its working invocation before assuming ours can be made to work. See
+[[spv-doc-paths-are-from-another-machine]]: this repo already contains notes from a machine whose
+paths do not exist here, so "we sorted this already" may live in artifacts that were never committed.
+
 **NEXT STEPS, in order:** (1) get noir-lang's own recursion example for beta.13 running UNCHANGED -
 if it fails, the toolchain is the answer and no amount of aggregator work helps; (2) only if it
 passes, diff its flags and input shapes against the minimal pair above. Superseded suspect, kept so

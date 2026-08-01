@@ -928,6 +928,53 @@ in-circuit hash cost is nearly irrelevant; the contract pays real money per hash
 everything. Poseidon is optimised for the side that does not matter here. Inlining cannot rescue it:
 that is a ~3,400 gas saving against ~29,000 of inherent arithmetic per hash (see below).
 
+**⛔ FINAL 2026-08-01: `verify_proof_with_type` DOES NOT BIND ON nargo 1.0.0-beta.13 + bb 1.2.0.
+THE TOOLCHAIN CONCLUSION I RETRACTED WAS CORRECT. THE AGGREGATOR CANNOT BE FINISHED ON THIS PIN.**
+
+Minimal pair (a 1-constraint inner circuit, a 3-line outer), `proof_type = 0`, full flag matrix,
+REAL vs ALL-ZERO inner proof:
+
+| outer flags | real proof | garbage proof |
+|---|---|---|
+| default (poseidon2) | verifies | **VERIFIES** |
+| `--oracle_hash keccak` | no vk written | no vk written |
+| `--honk_recursion 1` | no vk written | no vk written |
+
+The only configuration that produces a verifier at all accepts garbage. `nargo execute` solves the
+witness for garbage too. So the opcode is emitted and never enforced - at ANY arity, in the minimal
+case as well as the aggregator.
+
+**I RETRACTED THE RIGHT ANSWER FOR THE WRONG REASON.** Earlier this session I concluded the toolchain
+was broken, then withdrew it when `proof_type = 0` made proofs verify. But *verification succeeding
+was never evidence of anything* - that is precisely what a non-binding constraint produces. The
+correct test was always the negative one, and had I run it then, the retraction would not have
+happened. `proof_type = 0` is still RIGHT (1 is in neither position of Aztec's PROOF_TYPE_* set) - it
+is just not sufficient, and it changed the failure from "cannot prove" to "proves anything".
+
+**WHAT THIS MEANS - THE SEAMS, so nothing else is broken by accident:**
+- **The aggregator is UNBUILDABLE here, not half-built.** Do NOT build the batch entrypoint, do NOT
+  deploy `AggregationHonkVerifier`, do NOT migrate the wallet to a batched path.
+- **NOTHING ELSE IS AFFECTED.** No other circuit uses recursion: `withdraw_identity`, `ragequit`,
+  `title_holder`, `notary_action`, `escrow_envelope` are all standalone and their verifiers are
+  sound. The 405-test forge suite and the Noir suites are unrelated to this. **The pool works today**
+  - aggregation is an optimisation that has never been live.
+- **The keccak fold decision SURVIVES and is independent.** It was decided on measured on-chain gas
+  (288k -> ~200/withdrawal) and in-circuit cost paid by the batcher (+4.4%); none of that depends on
+  recursion binding. Re-apply it once the toolchain works. Note the keccak version ALSO dropped the
+  constraints entirely (81,668 gates vs 1,396,874) - so on a working toolchain, re-verify the fold
+  choice with the garbage test before trusting it.
+- **`AggregationHonkVerifier.sol` is generated from a circuit that does not bind.** It is committed
+  and compiles at 24,492 bytes, and is currently MEANINGLESS. Regenerate it from scratch after the
+  toolchain is fixed; do not treat the EIP-170 measurement as transferable (the gate count will
+  change once recursion is real, though sec. 2.4pre's N-independence claim suggests the SIZE will not).
+
+**THE ONE ACTION: get the working recursion toolchain.** The user reported (2026-08-01) having sorted
+recursion on another machine - obtain its exact `nargo` and `bb` versions and its verified
+invocation. **The acceptance test is fixed and non-negotiable: the minimal pair must REJECT an
+all-zero inner proof.** "A real proof verifies" proves nothing and must never again be accepted as
+evidence. Then re-validate the pinned toolchain guard in `codegen-verifiers.sh`, since a bump has to
+keep all five existing standalone circuits sound.
+
 **🔴🔴🔴 RECURSION HAS NEVER WORKED IN ANY VERSION. THE keccak CHANGE DID NOT BREAK IT (2026-08-01).**
 Tested both circuits with ALL-ZERO inner proofs and REAL public inputs:
 

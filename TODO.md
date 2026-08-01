@@ -818,6 +818,47 @@ fuzz runs, all passing, all meaningless for the property that mattered. **The le
 a differential test must exercise the function in a REALISTIC CALLER, not in isolation** - isolation
 is exactly the condition that can satisfy an unstated assumption.
 
+**✅ SOLVED, AND THE ANSWER IS NOT INLINING (2026-08-01). MEASURED, not inferred:**
+
+| | gas |
+|---|---|
+| `PoseidonT3.hash` **public** (DELEGATECALL) | **32,489** |
+| `PoseidonT3Inline.hash` **internal** (inlined) | **29,058** |
+| **saving** | **~3,400 (~11%)** |
+
+**MY EARLIER "~11x" WAS WRONG - it was a bad subtraction, not a measurement.** I took a 61,730-gas
+total, subtracted one 32,549 public hash, and attributed the remainder to THREE inline hashes. The
+total was in fact TWO hashes (32,549 + 29,058 = 61,607). Nothing was ever 11x.
+
+**SO THE DELEGATECALL IS ONLY ~3,400 GAS; THE OTHER ~29,000 IS POSEIDON'S OWN ARITHMETIC.** This
+implementation is inherently expensive - the ~1,283 gas the upstream README advertises cannot refer
+to this code path. Inlining is a real but MARGINAL win, and no amount of call-boundary engineering
+reaches the numbers this repo needs. Routes (a)-(d) all optimise the wrong term.
+
+**CONSEQUENCE 1 - THE AGGREGATION FOLD MUST USE KECCAK (sec. 2.4a).** Inlining takes it from 287,969
+to roughly 256,000 gas/withdrawal, still far past the 152,846 target for the WHOLE withdrawal. keccak
+is a few thousand gas on-chain for ~34% more circuit gates (11.6M -> ~15.6M, ~27 GB -> ~36 GB proving).
+That is now clearly correct, and the earlier "keep Poseidon" conclusion is retracted.
+
+**CONSEQUENCE 2 - THE SMT COST IS STRUCTURAL, not a wrapper problem.** An SMT insert at depth 4
+measured 144,423 gas both before AND after the migration (identical to the gas unit), because the
+saving is ~3.4k per hash against ~29k of unavoidable arithmetic. Making SMT operations genuinely
+cheap needs a different Poseidon implementation or fewer hashes, not better plumbing.
+
+**WHAT LANDED AND IS WORTH KEEPING.** `contracts/libraries/inline/PoseidonT{2..6}Inline.sol` are
+correct and proven: they take the ~11%, all 405 forge tests pass with `Poseidon.sol` routed through
+them, and `PoseidonInlineDifferentialTest` (9 tests, 512 fuzz runs) pins every arity against upstream
+**from callers with PRE-ALLOCATED MEMORY**, plus clobber checks that the saved bytes at 0x80 are
+restored. That last part is the fix for the bug that broke attempt 1.
+
+**THE TRANSFORM THAT MAKES INLINING SAFE** (three edits, all mechanical, `tools/gen-inline-poseidon.sh`):
+`public`->`internal`; **save/copy/restore the words at 0x80..** around the otherwise-UNTOUCHED assembly
+(the upstream code reads inputs from hardcoded 0x80/0xa0/... and its Yul round functions cannot see
+Solidity locals, so relocating the reads is impossible - copying to where it looks is); and replace the
+raw `return(0, 0x20)`, which would otherwise HALT THE CALLER, with a named return variable.
+
+**Superseded investigation, kept so the dead ends are not re-run:**
+
 **ATTEMPT 2 (2026-08-01) — THE EXACT EDITS ARE NOW KNOWN, AND SO IS WHAT BLOCKS THEM.** Making the
 library inlinable needs THREE changes, not one, and the two I missed are the reason attempt 1 broke
 31 tests:

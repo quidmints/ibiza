@@ -968,6 +968,36 @@ is just not sufficient, and it changed the failure from "cannot prove" to "prove
   toolchain is fixed; do not treat the EIP-170 measurement as transferable (the gate count will
   change once recursion is real, though sec. 2.4pre's N-independence claim suggests the SIZE will not).
 
+**🔬 SOUNDNESS HARNESS RUN 2026-08-01 - RECURSION GENUINELY BINDS. Five cases, no false positive or
+negative left standing:**
+
+| case | inner proof supplied | result | meaning |
+|---|---|---|---|
+| **ok** | valid proof of the stated fact | **ACCEPTED** | no false NEGATIVE - honest work is not rejected |
+| **swap** | **valid, well-formed proof of a DIFFERENT statement** | **REFUSED at verify** | **THE GOLD STANDARD. The proof is bound to ITS public inputs.** |
+| **corrupt** | real proof, one field incremented | REFUSED at prove | tampering caught |
+| **zero** | all-zero (malformed) | REFUSED at prove | malformed caught |
+| ~~wrongvk~~ | *(invalid test - see below)* | - | proves nothing |
+
+**`swap` is the case that matters and it PASSES.** Both the proof and the public inputs are
+individually valid and well-formed; only their CORRESPONDENCE is wrong, and it is rejected. That is
+real soundness, not a parser refusing malformed bytes - which is all the earlier all-zero test showed.
+**On bb 1.2.0 every one of these was ACCEPTED.**
+
+⚠️ **ONE OF MY OWN TEST CASES WAS INVALID, and it initially read as a soundness hole.** `wrongvk`
+passed circuit B's key with circuit A's proof and was ACCEPTED - alarming until checked: A and B are
+**the same circuit** with different witnesses, so `write_vk` emits a BYTE-IDENTICAL key
+(`cmp tA/vk tB/vk` -> identical). It was never a wrong key. **A wrong-VK test needs a genuinely
+DIFFERENT circuit** and is still OUTSTANDING - it is the property the aggregator's pinned
+`WITHDRAW_IDENTITY_VK` depends on (sec. 2.4 constraint 1), so write it before shipping: compile a
+second, different inner circuit, and confirm its proof is REFUSED against the pinned key.
+
+**THE HARNESS IS THE DELIVERABLE. Commit it** (`scratchpad/rmin`: inner, outer, and the five
+`Prover.*.toml`) and run it after ANY change to a recursive circuit or the toolchain. Reading it:
+`ok` ACCEPTED and `swap` REFUSED together are the pass condition. Either alone is worthless - `ok`
+alone cannot distinguish a sound circuit from one that accepts everything, and `swap` alone cannot
+distinguish soundness from a broken build.
+
 **✅✅✅ RECURSION BINDS. PROVEN 2026-08-01 on `nargo` v1.0.0-beta.26 + `bb` 5.1.0.**
 
 Minimal pair, `proof_type = 6` (`PROOF_TYPE_HONK_ZK`), 458-field ZK inner proof, real `vk_hash`:

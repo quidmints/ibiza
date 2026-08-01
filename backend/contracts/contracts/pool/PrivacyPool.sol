@@ -232,6 +232,20 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     // The signals are what the batch proof binds; the withdrawals are what this contract settles.
     // Tying them together is the ONLY thing that makes the batch mean anything, so it is done first
     // and per withdrawal: each signal set must carry the context derived from ITS withdrawal.
+    // ⚠️ THIS COMPARISON IS LOAD-BEARING - unlike the identically-shaped one in `validWithdrawal`,
+    // which is labelled DIAGNOSTIC ONLY. Do not delete it by analogy.
+    //
+    // `withdraw` binds the recipient by SUBSTITUTION: it feeds the derived context straight into
+    // the verifier's public inputs, so the comparison there is only for a better error message.
+    // There is no substitution available here - the aggregation verifier takes ONE public input,
+    // the commitment. The binding is instead: `_signals` are folded into that commitment, the proof
+    // binds the commitment, so `_signals` cannot be lied about; and each signal set's context must
+    // then equal the one derived from ITS withdrawal. Remove this loop and a batcher may pair any
+    // proven withdrawal with any `_withdrawals[i]` they like, redirecting every payout.
+    //
+    // `_contextFor` hashes `abi.encode(_withdrawal, SCOPE)` - the WHOLE struct - so altering any
+    // field of a withdrawal breaks the match. Checked BEFORE verification so a mismatched batch
+    // fails on the cheap comparison rather than after paying for the proof.
     for (uint256 i; i < n; ++i) {
       if (_signals[i][6] != _contextFor(_withdrawals[i])) revert ContextMismatch();
     }
@@ -240,13 +254,35 @@ abstract contract PrivacyPool is State, IPrivacyPool {
       AGGREGATION_VERIFIER, _aggregationProof, _signals, MAX_BATCH
     );
 
+    // ROOT MEMO. `_isKnownRoot` walks the root HISTORY and `isValidRoot` is an external call; both
+    // are per-withdrawal in the single path, and naively repeating them N times is the one place
+    // this function would waste real gas. Batched withdrawals are proved within a short window and
+    // so overwhelmingly share roots, and a root is either known or not regardless of who asks - the
+    // check is a pure function of pool state that cannot change mid-transaction. So verifying each
+    // DISTINCT root once is exactly equivalent and collapses the common case to a single walk.
+    // A one-slot memo, not a set: batches are near-uniform, so this catches almost everything
+    // without the bookkeeping a full dedup would cost.
+    uint256 lastStateRoot;
+    uint256 lastIdentityRoot;
+
     for (uint256 i; i < n; ++i) {
       uint256[7] memory s = _signals[i];
 
-      // ── the same policy checks validWithdrawal makes, in the same order ──────────────────────
-      if (s[4] > MAX_TREE_DEPTH) revert InvalidTreeDepth();
-      if (!_isKnownRoot(s[3])) revert UnknownStateRoot();
-      if (!IDENTITY_REGISTRY.isValidRoot(bytes32(s[5]))) revert InvalidIdentityRoot();
+      // NO `stateTreeDepth > MAX_TREE_DEPTH` CHECK HERE, and that is not an omission: the
+      // AGGREGATION CIRCUIT already constrains it (`assert_depth_in_range`, applied to every
+      // withdrawal inside the verification loop) and does so on the FULL field, which is strictly
+      // stronger than the contract's uint256 compare. Re-checking would cost gas to re-establish
+      // something the proof has already made unforgeable. The single-withdrawal path still needs
+      // its own check, because `withdraw_identity` alone does NOT constrain it (sec. 2.4 trap 5).
+
+      if (s[3] != lastStateRoot) {
+        if (!_isKnownRoot(s[3])) revert UnknownStateRoot();
+        lastStateRoot = s[3];
+      }
+      if (s[5] != lastIdentityRoot) {
+        if (!IDENTITY_REGISTRY.isValidRoot(bytes32(s[5]))) revert InvalidIdentityRoot();
+        lastIdentityRoot = s[5];
+      }
 
       // ── settle, identically to withdraw() ────────────────────────────────────────────────────
       _spend(s[1]);            // existing nullifier hash - reverts if already spent

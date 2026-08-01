@@ -1058,6 +1058,30 @@ passport crates would lose their test suites (80 in `noir_dl_lib` alone), which 
 trade. **The passport circuits were therefore left on beta.13 SOLELY to keep them testable**, not
 because they cannot build on beta.26.
 
+**🔬 BISECT RESULT 2026-08-01: THE CRASH IS NOT IN ANY TEST BODY. Do not bisect test functions -
+that was my recommendation and it is WRONG.**
+
+Disabled **every** `#[test]` attribute across all 17 test-bearing files in `noir_dl_lib`
+(`#[test]` -> `//BISECT-OFF #[test]`), leaving ZERO test functions. **`nargo test` STILL ICEs**
+(`all function ids should have metadata`, then a scoped-thread panic at
+`nargo_cli/src/cli/test_cmd.rs:577`).
+
+**So the trigger is in TEST-MODE COMPILATION ITSELF, independent of test functions existing.**
+`nargo compile` succeeds on the same source; only `nargo test` crashes. That rules out the entire
+class of "some test uses a construct beta.26 dislikes".
+
+**WHERE TO LOOK INSTEAD** - the search space is now different and much smaller:
+- `#[cfg(test)]` modules and any test-only `use`/helper that compiles only under test mode.
+- The VENDORED test-support code sitting in `src/`, not in a test module:
+  `src/bignum/utils/u60_representation_test.nr` and
+  `src/big_curve/utils/derive_offset_generators.nr` are compiled as ordinary modules and are the
+  most likely carriers of a comptime/generic construct that only the test-mode pass walks.
+- Bisect by MODULE DECLARATION (comment out `mod ...;` lines in `lib.nr`/parents), not by `#[test]`.
+
+**This also means the passport circuits' PRODUCTION artifacts are unaffected** - they compile cleanly
+on beta.26. Only `nargo test` is unusable there, so the coverage loss is the whole cost, and a
+one-toolchain build for deployment is already achievable today.
+
 **TO CLOSE IT - isolate the ICE, which is bounded work:** the crash has no source location, so bisect
 `noir_dl_lib`'s test bodies - comment out `#[test]` modules by half until it compiles, then narrow to
 the construct. Prime suspects given the message: generic or comptime-heavy test helpers, and the

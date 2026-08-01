@@ -34,9 +34,9 @@
 import * as SecureStore from "expo-secure-store";
 import { HDNodeWallet, Mnemonic, hexlify } from "ethers";
 
-import { drawSeedEntropy } from "./entropy";
-import { FIELD, masterKeysFromMnemonic, type MasterKeys } from "../pp/notes";
-import { assertValidMnemonic, openBackup, sealMnemonic } from "./recovery";
+import { drawSeedEntropy } from "./entropy.ts";
+import { FIELD, masterKeysFromMnemonic, type MasterKeys } from "../pp/notes.ts";
+import { assertValidMnemonic, openBackup, sealMnemonic } from "./recovery.ts";
 
 const ROOT_KEY = "quid.wallet.root.mnemonic";
 
@@ -103,6 +103,43 @@ export function lockWallet(): void {
   sessionMnemonic = undefined;
 }
 
+/** Thrown when an operation needs an existing root seed and there is none. Distinct from creating
+ *  one: the EXFILTRATION paths below must never bring a wallet into existence as a side effect of
+ *  being asked to reveal or export it. */
+export class NoWalletError extends Error {
+  constructor() {
+    super("NoWalletError: no root seed is stored on this device");
+    this.name = "NoWalletError";
+  }
+}
+
+/**
+ * Read the stored phrase with a FRESH biometric prompt, deliberately BYPASSING the session cache.
+ *
+ * WHY THE CACHE MUST NOT APPLY HERE. The session cache is right for ordinary work — signing,
+ * deriving, discovering notes — where re-prompting on every call is unshippable. It is wrong for the
+ * two operations that take the seed OFF the device, because those are not "use the key", they are
+ * "hand over the key". With the cache applied, anyone holding the phone during an unlocked session
+ * could display all 24 words, or write an encrypted backup under a passphrase THEY choose, with no
+ * biometric challenge at all. That is not one fraudulent transaction; it is permanent, silent,
+ * total compromise of the identity and every PP note, and it survives the user later locking the app.
+ *
+ * `requireAuthentication: true` in SECURE_ITEM_OPTIONS makes each SecureStore read prompt, so simply
+ * not consulting the cache is what restores the challenge.
+ *
+ * Refuses rather than creating a seed: being asked to reveal a wallet that does not exist is a
+ * caller bug, and silently minting one would show the user 24 words that protect nothing.
+ */
+async function readRootMnemonicFresh(): Promise<string> {
+  if (!SecureStore.canUseBiometricAuthentication()) throw new InsecureDeviceError();
+
+  const existing = await SecureStore.getItemAsync(ROOT_KEY, SECURE_ITEM_OPTIONS);
+  if (!existing) throw new NoWalletError();
+
+  sessionMnemonic = existing;
+  return existing;
+}
+
 /** rarime BJJ private key (64-char hex) derived from the root mnemonic. */
 export function deriveSkIdentity(mnemonic: string): string {
   const node = HDNodeWallet.fromPhrase(mnemonic, "", IDENTITY_PATH);
@@ -150,7 +187,11 @@ export class WalletAlreadyExistsError extends Error {
   }
 }
 
-/** Whether this device already holds a root seed. Prompts biometric auth. */
+/** Whether this device already holds a root seed. Prompts biometric auth ONLY when the session
+ *  cache is cold — an unlocked session answers from memory. (The previous comment claimed it always
+ *  prompts, which the `sessionMnemonic` short-circuit below has never done.) Existence is not
+ *  secret, so this is deliberate; the operations that expose the seed itself re-authenticate
+ *  unconditionally instead. */
 export async function hasRootMnemonic(): Promise<boolean> {
   if (sessionMnemonic) return true;
   return (await SecureStore.getItemAsync(ROOT_KEY, SECURE_ITEM_OPTIONS)) !== null;
@@ -169,9 +210,13 @@ export async function hasRootMnemonic(): Promise<boolean> {
  * secret" is a distinct, greppable, auditable action rather than an incidental use of
  * `loadWalletRoot().mnemonic`. Callers must treat the return value as display-only: never log it,
  * never put it in a screenshot-able view without warning, never send it anywhere.
+ *
+ * ALWAYS RE-AUTHENTICATES (see readRootMnemonicFresh). It previously delegated to
+ * `getOrCreateRootMnemonic`, which returns the session cache — so during an unlocked session this
+ * printed all 24 words with no biometric prompt.
  */
 export async function revealRootMnemonic(): Promise<string> {
-  return getOrCreateRootMnemonic();
+  return readRootMnemonicFresh();
 }
 
 /**
@@ -203,9 +248,14 @@ export async function importRootMnemonic(
  * timestamp (recovery.ts strips them - the unmodified keystore would have published an address
  * derived from the same seed as the user's note secrets). Nothing here contacts a server: the user
  * holds the only copy and there is no party to ask for it back.
+ *
+ * ALWAYS RE-AUTHENTICATES (see readRootMnemonicFresh), for the same reason as revealRootMnemonic:
+ * this writes the seed to a file that leaves the device. The passphrase is no substitute for the
+ * biometric challenge — whoever calls this CHOOSES the passphrase, so an attacker holding an
+ * unlocked phone would simply pick their own.
  */
 export async function exportEncryptedBackup(passphrase: string): Promise<string> {
-  return sealMnemonic(await getOrCreateRootMnemonic(), passphrase);
+  return sealMnemonic(await readRootMnemonicFresh(), passphrase);
 }
 
 /**

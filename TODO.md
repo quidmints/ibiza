@@ -7177,7 +7177,25 @@ at registration") has no passport equivalent and needs its own home regardless.
 - **ECDSA (8) Noir suites in the rarime tree have never been run** — deferred as a cost issue,
   suited to a CI job. (The recursive-proof suites are gone: `recursion.nr` and `bitcoin.nr` were
   both deleted as orphaned dead code, so there is nothing left to run there.)
-- **Unverified:** whether the repeated-biometric-prompt UX fix landed in `root.ts`.
+- ✅ **Biometric-prompt UX fix — VERIFIED LANDED 2026-08-01, and it had introduced a hole.**
+  The session cache is real and structural (`sessionMnemonic` at `root.ts:69`, short-circuited at
+  `:76`, cleared by `lockWallet()`), not just claimed in a comment.
+  **But it applied to the two operations that take the seed OFF the device.**
+  `revealRootMnemonic` and `exportEncryptedBackup` both delegated to `getOrCreateRootMnemonic`, which
+  returns the cache — so during any unlocked session the wallet would display all 24 words, or write
+  a backup under a passphrase the *caller* chooses, **with no biometric challenge**. That is not one
+  fraudulent transaction: it is permanent, silent compromise of the identity and every PP note, and
+  it survives the user later locking the app. A passphrase is no substitute — whoever calls the
+  export picks it.
+  **FIXED**: both now go through `readRootMnemonicFresh()`, which bypasses the cache so
+  `requireAuthentication: true` re-prompts, and throws the new `NoWalletError` rather than MINTING a
+  seed when asked to reveal one that does not exist (the old path would have shown the user 24 fresh
+  words that protect nothing). Ordinary derivation still prompts at most once per session — the UX
+  fix is intact.
+  **7 tests** (`src/identity/root.test.ts`, the first tests this module has ever had) count
+  SecureStore reads, since a read is what raises the prompt. Non-vacuity proven by mutation:
+  restoring the cache on those two paths fails exactly 4 tests and leaves the 3 UX-cache tests green.
+  Run: `node --experimental-test-module-mocks --test src/identity/root.test.ts`.
 - **Efficiency backlog:** Poseidon2 uniform swap, tree-depth tuning, public-input packing,
   shared-SRS reuse.
 

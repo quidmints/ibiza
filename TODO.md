@@ -775,7 +775,30 @@ gates per 136-byte block, so ~27 blocks is ~4M gates, a ~34% circuit increase (1
 proving memory ~27 GB -> ~36 GB. **That trade is strongly worth making** and it is exactly the trade
 the pool's own `context` signal already makes (keccak256 computed on-chain, consumed as a field).
 
-**BEFORE SWITCHING, CHECK ONE THING:** ~144k gas for a single PoseidonT6 hash is anomalously high -
+**THE CHECK IS DONE (2026-08-01) - THE COST IS REAL, AND ITS CAUSE IS IDENTIFIED.** Measured per
+hash, isolated (`test/pool/PoseidonGas.t.sol`): **T3 = 32,549 · T5 = 119,897 · T6 = 172,475**. So
+T6+T5 = 292,372/withdrawal, matching the 287,969 measured through the fold.
+
+**Raising `optimizer_runs` for `lib/poseidon-solidity` changes NOTHING** (tried at 4294967295,
+scoped by `compilation_restrictions`; identical gas to the byte). The restriction was reverted rather
+than left in place pretending to help. **The cause is not optimisation:**
+1. Every entry point is declared `function hash(uint[2] memory) **public** pure` - a PUBLIC library
+   function, so each call is a `DELEGATECALL` into a deployed-and-linked library, not an inlined
+   internal call. `internal` would inline it.
+2. The file's own header calls itself a *simplified* implementation and points at a separate
+   optimised one (`vimwitch/poseidon-solidity/contracts/Poseidon.sol`). The ~1,283 gas figure
+   advertised for T3 belongs to that variant, not the one vendored here.
+
+**THIS IS NOT AN AGGREGATOR PROBLEM - IT IS REPO-WIDE.** Every Poseidon call in `PoseidonSMT`,
+`StateKeeper`, `IdentityRegistry`, `HolderStateKeeper` and `TitleLedger` pays 32.5k per 2-input hash.
+An SMT insert at depth 32 is ~32 hashes = **over 1M gas**. Whatever is decided for the fold, swapping
+in an `internal`/assembly Poseidon is likely one of the largest single gas wins available in this
+repo, and it needs measuring in its own right.
+
+**FOR THE FOLD SPECIFICALLY, the keccak switch is now the leading option** (a few thousand gas
+on-chain vs 4.6M, at ~34% more circuit gates) - but decide it AFTER measuring an `internal`/assembly
+Poseidon, because that would also preserve the byte-identical match with `pp/src/commitment.nr` that
+the circuit, the wallet and the SMT all already rely on. Superseded note: ~144k gas for a single PoseidonT6 hash is anomalously high -
 `poseidon-solidity` advertises ~1.3k for T3. Confirm whether our build is hitting an unoptimised path
 (the library is `public` in `Poseidon.sol` and may not be inlined, and `optimizer_runs = 1` is scoped
 to the verifiers). If a properly-optimised T6 is ~5-8k, the fold drops to ~15k/withdrawal and

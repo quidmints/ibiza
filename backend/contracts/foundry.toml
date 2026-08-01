@@ -47,3 +47,4 @@ optimizer_runs = 1
 [[profile.default.compilation_restrictions]]
 paths = "contracts/pool/verifiers/AggregationHonkVerifier.sol"
 optimizer_runs = 1
+

@@ -968,6 +968,36 @@ is just not sufficient, and it changed the failure from "cannot prove" to "prove
   toolchain is fixed; do not treat the EIP-170 measurement as transferable (the gate count will
   change once recursion is real, though sec. 2.4pre's N-independence claim suggests the SIZE will not).
 
+**🚦 MIGRATION RUN 2026-08-01 - GOT 6 OF 7 CIRCUITS COMPILING AND `pp` 87/87 GREEN ON beta.26, THEN
+`verify-migration.sh` SAID **NOT VERIFIED** AND IT WAS REVERTED. The gate worked.**
+
+How far it got, and the exact fixes (all mechanical once found - redo them, do not rediscover them):
+1. `poseidon` v0.2.0 -> **v0.3.0** and `nargo` -> **beta.26** TOGETHER (neither works alone).
+2. Scripted `u1` -> `bool`: `[u1;`->`[bool;`, `: u1`->`: bool`, `-> u1`->`-> bool`, `) as u1`->`)`,
+   `global X: bool = 0/1` -> `false/true`.
+3. **Test-body comparisons**: `smt_verifier*(...) == 1/0` -> `== true/false`. Do this LINE-BASED - a
+   regex using `[^;]*?` cannot cross the `;` inside `[0; 20]` and silently misses those call sites.
+4. **`smt_verifier_full` positional args**: arg 6 `is_old0` and arg 7 `fnc` are now `bool`; args 4-5
+   (`old_key`, `old_value`) stay **`Field`**. My first pass converted 4 and 5 too and broke both
+   circuits - the arity boundary is the trap.
+5. `assert(cleared == 1)` / `assert(active == 1)` -> `== true`.
+
+**RESULT: `pp` 87/87 PASSED on beta.26** - so the SMT rewrite preserves behaviour for everything pp
+covers, which is the strongest single signal we have. `ragequit`, `title_holder`, `withdraw_identity`
+and `notary_action` all compile. **`escrow_envelope` still ICEs.** And `verify-migration.sh` reported
+coverage loss in **`noir_dl_lib`** (e.g. `smt::test_rejects_wrong_value`) -> **NOT VERIFIED**.
+
+**WHY IT WAS REVERTED RATHER THAN "FIXED UP":** the whole point of the gate is that it is not
+negotiable. `noir_dl_lib` has its own `smt.nr`/`utils.nr` with the same `u1` patterns, and its tests
+were not fully carried across. Landing a partially-verified rewrite of SMT code is the silent-fork
+risk this file warns about throughout. **Reverted; beta.13 + poseidon v0.2.0, all seven circuits
+compile.**
+
+**NEXT ATTEMPT - it is now a SHORT job:** redo steps 1-5 (they are known-good), then apply the SAME
+test-body fixes to `noir_dl_lib/src/smt.nr` and `utils.nr`, run `./verify-migration.sh`, and require
+`RESULT: no coverage lost`. The remaining unknown is only the `escrow_envelope` ICE, which may be a
+genuine upstream bug worth reducing and reporting.
+
 **📋 THE MIGRATION ORACLE IS COMPLETE AND COMMITTED: `backend/circuits/MIGRATION-BASELINE.txt`.**
 Captured on beta.13 + poseidon v0.2.0 BEFORE any change, which is the only moment it is capturable.
 

@@ -818,6 +818,46 @@ fuzz runs, all passing, all meaningless for the property that mattered. **The le
 a differential test must exercise the function in a REALISTIC CALLER, not in isolation** - isolation
 is exactly the condition that can satisfy an unstated assumption.
 
+**ATTEMPT 2 (2026-08-01) — THE EXACT EDITS ARE NOW KNOWN, AND SO IS WHAT BLOCKS THEM.** Making the
+library inlinable needs THREE changes, not one, and the two I missed are the reason attempt 1 broke
+31 tests:
+
+1. `public` -> `internal` (the gas win).
+2. **Inputs are read from HARDCODED addresses** - `mload(0x80)`, `mload(0xa0)`, `mload(0xc0)`,
+   `mload(0xe0)`, `mload(0x100)`. Those are where the ABI decoder places arguments **for an external
+   call**. Inlined, they must read the parameter's own memory (`mload(inp)`, `mload(add(inp, 0x20))`,
+   ...). Omitting this hashes whatever sits at 0x80 - silently.
+3. **The result is returned with the raw EVM `return(0, 0x20)`, which HALTS THE WHOLE CALL CONTEXT.**
+   Inlined, that returns from the CALLER. It must assign a named return variable instead.
+
+Applying all three to T2-T5 mechanically WORKS as a transform, but the build then fails:
+
+> `Error (6578): Cannot access local Solidity variables from inside an inline assembly function.`
+
+**THE BLOCKER: the assembly defines its own assembly-level FUNCTIONS** (`function pRound(...)`,
+`function fRound(...)` - 3 of them in T6, at `PoseidonT6.sol:62,117`). Yul functions cannot close over
+Solidity locals, so `inp` and `result` are unreachable from inside them, and T6's result is produced
+inside that machinery rather than by a single `mstore(0x0, ...)` (which is also why the balanced-paren
+rewrite found no `mstore(0x0,` in T6 at all). **The larger arities are structurally harder than the
+small ones**, and T5/T6 are exactly the ones the aggregation fold needs.
+
+**VIABLE ROUTES, cheapest first - none yet attempted:**
+- **(a) Pass the values as Yul function ARGUMENTS.** The round functions already take `c0..c5`; thread
+  the loaded inputs through instead of having them read fixed memory. Mechanical but per-arity.
+- **(b) Copy inputs to 0x80 first, inside the internal wrapper.** Preserves the assembly untouched, but
+  0x80 is live memory once the caller has allocated - it would need save/restore around the call, and
+  correctness then depends on nothing else holding a pointer into that range. Cheap to try, easy to
+  get subtly wrong.
+- **(c) Use an internal-first Poseidon implementation** (one written for `internal` use) and pin it
+  against the current `public` one across all arities.
+- **(d) Amortise instead of inlining:** one external call that performs a whole SMT path's worth of
+  hashes, paying ONE call boundary instead of 32. Needs no change to audited crypto at all, and is
+  the only route here that touches no arithmetic.
+
+**WHATEVER IS TRIED, THE DIFFERENTIAL SUITE MUST CALL IT FROM A CALLER WITH PRE-ALLOCATED MEMORY.**
+Testing in isolation puts the array at 0x80 by luck and certifies a broken library - that is how
+attempt 1 passed 8 tests and 512 fuzz runs while being wrong.
+
 **THE GAS PROBLEM IS STILL OPEN AND STILL LARGE** (32,549 per 2-input hash; a depth-32 SMT insert is
 over 1M gas). Options, none yet measured:
 1. **Rewrite the assembly** to read from the parameter's actual memory offset instead of `0x80`.

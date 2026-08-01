@@ -1007,6 +1007,21 @@ have broken on-device proving with nothing pointing at the cause):
 `withdraw_identity` 3,128,023 -> 2,267,990 · `notary_action` 1,572,014 -> 1,149,600 ·
 `title_holder` 354,642 -> 345,868 · `ragequit` 157,454 -> 144,636 bytes.
 
+**📉 PROOFS SHRANK TOO - A SECOND UNADVERTISED WIN.** bb 5.x proofs are ~44% smaller:
+`withdraw_identity` **507 -> 286 fields** (16,224 -> 9,152 bytes), `ragequit` -> 226, `title_holder`
+-> 250, `notary_action` -> 262. **Proof bytes are CALLDATA**, so this is a direct per-withdrawal gas
+saving on top of aggregation, and it also changes sec. 2.4b's gas model, whose calldata term was
+computed from 507-field proofs. **Re-derive that table before quoting it.**
+
+**🔧 CURRENT TEST STATE: 397 forge tests pass, 8 fail** - all with
+`ProofLengthWrongWithLogN(14, 16224, 8000)`, i.e. a deployed verifier still expecting the OLD
+507-field (16,224-byte) proof while the fixture is the new one. **This is a PAIRING error, not a
+soundness problem:** some verifiers were regenerated BEFORE their circuit was recompiled, so the
+`.sol` and the `.proof` come from different builds. **The fix is to regenerate vk -> verifier ->
+proof from ONE artifact in a single pass per circuit, never interleaved** - which is exactly what
+`codegen-verifiers.sh` does and why it must be updated rather than worked around by hand. Do that
+first; do not hand-patch fixtures.
+
 **STILL OUTSTANDING, and it is now a SHORT list:**
 1. `codegen-verifiers.sh` still GUARDS beta.13 + bb 1.2.0 and uses `--oracle_hash keccak`/`--scheme`.
    It must be taught the bb 5.x CLI (`-t evm`, `-t noir-recursive`) and TWO toolchains, or it will

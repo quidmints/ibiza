@@ -1013,7 +1013,32 @@ have broken on-device proving with nothing pointing at the cause):
 saving on top of aggregation, and it also changes sec. 2.4b's gas model, whose calldata term was
 computed from 507-field proofs. **Re-derive that table before quoting it.**
 
-**🔧 CURRENT TEST STATE: 397 forge tests pass, 8 fail** - all with
+**🔬 THE 8 FAILURES ARE ONE CAUSE, FULLY CHARACTERISED (2026-08-01). Diagnosed, not guessed.**
+
+All eight throw `ProofLengthWrongWithLogN(logN, 16224, <actual>)`, across `WithdrawEndToEnd` (6),
+`WithdrawalHonkVerifier` (1) and `TitleLedger` (1). Facts:
+
+- The **regenerated** verifiers ARE the ones running: their `LOG_N` differs per circuit
+  (withdraw 17, ragequit 12, title_holder 14, notary_action 15) and each error reports its own logN.
+- They are the **ZK** flavour (`is BaseZKHonkVerifier`), consistent with `-t evm` = "keccak, ZK".
+- **Yet every one expects 16,224 bytes = 507 fields**, which is the bb **1.2.0** proof length.
+- bb 5.x's own `prove` emits **286 fields** with `-t evm` and **254** with `-t evm-no-zk`.
+  **Neither is 507.**
+
+So `write_solidity_verifier` and `prove` in bb 5.1.0 disagree about proof length for the same key and
+target. That is the whole bug, and it is NOT: a stale file (LOG_N proves regeneration), a ZK/non-ZK
+mismatch on the verifier side (it is ZK, and neither ZK nor non-ZK gives 507), the pairing order
+(vk/verifier/proof were rebuilt from one artifact with `bb verify` passing natively), or a missing
+`-t evm` (added, no change).
+
+**WHERE TO LOOK NEXT** (do not re-run the four things above): (1) whether `write_solidity_verifier`
+needs the vk written by a DIFFERENT target than the one used for `prove`; (2) whether it takes an
+extra flag pinning the proof shape - check `write_solidity_verifier --help-extended`; (3) whether
+bb 5.1.0 has a known defect here, since 507 is precisely the OLD library's length and looks like a
+stale default compiled into the generator. **`bb verify` accepts these proofs natively**, so the
+proofs and keys are good and only the generated Solidity disagrees.
+
+**🔧 EARLIER STATE (superseded): 397 forge tests pass, 8 fail** - all with
 `ProofLengthWrongWithLogN(14, 16224, 8000)`, i.e. a deployed verifier still expecting the OLD
 507-field (16,224-byte) proof while the fixture is the new one. **This is a PAIRING error, not a
 soundness problem:** some verifiers were regenerated BEFORE their circuit was recompiled, so the

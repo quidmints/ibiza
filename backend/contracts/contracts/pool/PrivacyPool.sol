@@ -19,6 +19,8 @@ https://defi.sucks/
 import {PoseidonT4} from 'poseidon/PoseidonT4.sol';
 
 import {Constants} from './lib/Constants.sol';
+import {INoirVerifier} from '../interfaces/verifiers/INoirVerifier.sol';
+import {BatchVerifierLib} from './lib/BatchVerifierLib.sol';
 import {ProofLib} from './lib/ProofLib.sol';
 import {IIdentityRegistry} from '../interfaces/registry/IIdentityRegistry.sol';
 
@@ -33,6 +35,20 @@ import {State} from './State.sol';
  * @dev Deposits can be irreversibly suspended by the Entrypoint, while withdrawals can't.
  */
 abstract contract PrivacyPool is State, IPrivacyPool {
+
+  /// @notice The aggregation verifier, generated from `aggregate_withdrawals` at MAX_BATCH.
+  INoirVerifier public AGGREGATION_VERIFIER;
+
+  /// @notice The circuit's compile-time BATCH_N. A batch longer than this cannot have been proved
+  ///         by it, and the commitment alone would not catch that since it folds any length.
+  uint256 public constant MAX_BATCH = 16;
+
+  /// @notice `_withdrawals` and `_signals` must line up one-to-one.
+  error BatchLengthMismatch(uint256 withdrawals, uint256 signals);
+
+  /// @notice One aggregated batch settled. Per-withdrawal `Withdrawn` events are emitted too, so
+  ///         existing indexers keep working unchanged.
+  event BatchWithdrawn(address indexed batcher, uint256 count);
   using ProofLib for ProofLib.WithdrawProof;
   using ProofLib for ProofLib.RagequitProof;
 
@@ -180,6 +196,69 @@ abstract contract PrivacyPool is State, IPrivacyPool {
   }
 
   /// @inheritdoc IPrivacyPool
+  /**
+   * @notice Settle N withdrawals against ONE aggregation proof (TODO.md sec. 2.4).
+   *
+   * @dev WHAT AGGREGATION REPLACES, AND WHAT IT DOES NOT. The batch proof establishes only that N
+   *      valid `withdraw_identity` proofs exist and that their public signals hash to the single
+   *      field the aggregation verifier exposes. It says NOTHING about whether those signals are
+   *      acceptable to this pool. So every policy check `validWithdrawal` makes is repeated below,
+   *      per withdrawal, in the same order. Aggregation amortises the PROOF check; it must never
+   *      amortise the POLICY checks, or a batch would settle withdrawals `withdraw` would reject.
+   *
+   *      WHY THERE IS NO `msg.sender == processooor` CHECK, and why that is SAFE. In the single
+   *      path the submitter must be the processooor. Here the submitter is the BATCHER, who is by
+   *      construction not the payee - requiring it would make batching impossible. Dropping it is
+   *      safe because the payout target is not taken from `msg.sender`: `context` is derived from
+   *      `_withdrawals[i]` and fed to the aggregation as a bound signal, so a batcher who alters any
+   *      withdrawal changes its context, changes the commitment, and the batch fails to verify. The
+   *      funds go to the processooor NAMED IN THE PROVEN WITHDRAWAL, whoever submits.
+   *
+   *      `PrivacyPool.withdraw` IS UNTOUCHED. A user censored by every batcher still self-submits at
+   *      full gas, so batcher refusal costs money, never access (sec. 2.4, non-negotiable).
+   *
+   *      SIGNALS MUST BE IN THE PROVED ORDER. The fold is order-binding, so a permuted batch
+   *      produces a different commitment and reverts - which is what stops a batcher pairing one
+   *      user's recipient context with another's nullifier.
+   */
+  function withdrawBatch(
+    Withdrawal[] calldata _withdrawals,
+    uint256[7][] memory _signals,
+    bytes calldata _aggregationProof
+  ) external {
+    uint256 n = _withdrawals.length;
+    if (n != _signals.length) revert BatchLengthMismatch(n, _signals.length);
+
+    // The signals are what the batch proof binds; the withdrawals are what this contract settles.
+    // Tying them together is the ONLY thing that makes the batch mean anything, so it is done first
+    // and per withdrawal: each signal set must carry the context derived from ITS withdrawal.
+    for (uint256 i; i < n; ++i) {
+      if (_signals[i][6] != _contextFor(_withdrawals[i])) revert ContextMismatch();
+    }
+
+    BatchVerifierLib.verifyBatch(
+      AGGREGATION_VERIFIER, _aggregationProof, _signals, MAX_BATCH
+    );
+
+    for (uint256 i; i < n; ++i) {
+      uint256[7] memory s = _signals[i];
+
+      // ── the same policy checks validWithdrawal makes, in the same order ──────────────────────
+      if (s[4] > MAX_TREE_DEPTH) revert InvalidTreeDepth();
+      if (!_isKnownRoot(s[3])) revert UnknownStateRoot();
+      if (!IDENTITY_REGISTRY.isValidRoot(bytes32(s[5]))) revert InvalidIdentityRoot();
+
+      // ── settle, identically to withdraw() ────────────────────────────────────────────────────
+      _spend(s[1]);            // existing nullifier hash - reverts if already spent
+      _insert(s[0]);           // new commitment
+      _push(_withdrawals[i].processooor, s[2]);
+
+      emit Withdrawn(_withdrawals[i].processooor, s[2], s[1], s[0]);
+    }
+
+    emit BatchWithdrawn(msg.sender, n);
+  }
+
   function withdraw(
     Withdrawal memory _withdrawal,
     ProofLib.WithdrawProof memory _proof

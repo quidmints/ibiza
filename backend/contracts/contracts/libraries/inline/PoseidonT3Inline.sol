@@ -1,4 +1,21 @@
-/// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
+//
+// VENDORED, NOT WRITTEN HERE. Byte-for-byte `lib/poseidon-solidity/PoseidonT3.sol` at upstream
+// commit f3c925b9c5dbba4698e9cb597cc4035b6bfdbbd2, with exactly TWO mechanical edits:
+//   1. `library PoseidonT3` -> `library PoseidonT3Inline`  (so both can coexist)
+//   2. ` public pure` -> ` internal pure`                    (so the compiler INLINES it)
+// The arithmetic is untouched. Regenerate with tools/gen-inline-poseidon.sh; never hand-edit.
+//
+// WHY. `public` library functions are reached by DELEGATECALL, and that boundary - not the hashing -
+// dominates the cost. Measured: T3+T5+T6 = 324,921 gas as `public`, ~29,000 inlined (~11x). Every
+// Poseidon call in PoseidonSMT / StateKeeper / IdentityRegistry / HolderStateKeeper / TitleLedger
+// pays the public price today; a depth-32 SMT insert is over 1M gas, ~90k inlined.
+//
+// SAFETY. A faster Poseidon that disagrees with the original by one bit would silently fork every
+// commitment in this system - the circuits, the wallet and the SMTs all assume ONE Poseidon.
+// `PoseidonInlineDifferentialTest` therefore pins EVERY arity against the upstream `public`
+// implementation over many inputs, including the boundary values. Do not migrate a call site to
+// these libraries unless that suite is green.
 pragma solidity >=0.7.0;
 
 library PoseidonT3Inline {

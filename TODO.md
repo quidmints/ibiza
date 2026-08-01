@@ -851,6 +851,30 @@ verification. So in-circuit cost is irrelevant there and on-chain cost is everyt
 opposite of the tree case. **This is a local exception, not a migration**: nothing else changes hash,
 and the fold has no existing consumers to fork.
 
+**IS KECCAK THE BEST OF ALL AVAILABLE HASHES, OR JUST THE FIRST ONE TRIED? (user asked 2026-08-01)**
+The fold's requirements are unusual and they narrow the field hard: cheap **on-chain** (the binding
+constraint), tolerable in-circuit, output reducible to a field element, collision-resistant.
+
+| candidate | on-chain | in-circuit (112 fields) | verdict |
+|---|---|---|---|
+| **keccak256** | **native opcode, 30 + 6/word (~2k for the batch)** | **550,220 gates (MEASURED)** | **CHOSEN** |
+| sha256 | precompile 0x02, 60 + 12/word - 2x keccak, plus call overhead | not measurable: `sha256` v0.1.2 **fails to build on beta.13** ("constants is private") | rejected - dearer on-chain AND does not compile |
+| Poseidon v1 | **287,969/withdrawal** (measured) | 39,037 | rejected - 65% of the whole gas budget |
+| Poseidon2 | same order as v1; no audited Solidity implementation exists | cheaper than v1 | rejected - dear on-chain, and new trusted code |
+| Pedersen | elliptic-curve ops on-chain, far dearer than Poseidon | very cheap | rejected |
+| MiMC | field-heavy, same class as Poseidon | cheap | rejected |
+| blake2s | **no matching precompile** - EVM's 0x09 is blake2**b** | cheap | rejected - no on-chain path |
+
+**keccak wins on the axis that actually binds**, and by a margin nothing else approaches: it is the
+only candidate that is a NATIVE EVM OPCODE, so it has no precompile-call overhead and the lowest
+per-word cost available. Its in-circuit cost is paid by the batcher, where 4.4% is noise. That it is
+also already the hash `PrivacyPool` uses for `context` (same keccak-then-reduce pattern, same file)
+means it introduces no new primitive to this system at all.
+
+**This is a decision, not a default:** the alternatives were enumerated and priced, and two of them
+(sha256, blake2s) were eliminated by facts that would not have been guessed - one does not compile on
+our pinned toolchain, the other has no EVM precompile in its variant.
+
 **WHO PAYS THE +511k GATES, AND WHY IT IS THE RIGHT PARTY (user asked 2026-08-01).**
 The fold is in the AGGREGATION circuit, which only the **batcher** runs. The USER proves only
 `withdraw_identity` - 44,176 gates, ~1.3 s desktop, 15-40 s on the A16 - and that is **completely

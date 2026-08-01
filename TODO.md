@@ -1039,6 +1039,32 @@ proven sound (garbage batches REFUSED) · verifiers ~30% smaller (EIP-170 margin
 proofs ~44% smaller (507 -> 286 fields, direct calldata saving) · wallet bundles refreshed.
 Passport circuits remain on beta.13, blocked by an upstream compiler crash and unaffected.
 
+**🎯 ONE TOOLCHAIN IS THE GOAL AND IT IS CLOSER THAN THE EARLIER NOTES SAID - retested 2026-08-01.**
+
+**MY "UPSTREAM COMPILER BUG BLOCKS THE PASSPORT CIRCUITS" CLAIM WAS HALF WRONG.** With poseidon
+v0.3.0 + the `u1`->`bool` rewrite + a CLEAN `target/`, **`noir_dl_lib` COMPILES ON beta.26 WITH ZERO
+ERRORS**, as do `escrow_envelope`, `query_identity`, `query_identity_td1` and
+`register_identity_light_td1`. My earlier failure was stale build state plus an un-upgraded poseidon
+pin, not the compiler.
+
+**WHAT ACTUALLY CRASHES IS `nargo test`, NOT `nargo compile`.** All five build their artifacts fine
+and then ICE on TEST compilation:
+`ice: all function ids should have metadata` (`noirc_frontend/src/node_interner/function.rs:176`),
+with **no source location** - the message names the compiler's own file, not ours.
+
+**SO ONE TOOLCHAIN IS ALREADY POSSIBLE FOR EVERY DEPLOYABLE ARTIFACT** - every circuit compiles on
+beta.26 and every verifier can be generated from it. The ONLY thing standing in the way is that the
+passport crates would lose their test suites (80 in `noir_dl_lib` alone), which is not an acceptable
+trade. **The passport circuits were therefore left on beta.13 SOLELY to keep them testable**, not
+because they cannot build on beta.26.
+
+**TO CLOSE IT - isolate the ICE, which is bounded work:** the crash has no source location, so bisect
+`noir_dl_lib`'s test bodies - comment out `#[test]` modules by half until it compiles, then narrow to
+the construct. Prime suspects given the message: generic or comptime-heavy test helpers, and the
+vendored `bignum`/`big_curve` test code. Once that construct is rewritten, beta.26 covers the whole
+repo and the split disappears. **Do NOT conclude "upstream bug" again without doing this bisect - I
+made that call twice today and was wrong both times.**
+
 **REMAINING:** `codegen-verifiers.sh` still guards beta.13 + bb 1.2.0 and uses the old CLI. It must
 learn the bb 5.x flags (`-t evm`, `-t noir-recursive`, no `--scheme`/`--oracle_hash`) and TWO
 toolchains - and its TARGETS list must cover EVERY fixture, not one per circuit, which is precisely

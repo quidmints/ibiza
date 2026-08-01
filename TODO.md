@@ -1013,7 +1013,38 @@ have broken on-device proving with nothing pointing at the cause):
 saving on top of aggregation, and it also changes sec. 2.4b's gas model, whose calldata term was
 computed from 507-field proofs. **Re-derive that table before quoting it.**
 
-**🔬 THE 8 FAILURES ARE ONE CAUSE, FULLY CHARACTERISED (2026-08-01). Diagnosed, not guessed.**
+**✅✅ MIGRATION COMPLETE 2026-08-01: 405 forge tests pass, 0 fail. Nothing is left mid-migration on
+the PP side.**
+
+**⚠️ MY "FULLY CHARACTERISED" ROOT CAUSE WAS WRONG - correcting it in place.** I claimed bb 5.1.0's
+`write_solidity_verifier` and `prove` disagreed about proof length, and called it a toolchain defect.
+It was not. **I had misread the error's argument order**: `ProofLengthWrongWithLogN(logN, actual,
+expected)` reports what it GOT first. So it got **16,224** - a STALE fixture - and expected 9,152.
+bb 5.x was self-consistent throughout.
+
+**THE ACTUAL CAUSE: four fixtures I never regenerated**, because the tests read files whose names do
+not match the circuit's: `withdraw_e2e.proof`, `withdraw_identity_wallet.proof`, `ragequit_e2e.proof`
+and `title_holder_id1.proof` - each proved from its OWN witness (`Prover.e2e.toml`,
+`Prover.wallet.toml`, `Prover.titleid1.toml`). I regenerated only the four `<circuit>.proof` files and
+assumed that was the set. **Listing the fixture directory with sizes found it in one command** - the
+stale ones were still exactly 16,224 bytes while the new ones were 7-9k.
+
+**THE LESSON, which cost four wrong diagnoses:** when a fixture-driven test fails, LIST THE FIXTURES
+WITH THEIR SIZES before theorising about the toolchain. And read the error signature's argument
+ORDER - I built three hypotheses on top of one inverted reading.
+
+**FINAL STATE (beta.26 + bb 5.1.0, PP side):** `pp` 87/87 · `withdraw_identity` 5/5 ·
+`aggregate_withdrawals` 5/5 · `notary_action` 5/5 · `ragequit` 3/3 · **forge 405/405** · aggregation
+proven sound (garbage batches REFUSED) · verifiers ~30% smaller (EIP-170 margin 85 -> ~7,400) ·
+proofs ~44% smaller (507 -> 286 fields, direct calldata saving) · wallet bundles refreshed.
+Passport circuits remain on beta.13, blocked by an upstream compiler crash and unaffected.
+
+**REMAINING:** `codegen-verifiers.sh` still guards beta.13 + bb 1.2.0 and uses the old CLI. It must
+learn the bb 5.x flags (`-t evm`, `-t noir-recursive`, no `--scheme`/`--oracle_hash`) and TWO
+toolchains - and its TARGETS list must cover EVERY fixture, not one per circuit, which is precisely
+the gap that caused today's four wrong diagnoses.
+
+**🔬 SUPERSEDED (kept so the wrong reasoning is visible)**
 
 All eight throw `ProofLengthWrongWithLogN(logN, 16224, <actual>)`, across `WithdrawEndToEnd` (6),
 `WithdrawalHonkVerifier` (1) and `TitleLedger` (1). Facts:

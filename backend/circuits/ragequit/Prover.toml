@@ -1,21 +1,6 @@
-# THE witness test/fixtures/ragequit.proof is built from. codegen-verifiers.sh prefers
-# Prover.baseline.toml over Prover.toml precisely so this cannot be clobbered, the same way
-# withdraw_identity's baseline is protected.
-#
-# WHY IT HAD TO BE SPLIT OUT. RagequitHonkVerifier.t.sol has always documented its fixture as
-# "the same differential-tested vector pp/src/commitment.nr uses (value 10, label 20, nullifier 30,
-# secret 40), cross-checked against poseidon-solidity" - but `Prover.toml` was overwritten with the
-# END-TO-END witness (value 1e18, a real label) during the single-identity-tree merge, and the
-# fixture was never re-proved. So the committed proof corresponded to NO committed witness: it could
-# not be reproduced, and the next codegen run would silently replace it with one the test rejects.
-# That is exactly what happened, and it is what surfaced this.
-#
-# commitment_hash and nullifier_hash below are the values pp/src/commitment.nr's
-# `test_matches_poseidon_solidity` asserts for these inputs - i.e. the ones cross-checked against
-# poseidon-solidity's PoseidonT2/T3/T4, the same functions PrivacyPool.sol itself calls.
-commitment_hash = "10718981984499290237711722178490140094119483277114902091282087901089143679380"
-nullifier_hash = "7532086780038402662674345296860422071861903663404908958571451852914592667893"
-value = "10"
-label = "20"
-nullifier = "30"
-secret = "40"
+commitment_hash = "17975503696435785383825560335987043444961350313588353426419281924309605667268"
+nullifier_hash = "8804420519297481257523323779945157586225041386282682497066402836735884193743"
+value = "1000000000000000000"
+label = "15657487282795624093814845682454643069651346009494294240642302522288600992635"
+nullifier = "2332324423532070176447539510769953602044865206234894432857660212216203191535"
+secret = "7190131113348261101076191248259625165829616397966821326041996652305505128658"

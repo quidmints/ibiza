@@ -17,10 +17,17 @@
 // See sec. 1b / sec. 2.1a. Every claim here is reasoned from the code, NOT measured — no
 // device has ever run this path.
 
-// NOT `import type` — used as a value below. This module stays unloadable by `node --test` either
-// way: `../sdk/circuits` reaches expo-file-system, which ships untranspiled TypeScript inside
-// node_modules that Node refuses to strip. It is a thin wrapper over React Native native modules,
-// so it is exercised on a device rather than in unit tests.
+// NOT `import type` — used as a value below.
+//
+// THIS MODULE CANNOT BE LOADED BY `node --test`, and the cause is THIS LINE rather than the
+// `../sdk/circuits` import below (checked: importing `@rarimo/rarime-rn-sdk` on its own fails
+// identically). The SDK reaches expo-file-system, which ships untranspiled TypeScript inside
+// node_modules, and Node refuses to strip types there. Making `circuits` lazy would therefore
+// change nothing.
+//
+// That is a boundary rather than a defect: both functions here are thin awaits over SDK calls with
+// no logic of their own, so there is nothing to unit-test that would not amount to asserting a mock
+// returns what it was told to. Exercised on a device.
 import { NoirCircuitParams } from "@rarimo/rarime-rn-sdk";
 import "../sdk/circuits.ts"; // side effect: registers withdraw_identity + title_holder
 import type { WithdrawWitness } from "./withdrawWitness.ts";

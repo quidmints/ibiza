@@ -1,3 +1,17 @@
+//! ########################################################################################
+//! # DO NOT USE THIS CIRCUIT. IT DOES NOT VERIFY ITS INNER PROOFS. (2026-08-01)             #
+//! #                                                                                       #
+//! # A batch of ALL-ZERO garbage proofs PROVES AND VERIFIES SUCCESSFULLY. The 16 recursive #
+//! # verifications are absent from the compiled circuit even though main() calls           #
+//! # std::verify_proof_with_type below. Measured at N=2: 81,668 gates, against 1,396,874   #
+//! # for the identical circuit with a Poseidon fold - two ~725k-gate verifications simply  #
+//! # are not there. As written this would aggregate anything: a forgery machine.           #
+//! #                                                                                       #
+//! # The ONLY change between working and broken is the fold (Poseidon -> keccak256) and    #
+//! # its dependency swap in Nargo.toml. Bisect that. Do not build the batch entrypoint,    #
+//! # and do not deploy AggregationHonkVerifier, until a garbage batch is REJECTED.         #
+//! # Reproduce: TODO.md sec. 2.4a, "decisive test".                                        #
+//! ########################################################################################
 //! AGGREGATE N `withdraw_identity` PROOFS INTO ONE (TODO.md sec. 2.4 / 2.4b).
 //!
 //! WHAT THIS BUYS. A single withdrawal verification costs ~2.39M gas, which makes the pool

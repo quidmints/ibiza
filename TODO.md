@@ -928,6 +928,34 @@ in-circuit hash cost is nearly irrelevant; the contract pays real money per hash
 everything. Poseidon is optimised for the side that does not matter here. Inlining cannot rescue it:
 that is a ~3,400 gas saving against ~29,000 of inherent arithmetic per hash (see below).
 
+**🔴🔴 CONFIRMED 2026-08-01: THE CIRCUIT NO LONGER VERIFIES ITS INNER PROOFS. A BATCH OF ALL-ZERO
+GARBAGE PROOFS PROVES AND `bb verify` ACCEPTS IT.** This is not a gate-accounting curiosity - the
+constraints are genuinely absent, and as written the aggregator would accept ANY claimed withdrawal.
+`src/main.nr` now carries a blocking banner. **Do not build the batch entrypoint and do not deploy
+`AggregationHonkVerifier` until a garbage batch is REJECTED.**
+
+Evidence, all reproducible:
+- N=2 keccak circuit: **81,668 gates**. The identical circuit with the Poseidon fold: **1,396,874**.
+  Two in-circuit UltraHonk verifications are ~725k gates each - they are simply not present.
+- N=16: 550,404 gates vs 11,610,552 before; artifact halved; `acir_opcodes` ROSE 13,211 -> 55,811.
+  Opcodes up while circuit_size collapses = not a failed compile.
+- `nargo execute` accepts the garbage witness, `bb prove` writes a proof, `bb verify` says
+  "Proof verified successfully". Every stage reports success, exactly as with the `proof_type` bug.
+
+**THE ONLY DIFFERENCE BETWEEN WORKING AND BROKEN is the fold (Poseidon -> keccak256) plus its
+Nargo.toml dependency swap.** Bisect that: (1) keep the keccak dependency but restore the Poseidon
+fold body - if recursion returns, the DEPENDENCY is implicated; (2) keep the Poseidon dependency but
+inline a trivial keccak - if recursion vanishes, the keccak INTRINSIC is. A plausible mechanism is
+dead-code elimination: `verify_proof_with_type` returns nothing, so if the optimiser concludes the
+`proofs` parameter cannot affect the public output it may drop the whole thing - and the keccak fold
+changed what the optimiser can see about `public_inputs`.
+
+**THE GENERAL LESSON, worth more than this bug:** a gate count is a SAFETY SIGNAL for a recursive
+circuit, not a performance statistic. The 5 unit tests still pass, the fold is correct, the witness
+solves, the proof verifies - and the circuit is worthless. **Every future change to a recursive
+circuit must re-run the garbage-proof test**, because nothing else here distinguishes "verifies N
+proofs" from "verifies nothing".
+
 **⚠️ KECCAK FOLD APPLIED TO THE CIRCUIT 2026-08-01 - AND IT PRODUCED AN UNEXPLAINED ANOMALY. DO NOT
 TREAT IT AS WORKING.** The 5 circuit tests still pass and the fold logic is right, but the falsifiable
 prediction FAILED:

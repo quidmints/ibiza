@@ -42,11 +42,14 @@
 # stale, they keep their OLD byte length, and the resulting forge failures look like a toolchain bug.
 # That is exactly what happened on 2026-08-01 and cost four wrong diagnoses. See FIXTURES below.
 #
-# TOOLCHAIN (pinned, do not drift). These MUST match REQUIRED_NARGO/REQUIRED_BB below - an earlier
-# revision of this header still advertised beta.1 / 0.82.2 while the guard already enforced
-# beta.13 / 1.2.0, so following the header got you rejected by the script twelve lines later:
-#   nargo 1.0.0-beta.13  `noirup --version 1.0.0-beta.13`
-#   bb    1.2.0          `barretenberg-<arch>-darwin|linux.tar.gz` from the v1.2.0 release.
+# TOOLCHAIN (pinned, do not drift). These MUST match REQUIRED_NARGO/REQUIRED_BB below - and THIS
+# HEADER HAS NOW DRIFTED TWICE. It advertised beta.1 / 0.82.2 while the guard enforced beta.13 /
+# 1.2.0; it then advertised beta.13 / 1.2.0 while the guard enforced beta.26 / 5.1.0 (corrected
+# 2026-08-02). Both times, following the header got you rejected by the guard fifty lines later.
+# **Read REQUIRED_NARGO/REQUIRED_BB, not prose** - the constants are what runs.
+#   nargo 1.0.0-beta.26+quid-icefix1   locally patched; see the WHY PATCHED note below.
+#   bb    5.1.0          `bbup --version 5.1.0`, installed to ~/.bb - which is NOT on PATH by
+#                        default, so `export PATH="$HOME/.bb:$PATH"` or the guard reports it missing.
 #                        Do NOT use bb < 0.82.0: bbup's own installer warns of a critical UltraHonk
 #                        soundness vulnerability below that version, requiring verifier regeneration.
 #                        Do NOT assume `bb` on PATH is the right one - several versions are commonly
@@ -68,11 +71,13 @@ set -euo pipefail
 #                                evaluates a bump by "did prove succeed?" will ship a broken system.
 #   bb <= 0.87.0             ->  `--zk` is SILENTLY IGNORED under `--honk_recursion`, producing
 #                                non-zero-knowledge proofs that leak the witness.
-#   nargo beta.22+           ->  outright compiler ICE ("all function ids should have metadata") on
-#                                query_identity / register_identity, with zero regular errors.
-#                                (An earlier note here said "beta.4+ cannot compile our dependency
-#                                tree" - that was true BEFORE the noir_dl_lib migration; the tree
-#                                now builds on beta.13, and beta.22 fails only on the ICE.)
+#   nargo beta.22+           ->  compiler ICE ("all function ids should have metadata") on
+#                                query_identity / register_identity, with zero regular errors. STILL
+#                                UNFIXED UPSTREAM AT beta.26 - which is why the pinned nargo is a
+#                                locally patched build and the source carries the BigNumParams
+#                                accommodation, so stock beta.26 compiles too. (An earlier note here
+#                                said "beta.4+ cannot compile our dependency tree" - that was true
+#                                BEFORE the noir_dl_lib migration.)
 #
 # So this guard is not pedantry about versions - it is the only thing standing between a fresh
 # clone and artifacts that look fine and are not.

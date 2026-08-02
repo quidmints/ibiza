@@ -15,47 +15,60 @@ re-proposed.
 
 | | version |
 |---|---|
-| nargo | `1.0.0-beta.13` (`noirup --version 1.0.0-beta.13`) |
-| bb | `1.2.0` (`barretenberg-<arch>-darwin\|linux.tar.gz` from the `v1.2.0` release) |
+| nargo | `1.0.0-beta.26+quid-icefix1` — a **locally patched** build, see §1a |
+| bb | `5.1.0` (`bbup --version 5.1.0`; lands in `~/.bb`, which is **not** on PATH by default) |
+
+**⚠️ beta.13 + bb 1.2.0 ARE DEAD (corrected 2026-08-02, user: "forget bb 1.2.0 and beta.13, it's
+old").** This table went on naming them long after the beta.26 migration landed, and
+`codegen-verifiers.sh`'s own header said the same thing — while the guard fifty lines below it
+enforced beta.26 / 5.1.0. That header carries a warning about this exact drift having happened once
+before; it then happened again, to the version that fixed it. **Read `REQUIRED_NARGO` /
+`REQUIRED_BB` in the script — the constants are what runs, the prose is what rots.** Verified
+2026-08-02 by running both binaries: `nargo --version` → `1.0.0-beta.26+quid-icefix1`,
+`bb --version` → `5.1.0`, matching the guard exactly.
 
 `backend/circuits/codegen-verifiers.sh` refuses to run on anything else, and **validates its own
 output** before writing artifacts (native `bb verify` + a two-run determinism check). Do not weaken
 either guard — §7 explains what they catch.
 
 ```bash
-cd backend/contracts && forge build && forge test              # 157/157 ✅
-cd backend/circuits/pp && nargo test                           # 53/53 ✅
-cd backend/circuits/noir_dl_lib && nargo test                  # 49/49 ✅
-./backend/circuits/codegen-verifiers.sh                        # regenerates both Honk verifiers
+export PATH="$HOME/.bb:$PATH"                                  # or codegen reports bb missing
+cd backend/contracts && forge build && forge test              # 430 ✅
+cd backend/circuits/pp && nargo test                           # 87/87 ✅
+cd backend/circuits/noir_dl_lib && nargo test                  # 77/77 ✅
+./backend/circuits/codegen-verifiers.sh                        # step 4 of 5 — then step 5:
+./tools/prove-escrow-fixtures.sh                               # skipping it ⇒ SumcheckFailed()
 python3 tools/check-client-abis.py                             # TS ABI ↔ Solidity cross-check
 cd frontend/identity-wallet && npx tsc --noEmit --strict       # ✅
-cd backend/cre/notary_registry && GOOS=wasip1 GOARCH=wasm go build ./...   # ✅
+cd backend/cre/sanctions_lists && GOOS=wasip1 GOARCH=wasm go build ./...   # ✅
+cd backend/cre/sanctions_lists && go test ./...                # host-side; the logic carries no build tag
 ```
 
-**ONE toolchain for everything — no split (landed 2026-07-27).** Every circuit (`pp`,
-`withdraw_identity`, `title_holder`, `query_identity`, `query_identity_td1`,
-`register_identity_light_td1`, `register_identity`) compiles on this pair, AND verifier generation
-runs on it. 157/157 Forge, 53/53 pp, 49/49 lib.
+**ONE toolchain for everything — no split.** All 13 circuit crates compile on beta.26 with no ICE;
+the six that could not (`register_identity{,_td1,_light_td1}`, `query_identity{,_td1}`,
+`escrow_envelope`) were blocked by `noir_dl_lib`, now migrated. Counts: noir_dl_lib 77/77, pp 87/87,
+escrow_envelope 4/4, withdraw_identity 5/5, notary_action 5/5, ragequit 3/3.
 
-**`bb 1.x` REQUIRES `-k <vk>` on `prove`; 0.82.2 did not.** Omitting it does not error — bb exits 0
+**`bb` REQUIRES `-k <vk>` on `prove`; 0.82.2 did not.** Omitting it does not error — bb exits 0
 and writes a proof against a different key that its own verifier rejects with `SumcheckFailed()`.
 This single flag masqueraded as a bb-version incompatibility for a long time. It is now passed
 explicitly in `codegen-verifiers.sh`, and the self-checks would catch a regression anyway.
 
-**On bb 1.x, ZK is the DEFAULT** (opt out with `--disable_zk`). On 0.82.2 it was opt-in via `--zk`,
+**ZK is the DEFAULT** (opt out with `--disable_zk`). On 0.82.2 it was opt-in via `--zk`,
 and omitting it silently produced witness-leaking proofs — upstream inverted the flag because the
 old default was a footgun.
 
-**⚠ EIP-170 headroom is now only ~85 bytes** (verifiers are 24,491 / 24,492 against the 24,576
-limit, already with `optimizer_runs = 1` scoped to those two files). bb 1.2.0's verifier is larger
-than 0.82.2's. **Check `forge build --sizes` after every regeneration** — a circuit change could
-push these over, and the failure would only appear at deploy time.
+**⚠ EIP-170 headroom is thin** — the withdrawal verifiers sit within ~85 bytes of the 24,576 limit,
+already with `optimizer_runs = 1` scoped to those two files, and every bb major so far has emitted a
+larger verifier than the last. **Check `forge build --sizes` after every regeneration** — a circuit
+change could push these over, and the failure would only appear at deploy time.
 
-**Why not newer?** nargo beta.22 compiles the PP circuits (53/53 pp tests pass there) but hits an
-upstream ICE — `ice: all function ids should have metadata` — on `query_identity` and
-`register_identity`, with zero regular errors. Bisected to `sigver`, but no individual submodule
-removal clears it and the ICE masks whatever is behind it. bb 5.x needs msgpack ACIR from a nargo
-newer than beta.25. **beta.13 + bb 1.2.0 is the newest pair where everything works.**
+**Why a patched compiler?** The ICE (`ice: all function ids should have metadata`) is **still
+unfixed upstream at beta.26**, which is the newest release; `backend/circuits/noir-ice-repro/` is a
+14-line dependency-free reproduction. Our compiler carries the fix, and our SOURCE also carries the
+`BigNumParams` accommodation (22 `global` → `pub fn`, measured at zero gate cost) so the circuits
+build on **stock** beta.26 too — which is the only reason CI or another machine can build them at
+all. Revert the accommodation when upstream ships the fix (task 26).
 
 ### 1b. Wallet launch readiness — BLOCKED ON HARDWARE, and it is an ARCHITECTURE block (2026-07-27)
 

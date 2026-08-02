@@ -178,6 +178,64 @@ bb_checked() {
   fi
 }
 
+# execute_witness <prover-file> <witness-name> - solve a witness WITHOUT destroying a committed input.
+#
+# THIS IS THE WHOLE OF TASK 30's UNEXPLAINED `SumcheckFailed()` (root-caused 2026-08-02). Both loops
+# below used to `cp "${witness}" Prover.toml` before `nargo execute`, because nargo reads Prover.toml
+# by default. But `Prover.toml` IS A COMMITTED INPUT for every circuit whose baseline witness is not
+# named `Prover.baseline.toml` - title_holder is one - so that copy PERMANENTLY REPLACED the circuit's
+# baseline witness with a fixture's, and the replacement was itself committed (db1df14). Every later
+# run then proved the baseline fixture from the WRONG witness.
+#
+# WHY EVERY SIGNAL SAID "FINE". `bb prove` succeeded. `bb verify` ACCEPTED the proof - it is a
+# perfectly valid proof, of a different statement. The vk was unchanged and the verifier bytecode was
+# byte-identical. Only the Solidity test rejected it, because its public inputs are hardcoded and
+# belong to the real baseline. A proof of the wrong statement is indistinguishable from a proof of the
+# right one until something pins the statement.
+#
+# WHY NOT `nargo execute -p <name>`, WHICH LOOKS LIKE THE OBVIOUS FIX: nargo splits the extension at
+# the FIRST dot, so `-p Prover.titleid1` resolves to `Prover.toml` and the argument is DISCARDED
+# SILENTLY - `-p Prover.doesnotexist` exits 0 and cheerfully solves Prover.toml. It works only for
+# dotless names, and this pipeline's witnesses are `Prover.<what>.toml` across six files including two
+# generators. So the flag would have swapped one silent substitution for a subtler one; the guard
+# below refuses a dotted `-p`-style name for exactly that reason.
+#
+# Restore happens on failure too, and is VERIFIED - a restore that silently did not happen is the
+# same bug wearing a hat.
+execute_witness() {
+  local prover_file="$1" witness_name="$2" saved="" rc=0
+
+  if [ ! -f "${prover_file}" ]; then
+    echo "ERROR: witness ${prover_file} not found in $(pwd)" >&2
+    return 1
+  fi
+
+  if [ "${prover_file}" != "Prover.toml" ]; then
+    if [ -f Prover.toml ]; then
+      saved="$(mktemp)"
+      cp Prover.toml "${saved}"
+    fi
+    cp "${prover_file}" Prover.toml
+  fi
+
+  nargo execute "${witness_name}" >/dev/null || rc=$?
+
+  if [ -n "${saved}" ]; then
+    cp "${saved}" Prover.toml
+    if ! cmp -s "${saved}" Prover.toml; then
+      echo "ERROR: failed to restore Prover.toml in $(pwd) - it now holds ${prover_file}." >&2
+      echo "       Recover it from git before proving anything: git checkout -- Prover.toml" >&2
+      rm -f "${saved}"
+      return 1
+    fi
+    rm -f "${saved}"
+  elif [ "${prover_file}" != "Prover.toml" ]; then
+    rm -f Prover.toml   # there was none before us; leave none behind
+  fi
+
+  return "${rc}"
+}
+
 CIRCUITS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONTRACTS_DIR="${CIRCUITS_DIR}/../contracts/contracts"
 
@@ -253,10 +311,8 @@ for target in "${TARGETS[@]}"; do
   elif [ -f Prover.toml ];          then _prover="Prover.toml"
   fi
   if [ -n "${_prover}" ]; then
-    # Guarded: `cp x x` is an error under set -e, and title_holder's only witness IS Prover.toml.
-    [ "${_prover}" = "Prover.toml" ] || cp "${_prover}" Prover.toml
     echo "  witness: ${_prover}"
-    nargo execute witness
+    execute_witness "${_prover}" witness
     # -k IS MANDATORY ON bb 1.x AND WAS NOT ON 0.82.2. Omitting it does not error - bb exits 0 and
     # writes a proof against a DIFFERENT key, which its own verifier then rejects with
     # `SumcheckFailed()`. That single missing flag masqueraded as a bb-version incompatibility for a
@@ -338,8 +394,7 @@ for entry in "${EXTRA_FIXTURES[@]}"; do
     echo "ERROR: ${circuit}/${witness} missing - ${fixture}.proof cannot be regenerated." >&2
     exit 1
   fi
-  cp "${witness}" Prover.toml
-  nargo execute "w_${fixture}" >/dev/null
+  execute_witness "${witness}" "w_${fixture}"
   rm -rf "pf_${fixture}"; mkdir -p "pf_${fixture}"
   bb_checked "pf_${fixture}/proof" -- bb prove -t evm \
     -b "target/${circuit}.json" -w "target/w_${fixture}.gz" -k target/vk -o "pf_${fixture}"

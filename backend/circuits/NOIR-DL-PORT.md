@@ -44,6 +44,34 @@ false**, and v0.2.0 does not build on beta.26 at all.
 | 5 | `Bitwise operations are invalid on Field types` | cast to a sized integer first |
 | 3 | `The numeric generic is not of type u8` | generic kind annotation |
 
+## What "the ICE is gone" does and does NOT mean
+
+**Do not read the absence of an ICE as proof the ICE is fixed everywhere.** Compilation now aborts on
+80 errors, and an abort can hide a crash that would have happened later. The claim is narrower than
+it looks, so here is exactly what backs it.
+
+**What IS established, by a controlled A/B with no confounding errors:** with only the fixed `bignum`
+module present the crate compiled COMPLETELY CLEAN — zero errors — and in that state, adding one
+`global X: BigNumParams<..> = BigNumParams::new(..)` produced the ICE, while the identical call moved
+into a function compiled clean again. That configuration reached and passed the stage where the ICE
+fires, so the diagnosis and the fix are real *for that construct*.
+
+**What is NOT established:** that no other ICE remains in the library. The remaining 80 errors stop
+the build before the later stages run.
+
+**The falsifiable prediction, so the next run can check it rather than re-derive it:** once the 80
+errors are fixed, either the library compiles, or a NEW ICE appears. **I cannot say which.** If a new
+ICE appears, the 3-second reproduction above still works and the same bisection applies — that is the
+reason it is written down rather than described.
+
+**80 is a FLOOR, not a total.** These are frontend/type-check errors. Noir resolves generic function
+bodies fully only on instantiation, so monomorphisation-stage errors cannot appear yet and will only
+surface once these are cleared. Budget for the list growing, not shrinking.
+
+**Verified against the real crates, not just the probe** (this matters — the probe uses nothing from
+the library, so it could in principle skip code): `register_identity` 80, `query_identity` 80,
+`escrow_envelope` 88, no ICE in any.
+
 ## Do not skip
 
 **Upstream is not an escape.** `noir-bignum` v0.9.2 (latest) pulls `poseidon` v0.2.6, which beta.26

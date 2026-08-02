@@ -8497,6 +8497,37 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **🙋 DECISIONS FLAGGED FOR YOU AND NEVER COLLECTED (recovered 2026-08-02 by scanning the
+  transcript for places I refused to guess).** Each was raised mid-work, answered "that is your
+  call", and then left in conversation. The topics are discussed elsewhere in this file; **the
+  pending DECISION was recorded nowhere**, which is how a flagged choice becomes a forgotten one.
+
+  1. **ASP root set: monotonic/append-only, or removable?** Replacing the equality check with
+     `mapping(root => publishedAt)` + an O(1) lookup makes the set append-only: once admitted, never
+     removable - **including a root later found genuinely tainted.** That is a governance call, not
+     an engineering one, and it weakens the provable-dissociation story `COMPLIANCE-THESIS.md`
+     leans on. **Until this or one of its alternatives is built, "this fork has no retroactive
+     third-party lever" is FALSE** - say so rather than repeating the claim.
+
+  2. **Authority set: immutable, governance-gated, or owner-mutable?** Immutable is what makes the
+     no-lever claim true; owner-mutable is the current lever with extra steps. The blocker is not
+     technical: it is whether compliance may REQUIRE adding an authority post-deploy, which I cannot
+     determine. It is constructor-shaped, so it is cheap now and expensive later.
+
+  3. **OFAC predicate: is the auditability loss acceptable, and how does `s` reach the authority?**
+     The `holderRoot -> person` linkage does not exist on-chain at all, so the predicate is not
+     currently expressible in-circuit. Encrypted to a published authority key is the obvious shape,
+     but the trade is a policy call. Relates to task 28 (`ofac_sdn` is the anchoring half).
+
+  4. **Does `title_holder` need the ZK proving fix?** Applied to `withdraw_identity` regardless; it
+     proves title rather than a spend, so it may not need it. Cheap to decide, silent if wrong.
+
+  **RESOLVED while flagged, recorded so nobody re-opens it:** `quidmints/rarime-rn-sdk` **PR #1 was
+  MERGED 2026-07-27** (expo-file-system 57 File/Directory API). The wallet's
+  `github:quidmints/rarime-rn-sdk#main` dependency therefore resolves to the fixed code. **This is
+  NOT the reason `prove.ts` cannot be unit-tested** - that is expo-file-system shipping untranspiled
+  TypeScript inside `node_modules`, which is unrelated and still true.
+
   **🧭 COLD-START BRIEFING (2026-08-02). Read this before touching circuits or artifacts.**
   **Upstream provenance and every change we made to upstream code now live in `README.md`** - which
   file came from Privacy Pools, which from rarimo, which is ours, and the reproducing command. The

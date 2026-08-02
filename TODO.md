@@ -8571,6 +8571,23 @@ at registration") has no passport equivalent and needs its own home regardless.
   NOT the reason `prove.ts` cannot be unit-tested** - that is expo-file-system shipping untranspiled
   TypeScript inside `node_modules`, which is unrelated and still true.
 
+  **📋 FULL INCOMPLETENESS SCAN COMPLETED (2026-08-02) - all 102 passages, not a sample.**
+  Scanned every assistant message in the thread for statements of incompleteness (a different
+  vocabulary from the earlier trap/silent/fragile scans, aimed at "I did not / still needs / left
+  open / partially"). **Three findings were unbooked and are now tasks 33, 34, 35.** The rest were
+  honest caveats attached to work that did complete, and are already covered by the entries below.
+
+  **The pattern worth keeping:** all three had been WRITTEN DOWN in prose - the stables leg and the
+  vendored copies appear in this file, the token in a session summary - and none had been lifted into
+  a task. **Recorded somewhere, actionable nowhere.** That is the same failure as the bisect result:
+  the information existed and no one was going to act on it. When a finding is stated in a reply,
+  lift it to a task in the same turn or it does not exist.
+
+  **Deliberate non-checks, recorded so they are not mistaken for oversights:** the Iranian registry
+  endpoint (not checked, deliberately); whether Chainlink's confidential HTTP hides the request from
+  node operators (undeterminable from the docs); the licence of one upstream dependency. Each needs
+  one external look, none is blocking.
+
   **🧭 COLD-START BRIEFING (2026-08-02). Read this before touching circuits or artifacts.**
   **Upstream provenance and every change we made to upstream code now live in `README.md`** - which
   file came from Privacy Pools, which from rarimo, which is ours, and the reproducing command. The

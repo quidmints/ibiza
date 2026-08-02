@@ -77,7 +77,26 @@ set -euo pipefail
 # So this guard is not pedantry about versions - it is the only thing standing between a fresh
 # clone and artifacts that look fine and are not.
 # ---------------------------------------------------------------------------------------------
-REQUIRED_NARGO="1.0.0-beta.26"
+# nargo is a LOCALLY PATCHED beta.26, and the "+quid-icefix1" suffix is load-bearing.
+#
+# WHY PATCHED: released beta.26 ICEs (`ice: all function ids should have metadata`) on a generic
+# operator-overload impl evaluated in a `global`, which blocked register_identity{,_td1,_light_td1},
+# query_identity{,_td1} and escrow_envelope from compiling AT ALL. Fix is 3 hunks turning
+# `function_meta` into `try_function_meta`; see noir-ice-repro/noir-fix.patch and NOIR-DL-PORT.md.
+# Regression-tested against Noir's own suite: noirc_frontend 2223 passed, 0 failed.
+#
+# WHY THE SUFFIX: an unmarked patched build reports the IDENTICAL version string to the release and
+# would slip past this guard unnoticed - the pin would silently stop meaning anything. The marker is
+# added in tooling/nargo_cli/src/cli/mod.rs so that using a custom compiler is always an explicit,
+# visible decision.
+#
+# TO REBUILD IT: clone noir at tag v1.0.0-beta.26, apply noir-ice-repro/noir-fix.patch plus the
+# version marker, `cargo build --release -p nargo_cli`, copy target/release/nargo onto your PATH.
+# TO GO BACK: the stock binary is saved at ~/.nargo/bin/nargo.beta26-release.bak, or reinstall with
+# `noirup --version 1.0.0-beta.26`. The circuits still build on STOCK beta.26 too - the
+# `BigNumParams::new` accommodation in noir_dl_lib was kept precisely so they do.
+# WHEN THE FIX SHIPS UPSTREAM: drop the suffix, go back to the release, revert the accommodation.
+REQUIRED_NARGO="1.0.0-beta.26+quid-icefix1"
 REQUIRED_BB="5.1.0"
 
 actual_nargo="$(nargo --version 2>/dev/null | sed -n 's/^nargo version = //p' | head -1)"

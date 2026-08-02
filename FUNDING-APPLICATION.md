@@ -13,6 +13,20 @@ zero-knowledge stack this work renovates — was used by Iranian civil-society o
 verifying eligibility from biometric passports scanned locally, with nothing transmitted to a server.
 <https://alexablockchain.com/iranian-voting-app-to-protest-presidential-election/>
 
+**Scope of the lending design.** Section 2's central choice, that the protocol funds loans and nobody
+underwrites them, is specific to jurisdictions where licensed origination is unavailable, captured, or
+itself a vector for refusal. That is the case this application addresses, and the anti-refusal property
+in section 1 is the whole reason for the choice. The same identity, title and reserve stack also runs a
+second configuration wherever licensed origination functions normally: a licensed originator finds the
+borrower, values the property, sets the terms and registers the lien, and the reserve funds and holds
+the resulting paper. That configuration gives up the anti-refusal property and is not what is proposed
+here. Its privacy layer serves a different end, keeping the borrower's file with the originator rather
+than shipping it to whoever holds the paper, and the originator must retain a genuine risk slice rather
+than act as a conduit, since a lender that bears no risk is not the lender for licensing purposes.
+Recorded so the two are not read as contradicting each other. Research record, including why the
+closed-title-register premise does not hold in Ukraine, the US or England, and why notaries gate
+writing rather than reading: `SPV/docs/FAQ.md` Part 4.
+
 ---
 
 ## 1. Short description of the proposed project *(297/300 words)*

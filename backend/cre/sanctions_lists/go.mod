@@ -1,8 +1,8 @@
-module ofac_sdn
+module ibiza/sanctions-lists-cre
 
 go 1.25.3
 
-// go.mod for the CRE notary-registry workflow. `go mod tidy` + `go build ./...` run and confirmed
+// go.mod for the CRE sanctions-list workflow. `go mod tidy` + `go build ./...` run and confirmed
 // green on 2026-07-25 (see go.sum) - main.go compiles clean against every pin below.
 //
 // DEPENDENCY FRESHNESS PASS (2026-07-25): bumped to the latest STABLE (non-capdev/-rc/-alpha)

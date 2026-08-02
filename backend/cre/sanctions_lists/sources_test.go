@@ -1,0 +1,559 @@
+// The first tests this workflow has ever had (TODO.md sec. 3, GAP 1).
+//
+// WHY THIS FILE EXISTS. `backend/cre/sanctions_lists` decides WHO IS RECORDED AS SANCTIONED, and it
+// had no tests at all — everything lived in `main.go` behind `//go:build wasip1`, so no ordinary
+// `go test` could reach any of it. That is the same shape `notary_registry` was in, fixed the same
+// way.
+//
+// AND IT WAS NOT MERELY UNTESTED. The workflow could never have published anything: it sorted its
+// ENTRIES by uid and then mapped them to leaf HASHES, which are in no particular order, while
+// `RegistrySourceAnchor._computeRoot` reverts `LeavesNotStrictlySorted` on anything but strict
+// ascent. Every `onReport` would have reverted. Zero tests is how that survived being written,
+// reviewed and marked "compiling".
+//
+// THE FIXTURES ARE REAL BYTES. `testdata/*.xml` are verbatim excerpts of the actual published
+// exports, fetched 2026-08-02 — headers, namespaces, element casing, empty elements and all.
+// Nothing here is a hand-written approximation of a schema, because the last time this project
+// guessed one, every single tag was wrong and the parse returned zero rows (sec. 2.18ce).
+package main
+
+import (
+	"fmt"
+	"os"
+	"strings"
+	"testing"
+)
+
+func load(t *testing.T, name string) []byte {
+	t.Helper()
+	body, err := os.ReadFile("testdata/" + name)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	return body
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  UNITED STATES — OFAC SDN
+// ═══════════════════════════════════════════════════════════════════
+
+func TestTheUSExportDecodesWithItsKindsAndNameParts(t *testing.T) {
+	subjects, err := decodeSubjects("OFAC_SDN", load(t, "ofac_sdn_excerpt.xml"))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(subjects) != 4 {
+		t.Fatalf("want 4 rows, got %d", len(subjects))
+	}
+
+	// An entity: lastName carries the whole name, firstName is absent — and the empty part is still
+	// committed, so arity is the same as an individual's.
+	if subjects[0].Reference != "36" || subjects[0].Kind != KindEntity {
+		t.Fatalf("entity row wrong: %+v", subjects[0])
+	}
+	if got := subjects[0].NameParts; len(got) != 2 || got[0] != "AEROCARIBBEAN AIRLINES" || got[1] != "" {
+		t.Fatalf("entity name parts wrong: %q", got)
+	}
+
+	// An individual: both parts populated, in published order (last, first).
+	if subjects[1].Reference != "2674" || subjects[1].Kind != KindIndividual {
+		t.Fatalf("individual row wrong: %+v", subjects[1])
+	}
+	if got := subjects[1].NameParts; got[0] != "ABBAS" || got[1] != "Abu" {
+		t.Fatalf("individual name parts wrong: %q", got)
+	}
+
+	// A vessel — the kind vocabulary covers all four OFAC publishes, not just the two people expect.
+	if subjects[3].Kind != KindVessel {
+		t.Fatalf("vessel row wrong: %+v", subjects[3])
+	}
+}
+
+// THE EXPORT DECLARES ITS OWN LENGTH, and that is the strongest anti-rot guard available: a schema
+// change that silently drops rows is caught without any external reference point. Under-counting is
+// the dangerous direction — a snapshot missing designated parties still looks complete.
+func TestAUSManifestMismatchIsRefused(t *testing.T) {
+	body := string(load(t, "ofac_sdn_excerpt.xml"))
+	tampered := strings.Replace(body, "<Record_Count>4</Record_Count>", "<Record_Count>5</Record_Count>", 1)
+	if tampered == body {
+		t.Fatal("fixture no longer contains the Record_Count this test tampers with")
+	}
+
+	_, err := decodeSubjects("OFAC_SDN", []byte(tampered))
+	if err == nil {
+		t.Fatal("a snapshot disagreeing with its own manifest was accepted")
+	}
+	if !strings.Contains(err.Error(), "Record_Count") {
+		t.Fatalf("error does not name the manifest: %v", err)
+	}
+}
+
+// A FIFTH sdnType is how a silent under-count arrives. Defaulting an unknown kind to "entity" would
+// publish a plausible, wrong snapshot; refusing publishes nothing and says why.
+func TestAnUnknownUSSubjectTypeRefusesTheSnapshot(t *testing.T) {
+	body := strings.Replace(string(load(t, "ofac_sdn_excerpt.xml")),
+		"<sdnType>Vessel</sdnType>", "<sdnType>Spacecraft</sdnType>", 1)
+
+	_, err := decodeSubjects("OFAC_SDN", []byte(body))
+	if err == nil {
+		t.Fatal("an undeclared sdnType was silently accepted")
+	}
+	if !strings.Contains(err.Error(), "Spacecraft") {
+		t.Fatalf("error does not name the unknown type: %v", err)
+	}
+}
+
+// The US export declares its reference unique (measured: 19,181 uids, all distinct). If that ever
+// stops holding, two designations would merge into one leaf — so it is CHECKED, not trusted.
+func TestADuplicateUSReferenceIsRefusedBecauseTheSourceDeclaresItUnique(t *testing.T) {
+	body := `<?xml version="1.0" standalone="yes"?>
+<sdnList xmlns="https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/XML">
+  <publshInformation><Publish_Date>07/30/2026</Publish_Date><Record_Count>2</Record_Count></publshInformation>
+  <sdnEntry><uid>36</uid><lastName>ONE</lastName><sdnType>Entity</sdnType></sdnEntry>
+  <sdnEntry><uid>36</uid><lastName>TWO</lastName><sdnType>Entity</sdnType></sdnEntry>
+</sdnList>`
+
+	_, err := decodeSubjects("OFAC_SDN", []byte(body))
+	if err == nil {
+		t.Fatal("a duplicated uid was accepted by a source that declares uid unique")
+	}
+	if !strings.Contains(err.Error(), "unique") {
+		t.Fatalf("error does not explain the broken uniqueness claim: %v", err)
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  UNITED KINGDOM — OFSI consolidated list
+// ═══════════════════════════════════════════════════════════════════
+
+// THE TEST THAT JUSTIFIES THE WHOLE REDESIGN. OFSI publishes ONE ROW PER ALIAS, so a single
+// designation appears several times under one identifier — 19,761 rows carry 5,135 distinct ones.
+// A design keyed on "reference identifies a row", which the US export happens to satisfy, silently
+// collapses three quarters of the UK list into a quarter of the leaves.
+func TestUKAliasRowsShareOneReferenceAndStillProduceDistinctLeaves(t *testing.T) {
+	subjects, err := decodeSubjects("UK_OFSI_CONSOLIDATED", load(t, "uk_ofsi_excerpt.xml"))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(subjects) != 4 {
+		t.Fatalf("want 4 rows, got %d", len(subjects))
+	}
+
+	// GroupID 8384 is UKSanctionsListRef IRQ0140 in the published file; the leaf follows the
+	// GroupID, because that is the field the real export always populates.
+	shared := 0
+	for _, s := range subjects {
+		if s.Reference == "8384" {
+			shared++
+		}
+	}
+	if shared != 3 {
+		t.Fatalf("want 3 rows under IRQ0140, got %d", shared)
+	}
+
+	leaves := snapshotLeaves("UK_OFSI_CONSOLIDATED", subjects)
+	if len(leaves) != 4 {
+		t.Fatalf("three alias rows collapsed into one leaf: %d leaves from 4 rows", len(leaves))
+	}
+
+	// And the reason they stay distinct is the FULL six-part name, empties included: OFSI moves a
+	// name between slots across alias rows of one designation, and dropping empties would make
+	// "Rudi" in slot 1 and "Rudi" in slot 2 hash identically.
+	if got := subjects[2].NameParts; len(got) != 6 || got[0] != "Rudi" || got[1] != "Untaywan" || got[5] != "Slaywah" {
+		t.Fatalf("UK name parts wrong: %q", got)
+	}
+}
+
+func TestTheUKShipTypeMapsToVessel(t *testing.T) {
+	subjects, err := decodeSubjects("UK_OFSI_CONSOLIDATED", load(t, "uk_ofsi_excerpt.xml"))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if subjects[3].Kind != KindVessel {
+		t.Fatalf("OFSI 'Ship' did not map to the shared vessel kind: %+v", subjects[3])
+	}
+}
+
+// REPRODUCES THE ONE ROW IN 19,761 THAT DECIDED THE UK KEY. Alexander SAMOFAL, designated
+// 2023-04-21 under Global Human Rights, is published with an EMPTY `UKSanctionsListRef`. Keyed on
+// that field, he is unanchorable — and because a row with no reference is refused outright, he takes
+// the whole UK snapshot down with him. Keyed on `GroupID`, which the export always populates, the
+// list publishes and he is in it.
+func TestAUKRowWithNoFcdoReferenceStillAnchors(t *testing.T) {
+	body := strings.Replace(string(load(t, "uk_ofsi_excerpt.xml")),
+		"<UKSanctionsListRef>DPR0096</UKSanctionsListRef>",
+		"<UKSanctionsListRef></UKSanctionsListRef>", 1)
+	if body == string(load(t, "uk_ofsi_excerpt.xml")) {
+		t.Fatal("fixture no longer contains the reference this test blanks")
+	}
+
+	subjects, err := decodeSubjects("UK_OFSI_CONSOLIDATED", []byte(body))
+	if err != nil {
+		t.Fatalf("a real designation was dropped for having no FCDO reference: %v", err)
+	}
+	if len(subjects) != 4 {
+		t.Fatalf("want 4 rows, got %d", len(subjects))
+	}
+	if _, err := merkleRoot(snapshotLeaves("UK_OFSI_CONSOLIDATED", subjects)); err != nil {
+		t.Fatalf("root: %v", err)
+	}
+}
+
+func TestAnUnknownUKGroupTypeRefusesTheSnapshot(t *testing.T) {
+	body := strings.Replace(string(load(t, "uk_ofsi_excerpt.xml")),
+		"<GroupTypeDescription>Ship</GroupTypeDescription>",
+		"<GroupTypeDescription>Aircraft</GroupTypeDescription>", 1)
+
+	_, err := decodeSubjects("UK_OFSI_CONSOLIDATED", []byte(body))
+	if err == nil {
+		t.Fatal("an undeclared GroupTypeDescription was silently accepted")
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  UNITED NATIONS — Security Council consolidated list
+// ═══════════════════════════════════════════════════════════════════
+
+// A THIRD WAY OF ENCODING SUBJECT KIND: the UN carries it STRUCTURALLY, in which container a row
+// sits, with no field on the row saying so. OFAC uses a field, OFSI uses a differently-named field.
+// That is why a decoder is a function per source and not a field-mapping table.
+func TestTheUNKindComesFromTheContainerNotAField(t *testing.T) {
+	subjects, err := decodeSubjects("UN_SC_CONSOLIDATED", load(t, "un_sc_excerpt.xml"))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(subjects) != 3 {
+		t.Fatalf("want 3 rows, got %d", len(subjects))
+	}
+	if subjects[0].Kind != KindIndividual || subjects[1].Kind != KindIndividual {
+		t.Fatalf("individuals misclassified: %+v %+v", subjects[0], subjects[1])
+	}
+	if subjects[2].Kind != KindEntity {
+		t.Fatalf("entity misclassified: %+v", subjects[2])
+	}
+	if subjects[0].Reference != "6909475" || subjects[0].NameParts[0] != "KEMPES" {
+		t.Fatalf("individual fields wrong: %+v", subjects[0])
+	}
+	// An entity's name arrives in FIRST_NAME with the remaining parts empty — same arity as an
+	// individual, so the shapes cannot collide even before the kind is hashed in.
+	if got := subjects[2].NameParts; len(got) != 4 || got[0] != "GHORB NOOH" || got[1] != "" {
+		t.Fatalf("entity name parts wrong: %q", got)
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  The declaration itself
+// ═══════════════════════════════════════════════════════════════════
+
+func TestAnUndeclaredRegistryRefusesToPublish(t *testing.T) {
+	if _, err := sourceFor("EU_CFSP_CONSOLIDATED"); err == nil {
+		t.Fatal("an undeclared registry was allowed to publish")
+	}
+	if _, err := decodeSubjects("EU_CFSP_CONSOLIDATED", load(t, "ofac_sdn_excerpt.xml")); err == nil {
+		t.Fatal("an undeclared registry decoded a body it has no schema for")
+	}
+}
+
+// Every entry must answer sec. 2.18cb's questions. A list anchored without declaring what its
+// ABSENCES mean silently gives the weaker guarantee everywhere, because a jurisdiction whose
+// register expresses removal by absence cannot support proof-bound revocation at all.
+func TestEveryDeclaredSourceAnswersTheSemanticsQuestions(t *testing.T) {
+	if len(sources) == 0 {
+		t.Fatal("no sources declared at all")
+	}
+	for key, spec := range sources {
+		if spec.Key != key {
+			t.Errorf("%s: spec.Key is %q — the map key and the hashed registry key must not diverge", key, spec.Key)
+		}
+		if _, err := sourceFor(key); err != nil {
+			t.Errorf("%s: declared but not publishable: %v", key, err)
+		}
+		if spec.PublishedAt == "" {
+			t.Errorf("%s: no published-at URL recorded, so nothing can be compared against config", key)
+		}
+	}
+}
+
+func TestTheRegistryIdFollowsTheRegistryKey(t *testing.T) {
+	if registryIDFor("OFAC_SDN") == registryIDFor("UK_OFSI_CONSOLIDATED") {
+		t.Fatal("two registries hash to one id")
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Leaves — the unambiguity rules
+// ═══════════════════════════════════════════════════════════════════
+
+// A BARE CONCATENATION IS RE-SPLITTABLE, which is what this workflow shipped with
+// (`uid + "|" + name + "|" + type`). Reference "12" with name "3X" must not hash like reference
+// "123" with name "X". Hashing each component to a fixed 32 bytes removes the boundary entirely and
+// stops any delimiter from having to be forbidden inside a name.
+func TestFieldsCannotBeReSplitAcrossTheReferenceNameBoundary(t *testing.T) {
+	a := leafHash("OFAC_SDN", ListedSubject{Reference: "12", Kind: KindEntity, NameParts: []string{"3X"}})
+	b := leafHash("OFAC_SDN", ListedSubject{Reference: "123", Kind: KindEntity, NameParts: []string{"X"}})
+	if a == b {
+		t.Fatal("a field boundary can be moved without changing the leaf")
+	}
+}
+
+// Arity varies BY SOURCE — two US parts, six UK, four UN. Padding one shape with empties must not
+// reach another's leaf, so the part COUNT is committed alongside the parts.
+func TestThePartCountIsCommitted(t *testing.T) {
+	a := leafHash("OFAC_SDN", ListedSubject{Reference: "1", Kind: KindEntity, NameParts: []string{"A"}})
+	b := leafHash("OFAC_SDN", ListedSubject{Reference: "1", Kind: KindEntity, NameParts: []string{"A", ""}})
+	if a == b {
+		t.Fatal("a trailing empty name part is invisible to the leaf")
+	}
+}
+
+// WITHOUT THE REGISTRY KEY IN THE LEAF, a UK row and a US row describing the same subject hash
+// identically — and a proof against the UK root would satisfy a check written against the US one.
+// Different lists, different law, different consequences.
+func TestTheSameSubjectInTwoRegistriesGetsDifferentLeaves(t *testing.T) {
+	s := ListedSubject{Reference: "X1", Kind: KindIndividual, NameParts: []string{"SMITH", "John"}}
+	if leafHash("OFAC_SDN", s) == leafHash("UK_OFSI_CONSOLIDATED", s) {
+		t.Fatal("a leaf can be replayed from one sanctions list as proof of listing on another")
+	}
+}
+
+func TestTheKindIsCommitted(t *testing.T) {
+	a := ListedSubject{Reference: "1", Kind: KindIndividual, NameParts: []string{"A"}}
+	b := ListedSubject{Reference: "1", Kind: KindVessel, NameParts: []string{"A"}}
+	if leafHash("OFAC_SDN", a) == leafHash("OFAC_SDN", b) {
+		t.Fatal("an individual and a vessel with one name produce one leaf")
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  What gets submitted — the contract's own rule, enforced here
+// ═══════════════════════════════════════════════════════════════════
+
+// THE DEFECT THIS SUITE WAS WRITTEN FOR. Leaves must be strictly ascending or
+// `RegistrySourceAnchor._computeRoot` reverts, so this is not tidiness: unsorted output is a
+// workflow that can never publish at all.
+func TestSubmittedLeavesAreStrictlyAscendingForEverySource(t *testing.T) {
+	for _, tc := range []struct{ key, file string }{
+		{"OFAC_SDN", "ofac_sdn_excerpt.xml"},
+		{"UK_OFSI_CONSOLIDATED", "uk_ofsi_excerpt.xml"},
+		{"UN_SC_CONSOLIDATED", "un_sc_excerpt.xml"},
+	} {
+		subjects, err := decodeSubjects(tc.key, load(t, tc.file))
+		if err != nil {
+			t.Fatalf("%s decode: %v", tc.key, err)
+		}
+		leaves := snapshotLeaves(tc.key, subjects)
+		for i := 1; i < len(leaves); i++ {
+			if !bytesLess(leaves[i-1], leaves[i]) {
+				t.Fatalf("%s leaf %d is not greater than its predecessor", tc.key, i)
+			}
+		}
+		if _, err := merkleRoot(leaves); err != nil {
+			t.Fatalf("%s root: %v", tc.key, err)
+		}
+	}
+}
+
+// Replays the original bug directly: leaves in row order rather than hash order.
+func TestTheRootBuilderRejectsUnsortedLeavesRatherThanComputingOne(t *testing.T) {
+	subjects, err := decodeSubjects("OFAC_SDN", load(t, "ofac_sdn_excerpt.xml"))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	rowOrder := make([][32]byte, 0, len(subjects))
+	for _, s := range subjects {
+		rowOrder = append(rowOrder, leafHash("OFAC_SDN", s))
+	}
+
+	sorted := snapshotLeaves("OFAC_SDN", subjects)
+	same := len(rowOrder) == len(sorted)
+	for i := range rowOrder {
+		if same && rowOrder[i] != sorted[i] {
+			same = false
+		}
+	}
+	if same {
+		t.Skip("this fixture's rows happen to be in hash order; the ordering bug is not observable here")
+	}
+
+	if _, err := merkleRoot(rowOrder); err == nil {
+		t.Fatal("row-ordered leaves produced a root; the contract would have reverted on them")
+	}
+}
+
+func TestEqualNeighboursAreRejectedBecauseTheContractRequiresStrictAscent(t *testing.T) {
+	leaf := leafHash("OFAC_SDN", ListedSubject{Reference: "1", Kind: KindEntity, NameParts: []string{"A"}})
+	if _, err := merkleRoot([][32]byte{leaf, leaf}); err == nil {
+		t.Fatal("duplicate neighbours were accepted")
+	}
+}
+
+// One duplicated row upstream must not make a whole country's snapshot unpublishable — a liveness
+// failure over somebody else's data-entry slip.
+func TestDuplicateRowsAreDeduplicated(t *testing.T) {
+	s := ListedSubject{Reference: "1", Kind: KindEntity, NameParts: []string{"A"}}
+	leaves := snapshotLeaves("OFAC_SDN", []ListedSubject{s, s, s})
+	if len(leaves) != 1 {
+		t.Fatalf("want 1 leaf from 3 identical rows, got %d", len(leaves))
+	}
+	if _, err := merkleRoot(leaves); err != nil {
+		t.Fatalf("root: %v", err)
+	}
+}
+
+func TestTheRootDoesNotDependOnRowOrder(t *testing.T) {
+	subjects, err := decodeSubjects("UK_OFSI_CONSOLIDATED", load(t, "uk_ofsi_excerpt.xml"))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	forward, err := merkleRoot(snapshotLeaves("UK_OFSI_CONSOLIDATED", subjects))
+	if err != nil {
+		t.Fatalf("root: %v", err)
+	}
+
+	reversed := make([]ListedSubject, len(subjects))
+	for i, s := range subjects {
+		reversed[len(subjects)-1-i] = s
+	}
+	backward, err := merkleRoot(snapshotLeaves("UK_OFSI_CONSOLIDATED", reversed))
+	if err != nil {
+		t.Fatalf("root: %v", err)
+	}
+	if forward != backward {
+		t.Fatal("the root depends on the order the register happened to publish its rows in")
+	}
+}
+
+func TestASingleLeafIsItsOwnRoot(t *testing.T) {
+	leaf := leafHash("OFAC_SDN", ListedSubject{Reference: "1", Kind: KindEntity, NameParts: []string{"A"}})
+	root, err := merkleRoot([][32]byte{leaf})
+	if err != nil {
+		t.Fatalf("root: %v", err)
+	}
+	if root != leaf {
+		t.Fatal("a one-leaf tree hashed its only leaf instead of promoting it")
+	}
+}
+
+// An empty parse is far more likely to be schema drift than a genuinely empty sanctions list, and
+// publishing an empty root would silently clear the anchored set.
+func TestAnEmptyDecodeIsRefusedRatherThanPublished(t *testing.T) {
+	empty := `<?xml version="1.0" standalone="yes"?>
+<sdnList xmlns="https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/XML">
+  <publshInformation><Publish_Date>07/30/2026</Publish_Date><Record_Count>0</Record_Count></publshInformation>
+</sdnList>`
+	if _, err := decodeSubjects("OFAC_SDN", []byte(empty)); err == nil {
+		t.Fatal("an empty snapshot was accepted")
+	}
+	if _, err := merkleRoot(nil); err == nil {
+		t.Fatal("an empty leaf set produced a root")
+	}
+}
+
+func TestMalformedXmlIsRefused(t *testing.T) {
+	if _, err := decodeSubjects("OFAC_SDN", []byte("<sdnList><sdnEntry>")); err == nil {
+		t.Fatal("truncated XML was accepted")
+	}
+}
+
+// A RENAMED ELEMENT MUST NOT DECODE TO NOTHING QUIETLY. This is how `notary_registry`'s guessed
+// schema failed — zero rows, no error — and the only reason it was caught is that an empty result
+// is refused.
+func TestARenamedElementIsRefusedRatherThanReturningNothing(t *testing.T) {
+	body := strings.ReplaceAll(string(load(t, "un_sc_excerpt.xml")), "INDIVIDUAL>", "PERSON>")
+	body = strings.ReplaceAll(body, "ENTITY>", "ORGANISATION>")
+	if _, err := decodeSubjects("UN_SC_CONSOLIDATED", []byte(body)); err == nil {
+		t.Fatal("a renamed schema decoded to zero rows and was accepted")
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Cross-language: Go must agree with Solidity, not only with itself
+// ═══════════════════════════════════════════════════════════════════
+
+/*
+ * Everything above proves Go agrees with Go. The convention that actually matters — strict ascent,
+ * sorted pairs at every internal node, odd node PROMOTED rather than hashed with itself — lives in
+ * `RegistrySourceAnchor._computeRoot`, and a builder can be perfectly self-consistent and still
+ * disagree with it. The disagreement is silent on this side and surfaces as a revert at publish
+ * time, with nothing pointing back here.
+ *
+ * So this writes a real snapshot to a fixture that
+ * `backend/contracts/test/registry/RegistrySourceAnchor.t.sol` publishes through the actual
+ * contract, which recomputes the root from the same leaves and must reach the same value.
+ *
+ * Deliberately a TEST that writes a fixture rather than a committed generator: the fixture is
+ * regenerated by `go test`, so it cannot drift from the code that produced it.
+ */
+func TestEmitSolidityCrossCheckFixture(t *testing.T) {
+	const key = "OFAC_SDN"
+	subjects, err := decodeSubjects(key, load(t, "ofac_sdn_excerpt.xml"))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	leaves := snapshotLeaves(key, subjects)
+	root, err := merkleRoot(leaves)
+	if err != nil {
+		t.Fatalf("root: %v", err)
+	}
+
+	registryID := registryIDFor(key)
+	var b strings.Builder
+	fmt.Fprintf(&b, "registryId %x\n", registryID)
+	fmt.Fprintf(&b, "root %x\n", root)
+	for _, l := range leaves {
+		fmt.Fprintf(&b, "leaf %x\n", l)
+	}
+
+	out := "../../contracts/test/fixtures/sanctions_snapshot.txt"
+	if err := os.WriteFile(out, []byte(b.String()), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	t.Logf("wrote %s (%d leaves)", out, len(leaves))
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  The real exports, when they are available
+// ═══════════════════════════════════════════════════════════════════
+
+// THE FIXTURES ARE EXCERPTS, and an excerpt cannot prove the decoder survives 19,181 rows of the
+// real thing — the manifest cross-check, the uniqueness claim and the kind vocabularies are all
+// statements about the WHOLE file. This runs the same code over the full downloads when they are
+// present; it skips loudly rather than silently passing, because a skip that reads as a pass is the
+// shape sec. 3 records as a false success.
+//
+//	SANCTIONS_EXPORT_DIR=/path/to/downloads go test -run RealExports -v ./...
+//
+// expecting SDN.XML, UK_ConList.xml and UN_consolidated.xml in that directory.
+func TestRealExportsDecodeEndToEnd(t *testing.T) {
+	dir := os.Getenv("SANCTIONS_EXPORT_DIR")
+	if dir == "" {
+		t.Skip("SANCTIONS_EXPORT_DIR not set - skipping the full-export check (excerpt fixtures still ran)")
+	}
+
+	for _, tc := range []struct {
+		key, file string
+		minRows   int
+	}{
+		{"OFAC_SDN", "SDN.XML", 19000},
+		{"UK_OFSI_CONSOLIDATED", "UK_ConList.xml", 19000},
+		{"UN_SC_CONSOLIDATED", "UN_consolidated.xml", 900},
+	} {
+		body, err := os.ReadFile(dir + "/" + tc.file)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.key, err)
+		}
+		subjects, err := decodeSubjects(tc.key, body)
+		if err != nil {
+			t.Fatalf("%s decode: %v", tc.key, err)
+		}
+		if len(subjects) < tc.minRows {
+			t.Fatalf("%s decoded %d rows, expected at least %d", tc.key, len(subjects), tc.minRows)
+		}
+		leaves := snapshotLeaves(tc.key, subjects)
+		root, err := merkleRoot(leaves)
+		if err != nil {
+			t.Fatalf("%s root: %v", tc.key, err)
+		}
+		t.Logf("%s: %d rows -> %d leaves, root %x", tc.key, len(subjects), len(leaves), root)
+	}
+}

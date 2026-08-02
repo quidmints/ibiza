@@ -62,7 +62,8 @@ contract PrivacyPoolSimpleTest is Test {
     ragequitVerifier = new NoirVerifierMock();
     pool = new PrivacyPoolSimple(
       address(entrypoint), address(withdrawalVerifier), address(ragequitVerifier),
-      address(entrypoint)
+      address(entrypoint),
+      address(0) // no aggregation verifier: this suite does not exercise withdrawBatch
     );
 
     vm.deal(address(entrypoint), 0); // deposits are relayed as msg.value from the caller, not the entrypoint's own balance
@@ -296,7 +297,8 @@ contract PrivacyPoolSimpleTest is Test {
     PrivacyPoolSimple rejectingPool =
       new PrivacyPoolSimple(
         address(entrypoint), address(withdrawalVerifier), address(rejecting),
-        address(entrypoint)
+        address(entrypoint),
+        address(0) // no aggregation verifier: this suite does not exercise withdrawBatch
       );
 
     uint256 value = 1 ether;

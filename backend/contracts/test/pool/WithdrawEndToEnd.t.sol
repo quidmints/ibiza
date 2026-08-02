@@ -221,7 +221,8 @@ contract WithdrawEndToEndTest is EscrowFixtureBase {
     withdrawalVerifier = new WithdrawalHonkVerifier();
     pool = new PrivacyPoolSimple(
       address(entrypoint), address(withdrawalVerifier), address(new RagequitHonkVerifier()),
-      address(identityRegistry)
+      address(identityRegistry),
+      address(0) // no aggregation verifier: this suite does not exercise withdrawBatch
     );
 
     // Four real deposits through the real pool, so the state tree has genuine depth.

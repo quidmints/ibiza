@@ -58,7 +58,8 @@ contract PrivacyPoolComplexTest is Test {
       address(new NoirVerifierMock()),
       address(new NoirVerifierMock()),
       address(token),
-      address(entrypoint)
+      address(entrypoint),
+      address(0) // no aggregation verifier: this suite does not exercise withdrawBatch
     );
 
     token.mint(address(entrypoint), VALUE * 10);
@@ -82,7 +83,8 @@ contract PrivacyPoolComplexTest is Test {
       address(new NoirVerifierMock()),
       address(new NoirVerifierMock()),
       Constants.NATIVE_ASSET,
-      address(entrypoint)
+      address(entrypoint),
+      address(0) // no aggregation verifier: this test only checks the native-asset guard
     ) {
       fail('an ERC20 pool was constructed with the NATIVE asset');
     } catch {

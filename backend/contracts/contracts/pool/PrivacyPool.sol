@@ -37,7 +37,12 @@ import {State} from './State.sol';
 abstract contract PrivacyPool is State, IPrivacyPool {
 
   /// @notice The aggregation verifier, generated from `aggregate_withdrawals` at MAX_BATCH.
-  INoirVerifier public AGGREGATION_VERIFIER;
+  /// @dev MAY be the zero address: a pool that does not offer batching is a legitimate deployment,
+  ///      and PP upstream has no such verifier at all. `withdrawBatch` refuses explicitly in that
+  ///      case rather than calling into an empty address - see AggregationNotConfigured.
+  ///      Immutable, like every other verifier here: a mutable one would let whoever can set it
+  ///      swap in a verifier that accepts anything, which is the whole security of the batch path.
+  INoirVerifier public immutable AGGREGATION_VERIFIER;
 
   /// @notice The circuit's compile-time BATCH_N. A batch longer than this cannot have been proved
   ///         by it, and the commitment alone would not catch that since it folds any length.
@@ -45,6 +50,10 @@ abstract contract PrivacyPool is State, IPrivacyPool {
 
   /// @notice `_withdrawals` and `_signals` must line up one-to-one.
   error BatchLengthMismatch(uint256 withdrawals, uint256 signals);
+  /// @notice This pool was deployed without an aggregation verifier, so batching is unavailable.
+  ///         Without this, `withdrawBatch` would call into address(0) - which returns empty
+  ///         returndata that fails to decode as `bool`, producing a bare revert that says nothing.
+  error AggregationNotConfigured();
 
   /// @notice One aggregated batch settled. Per-withdrawal `Withdrawn` events are emitted too, so
   ///         existing indexers keep working unchanged.
@@ -148,10 +157,14 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     address _withdrawalVerifier,
     address _ragequitVerifier,
     address _asset,
-    address _identityRegistry
+    address _identityRegistry,
+    address _aggregationVerifier
   ) State(_asset, _entrypoint, _withdrawalVerifier, _ragequitVerifier) {
     if (_identityRegistry == address(0)) revert ZeroIdentityRegistry();
     IDENTITY_REGISTRY = IIdentityRegistry(_identityRegistry);
+    // Deliberately NOT rejected when zero - see AGGREGATION_VERIFIER. It was previously never
+    // assigned at all, which left `withdrawBatch` permanently unreachable.
+    AGGREGATION_VERIFIER = INoirVerifier(_aggregationVerifier);
   }
 
   /*///////////////////////////////////////////////////////////////
@@ -226,6 +239,8 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     uint256[7][] memory _signals,
     bytes calldata _aggregationProof
   ) external {
+    if (address(AGGREGATION_VERIFIER) == address(0)) revert AggregationNotConfigured();
+
     uint256 n = _withdrawals.length;
     if (n != _signals.length) revert BatchLengthMismatch(n, _signals.length);
 

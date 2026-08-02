@@ -9,7 +9,18 @@
 // generic, or use an ordinary trait such as `From` instead of an operator, and it compiles.
 //
 // This is a COMPILER bug, not misuse: 14 lines, no dependencies. beta.26 is the newest release and
-// still has it; no matching issue exists upstream. See NOIR-DL-PORT.md.
+// still has it.
+//
+// FIXED — see `noir-fix.patch` beside this file. Three hunks, two files: two `function_meta` calls
+// in `bind_trait_impl_func_generics_to_trait_func_generics` and one in `get_trait_item_id` become
+// `try_function_meta`. Comptime evaluation of a global reaches a trait method through an operator
+// overload BEFORE it is elaborated, so its `FuncMeta` legitimately does not exist yet.
+// Safe by construction: identical behaviour whenever the metadata exists, and where it does not the
+// previous behaviour was a crash, so there is nothing to regress. `get_trait_item_id` already
+// returns `Option` and every caller handles `None`.
+//
+// The patch is NOT applied to the pinned toolchain — this repo must build with released beta.26.
+// Keep the accommodation in noir_dl_lib until the fix ships upstream. See NOIR-DL-PORT.md.
 pub struct U<let N: u32> {
     limbs: [Field; N],
 }

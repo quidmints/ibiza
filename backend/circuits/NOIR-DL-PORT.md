@@ -65,6 +65,28 @@ what `codegen-verifiers.sh` enforces. **Put `~/.bb` on PATH** or the script stil
 
 **SO THE VERIFIERS CAN NOW BE REGENERATED HERE — that work is next, and it is not optional.**
 
+## ✅ THE COMPILER BUG IS FIXED — patch in `noir-ice-repro/noir-fix.patch`
+
+**Root cause:** comptime evaluation of a `global` reaches a trait method through an operator overload
+BEFORE that method has been elaborated, so its `FuncMeta` does not exist yet — and three call sites
+demanded it with `expect`, producing `ice: all function ids should have metadata`.
+
+**Fix (3 hunks, 2 files, all `function_meta` -> `try_function_meta`):**
+- `monomorphization/mod.rs::bind_trait_impl_func_generics_to_trait_func_generics` (x2) — return
+  early; the function only ADDS bindings, so skipping degrades to "no extra bindings".
+- `node_interner/mod.rs::get_trait_item_id` — yield `None`. It already returns `Option` and every
+  caller handles `None`, so this is its existing contract rather than a new one.
+
+**Safe by construction:** identical behaviour whenever the metadata exists; where it does not, the
+previous behaviour was a CRASH, so there is nothing to regress.
+
+**Verified:** the 14-line repro compiles; the original `global ... = <operator overload>` form
+compiles; all 13 real crates compile on the patched compiler.
+
+**NOT APPLIED TO THE PINNED TOOLCHAIN.** This repo must build with RELEASED beta.26, so the
+accommodation in `noir_dl_lib` stays until the fix ships upstream. Revert it then — that is the
+whole point of having recorded it as an accommodation. Task 26 is now "submit upstream".
+
 ## THE BUG ITSELF — isolated, and it is upstream's
 
 **`noir-ice-repro/` is a 14-line, dependency-free reproduction.** `nargo compile` on it still ICEs.

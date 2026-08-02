@@ -50,7 +50,36 @@ is no upstream sync to pull and the work stands — but that check belonged firs
 **THE 6-BROKEN-CRATES / 6-ORPHAN-PROFILES COINCIDENCE IS JUST A COINCIDENCE.** Task 10's orphans are
 Circom profiles lacking a Noir twin (sec. 2.18aj); unrelated to the six crates fixed here.
 
-## ⚠️ THE PORT IS NOT FINISHED: VERIFICATION KEYS
+## ⚠️ VERIFIER REGENERATION: ATTEMPTED, REVERTED, AND THE BLOCKER IS IDENTIFIED
+
+`codegen-verifiers.sh` now RUNS (bb 5.1.0 + patched nargo): exit 0, 5 verifiers, 5 self-checks, and
+`EscrowEnvelopeHonkVerifier` at 17,161 bytes with 7,415 bytes of EIP-170 margin. **But the result was
+REVERTED, because it broke 18 forge tests** - and the pre-regeneration tree passes, so the
+regeneration caused it. The work is preserved as `noir-ice-repro/regeneration-INCOMPLETE.patch`.
+
+**ONLY ONE VERIFIER ACTUALLY MOVED.** `EscrowEnvelopeHonkVerifier.sol` (+1102/-766). The other four
+(withdraw_identity, title_holder, ragequit, notary_action) came out BYTE-IDENTICAL - their proofs
+changed because ZK proving is non-deterministic, but their VKs did not. That refines the earlier
+claim: a VK moves only where the circuit's source actually changed, and escrow_envelope is the one
+target that depends on `noir_dl`. **Do not assume every circuit needs new verifiers.**
+
+**THE BLOCKER, exactly:** `IdentityRegistry.t.sol` reads NUMBERED fixtures -
+`escrow_envelope0.proof`, `escrow_envelope1.proof`, `escrow_envelope2.proof` (a multi-document
+registration tree) - and `codegen-verifiers.sh` regenerates only the UNNUMBERED
+`escrow_envelope.proof`. All three numbered files are still 16,224 bytes (507 fields) from the old
+circuit, while the regenerated verifier expects 298 fields (9,536 bytes). Hence
+`ProofLengthWrongWithLogN(18, 16224, 9536)` and, downstream, `SumcheckFailed()`.
+
+**SO THE SCRIPT IS INCOMPLETE, NOT THE PORT.** It has an `EXTRA_FIXTURES` list for exactly this
+purpose (same circuit, different witnesses) and the numbered escrow set is missing from it. Adding
+them needs their witnesses - the registration tree in `test/fixtures/escrow_documents.json` -
+regenerated in step with the proofs, or the tree and the proofs will disagree about the root.
+
+**STATE ON DISK: the working tree is the OLD, SELF-CONSISTENT artifact set and all forge tests
+pass.** That set was built from the OLD escrow circuit, so it does not correspond to the ported
+source - the repo is coherent but one migration step behind on escrow_envelope alone.
+
+## THE EARLIER FRAMING (kept - it was too broad)
 
 `backend/contracts/contracts/passport/verifiers2/noir/NoirRegisterIdentity_*.sol` were generated
 from these circuits on the OLD toolchain. **Moving the circuits to beta.26 changes their constraint

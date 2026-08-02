@@ -15,6 +15,12 @@ the passes at once so the next close-out is one command.
 WHAT IT WILL NOT DO, and why you still have to think:
 
   1. It reports CANDIDATES, not findings. Every hit needs a human deciding "is this booked?".
+     **THE BOOKED-FILTER IS WEAK AND YOU SHOULD NOT LEAN ON IT.** Three implementations were tried
+     against a real 55 MB transcript (572 passages): substring-on-prose flagged 519 as unbooked and
+     filtered nothing; any-word-of-4+-chars flagged 0 and hid everything, because a ~10k-line tracker
+     contains almost every ordinary word; identifier-shaped tokens (the current one) flags ~503.
+     **The value of this tool is the ENUMERATION, not the filtering.** Read the families you care
+     about in full. If someone builds a filter that actually works, replace this note with it.
   2. The transcript scan CANNOT see what was never said. The worst bug found that day —
      `// TODO: NONE OF THIS IS CONSTRAINED YET. FIX!` in vendored circuit code, a signature-forgery
      hole — appears in NO transcript pass, because nobody ever mentioned it. That is why the code
@@ -95,10 +101,32 @@ def scan_code(root):
     return out
 
 
+# Words too common to identify anything. A passage matched only by these is not "booked".
+STOP = set("""the a an and or but if is are was were be been being to of in on at by for with from
+that this these those it its as not no now then than so such can may might will would should could
+about into over under again more most other some any all each which what when where who whom why how
+we you they i he she them us our your their my me him her one two do does did done have has had
+work code test tests file files line lines run runs make makes made need needs still just only also
+""".split())
+
+
 def booked(term, docs):
-    """Crude but useful: is this already written down anywhere?"""
-    t = re.sub(r"\W+", " ", term.lower())[:40]
-    return any(t and t in d for d in docs)
+    """Is this passage's SUBJECT already written down?
+
+    TWO FAILED VERSIONS ARE WORTH KNOWING ABOUT, because both failure modes look like success:
+      • substring on a 40-char slice of prose -> flagged 519 of 572 as unbooked. Filtered NOTHING.
+      • any word of 4+ chars -> flagged 0 of 572. Hid EVERYTHING. The tracker is ~10k lines, so
+        almost every ordinary word appears in it somewhere; word presence carries no information.
+
+    Only IDENTIFIER-SHAPED tokens identify a subject: snake_case, dotted.paths, file/paths, CamelCase,
+    or anything containing a digit. Those are what a tracker entry about the same thing would repeat.
+    """
+    toks = {w for w in re.findall(r"[A-Za-z_][A-Za-z0-9_./-]{3,}", term)
+            if re.search(r"[_./]|\d|[a-z][A-Z]", w)}
+    if len(toks) < 2:
+        return False          # nothing distinctive to match on — show it and let a human judge
+    present = sum(1 for tk in toks if any(tk.lower() in d for d in docs))
+    return present >= (len(toks) + 1) // 2      # a majority of its identifiers already recorded
 
 
 def main():
@@ -135,7 +163,7 @@ def main():
         hits = scan_transcript(a.transcript)
         for fam, items in hits.items():
             flagged = [s for s in items if not booked(s, docs)]
-            print(f"\n--- {fam.upper()}: {len(items)} passages, {len(flagged)} not obviously booked ---")
+            print(f"\n--- {fam.upper()}: {len(items)} passages, {len(flagged)} after the (WEAK) booked-filter ---")
             for s in flagged[:a.limit]:
                 print(f"  • {s[:250]}")
 

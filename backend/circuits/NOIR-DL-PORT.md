@@ -8,6 +8,39 @@ query_identity, query_identity_td1, escrow_envelope.
 over ten minutes and its result is NOT yet recorded here — until the pinned vectors pass, none of
 this is trusted for real value.
 
+## ASSUMPTION AUDIT — what a re-check of this work overturned
+
+**I PORTED DEAD CODE.** `sigver/curve_384.nr` had ZERO references (only its own `mod` line), and
+TODO.md sec. 2.5b already said **"Delete or rename `curve_384.nr`"** because it is Brainpool P384R1
+wearing a secp384r1 name — a documented trap. I ported it instead of reading that. **Now deleted.**
+`curve_192` and `curve_224` ARE live (`not_passports_zk_circuits.nr`) and were correctly kept.
+
+**MORE DEAD CODE IS LIKELY AND WAS NOT ACTED ON:** nine `bignum/fields/*` modules have zero
+references — `U256`, `U384`, `U512`, `U768`, `U1024`, `U2048`, `U4096`, `U8192`, `ed25519Fr`. Left
+in place deliberately: they are vendored generic size-variants, and deleting them is a judgement
+call, not a mechanical one.
+
+**I CALLED THE RARIMO SIDE MISALIGNED BEFORE CHECKING RARIMO.** Checked afterwards:
+`rarimo/passport-zk-circuits-noir` was last touched 2025-11-18 and has NOT done this port, so there
+is no upstream sync to pull and the work stands — but that check belonged first, not last.
+
+**"UNREPORTED UPSTREAM" RESTS ON TWO API SEARCHES.** That is weak evidence of absence. Treat it as
+"no issue found", not "no issue exists".
+
+**THE 6-BROKEN-CRATES / 6-ORPHAN-PROFILES COINCIDENCE IS JUST A COINCIDENCE.** Task 10's orphans are
+Circom profiles lacking a Noir twin (sec. 2.18aj); unrelated to the six crates fixed here.
+
+## ⚠️ THE PORT IS NOT FINISHED: VERIFICATION KEYS
+
+`backend/contracts/contracts/passport/verifiers2/noir/NoirRegisterIdentity_*.sol` were generated
+from these circuits on the OLD toolchain. **Moving the circuits to beta.26 changes their constraint
+systems, so those committed verifiers are stale and on-chain proofs against them will fail.** This
+is inherent to the toolchain move rather than caused by the source edits — the crates did not build
+on beta.26 at all before — but it means compiling and passing tests is NOT the finish line.
+
+**`bb` IS NOT INSTALLED ON THIS MACHINE** (`which bb` -> not found), so verifiers cannot be
+regenerated or even diffed here. Until that happens, do not treat the passport path as migrated.
+
 ## THE BUG ITSELF — isolated, and it is upstream's
 
 **`noir-ice-repro/` is a 14-line, dependency-free reproduction.** `nargo compile` on it still ICEs.

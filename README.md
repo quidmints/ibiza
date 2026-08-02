@@ -45,6 +45,12 @@ So everything was ported to **Noir + UltraHonk**: one prover, one verifier shape
 ceremony, and one Poseidon shared across circuits, Solidity (`poseidon-solidity`) and the wallet
 (`@iden3/js-crypto`) — each cross-checked against the others rather than assumed compatible.
 
+**The SOURCE migration is complete — zero `.circom` files remain.** What is NOT complete is the
+verifier and wiring layer: 35 Groth16-era per-passport verifiers are still present, 6 profiles still
+lack a Noir twin, and nothing wires verifiers by address. **Do not read "one toolchain" as finished
+end-to-end** — see TODO.md tasks 10 and 36, and note that a symbol grep cannot tell you which
+verifiers are live.
+
 The cost is that we now depend on the Noir toolchain's maturity, which is where several of the
 sharpest problems in `TODO.md` come from (a compiler ICE we patched, a bignum ecosystem that trails
 the compiler, proof formats that shift between `bb` versions).

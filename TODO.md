@@ -8584,6 +8584,39 @@ at registration") has no passport equivalent and needs its own home regardless.
   NOT the reason `prove.ts` cannot be unit-tested** - that is expo-file-system shipping untranspiled
   TypeScript inside `node_modules`, which is unrelated and still true.
 
+  **🚫 "refs=0" CANNOT PROVE A VERIFIER IS DEAD - AND I ALMOST DELETED 35 CONTRACTS ON IT (2026-08-02).**
+
+  I measured **0 of 35** `PPerPassport_*Verifier2.sol` referenced by any contract or test and called
+  them dead weight. Then the control: **the Noir verifiers score 0 of 76.** Identical. So the metric
+  distinguishes nothing.
+
+  **WHY:** verifiers are wired by ADDRESS at deploy time, never referenced by symbol in Solidity - so
+  EVERY verifier in this repo reads as unreferenced, live ones included. This is downstream of the
+  gap already recorded here: there is no deployment/wiring layer. **A name grep can never answer
+  "is this verifier used".** Check deploy config and address references, never symbols.
+
+  **REGENERATION, NOT DELETION, IS THE DEFAULT ASSUMPTION** for the Groth16 verifiers. Task 36 was
+  rewritten with the correction at the top; do not act on its original claim if it is cached anywhere.
+
+  **AND A PRIOR QUESTION NOBODY HAS ASKED: 35 vs 76 IS NOT A MIGRATION RATIO.** If
+  `PPerPassport_*Verifier2` and `NoirRegisterIdentity_*` were the same circuits in two proof systems
+  the counts would correspond. They do not, and the naming differs structurally - they may be
+  DIFFERENT FUNCTIONS (per-passport query verification vs identity registration) rather than
+  old-and-new of one thing. **Settle that before anything else; everything downstream depends on it.**
+
+  **WHAT "100% NOIR" ACTUALLY NEEDS** (the source migration IS done - zero `.circom` files remain):
+  1. the 6 orphan profiles get Noir twins (task 10; 29 of 35 already have one)
+  2. every still-needed Groth16 verifier gets a REGENERATED Noir equivalent
+  3. a deployment layer that wires verifiers BY ADDRESS - `DeployLib` now deploys pools, but
+     verifier/registry wiring is still absent, which is *why* everything looks unreferenced
+  4. retire only what is provably superseded, verified against deploy config
+
+  **THE PATTERN, third occurrence this session:** `RootValidity` "untested", the bisect "superseded",
+  and now this. Each time I had a plausible explanation for an absent result and reached for it
+  instead of testing whether the MEASUREMENT could distinguish the two cases. **The test here was one
+  command: check whether the thing I claimed was alive also scored zero.** When a grep returns
+  nothing, run the control before drawing the conclusion.
+
   **📋 FULL INCOMPLETENESS SCAN COMPLETED (2026-08-02) - all 102 passages, not a sample.**
   Scanned every assistant message in the thread for statements of incompleteness (a different
   vocabulary from the earlier trap/silent/fragile scans, aimed at "I did not / still needs / left

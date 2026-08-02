@@ -2289,7 +2289,7 @@ pseudonym the authority proves in zero-knowledge that the corresponding identity
 declared predicate, without revealing the identity. That restores auditability at real cost (a proof
 per listing, and each predicate must be expressible in-circuit — which the OFAC one currently is
 NOT, since the linkage from a holderRoot to a listed person does not exist on-chain at all; see
-backend/cre/ofac_sdn/main.go's own note on this). Recorded as the honest price rather than buried:
+backend/cre/sanctions_lists/main.go's own note on this). Recorded as the honest price rather than buried:
 adopting D means accepting weaker auditability than §2.5 promises until that proof exists.
 
 **Open before building D:** which PRF (Poseidon over `(s, T)` keeps it in-circuit-cheap and reuses
@@ -8311,11 +8311,13 @@ Proven, not assumed:
   prove absence against it, so the system can bootstrap. Without this, no withdrawal would be
   possible until somebody had been revoked.
 
-✅ **OFAC CRE workflow — WRITTEN AND COMPILING** (`backend/cre/ofac_sdn/`). Cron-triggered fetch of
-Treasury's SDN export, parsed to a leaf set, keccak Merkle root anchored via
-`RegistrySourceAnchor.publishSnapshot` under `keccak256("OFAC_SDN")`. Deliberately a structural
-sibling of `notary_registry` rather than a second shape. `GOOS=wasip1 GOARCH=wasm go build` passes
-for both.
+✅ **Sanctions CRE workflow — REWRITTEN, TESTED AND CROSS-CHECKED 2026-08-02**
+(`backend/cre/sanctions_lists/`, was `ofac_sdn`). Cron-triggered fetch of a DECLARED list's export
+(US OFAC SDN, UK OFSI, UN Security Council — one per deployment), decoded to a leaf set, keccak
+Merkle root anchored via `RegistrySourceAnchor.publishSnapshot` under `keccak256(registryKey)`.
+Structural sibling of `notary_registry`. `GOOS=wasip1 GOARCH=wasm go build` passes for both.
+**As first written it could never have published: unsorted leaves, every `onReport` reverting.**
+See GAP 1 in sec. 3 for what the tests found.
 
 An earlier note called this "external infrastructure, not code in this repo" — **that was wrong**;
 only *running* it needs a deployed DON.
@@ -8573,7 +8575,9 @@ at registration") has no passport equivalent and needs its own home regardless.
   3. **OFAC predicate: is the auditability loss acceptable, and how does `s` reach the authority?**
      The `holderRoot -> person` linkage does not exist on-chain at all, so the predicate is not
      currently expressible in-circuit. Encrypted to a published authority key is the obvious shape,
-     but the trade is a policy call. Relates to task 28 (`ofac_sdn` is the anchoring half).
+     but the trade is a policy call. Relates to the sanctions anchor (`backend/cre/sanctions_lists`, task 28 — the anchoring half,
+     now built and tested; **note it can prove a listing but never a DELISTING**, since all three
+     declared lists express removal by absence).
 
   4. **Does `title_holder` need the ZK proving fix?** Applied to `withdraw_identity` regardless; it
      proves title rather than a spend, so it may not need it. Cheap to decide, silent if wrong.
@@ -8694,8 +8698,14 @@ at registration") has no passport equivalent and needs its own home regardless.
     from outside by `pp::title_holder::test_matches_wallet_derivation` and a Solidity verifier suite.
 
   **IF YOU DO ONE THING NEXT:** task **24** is the largest correctness debt (76 passport verifiers
-  generated on beta.13, in no regeneration script); task **28** is the largest RISK debt (sanctions
-  screening with zero tests, and its sibling already has the refactor that makes it testable).
+  generated on beta.13, in no regeneration script). ~~task **28**~~ — **DONE 2026-08-02**: the
+  sanctions workflow is rewritten multi-jurisdiction, tested, and cross-checked against the contract
+  (GAP 1 below). It was worse than "untested" — unsorted leaves meant every publish would have
+  reverted, so nothing it produced could ever have been anchored.
+
+  **AND TASK 24 IS NOT THE CLEAN START IT LOOKS LIKE.** Re-proving is exactly what hits the
+  unexplained `title_holder` `SumcheckFailed()` recorded above (task 30). Root-cause that first, or
+  expect to meet it 76 times.
 
   **❓ UNEXPLAINED, AND DELIBERATELY NOT BURIED: re-proving `title_holder` produced a proof its own
   BYTE-IDENTICAL verifier rejected** with `SumcheckFailed()` during the escrow regeneration run. Same
@@ -8718,13 +8728,51 @@ at registration") has no passport equivalent and needs its own home regardless.
   `recordedAt_ != 0` - the original three-copy defect - and making the boundary inclusive both fail).
   430 forge tests pass.
 
-  **🔴 GAP 1 - `backend/cre/ofac_sdn` has ZERO tests, and it is STRUCTURALLY untestable.**
-  Everything lives in `main.go` behind `//go:build wasip1`, so no ordinary `go test` can reach it.
-  **Its sibling was already fixed this exact way and is the template:** `notary_registry` splits the
-  pure logic into `registry.go` with NO build tag (24 tests) while `main.go` keeps it. ofac_sdn parses
-  the Treasury SDN export, builds a keccak Merkle tree and anchors the root on-chain - parsing and
-  Merkle construction are exactly the pure logic that refactor exists to expose. **This is sanctions
-  screening with no tests at all.** Task 28.
+  **✅ GAP 1 CLOSED 2026-08-02 (task 28) - and "untested" was the smaller half of it.**
+  `backend/cre/ofac_sdn` → **`backend/cre/sanctions_lists`**. The logic moved to an untagged
+  `sources.go` (the sibling's split, same reason), `main.go` keeps the CRE runtime, **28 Go tests**
+  now run on the host, and a Forge pair publishes the Go builder's real output through
+  `RegistrySourceAnchor`. **438 forge / 28 go, one run.**
+
+  **IT COULD NEVER HAVE PUBLISHED ANYTHING.** It sorted its ENTRIES by uid and then mapped them to
+  leaf HASHES, which are in no order at all, while `_computeRoot` reverts `LeavesNotStrictlySorted`
+  on anything but strict ascent. **Every `onReport` would have reverted.** Zero tests is how that
+  survived being written and marked "compiling" - the workflow was not untested code that worked, it
+  was code that had never once been run against the thing it talks to. Its leaf was also
+  re-splittable (`uid + "|" + name`), the defect sec. 2.18ao fixed in the sibling.
+
+  **MULTI-JURISDICTION, BECAUSE ONE COUNTRY'S SHAPE IS NOT THE SHAPE (user, 2026-08-02: "it has to
+  work with the UK, the USA, and other countries").** Three real lists are declared - US OFAC SDN,
+  UK OFSI consolidated, UN Security Council - one per deployment, each with its own `registryId`.
+  Every field was read off the actual export, and they disagree on everything that matters:
+  - **what a ROW is.** OFSI publishes one row PER ALIAS: 19,761 rows carry 5,135 designations. A
+    design keyed on "reference identifies a row" - which the US export happens to satisfy - collapses
+    three quarters of the UK list. Only 13,865 rows are distinct once decoded, so **dedup is
+    load-bearing, not a precaution**.
+  - **where the KIND lives** - an OFAC field, a differently-named OFSI field, or (UN) the CONTAINER
+    the row sits in, with nothing on the row saying so.
+  - **whether the file declares its own length.** Only OFAC does; it is now cross-checked, and it is
+    the strongest anti-rot guard available anywhere in this workflow.
+
+  **ONE ROW IN 19,761 DECIDED THE UK KEY, AND THAT IS THE ARGUMENT FOR FETCHING THE FILE.** The
+  obvious choice is `UKSanctionsListRef`, the citable one. It is **EMPTY** for Alexander SAMOFAL,
+  designated 2023-04-21 under Global Human Rights - so keying on it makes him unanchorable and takes
+  the whole UK snapshot down with him. `GroupID` is never empty and partitions identically (5,135
+  either way). **Both fields look equally good in any fixture small enough to read.**
+
+  **THE CROSS-LANGUAGE FIXTURE WAS WORTHLESS AND ONLY MUTATION SHOWED IT.** Four designations:
+  ascending leaves make the sorted-pair rule a no-op at level one, a power-of-two count never
+  produces an odd level so nothing is promoted, and the last pair happened to be ordered. **Deleting
+  the pair sorting from the Go builder left the Forge test green.** Now seven designations, and the
+  generator REFUSES to write a fixture whose tree fails to exercise both rules. Re-verified: each
+  mutation passes in Go and fails in Solidity.
+
+  **WHAT IT STILL CANNOT DO, recorded so nobody assumes otherwise:** all three lists are
+  `membershipMeansListed`, so **delisting is an ABSENCE claim and a keccak root cannot prove it**
+  (sec. 2.18bp). An attester built on this can revoke on a hit and can never reinstate on a removal.
+  All three are also `authenticityTransportOnly` - nothing is signed by the authority, so **the
+  postman cannot be removed for any of them** (sec. 2.18bv). Both are properties of what the
+  authorities publish, now declared per source rather than discovered later.
 
   **🟠 GAP 2 - four circuits declare ZERO `#[test]`:** `query_identity`, `query_identity_td1`,
   `register_identity_light_td1`, `title_holder`. Counts elsewhere: pp 85, noir_dl_lib 74,

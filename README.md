@@ -99,7 +99,8 @@ its own anchored source, rather than a single curated root:
 
 - **identity** — holder-rooted registration, proven once at escrow (`escrow_envelope`), with
   revocation as a status in the same tree rather than a separate authority
-- **sanctions** — `backend/cre/ofac_sdn` anchors the OFAC SDN list via
+- **sanctions** — `backend/cre/sanctions_lists` anchors a declared sanctions list (US OFAC SDN,
+  UK OFSI consolidated, UN Security Council; one per deployment) via
   `RegistrySourceAnchor.publishSnapshot`
 - **notary** — `backend/cre/notary_registry` anchors a notary registry the same way
 - **the original ASP chain-analysis set** — preserved as an OPTIONAL predicate a deployment may

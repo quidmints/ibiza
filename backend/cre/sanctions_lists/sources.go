@@ -11,46 +11,62 @@
 // Consensus covers the FETCH, not the MEANING - and the meaning lives here.
 //
 // ═════════════════════════════════════════════════════════════════════════════════════════════
-// ONE LIST PER DEPLOYMENT, MANY LISTS SUPPORTED. There is no such thing as "the" sanctions list:
-// the US, the UK, the UN and the EU each publish their own, under their own law, in their own
-// schema, with their own idea of what a row even is. A workflow hardwired to one of them is a
-// workflow that has to be rewritten to serve anybody else - so the jurisdiction-specific parts are
-// a DECLARED SPEC (see `sources`) and everything below it is shared.
+// ADDING A COUNTRY IS ADDING DATA, NOT CODE. There is no such thing as "the" sanctions list: the
+// US, the UK, the UN and the EU each publish their own, under their own law, in their own schema,
+// with their own idea of what a row even is. The first version of this file answered that with a
+// struct, a decoder function and a vocabulary map PER COUNTRY - which makes the fifth country the
+// same work as the first, and guarantees the five drift apart.
+//
+// So a source is now a `SourceSpec` LITERAL - where its rows live, which element identifies one,
+// which elements carry names, how the subject kind is decided - and ONE walker (`decodeXML`) reads
+// any of them. A new jurisdiction is an entry in `sources` and nothing else.
+//
+// WHAT THAT COSTS, SAID PLAINLY: element paths become strings instead of struct tags, so the
+// compiler stops checking them. Two guards buy that back, and together they check MORE than tags
+// did - `validate` rejects an incomplete declaration before any fetch, and `AlwaysPresent` refuses
+// any ROW missing an element the real export carries on all of them, where an unmatched
+// `xml:"..."` tag silently yielded "" and published a snapshot full of empty names.
 //
 // THE SIX AXES a register can differ on are TODO.md sec. 2.18cb's, written for notary registers and
 // confirmed here against three real sanctions exports:
 //
-//	1. TRANSPORT   - all three serve a single bulk file over HTTPS. None needed the zip handling
-//	                 `notary_registry` carries, so none is implemented (no-unreachable-code); a
-//	                 source that needs it declares it in its own decoder.
-//	2. FORMAT      - XML for all three. Only the decode step may care.
-//	3. SCHEMA      - completely different in all three, down to what a ROW is. See each decoder.
-//	4. LISTING SEMANTICS - the one that breaks designs. Declared per source, never inferred.
-//	5. LANGUAGE/SCRIPT   - names are committed AS PUBLISHED; nothing here folds case or script.
-//	6. AUTHENTICITY      - declared per source, and it decides whether the postman can ever be
-//	                       removed for that jurisdiction (sec. 2.18bv). It is a per-country answer,
-//	                       so some lists may be trustlessly anchorable and others not.
+//  1. TRANSPORT   - all three serve a single bulk file over HTTPS. None needed the zip handling
+//     `notary_registry` carries, so none is implemented (no-unreachable-code); a
+//     source needing it gets a declared decompression step, not a bespoke decoder.
+//  2. FORMAT      - XML for all three, so the walker is XML. A CSV or JSON source needs a second
+//     walker producing the SAME ListedSubject, not a second everything.
+//  3. SCHEMA      - fully declarative below: paths, field names, vocabularies.
+//  4. LISTING SEMANTICS - the one that breaks designs. Declared per source, never inferred.
+//  5. LANGUAGE/SCRIPT   - names are committed AS PUBLISHED; nothing here folds case or script.
+//  6. AUTHENTICITY      - declared per source, and it decides whether the postman can ever be
+//     removed for that jurisdiction (sec. 2.18bv). It is a per-country answer,
+//     so some lists may be trustlessly anchorable and others not.
+//
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 //
 // Nothing in this file touches the network, the CRE runtime, or a chain: stdlib plus keccak.
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // ═══════════════════════════════════════════════════════════════════
-//  The canonical row every decoder produces
+//  The canonical row every source decodes to
 // ═══════════════════════════════════════════════════════════════════
 
-// SubjectKind is what a listed row is ABOUT. Declared per source from that source's own vocabulary,
-// never inferred from a name or guessed from a field's absence - the same fail-closed rule
-// `notary_registry`'s status vocabulary follows, and for the same reason: a wrong mapping is silent.
+// SubjectKind is what a listed row is ABOUT. Every source's own vocabulary is TRANSLATED into these
+// - never inferred from a name, never defaulted when unrecognised: the same fail-closed rule
+// `notary_registry`'s status vocabulary follows, and for the same reason - a wrong mapping is silent.
 type SubjectKind string
 
 const (
@@ -61,11 +77,11 @@ const (
 )
 
 // ListedSubject is ONE PUBLISHED ROW, canonicalised - not one person. The distinction is the whole
-// reason this type exists rather than a per-source struct reaching the leaf directly:
+// reason this type exists rather than each source's own shape reaching the leaf:
 //
 //   - OFAC publishes one row per designation, with aliases nested inside it.
 //   - OFSI publishes one row PER ALIAS, so a single designation appears several times under one
-//     `UKSanctionsListRef` (measured: 19,761 rows carry only 5,135 distinct refs).
+//     identifier (measured: 19,761 rows carry 5,135 designations).
 //
 // A design that assumed "row == subject == unique reference" - which the US export happens to
 // satisfy - collapses on the UK's the moment it is pointed at it.
@@ -78,24 +94,39 @@ type ListedSubject struct {
 	Kind SubjectKind
 
 	// NameParts are the source's name fields IN ITS OWN ORDER AND ARITY, uncombined. They are not
-	// joined into one string anywhere, because joining is what makes a leaf ambiguous - see
-	// leafHash.
+	// joined into one string anywhere, because joining is what makes a leaf ambiguous - see leafHash.
 	NameParts []string
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  Per-source declaration
+//  What a source declares
 // ═══════════════════════════════════════════════════════════════════
 
+// RecordSet is one place rows live, and how the subject kind is decided for them.
+//
+// TWO FORMS, BECAUSE REGISTERS GENUINELY DIFFER: OFAC and OFSI put the kind IN a field, while the
+// UN encodes it STRUCTURALLY - individuals and entities sit in different containers and no field on
+// the row says which. Exactly one of `Kind` and `KindField` is set, and `validate` enforces that.
+type RecordSet struct {
+	// Path is the element path from the document root, e.g. "sdnList/sdnEntry".
+	Path string
+
+	// Kind applies to every row here (structural form).
+	Kind SubjectKind
+
+	// KindField names the direct-child element carrying the kind, translated via KindVocabulary.
+	KindField string
+}
+
 // ListingSemantics answers "what does this export say about someone who is NO LONGER listed?" -
-// TODO.md sec. 2.18cb axis 4, which is the axis that decides whether DELISTING can be proven at all.
+// TODO.md sec. 2.18cb axis 4, the axis that decides whether DELISTING can be proven at all.
 type ListingSemantics int
 
 const (
-	// membershipMeansListed: the export contains exactly those currently designated, and carries no
-	// status field. Presence is provable against a Merkle root; ABSENCE IS NOT (sec. 2.18bp), so
-	// "this person was removed" cannot be proven to this anchor by any proof. All three sources
-	// declared below are this family - measured, not assumed.
+	// membershipMeansListed: the export contains exactly those currently designated and carries no
+	// status. Presence is provable against a Merkle root; ABSENCE IS NOT (sec. 2.18bp), so "this
+	// person was removed" cannot be proven to this anchor by any proof. All three sources declared
+	// below are this family - measured, not assumed.
 	membershipMeansListed ListingSemantics = iota + 1
 
 	// statusField: rows carry their own status, so delisting is a PRESENCE claim about a row whose
@@ -114,60 +145,104 @@ type Authenticity int
 
 const (
 	// authenticityTransportOnly: the publisher signs nothing. The only authenticity is the TLS
-	// session the DON node itself opened, which the node cannot prove to anyone afterwards - so the
+	// session the DON node itself opened, which it cannot prove to anyone afterwards - so the
 	// snapshot rests on DON honesty, and the postman CANNOT be removed for this source
 	// (sec. 2.18bv/2.18br). This is not a claim that no signed artifact exists anywhere; it records
-	// that the published export we fetch is unsigned and that nobody has found a detached signature
-	// beside it. Finding one is a change to this field, not to any code.
+	// that the export we fetch is unsigned and that no detached signature was found beside it.
+	// Finding one is a change to this field, not to any code.
 	authenticityTransportOnly Authenticity = iota + 1
 
 	// authenticityDetachedSignature: a `.p7s`/CMS or XAdES artifact is published alongside, so the
-	// authority's own signature can be verified in-workflow and the trust in the DON drops to
-	// liveness only.
+	// authority's own signature can be verified in-workflow and trust in the DON drops to liveness.
 	authenticityDetachedSignature
 )
 
-// SourceSpec is the whole per-jurisdiction declaration. Adding a country means adding an entry
-// here plus a decoder - never editing the shared code below it.
+// SourceSpec is the WHOLE per-jurisdiction declaration. Adding a country means adding one of these.
 type SourceSpec struct {
 	// Key is the registry key. `registryIDFor` hashes it into the `registryId` that
 	// RegistrySourceAnchor stores snapshots under, and leafHash binds it into every leaf.
 	Key string
 
-	// Decode maps the published bytes to canonical rows. It must be a pure function of its input:
-	// two DON nodes handed identical bytes must produce an identical slice, in an identical order.
-	Decode func(body []byte) ([]ListedSubject, error)
+	// Records: where the rows are, and how each one's kind is decided.
+	Records []RecordSet
+
+	// ReferenceField is the direct-child element holding the source's own identifier for a listing.
+	ReferenceField string
+
+	// NameFields are direct-child elements, IN PUBLISHED ORDER. Every one is read for every row,
+	// present or not, so arity is constant within a source - which is what stops a name moving
+	// between slots from producing a colliding leaf.
+	NameFields []string
+
+	// KindVocabulary translates this register's own words. Required exactly when some RecordSet
+	// names a KindField. An unlisted value REFUSES THE SNAPSHOT - a new word is how a register says
+	// something we have not seen, and guessing drops designated parties while looking complete.
+	KindVocabulary map[string]SubjectKind
+
+	// AlwaysPresent are the elements the real export carries on EVERY row, so a row missing one has
+	// been renamed or removed upstream. THIS IS WHAT REPLACES THE COMPILER'S CHECKING of struct
+	// tags, and it checks more than they did: an unmatched `xml:"..."` tag yields "" in silence,
+	// filling every row with empty names and publishing a plausible, wrong snapshot.
+	//
+	// PER ROW, NOT PER DOCUMENT, and that distinction was found by testing rather than by design.
+	// The first version demanded that every declared element appear SOMEWHERE, which refused valid
+	// documents: US `firstName` is on 7,473 of 19,181 rows and UN `SECOND_NAME` on 727 of 736, so
+	// entities and mononymous individuals legitimately lack them, and a small export could lack them
+	// entirely. A guard that fires on correct input is a clamp, not a check. Optional elements are
+	// simply not listed here; the ones that are, are measured.
+	AlwaysPresent []string
+
+	// ManifestCountPath is an element whose integer value must equal the number of rows decoded.
+	// Optional, because only some publishers state it - and where they do, it is the strongest
+	// anti-rot guard available, detecting silent row loss with no external reference point.
+	ManifestCountPath string
 
 	Listing      ListingSemantics
 	Authenticity Authenticity
 
-	// ReferenceIdentifiesRow records whether the source's own identifier is unique across rows. It
-	// is checked, not trusted: a source that declares uniqueness and stops honouring it has changed
-	// what a row MEANS, and that must fail loudly rather than silently collapse two designations.
+	// ReferenceIdentifiesRow records whether the identifier is unique across rows. It is CHECKED,
+	// not trusted: a source that declares uniqueness and stops honouring it has changed what a row
+	// means, and that must fail loudly rather than silently merge two designations.
 	ReferenceIdentifiesRow bool
 
 	// PublishedAt documents where the export lives. It is NOT fetched from here - the operator
-	// supplies the URL in config, because a hardcoded endpoint is a hardcoded dependency on one
-	// publisher's URL scheme surviving. Kept so the two can be compared by a human.
+	// supplies the URL in config, because hardcoding one is a hardcoded dependency on a publisher's
+	// URL scheme surviving. Kept so a human can compare the two.
 	PublishedAt string
 }
 
 // sources is the declared roster. EVERY FIELD OF EVERY ENTRY WAS READ OFF THE REAL EXPORT on
 // 2026-08-02, not off documentation of it - `notary_registry` shipped a guessed schema in which
-// every single tag was wrong and the parse yielded ZERO rows (sec. 2.18ce), and the guess had been
-// taken from third-party descriptions exactly like the ones available for these three.
+// every single tag was wrong and the parse yielded ZERO rows (sec. 2.18ce), and that guess came
+// from third-party descriptions exactly like the ones available for these three.
 //
-// UNDECLARED MEANS UNPUBLISHABLE. `sourceFor` refuses a key that is not here, and refuses an entry
-// whose semantics fields are unset - sec. 2.18cb's rule, which exists because a list published
-// without declaring what its absences mean silently gives the weaker guarantee everywhere.
+// UNDECLARED MEANS UNPUBLISHABLE. `sourceFor` refuses a key that is not here, and refuses a spec
+// that leaves any of these questions unanswered - sec. 2.18cb's rule, which exists because a list
+// anchored without declaring what its absences mean silently gives the weaker guarantee everywhere.
 var sources = map[string]SourceSpec{
 	// UNITED STATES - OFAC Specially Designated Nationals.
 	// Measured 2026-08-02 on the 2026-07-29 publication: 19,181 entries, `uid` unique across all of
-	// them, sdnType in {Entity 9840, Individual 7473, Vessel 1524, Aircraft 344}, `lastName` present
-	// on every row, `firstName` on exactly the 7,473 Individuals.
+	// them, sdnType in {Entity 9840, Individual 7473, Vessel 1524, Aircraft 344}, `lastName` on
+	// every row, `firstName` on exactly the 7,473 Individuals.
+	//
+	// ONLY DIRECT CHILDREN COUNT, and here that is load-bearing rather than pedantic: an sdnEntry
+	// nests `<uid>` elements of its own inside akaList, addressList and idList, so a walker that
+	// took any descendant would key an entry's leaf on whichever alias came last.
 	"OFAC_SDN": {
-		Key:                    "OFAC_SDN",
-		Decode:                 decodeOFACSDN,
+		Key:            "OFAC_SDN",
+		Records:        []RecordSet{{Path: "sdnList/sdnEntry", KindField: "sdnType"}},
+		ReferenceField: "uid",
+		NameFields:     []string{"lastName", "firstName"},
+		// Measured on all 19,181 rows. `firstName` is deliberately absent from this list: it is on
+		// the 7,473 Individuals only, because an entity, a vessel and an aircraft each have one name.
+		AlwaysPresent:     []string{"uid", "lastName", "sdnType"},
+		ManifestCountPath: "sdnList/publshInformation/Record_Count", // Treasury's own missing "i"
+		KindVocabulary: map[string]SubjectKind{
+			"Individual": KindIndividual,
+			"Entity":     KindEntity,
+			"Vessel":     KindVessel,
+			"Aircraft":   KindAircraft,
+		},
 		Listing:                membershipMeansListed,
 		Authenticity:           authenticityTransportOnly,
 		ReferenceIdentifiesRow: true,
@@ -175,15 +250,35 @@ var sources = map[string]SourceSpec{
 	},
 
 	// UNITED KINGDOM - OFSI consolidated list of financial sanctions targets.
-	// Measured 2026-08-02: 19,761 rows carrying 5,135 distinct designations, because each alias is
-	// its own row (AliasType: AKA 7,700 / Primary name 6,240 / Primary name variation 5,794 /
-	// FKA 27). GroupTypeDescription in {Individual 13863, Entity 5817, Ship 81}. Only 13,865 of the
-	// 19,761 rows are distinct once decoded, so DEDUPLICATION IS LOAD-BEARING HERE, not a
-	// precaution: ~5,900 rows repeat a designation's name set exactly, and equal neighbours would
-	// fail the contract's strict-ascent rule.
+	// Measured 2026-08-02: 19,761 rows carrying 5,135 designations, because each alias is its own
+	// row (AliasType: AKA 7,700 / Primary name 6,240 / Primary name variation 5,794 / FKA 27).
+	// GroupTypeDescription in {Individual 13863, Entity 5817, Ship 81}. Only 13,865 rows are
+	// distinct once decoded, so DEDUPLICATION IS LOAD-BEARING HERE, not a precaution: ~5,900 rows
+	// repeat a designation's name set exactly, and equal neighbours fail the contract's ascent rule.
+	//
+	// `GroupID` IS THE KEY, NOT `UKSanctionsListRef`, and that is a measurement rather than a
+	// preference. The obvious choice is the FCDO reference, because it is the citable one
+	// ("GHR0086"). It is EMPTY on one row of 19,761 - Alexander SAMOFAL, a real individual
+	// designated 2023-04-21 under Global Human Rights - so keying on it makes him unanchorable and,
+	// because a row with no reference is refused, takes the ENTIRE UK snapshot down with him.
+	// `GroupID` is never empty and partitions the rows identically (5,135 distinct either way, no
+	// GroupID spanning two references). Both fields look equally good in any fixture small enough to
+	// read; the difference is one row in twenty thousand, and it decides whether the list publishes.
+	//
+	// Note OFSI's own inconsistent casing - `name1`..`name5` lowercase, `Name6` capitalised. Copied
+	// from the published file rather than normalised.
 	"UK_OFSI_CONSOLIDATED": {
-		Key:                    "UK_OFSI_CONSOLIDATED",
-		Decode:                 decodeUKOFSI,
+		Key:            "UK_OFSI_CONSOLIDATED",
+		Records:        []RecordSet{{Path: "ArrayOfFinancialSanctionsTarget/FinancialSanctionsTarget", KindField: "GroupTypeDescription"}},
+		ReferenceField: "GroupID",
+		NameFields:     []string{"name1", "name2", "name3", "name4", "name5", "Name6"},
+		// Measured: all eight are on all 19,761 rows, empty ones included as empty elements.
+		AlwaysPresent: []string{"GroupID", "name1", "name2", "name3", "name4", "name5", "Name6", "GroupTypeDescription"},
+		KindVocabulary: map[string]SubjectKind{
+			"Individual": KindIndividual,
+			"Entity":     KindEntity,
+			"Ship":       KindVessel,
+		},
 		Listing:                membershipMeansListed,
 		Authenticity:           authenticityTransportOnly,
 		ReferenceIdentifiesRow: false,
@@ -191,12 +286,21 @@ var sources = map[string]SourceSpec{
 	},
 
 	// UNITED NATIONS - Security Council consolidated list.
-	// Measured 2026-08-02: 736 individuals + 275 entities, DATAID unique within each. The KIND is
-	// carried STRUCTURALLY - by which container a row sits in - not by any field on the row, which
-	// is why `Decode` cannot be a single generic element walk.
+	// Measured 2026-08-02: 736 individuals + 275 entities, DATAID unique across both containers.
+	// THE KIND IS STRUCTURAL - which container a row sits in - with no field on the row saying so,
+	// which is why RecordSet has to express both forms. An entity's name arrives in FIRST_NAME with
+	// the rest empty, i.e. the same arity as an individual's.
 	"UN_SC_CONSOLIDATED": {
-		Key:                    "UN_SC_CONSOLIDATED",
-		Decode:                 decodeUNConsolidated,
+		Key: "UN_SC_CONSOLIDATED",
+		Records: []RecordSet{
+			{Path: "CONSOLIDATED_LIST/INDIVIDUALS/INDIVIDUAL", Kind: KindIndividual},
+			{Path: "CONSOLIDATED_LIST/ENTITIES/ENTITY", Kind: KindEntity},
+		},
+		ReferenceField: "DATAID",
+		NameFields:     []string{"FIRST_NAME", "SECOND_NAME", "THIRD_NAME", "FOURTH_NAME"},
+		// Measured: only these two are universal. SECOND_NAME is on 727 of 736 individuals and on NO
+		// entity - an entity's whole name is FIRST_NAME - so requiring it would refuse the real file.
+		AlwaysPresent:          []string{"DATAID", "FIRST_NAME"},
 		Listing:                membershipMeansListed,
 		Authenticity:           authenticityTransportOnly,
 		ReferenceIdentifiesRow: true,
@@ -204,7 +308,7 @@ var sources = map[string]SourceSpec{
 	},
 }
 
-// sourceFor resolves a declared source, fail-closed on both counts sec. 2.18cb names.
+// sourceFor resolves a declared source and validates its declaration.
 func sourceFor(registryKey string) (SourceSpec, error) {
 	spec, ok := sources[registryKey]
 	if !ok {
@@ -213,33 +317,69 @@ func sourceFor(registryKey string) (SourceSpec, error) {
 				"and its authenticity are per-jurisdiction facts that must be read off the real "+
 				"export and declared in `sources` before it can publish", registryKey)
 	}
-	// A spec is a literal in this file, so an unset field means someone added an entry without
-	// answering these questions. Publishing anyway would anchor a list while nobody has said what
-	// its absences mean - which is precisely the silent, plausible-looking wrong answer a guard is
-	// for. It cannot be reached from outside this package's own source, and that is the point.
-	if spec.Listing == 0 || spec.Authenticity == 0 {
-		return SourceSpec{}, fmt.Errorf(
-			"source %q declares no listing semantics or no authenticity - refusing to publish a list "+
-				"whose absences and provenance are undefined", registryKey)
-	}
-	if spec.Decode == nil {
-		return SourceSpec{}, fmt.Errorf("source %q declares no decoder", registryKey)
+	if err := spec.validate(); err != nil {
+		return SourceSpec{}, fmt.Errorf("source %q: %w", registryKey, err)
 	}
 	return spec, nil
+}
+
+// validate is what a declarative table buys back from the compiler. Every failure means somebody
+// added a source without answering one of these questions - and it fires BEFORE any fetch, rather
+// than halfway through a real export.
+func (s SourceSpec) validate() error {
+	if len(s.Records) == 0 {
+		return fmt.Errorf("declares no record sets, so there is nowhere to read rows from")
+	}
+	needsVocabulary := false
+	for _, rs := range s.Records {
+		if rs.Path == "" {
+			return fmt.Errorf("a record set declares no path")
+		}
+		if (rs.Kind == "") == (rs.KindField == "") {
+			return fmt.Errorf(
+				"record set %q must declare EITHER a structural Kind or a KindField, not both and "+
+					"not neither - a row whose kind is undecided cannot be hashed", rs.Path)
+		}
+		if rs.KindField != "" {
+			needsVocabulary = true
+		}
+	}
+	if needsVocabulary && len(s.KindVocabulary) == 0 {
+		return fmt.Errorf(
+			"reads its subject kind from a field but declares no vocabulary to translate it - a " +
+				"register writes its kinds in its own words, and guessing them drops rows")
+	}
+	if s.ReferenceField == "" {
+		return fmt.Errorf("declares no reference field, so no leaf could be cited")
+	}
+	if len(s.NameFields) == 0 {
+		return fmt.Errorf("declares no name fields, so every row of one kind would share a leaf")
+	}
+	if len(s.AlwaysPresent) == 0 {
+		return fmt.Errorf(
+			"names no always-present elements, so a renamed or removed element would silently " +
+				"produce rows of empty values instead of refusing the snapshot")
+	}
+	if s.Listing == 0 || s.Authenticity == 0 {
+		return fmt.Errorf(
+			"declares no listing semantics or no authenticity - refusing to publish a list whose " +
+				"absences and provenance are undefined")
+	}
+	return nil
 }
 
 func registryIDFor(registryKey string) [32]byte {
 	return crypto.Keccak256Hash([]byte(registryKey))
 }
 
-// decodeSubjects runs a source's decoder and enforces what the source claims about itself.
+// decodeSubjects decodes a published export and enforces what its source claims about itself.
 func decodeSubjects(registryKey string, body []byte) ([]ListedSubject, error) {
 	spec, err := sourceFor(registryKey)
 	if err != nil {
 		return nil, err
 	}
 
-	subjects, err := spec.Decode(body)
+	subjects, err := decodeXML(spec, body)
 	if err != nil {
 		return nil, err
 	}
@@ -271,6 +411,164 @@ func decodeSubjects(registryKey string, body []byte) ([]ListedSubject, error) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+//  ONE WALKER, ANY DECLARED SOURCE
+// ═══════════════════════════════════════════════════════════════════
+
+// decodeXML streams the document, collecting the DIRECT CHILDREN of each declared record path.
+//
+// DIRECT CHILDREN, NOT DESCENDANTS. OFAC nests `<uid>` inside an entry's akaList, addressList and
+// idList, so a walker that took any descendant named `uid` would key that entry's leaf on an
+// alias's identifier. Depth is tracked rather than assumed.
+//
+// NAMESPACES ARE IGNORED. All three exports declare a default namespace, none uses it to
+// disambiguate, and matching on local names means a publisher changing their namespace URI - which
+// says nothing about the data - cannot silently empty the snapshot.
+//
+// EVERY DECLARED ELEMENT MUST APPEAR AT LEAST ONCE. This is the check that replaces what struct
+// tags never gave: an unmatched `xml:"..."` tag yields "" in silence, so a renamed element used to
+// produce rows full of empty names rather than an error.
+func decodeXML(spec SourceSpec, body []byte) ([]ListedSubject, error) {
+	recordSets := make(map[string]RecordSet, len(spec.Records))
+	for _, rs := range spec.Records {
+		recordSets[rs.Path] = rs
+	}
+
+	var (
+		decoder  = xml.NewDecoder(bytes.NewReader(body))
+		path     []string
+		subjects []ListedSubject
+
+		current   *RecordSet        // the record set being read, nil outside one
+		rowDepth  int               // len(path) at the record element itself
+		row       map[string]string // its direct children
+		fieldName string            // the direct child being read, "" between them
+		field     strings.Builder
+
+		manifest      strings.Builder
+		manifestFound bool
+	)
+
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%s parse: %w", spec.Key, err)
+		}
+
+		switch t := token.(type) {
+		case xml.StartElement:
+			path = append(path, t.Name.Local)
+
+			if current == nil {
+				if rs, isRecord := recordSets[strings.Join(path, "/")]; isRecord {
+					set := rs
+					current, rowDepth = &set, len(path)
+					row = make(map[string]string, len(spec.NameFields)+2)
+				}
+			} else if len(path) == rowDepth+1 {
+				fieldName, field = t.Name.Local, strings.Builder{}
+			}
+
+			if spec.ManifestCountPath != "" && strings.Join(path, "/") == spec.ManifestCountPath {
+				manifestFound, manifest = true, strings.Builder{}
+			}
+
+		case xml.CharData:
+			// Only text sitting DIRECTLY inside the element being read is its value; whitespace
+			// between sibling elements reaches neither.
+			if current != nil && fieldName != "" && len(path) == rowDepth+1 {
+				field.Write(t)
+			} else if manifestFound && strings.Join(path, "/") == spec.ManifestCountPath {
+				manifest.Write(t)
+			}
+
+		case xml.EndElement:
+			if current != nil && fieldName != "" && len(path) == rowDepth+1 {
+				// Recording the element as PRESENT, empty or not, is what distinguishes "this
+				// designation has no first name" from "the schema no longer has that element".
+				row[fieldName] = field.String()
+				fieldName = ""
+			} else if current != nil && len(path) == rowDepth {
+				subject, err := spec.subjectFrom(*current, row)
+				if err != nil {
+					return nil, err
+				}
+				subjects = append(subjects, subject)
+				current, row = nil, nil
+			}
+			path = path[:len(path)-1]
+		}
+	}
+
+	if err := spec.checkManifest(manifestFound, manifest.String(), len(subjects)); err != nil {
+		return nil, err
+	}
+	return subjects, nil
+}
+
+// checkManifest compares the export's own declared length with what was decoded.
+//
+// THE EXPORT DECLARING ITS OWN LENGTH is the strongest anti-rot guard available here: it detects
+// silent row loss with no external reference point at all. Under-counting is the dangerous
+// direction for a sanctions list - it omits someone who IS designated while the snapshot still
+// looks complete.
+func (s SourceSpec) checkManifest(found bool, raw string, decoded int) error {
+	if s.ManifestCountPath == "" {
+		return nil
+	}
+	if !found {
+		return fmt.Errorf(
+			"%s declares a manifest at %q and the document has no such element - the export's "+
+				"schema has changed under a guard that exists to catch exactly that",
+			s.Key, s.ManifestCountPath)
+	}
+	declared, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return fmt.Errorf("%s manifest %q is not a number: %w", s.Key, raw, err)
+	}
+	if declared != decoded {
+		return fmt.Errorf(
+			"%s declares %d records at %s but %d rows decoded - refusing to publish a snapshot that "+
+				"disagrees with its own manifest", s.Key, declared, s.ManifestCountPath, decoded)
+	}
+	return nil
+}
+
+func (s SourceSpec) subjectFrom(set RecordSet, row map[string]string) (ListedSubject, error) {
+	for _, element := range s.AlwaysPresent {
+		if _, present := row[element]; !present {
+			return ListedSubject{}, fmt.Errorf(
+				"%s row %q has no %q element, which the real export carries on every row - a renamed "+
+					"or removed element must refuse the snapshot, not quietly fill the row with an "+
+					"empty value", s.Key, row[s.ReferenceField], element)
+		}
+	}
+
+	kind := set.Kind
+	if set.KindField != "" {
+		published := row[set.KindField]
+		translated, known := s.KindVocabulary[published]
+		if !known {
+			return ListedSubject{}, fmt.Errorf(
+				"%s row %q has unrecognised %s %q - declare it in the source's KindVocabulary rather "+
+					"than defaulting, because guessing wrong drops a designated party from the snapshot",
+				s.Key, row[s.ReferenceField], set.KindField, published)
+		}
+		kind = translated
+	}
+
+	// Every declared name field, present or not, so arity is constant within a source.
+	parts := make([]string, len(s.NameFields))
+	for i, f := range s.NameFields {
+		parts[i] = row[f]
+	}
+
+	return ListedSubject{Reference: row[s.ReferenceField], Kind: kind, NameParts: parts}, nil
+}
+
+// ═══════════════════════════════════════════════════════════════════
 //  Leaves
 // ═══════════════════════════════════════════════════════════════════
 
@@ -283,8 +581,9 @@ func decodeSubjects(registryKey string, body []byte) ([]ListedSubject, error) {
 // it the same way (sec. 2.18ao); the argument that real data never collides is an argument about
 // TODAY'S DATA, not about the construction.
 //
-// THE PART COUNT IS COMMITTED TOO, in four fixed bytes, because arity varies BY SOURCE: three name
-// parts and six name parts must not be able to collide by padding one with empties.
+// THE PART COUNT IS COMMITTED TOO, in four fixed bytes, because arity varies BY SOURCE: two name
+// parts for the US, six for the UK, four for the UN. Padding one with empties must not be able to
+// reach another's leaf.
 //
 // THE REGISTRY KEY IS IN THE LEAF, which is what stops a leaf from one list being replayed as proof
 // of listing on another. Without it, a UK row and a US row describing the same person hash
@@ -335,12 +634,7 @@ func snapshotLeaves(registryKey string, subjects []ListedSubject) [][32]byte {
 }
 
 func bytesLess(a, b [32]byte) bool {
-	for i := range a {
-		if a[i] != b[i] {
-			return a[i] < b[i]
-		}
-	}
-	return false
+	return bytes.Compare(a[:], b[:]) < 0
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -391,202 +685,4 @@ func hashSortedPair(a, b [32]byte) [32]byte {
 		a, b = b, a
 	}
 	return crypto.Keccak256Hash(a[:], b[:])
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//  UNITED STATES - OFAC SDN
-// ═══════════════════════════════════════════════════════════════════
-
-// ofacEntry is one designation. Verified against the real SDN.XML (2026-07-29 publication).
-type ofacEntry struct {
-	UID       string `xml:"uid"`
-	FirstName string `xml:"firstName"`
-	LastName  string `xml:"lastName"`
-	SDNType   string `xml:"sdnType"`
-}
-
-// ofacList - note `publshInformation`: the missing "i" is Treasury's own, present in the published
-// file. Spelling it correctly here would silently decode a zero Record_Count and disable the
-// cross-check below.
-//
-// The document carries a default namespace. Go's encoding/xml matches on local name when the struct
-// tag names no namespace, so these tags bind correctly - verified by decoding the real file, not
-// assumed from the rule.
-type ofacList struct {
-	XMLName     xml.Name    `xml:"sdnList"`
-	PublishDate string      `xml:"publshInformation>Publish_Date"`
-	RecordCount int         `xml:"publshInformation>Record_Count"`
-	Entries     []ofacEntry `xml:"sdnEntry"`
-}
-
-// ofacKinds is the declared vocabulary. An UNKNOWN sdnType is an ERROR, not a skip: OFAC adding a
-// fifth type is exactly how a silent under-count arrives, and under-counting is the dangerous
-// direction for a sanctions list - it omits someone who IS designated while the snapshot still
-// looks complete.
-var ofacKinds = map[string]SubjectKind{
-	"Individual": KindIndividual,
-	"Entity":     KindEntity,
-	"Vessel":     KindVessel,
-	"Aircraft":   KindAircraft,
-}
-
-func decodeOFACSDN(body []byte) ([]ListedSubject, error) {
-	var list ofacList
-	if err := xml.Unmarshal(body, &list); err != nil {
-		return nil, fmt.Errorf("OFAC SDN parse: %w", err)
-	}
-
-	// THE EXPORT DECLARES ITS OWN LENGTH, so schema drift that drops rows is detectable without any
-	// external reference point. This is the only one of the three sources that offers it, and it is
-	// the single strongest anti-rot guard available anywhere in this file.
-	if list.RecordCount != len(list.Entries) {
-		return nil, fmt.Errorf(
-			"OFAC SDN declares Record_Count %d but %d sdnEntry elements decoded - refusing to publish "+
-				"a snapshot that disagrees with its own manifest",
-			list.RecordCount, len(list.Entries))
-	}
-
-	subjects := make([]ListedSubject, 0, len(list.Entries))
-	for _, e := range list.Entries {
-		kind, known := ofacKinds[e.SDNType]
-		if !known {
-			return nil, fmt.Errorf(
-				"OFAC SDN uid %q has unrecognised sdnType %q - declare it in ofacKinds rather than "+
-					"defaulting, because guessing wrong drops a designated party from the snapshot",
-				e.UID, e.SDNType)
-		}
-		// Both name fields always, in published order, even when empty: entities carry only
-		// lastName, and a fixed arity is what keeps the two shapes from colliding.
-		subjects = append(subjects, ListedSubject{
-			Reference: e.UID,
-			Kind:      kind,
-			NameParts: []string{e.LastName, e.FirstName},
-		})
-	}
-	return subjects, nil
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//  UNITED KINGDOM - OFSI consolidated list
-// ═══════════════════════════════════════════════════════════════════
-
-// ukTarget is ONE ALIAS ROW, not one designation - see ListedSubject's note. Tag names are
-// case-sensitive and OFSI's own casing is inconsistent (`name1`..`name5` lowercase, `Name6`
-// capitalised); these are copied from the published file rather than normalised.
-//
-// `GroupID` IS THE KEY, NOT `UKSanctionsListRef` - and that is a measurement, not a preference.
-// The obvious choice is the FCDO reference, because it is the citable one ("GHR0086"). Over the
-// 2026-08-02 export:
-//
-//   - `UKSanctionsListRef` is EMPTY on one row of 19,761 - Alexander SAMOFAL, a real individual
-//     designated 2023-04-21 under Global Human Rights. Keying on it makes that person unanchorable
-//     and, because a row with no reference is refused, takes the ENTIRE UK snapshot down with them.
-//   - `GroupID` is present and non-empty on all 19,761 rows.
-//   - They agree about grouping: 5,135 distinct values each, and NO GroupID spans more than one
-//     reference. So nothing is lost by preferring the one that is always there.
-//
-// This is the whole argument for fetching the real file. Both fields look equally good in a schema
-// description, an excerpt, or any fixture small enough to read - the difference is one row in
-// twenty thousand, and it decides whether the list can be published at all.
-type ukTarget struct {
-	Name1     string `xml:"name1"`
-	Name2     string `xml:"name2"`
-	Name3     string `xml:"name3"`
-	Name4     string `xml:"name4"`
-	Name5     string `xml:"name5"`
-	Name6     string `xml:"Name6"`
-	GroupType string `xml:"GroupTypeDescription"`
-	GroupID   string `xml:"GroupID"`
-	AliasType string `xml:"AliasType"`
-}
-
-type ukConsolidatedList struct {
-	XMLName xml.Name   `xml:"ArrayOfFinancialSanctionsTarget"`
-	Targets []ukTarget `xml:"FinancialSanctionsTarget"`
-}
-
-var ukKinds = map[string]SubjectKind{
-	"Individual": KindIndividual,
-	"Entity":     KindEntity,
-	"Ship":       KindVessel,
-}
-
-func decodeUKOFSI(body []byte) ([]ListedSubject, error) {
-	var list ukConsolidatedList
-	if err := xml.Unmarshal(body, &list); err != nil {
-		return nil, fmt.Errorf("UK OFSI parse: %w", err)
-	}
-
-	subjects := make([]ListedSubject, 0, len(list.Targets))
-	for _, t := range list.Targets {
-		kind, known := ukKinds[t.GroupType]
-		if !known {
-			return nil, fmt.Errorf(
-				"UK OFSI group %q has unrecognised GroupTypeDescription %q - declare it in ukKinds "+
-					"rather than defaulting", t.GroupID, t.GroupType)
-		}
-		// ALL SIX PARTS, ALWAYS, IN PUBLISHED ORDER. Dropping the empties would let "Rudi" in slot 1
-		// and "Rudi" in slot 2 produce the same leaf, and OFSI genuinely moves a name between slots
-		// between alias rows of one designation (IRQ0140 does exactly that in the committed
-		// fixture). Aliases are NOT collapsed: each published row is a distinct fact about which
-		// spelling is sanctioned, and collapsing them would discard the only thing a screening
-		// system matches on.
-		subjects = append(subjects, ListedSubject{
-			Reference: t.GroupID,
-			Kind:      kind,
-			NameParts: []string{t.Name1, t.Name2, t.Name3, t.Name4, t.Name5, t.Name6},
-		})
-	}
-	return subjects, nil
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//  UNITED NATIONS - Security Council consolidated list
-// ═══════════════════════════════════════════════════════════════════
-
-// unRecord serves both containers: the UN's individual and entity rows share these fields, and the
-// KIND comes from WHICH CONTAINER the row was in rather than from any field on it. That is a third
-// way of encoding subject kind - after OFAC's `sdnType` field and OFSI's
-// `GroupTypeDescription` - and it is why `Decode` is a per-source function rather than a table.
-type unRecord struct {
-	DataID     string `xml:"DATAID"`
-	FirstName  string `xml:"FIRST_NAME"`
-	SecondName string `xml:"SECOND_NAME"`
-	ThirdName  string `xml:"THIRD_NAME"`
-	FourthName string `xml:"FOURTH_NAME"`
-}
-
-type unConsolidatedList struct {
-	XMLName     xml.Name   `xml:"CONSOLIDATED_LIST"`
-	Individuals []unRecord `xml:"INDIVIDUALS>INDIVIDUAL"`
-	Entities    []unRecord `xml:"ENTITIES>ENTITY"`
-}
-
-func decodeUNConsolidated(body []byte) ([]ListedSubject, error) {
-	var list unConsolidatedList
-	if err := xml.Unmarshal(body, &list); err != nil {
-		return nil, fmt.Errorf("UN consolidated parse: %w", err)
-	}
-
-	subjects := make([]ListedSubject, 0, len(list.Individuals)+len(list.Entities))
-	// Individuals first, then entities - document order within each. Deterministic because the input
-	// bytes are, which is the only property consensus needs (see main.go's note on why nothing here
-	// re-sorts the rows).
-	for _, r := range list.Individuals {
-		subjects = append(subjects, unSubject(r, KindIndividual))
-	}
-	for _, r := range list.Entities {
-		// An entity's name arrives in FIRST_NAME with the rest empty - the same fixed arity as an
-		// individual, so the two cannot collide across kinds even before the kind is hashed in.
-		subjects = append(subjects, unSubject(r, KindEntity))
-	}
-	return subjects, nil
-}
-
-func unSubject(r unRecord, kind SubjectKind) ListedSubject {
-	return ListedSubject{
-		Reference: r.DataID,
-		Kind:      kind,
-		NameParts: []string{r.FirstName, r.SecondName, r.ThirdName, r.FourthName},
-	}
 }

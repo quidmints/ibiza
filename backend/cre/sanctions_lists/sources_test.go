@@ -276,6 +276,178 @@ func TestEveryDeclaredSourceAnswersTheSemanticsQuestions(t *testing.T) {
 	}
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  The declarative machinery — what replaced the compiler's checking
+// ═══════════════════════════════════════════════════════════════════
+
+// THE BEHAVIOUR LOCK. These roots were computed BEFORE the per-country decoders were replaced by
+// one declarative walker, and they are unchanged after it — which is the only way to claim that
+// refactor preserved behaviour rather than merely still passing its own tests. The fixtures are
+// fixed bytes, so these values are deterministic forever; if one moves, decoding changed, and the
+// question is what changed rather than what to update.
+func TestTheExcerptRootsAreUnchangedByRefactoring(t *testing.T) {
+	for _, tc := range []struct{ key, file, root string }{
+		{"OFAC_SDN", "ofac_sdn_excerpt.xml",
+			"f7fa85f6dd7490414be1e5872940ec2cb73c3553c8025971c12a21fc95aec156"},
+		{"UK_OFSI_CONSOLIDATED", "uk_ofsi_excerpt.xml",
+			"56fcf533b4fd74a0031a171e2656d3e2c4450ad1465a2724d4c298cf4e623bb3"},
+		{"UN_SC_CONSOLIDATED", "un_sc_excerpt.xml",
+			"731b6d03a4e695a1890a5a2123e1735704b097cd231df6a72bdbe1f842df7fce"},
+	} {
+		subjects, err := decodeSubjects(tc.key, load(t, tc.file))
+		if err != nil {
+			t.Fatalf("%s decode: %v", tc.key, err)
+		}
+		root, err := merkleRoot(snapshotLeaves(tc.key, subjects))
+		if err != nil {
+			t.Fatalf("%s root: %v", tc.key, err)
+		}
+		if got := fmt.Sprintf("%x", root); got != tc.root {
+			t.Fatalf("%s root moved:\n  was %s\n  now %s", tc.key, tc.root, got)
+		}
+	}
+}
+
+// THE CLAIM THE DECLARATIVE SHAPE MAKES IS THAT A NEW COUNTRY IS DATA, NOT CODE — so this adds one
+// and writes no code to do it. The register below is INVENTED, deliberately: it tests the
+// MECHANISM, and nothing invented is ever added to `sources`, because a fabricated register is
+// exactly the fabrication sec. 2.18k forbids.
+//
+// It is shaped to share nothing with the three declared sources — rows in two containers three deep
+// under a different root, a non-English kind vocabulary, three name parts, no manifest, and a
+// reference that repeats — and it decodes, hashes and roots on the same walker.
+func TestAFourthRegisterNeedsNoNewCode(t *testing.T) {
+	invented := SourceSpec{
+		Key: "TEST_ONLY_INVENTED_REGISTER",
+		Records: []RecordSet{
+			{Path: "registre/personnes/personne", Kind: KindIndividual},
+			{Path: "registre/navires/navire", KindField: "categorie"},
+		},
+		ReferenceField: "identifiant",
+		NameFields:     []string{"nom", "prenom", "autre"},
+		KindVocabulary: map[string]SubjectKind{"navire": KindVessel},
+		AlwaysPresent:  []string{"identifiant", "nom"},
+		Listing:        membershipMeansListed,
+		Authenticity:   authenticityTransportOnly,
+		PublishedAt:    "https://example.invalid/registre.xml",
+	}
+	if err := invented.validate(); err != nil {
+		t.Fatalf("a complete declaration was rejected: %v", err)
+	}
+
+	body := []byte(`<?xml version="1.0"?>
+<registre>
+  <personnes>
+    <personne><identifiant>A-1</identifiant><nom>DUPONT</nom><prenom>Marie</prenom></personne>
+    <personne><identifiant>A-1</identifiant><nom>DUPONT</nom><prenom>Marie-Claire</prenom></personne>
+  </personnes>
+  <navires>
+    <navire><identifiant>N-9</identifiant><nom>ETOILE</nom><categorie>navire</categorie></navire>
+  </navires>
+</registre>`)
+
+	subjects, err := decodeXML(invented, body)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(subjects) != 3 {
+		t.Fatalf("want 3 rows, got %d", len(subjects))
+	}
+	if subjects[0].Kind != KindIndividual || subjects[2].Kind != KindVessel {
+		t.Fatalf("kinds wrong: %+v %+v", subjects[0], subjects[2])
+	}
+	// Two rows share a reference, as OFSI's do, and stay distinct on their names.
+	if subjects[0].Reference != subjects[1].Reference {
+		t.Fatal("the fixture no longer exercises a shared reference")
+	}
+	leaves := snapshotLeaves(invented.Key, subjects)
+	if len(leaves) != 3 {
+		t.Fatalf("want 3 leaves, got %d", len(leaves))
+	}
+	if _, err := merkleRoot(leaves); err != nil {
+		t.Fatalf("root: %v", err)
+	}
+
+	// And every fail-closed rule applies to it with no per-source code to carry them.
+	undeclaredKind := []byte(`<registre><navires><navire><identifiant>N-9</identifiant>` +
+		`<nom>ETOILE</nom><categorie>sous-marin</categorie></navire></navires></registre>`)
+	if _, err := decodeXML(invented, undeclaredKind); err == nil {
+		t.Fatal("an undeclared kind was accepted for the new register")
+	}
+	missingName := []byte(`<registre><personnes><personne><identifiant>A-1</identifiant>` +
+		`<prenom>Marie</prenom></personne></personnes></registre>`)
+	if _, err := decodeXML(invented, missingName); err == nil {
+		t.Fatal("a row missing an always-present element was accepted for the new register")
+	}
+}
+
+// A DECLARED PATH IS A STRING, SO THE COMPILER NO LONGER CHECKS IT. `validate` is what buys that
+// back, and it must fire on the incomplete declaration rather than halfway through a real export.
+func TestAnIncompleteSourceDeclarationIsRefused(t *testing.T) {
+	complete := sources["OFAC_SDN"]
+
+	for name, spec := range map[string]SourceSpec{
+		"no record sets":  {Key: "X", ReferenceField: "uid", NameFields: []string{"n"}, Listing: membershipMeansListed, Authenticity: authenticityTransportOnly},
+		"kind undecided":  {Key: "X", Records: []RecordSet{{Path: "a/b"}}, ReferenceField: "uid", NameFields: []string{"n"}, Listing: membershipMeansListed, Authenticity: authenticityTransportOnly},
+		"kind twice over": {Key: "X", Records: []RecordSet{{Path: "a/b", Kind: KindEntity, KindField: "t"}}, ReferenceField: "uid", NameFields: []string{"n"}, Listing: membershipMeansListed, Authenticity: authenticityTransportOnly},
+		"no vocabulary":   {Key: "X", Records: []RecordSet{{Path: "a/b", KindField: "t"}}, ReferenceField: "uid", NameFields: []string{"n"}, Listing: membershipMeansListed, Authenticity: authenticityTransportOnly},
+		"no reference":    {Key: "X", Records: []RecordSet{{Path: "a/b", Kind: KindEntity}}, NameFields: []string{"n"}, Listing: membershipMeansListed, Authenticity: authenticityTransportOnly},
+		"no name fields":  {Key: "X", Records: []RecordSet{{Path: "a/b", Kind: KindEntity}}, ReferenceField: "uid", Listing: membershipMeansListed, Authenticity: authenticityTransportOnly},
+		"no semantics":    {Key: "X", Records: []RecordSet{{Path: "a/b", Kind: KindEntity}}, ReferenceField: "uid", NameFields: []string{"n"}},
+		"no authenticity": {Key: "X", Records: []RecordSet{{Path: "a/b", Kind: KindEntity}}, ReferenceField: "uid", NameFields: []string{"n"}, Listing: membershipMeansListed},
+	} {
+		if err := spec.validate(); err == nil {
+			t.Errorf("a spec with %s was accepted", name)
+		}
+	}
+
+	if err := complete.validate(); err != nil {
+		t.Fatalf("a real declaration was rejected: %v", err)
+	}
+}
+
+// THE CHECK STRUCT TAGS NEVER GAVE. An unmatched `xml:"..."` tag yields "" in silence, so a renamed
+// element used to fill every row with empty names and publish a plausible, wrong snapshot. Here the
+// rows still decode — the reference, the kind and the manifest all still line up — and the snapshot
+// is refused anyway, on the strength of one element having vanished from a row.
+//
+// PER ROW, NOT PER DOCUMENT. The first version of this guard asked whether an element appeared
+// ANYWHERE, and refused three valid documents: `firstName` is on 7,473 of 19,181 US rows and
+// `SECOND_NAME` on 727 of 736 UN individuals, so optional elements are legitimately absent from any
+// small excerpt. Only elements measured on EVERY row of the real export are required.
+func TestARenamedNameElementRefusesTheSnapshotRatherThanEmptyingIt(t *testing.T) {
+	body := strings.ReplaceAll(string(load(t, "ofac_sdn_excerpt.xml")), "lastName>", "surname>")
+
+	_, err := decodeSubjects("OFAC_SDN", []byte(body))
+	if err == nil {
+		t.Fatal("a renamed name element decoded to empty names and was accepted")
+	}
+	if !strings.Contains(err.Error(), "lastName") {
+		t.Fatalf("error does not name the missing element: %v", err)
+	}
+}
+
+// ONLY DIRECT CHILDREN. An sdnEntry nests `<uid>` inside akaList, addressList and idList, so a
+// walker taking any descendant would key the leaf on whichever alias came last. The excerpt really
+// does contain those nested uids — this is a property of the published file, not of a contrived
+// fixture.
+func TestNestedIdentifiersAreNotMistakenForTheRowsOwn(t *testing.T) {
+	raw := string(load(t, "ofac_sdn_excerpt.xml"))
+	if !strings.Contains(raw, "<akaList>") && !strings.Contains(raw, "<idList>") {
+		t.Skip("the excerpt no longer contains a nested identifier to be confused by")
+	}
+
+	subjects, err := decodeSubjects("OFAC_SDN", []byte(raw))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	for _, s := range subjects {
+		if !strings.Contains(raw, "<sdnEntry>\n    <uid>"+s.Reference+"</uid>") {
+			t.Fatalf("reference %q is not an entry's own uid - a nested identifier leaked into the leaf", s.Reference)
+		}
+	}
+}
+
 func TestTheRegistryIdFollowsTheRegistryKey(t *testing.T) {
 	if registryIDFor("OFAC_SDN") == registryIDFor("UK_OFSI_CONSOLIDATED") {
 		t.Fatal("two registries hash to one id")

@@ -36,13 +36,23 @@ DEST="${CIRCUITS_DIR}/../contracts/contracts/passport/verifiers2/noir"
 WORK="${CIRCUITS_DIR}/.passport-build"
 FILTER="${1:-}"
 
+# BOTH COMPILERS ARE ACCEPTED HERE, AND ONLY HERE, BECAUSE IT WAS MEASURED. The passport profile
+# crates compile on STOCK beta.26 as well as on our patched build - that is exactly why the
+# BigNumParams accommodation was kept in noir_dl_lib - and the two produce a BYTE-IDENTICAL compiled
+# artifact for these circuits (md5 8ea5345bad87c71a45808ae4b6179c99 either way, checked 2026-08-03 on
+# 25_384_3_5_576_248_20_3768_3_2008). The patch fixes an ICE; where there is no ICE there is no
+# difference. This matters because the largest profiles cannot be built on macOS at all (bb does
+# whole-file CRS I/O in one syscall and macOS caps that at INT_MAX), so they are built in Linux
+# containers carrying stock nargo. The bb pin is NOT relaxed - a different bb changes the VK.
 REQUIRED_NARGO="1.0.0-beta.26+quid-icefix1"
+STOCK_NARGO="1.0.0-beta.26"
 REQUIRED_BB="5.1.0"
 actual_nargo="$(nargo --version 2>/dev/null | sed -n 's/^nargo version = //p' | head -1)"
 actual_bb="$(bb --version 2>/dev/null | head -1)"
-if [ "${actual_nargo}" != "${REQUIRED_NARGO}" ] || [ "${actual_bb}" != "${REQUIRED_BB}" ]; then
+if { [ "${actual_nargo}" != "${REQUIRED_NARGO}" ] && [ "${actual_nargo}" != "${STOCK_NARGO}" ]; } \
+   || [ "${actual_bb}" != "${REQUIRED_BB}" ]; then
   echo "TOOLCHAIN MISMATCH - refusing to emit verifiers." >&2
-  echo "  nargo required ${REQUIRED_NARGO}  found '${actual_nargo:-<not on PATH>}'" >&2
+  echo "  nargo required ${REQUIRED_NARGO} (or stock ${STOCK_NARGO})  found '${actual_nargo:-<not on PATH>}'" >&2
   echo "  bb    required ${REQUIRED_BB}     found '${actual_bb:-<not on PATH>}'" >&2
   echo "  (bb lives in ~/.bb, which is not on PATH by default)" >&2
   exit 1
@@ -143,9 +153,16 @@ PY
 
   # bb emits every verifier as `HonkVerifier`; both flavours are handled, and an unrenamed file is a
   # hard failure rather than a silent collision with every other verifier in the project.
-  if grep -q '^contract HonkVerifier is\| contract HonkVerifier is' "${out}"; then
-    sed -i '' "s/contract HonkVerifier is/contract NoirRegisterIdentity_${name} is/" "${out}"
-  fi
+  # PORTABLE RENAME. `sed -i ''` is BSD syntax and GNU sed reads the '' as a FILENAME, so the macOS
+  # form silently fails on Linux - where the heavy profiles have to be built. python3 behaves
+  # identically on both, and this script now runs in both places.
+  python3 - "${out}" "NoirRegisterIdentity_${name}" <<'PYRENAME'
+import sys
+path,new=sys.argv[1],sys.argv[2]
+s=open(path).read()
+if 'contract HonkVerifier is' in s:
+    open(path,'w').write(s.replace('contract HonkVerifier is', f'contract {new} is', 1))
+PYRENAME
   grep -q "contract NoirRegisterIdentity_${name} is" "${out}" || {
     echo "ERROR: ${name} verifier was not renamed - refusing to leave a colliding contract" >&2
     exit 1

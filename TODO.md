@@ -8529,8 +8529,10 @@ at registration") has no passport equivalent and needs its own home regardless.
     `deeply_nested_terms` overflows the stack in release and aborts the run, hiding everything after.
   - **A green wallet test file proves nothing if the module cannot load** - six `pp/` modules were
     unloadable by `node --test`, which is why that directory had zero tests for so long.
-  - **`grep -c` and `\b` failed silently twice here**, producing two false audit conclusions
-    (`RootValidity` "untested"; a bogus dropped-test list). Verify an empty result before believing it.
+  - **`grep -c` and `\b` failed silently here**, producing a bogus dropped-test list. Verify an
+    empty result before believing it. **And the inverse trap, which cost more:** I dismissed a REAL
+    finding (`RootValidity` untested) as a tooling artifact because two suites were NAMED after it.
+    **A dismissal is a conclusion.** Re-run the audit properly instead of explaining it away.
 
   **VEINS OF WORK NOTICED BUT NOT STARTED** (recorded so they are not lost with the context):
   - **`PrivacyPoolComplex` is never deployed anywhere** - salt declared in `DeployLib`, never used,
@@ -8561,9 +8563,15 @@ at registration") has no passport equivalent and needs its own home regardless.
 
   **🔍 BACKEND COVERAGE AUDIT (2026-08-02). Frontend excluded - on-device puppeteer, later.**
 
-  **✅ SOLIDITY: no gaps.** Every non-generated contract is referenced by a test suite. 419 forge
-  tests pass. (`RootValidity` briefly looked uncovered in the audit - a false positive from a broken
-  `\b` in my own grep; it has TWO suites, `RootValidityCopies` and `PoseidonSMTRootValidity`.)
+  **✅ SOLIDITY: no gaps NOW - but the first audit was right and my "correction" was wrong.**
+  `RootValidity.sol` really was uncovered. I dismissed it as a broken-`\b` false positive because
+  two suites are NAMED after it - `RootValidityCopies` and `PoseidonSMTRootValidity` - but NEITHER
+  IMPORTS IT. They drive the three consumers and assert through them, so the rule was covered only
+  as far as those consumers exercise it, and a fourth consumer adopting it wrongly would have been
+  caught by nothing. **A dismissal is a conclusion and needs checking like any other.**
+  Closed by `test/state/RootValidityLib.t.sol` (7 tests, mutation-verified twice: dropping
+  `recordedAt_ != 0` - the original three-copy defect - and making the boundary inclusive both fail).
+  430 forge tests pass.
 
   **🔴 GAP 1 - `backend/cre/ofac_sdn` has ZERO tests, and it is STRUCTURALLY untestable.**
   Everything lives in `main.go` behind `//go:build wasip1`, so no ordinary `go test` can reach it.

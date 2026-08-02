@@ -8515,9 +8515,16 @@ at registration") has no passport equivalent and needs its own home regardless.
     `SumcheckFailed()` far from the cause - I skipped it once and broke 18 tests.
   - **`aggregate_withdrawals` and the 83 `NoirRegisterIdentity_*.sol` are NOT in codegen TARGETS.**
     Changing those circuits refreshes no verifier, and the mismatch surfaces nowhere near the cause.
-  - **Nothing constructs a pool in production.** `DeployLib` holds salts only; all 5 construction
-    sites are tests. `AGGREGATION_VERIFIER` therefore has no deployment path - batching cannot be
-    switched on for real until something wires it.
+  - ~~**Nothing constructs a pool in production.**~~ ✅ **FIXED 2026-08-02.** `DeployLib` now has
+    `deploySimplePool` / `deployComplexPool`, both taking `_aggregationVerifier`, both deterministic
+    via the salts that previously decorated the file. `test/pool/DeployPool.t.sol` exercises the path
+    (6 tests): the verifier is carried onto a deployed pool, batching is REACHABLE on it (reaching
+    `EmptyBatch` proves execution passed the configuration guard), zero is still a legitimate
+    non-batching deployment, `PrivacyPoolComplex` is deployed for the first time by anything, and the
+    salts genuinely bind both address and deployer.
+    **⚠️ THIS INVALIDATES A PREMISE ELSEWHERE:** the note that `Entrypoint`'s storage-layout change is
+    "harmless now (nothing deployed)" was true only while no deployment path existed. `Entrypoint` IS
+    `UUPSUpgradeable`. Re-read that entry before deploying anything.
   - **Regenerate only what changed.** Re-proving unchanged circuits is churn (ZK proofs are
     non-deterministic) and `title_holder` currently FAILS when re-proved (task 30).
 
@@ -8535,9 +8542,10 @@ at registration") has no passport equivalent and needs its own home regardless.
     **A dismissal is a conclusion.** Re-run the audit properly instead of explaining it away.
 
   **VEINS OF WORK NOTICED BUT NOT STARTED** (recorded so they are not lost with the context):
-  - **`PrivacyPoolComplex` is never deployed anywhere** - salt declared in `DeployLib`, never used,
-    no deployment scripts at all. The whole ERC-20 story ships to nobody today, which is what makes
-    task 22 a guard rather than a repair.
+  - ~~**`PrivacyPoolComplex` is never deployed anywhere**~~ - ✅ deployable as of 2026-08-02 via
+    `DeployLib.deployComplexPool`, covered by `DeployPool.t.sol`. It is still not deployed by any
+    OPERATIONAL script (there is no `script/` dir), so task 22 remains a guard rather than a repair -
+    but the path exists and is tested.
   - **`IdentityRegistry.t.sol` WRITES `identity_witness.json`** (`vm.writeJson`) that other tests
     consume - an ordering dependency nothing enforces.
   - **`escrow_documents.json` is a pipeline input with no regeneration guard**; if the registration

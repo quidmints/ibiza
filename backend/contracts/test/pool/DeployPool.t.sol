@@ -1,0 +1,116 @@
+// SPDX-License-Identifier: Apache-2.0
+pragma solidity 0.8.28;
+
+import {Test} from 'forge-std/Test.sol';
+import {DeployLib} from 'contracts/pool/lib/DeployLib.sol';
+import {PrivacyPoolSimple} from 'contracts/pool/implementations/PrivacyPoolSimple.sol';
+import {PrivacyPoolComplex} from 'contracts/pool/implementations/PrivacyPoolComplex.sol';
+import {PrivacyPool} from 'contracts/pool/PrivacyPool.sol';
+import {IPrivacyPool} from 'contracts/pool/interfaces/IPrivacyPool.sol';
+import {NoirVerifierMock} from 'contracts/mock/verifiers/NoirVerifierMock.sol';
+import {MockEntrypoint} from './PrivacyPoolSimple.t.sol';
+
+/*
+ * THE DEPLOYMENT PATH, WHICH DID NOT EXIST.
+ *
+ * `DeployLib` held SALTS AND NOTHING ELSE - no function in the repo constructed a pool, there is no
+ * `script/` directory, and all five construction sites were tests. Two consequences that only look
+ * like documentation problems until you try to ship:
+ *
+ *   1. `AGGREGATION_VERIFIER` had NO path by which a real deployment could set it, so `withdrawBatch`
+ *      could never be enabled however correct the contract was.
+ *   2. `PrivacyPoolComplex` had never been deployed by anything - its salt was declared and never
+ *      used - so the entire ERC-20 path shipped to nobody.
+ *
+ * This suite exercises the deployment functions themselves, so the path is verified rather than
+ * merely present. It deliberately does NOT deploy the identity/state layer: those have their own
+ * constructors and suites, and the gap being closed here is the pool layer.
+ */
+contract DeployPoolTest is Test {
+  MockEntrypoint internal entrypoint;
+  address internal withdrawalVerifier;
+  address internal ragequitVerifier;
+  address internal aggregationVerifier;
+
+  function setUp() public {
+    entrypoint = new MockEntrypoint();
+    withdrawalVerifier = address(new NoirVerifierMock());
+    ragequitVerifier = address(new NoirVerifierMock());
+    aggregationVerifier = address(new NoirVerifierMock());
+  }
+
+  function _simple(address aggregation_) internal returns (PrivacyPoolSimple) {
+    return DeployLib.deploySimplePool(
+      address(entrypoint), withdrawalVerifier, ragequitVerifier, address(entrypoint), aggregation_
+    );
+  }
+
+  // ── the gap this closes ───────────────────────────────────────────────────────────────────
+
+  /// The whole point: a deployed pool can now HAVE an aggregation verifier.
+  function test_DeployedPoolCarriesTheAggregationVerifier() public {
+    PrivacyPoolSimple pool = _simple(aggregationVerifier);
+    assertEq(
+      address(pool.AGGREGATION_VERIFIER()),
+      aggregationVerifier,
+      'a deployed pool still cannot be given an aggregation verifier'
+    );
+  }
+
+  /// ...and batching is genuinely reachable on it, rather than reverting on an unset verifier.
+  /// Reaching `EmptyBatch` proves execution got PAST the configuration guard.
+  function test_BatchingIsReachableOnADeployedPool() public {
+    PrivacyPoolSimple pool = _simple(aggregationVerifier);
+    IPrivacyPool.Withdrawal[] memory ws = new IPrivacyPool.Withdrawal[](0);
+    uint256[7][] memory s = new uint256[7][](0);
+    // NOT AggregationNotConfigured - that is the distinction being asserted.
+    vm.expectRevert(bytes4(keccak256('EmptyBatch()')));
+    pool.withdrawBatch(ws, s, '');
+  }
+
+  /// Zero is a legitimate deployment - a pool that does not offer batching - and must refuse
+  /// explicitly rather than call into an empty address.
+  function test_APoolMayBeDeployedWithoutBatching() public {
+    PrivacyPoolSimple pool = _simple(address(0));
+    assertEq(address(pool.AGGREGATION_VERIFIER()), address(0));
+    IPrivacyPool.Withdrawal[] memory ws = new IPrivacyPool.Withdrawal[](1);
+    uint256[7][] memory s = new uint256[7][](1);
+    vm.expectRevert(PrivacyPool.AggregationNotConfigured.selector);
+    pool.withdrawBatch(ws, s, '');
+  }
+
+  /// `PrivacyPoolComplex` had never been deployed by ANYTHING. Now it is, through the same path.
+  function test_ComplexPoolCanBeDeployed() public {
+    address asset = address(0xC0FFEE);
+    PrivacyPoolComplex pool = DeployLib.deployComplexPool(
+      address(entrypoint), withdrawalVerifier, ragequitVerifier, asset, address(entrypoint), aggregationVerifier
+    );
+    assertEq(pool.ASSET(), asset);
+    assertEq(address(pool.AGGREGATION_VERIFIER()), aggregationVerifier);
+  }
+
+  // ── determinism, which is the reason the salts exist at all ───────────────────────────────
+
+  /// External so the CREATE2 failure reverts at a LOWER depth than the cheatcode - a revert raised
+  /// during CREATE in this contract's own frame does not match `expectRevert`, the same wrinkle
+  /// PrivacyPoolComplexTest documents for its native-asset guard.
+  function deploySimpleExternal(address aggregation_) external returns (PrivacyPoolSimple) {
+    return _simple(aggregation_);
+  }
+
+  /// Same deployer + same salt must collide on a second deployment. If it did not, the addresses
+  /// were never deterministic and the salts were decoration.
+  function test_TheSaltMakesTheAddressDeterministic() public {
+    this.deploySimpleExternal(aggregationVerifier);
+    vm.expectRevert(); // CREATE2 collision: the address is already occupied
+    this.deploySimpleExternal(aggregationVerifier);
+  }
+
+  /// A different deployer must get a different address, or two operators would fight over one slot.
+  function test_DifferentDeployersGetDifferentAddresses() public {
+    PrivacyPoolSimple a = _simple(aggregationVerifier);
+    vm.prank(address(0xBEEF));
+    PrivacyPoolSimple b = _simple(aggregationVerifier);
+    assertTrue(address(a) != address(b), 'the salt does not bind the deployer');
+  }
+}

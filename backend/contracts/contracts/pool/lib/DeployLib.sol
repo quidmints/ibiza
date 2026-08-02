@@ -15,6 +15,9 @@ pragma solidity 0.8.28;
  *
  * Each component can be deployed with a deterministic address based on these predefined salts.
  */
+import {PrivacyPoolSimple} from '../implementations/PrivacyPoolSimple.sol';
+import {PrivacyPoolComplex} from '../implementations/PrivacyPoolComplex.sol';
+
 library DeployLib {
   /**
    * @dev Predefined salt values for each contract type
@@ -42,5 +45,52 @@ library DeployLib {
    */
   function salt(address _deployer, bytes11 _custom) internal pure returns (bytes32 _customSalt) {
     return bytes32(abi.encodePacked(_deployer, hex'00', _custom));
+  }
+
+  /**
+   * @notice Deploy a native-asset pool deterministically.
+   *
+   * WHY THIS EXISTS. Until now this library held SALTS AND NOTHING ELSE: no function here
+   * constructed a pool, there is no deployment script in the repo, and every one of the five
+   * construction sites is a test. So the pools were only ever built by tests, and
+   * `AGGREGATION_VERIFIER` - which `withdrawBatch` reads - had no path by which a real deployment
+   * could ever set it. Batching could not be switched on, whatever the contract said.
+   *
+   * @param _aggregationVerifier MAY be zero: a pool that does not offer batching is a legitimate
+   *        deployment, and `withdrawBatch` then refuses explicitly with `AggregationNotConfigured`
+   *        rather than calling into an empty address. Passing it HERE rather than through a setter
+   *        is what keeps it immutable - a settable verifier could be swapped for one that accepts
+   *        anything, which is the whole security of the batch path.
+   */
+  function deploySimplePool(
+    address _entrypoint,
+    address _withdrawalVerifier,
+    address _ragequitVerifier,
+    address _identityRegistry,
+    address _aggregationVerifier
+  ) internal returns (PrivacyPoolSimple _pool) {
+    _pool = new PrivacyPoolSimple{salt: salt(msg.sender, SIMPLE_POOL_SALT)}(
+      _entrypoint, _withdrawalVerifier, _ragequitVerifier, _identityRegistry, _aggregationVerifier
+    );
+  }
+
+  /**
+   * @notice Deploy an ERC-20 pool deterministically.
+   *
+   * `PrivacyPoolComplex` has never been deployed by anything in this repo - its salt above was
+   * declared and never used - so the ERC-20 path has shipped to nobody. That is why the ERC-20
+   * first-spend problem (TODO.md task 22) is a guard placed before the failure rather than a repair.
+   */
+  function deployComplexPool(
+    address _entrypoint,
+    address _withdrawalVerifier,
+    address _ragequitVerifier,
+    address _asset,
+    address _identityRegistry,
+    address _aggregationVerifier
+  ) internal returns (PrivacyPoolComplex _pool) {
+    _pool = new PrivacyPoolComplex{salt: salt(msg.sender, COMPLEX_POOL_SALT)}(
+      _entrypoint, _withdrawalVerifier, _ragequitVerifier, _asset, _identityRegistry, _aggregationVerifier
+    );
   }
 }

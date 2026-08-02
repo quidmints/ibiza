@@ -30,3 +30,8 @@ process_passport_*.js
 !withdraw_identity/Prover.e2e.toml
 !title_holder/Prover.toml
 !ragequit/Prover.toml
+
+# passport-profiles.json is SOURCE, not build output: the recovered circuit parameter tuples
+# codegen-passport-verifiers.sh builds from. Without this negation the *.json rule above (which
+# exists to keep compiled artifacts out) would silently drop the one input that cannot be rebuilt.
+!passport-profiles.json

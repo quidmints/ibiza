@@ -8490,6 +8490,17 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **✅ THE CONTEXT PIN WAS ONE-DIRECTIONAL; NOW IT IS BOTH (8 tests, `relay.test.ts`).**
+  `RelayContext.t.sol` already hardcoded the value TypeScript produced and compared Solidity to it -
+  so it caught SOLIDITY drifting and was blind to TYPESCRIPT drifting, because it never runs any
+  TypeScript. The other half now asserts the same constants from the wallet side. Both green
+  together: `forge test --match-contract RelayContextTest` and `node --test src/pp/relay.test.ts`.
+  This matters more than most: `context` is the ONLY public signal naming who gets paid, so a
+  divergence costs a full proof generation and then reverts with ContextMismatch on submission, and
+  `tsc` cannot see it because the TS ABI types are strings. Also pins what the context must BIND -
+  recipient, feeRecipient, relayFeeBPS, processooor, scope - which IS the anti-theft argument in
+  relay.ts, since a field the context does not move is a field a relayer can rewrite in the mempool.
+
   **✅ THE WITNESS HANDED TO THE PROVER IS NOW PINNED TO THE CIRCUIT (16 tests).**
   `withdrawWitness.test.ts` asserts the keys of `inputs` are EXACTLY `withdraw_identity::main`'s 17
   parameters, and that `pubSignals` is its seven public ones in declaration order. Noir binds BY

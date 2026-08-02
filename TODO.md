@@ -8497,6 +8497,27 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **🔬 ROOT CAUSE OF THE FAILED FIX, COMPUTED NOT GUESSED - this makes the real fix tractable.**
+  `into_bignum` consumes `ceil((modulus_bits % 120 or 120)/4) + 30*(num_limbs-1)` slices, which is
+  **one FEWER than `SCALAR_SLICES` for exactly the curves whose tests failed:**
+
+  | curve | into_bignum consumes | SCALAR_SLICES | |
+  |---|---|---|---|
+  | secp256r1 | 64 | 65 | **mismatch +1** |
+  | secp384r1 | 96 | 97 | **mismatch +1** |
+  | secp521r1 | 131 | 131 | match |
+
+  **That is why 7 tests failed and not all of them** - the 521 round-trip is consistent, the others
+  drop the most-significant slice. So `into_bignum` is a valid inverse ONLY when
+  `consumed == SCALAR_SLICES`; elsewhere it silently ignores a leading digit.
+  **The correct constraint must consume ALL N slices.** The reference formula is the one the
+  vendor's `From<Field>` already uses and validates for `N < 64`:
+  `x == sum_i (slices[i]*2 - 15) * 16^(N-1-i) - skew`
+  - in Field arithmetic it is a one-liner (that is the `N < 64` branch)
+  - in BigNum arithmetic the digits are SIGNED (-15..15), which is the whole difficulty and why the
+    `N >= 64` branch was left commented out upstream. Any fix has to handle the borrow, which is
+    what `into_bignum` does - correctly, just over the wrong number of slices.
+
   **❌ MY FIX WAS WRONG AND IS REVERTED. THE HOLE IS STILL OPEN (2026-08-02).**
   I added `assert(BigNumTrait::eq(result.into_bignum(), x))` to `from_bignum`, committed it, and
   **it fails 7 ECDSA tests** - so `into_bignum` is NOT the exact inverse of `from_bignum` and the

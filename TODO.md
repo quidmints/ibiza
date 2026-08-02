@@ -8497,6 +8497,45 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **🚨🚨 POSSIBLE ECDSA SOUNDNESS HOLE IN VENDORED `big_curve` - FOUND 2026-08-02 BY READING THE
+  CODE RATHER THAN THE TRACKER. TREAT AS CRITICAL UNTIL DISPROVEN.**
+
+  `noir_dl_lib/src/big_curve/scalar_field.nr:238` carries the vendor's own comment:
+  **`// TODO: NONE OF THIS IS CONSTRAINED YET. FIX!`**
+
+  It sits in `ScalarField::from_bignum`, which takes wNAF slices from an UNCONSTRAINED hint
+  (`unsafe { get_wnaf_slices2(x) }`) and builds the scalar from them **without constraining that the
+  slices decode back to `x`.**
+
+  **IT IS REACHABLE AND IT IS THE CORE OF ECDSA VERIFICATION.** `sigver/ecdsa.nr:61-62`:
+  ```
+  let u_1 = ScalarField::from_bignum(e * w);
+  let u_2 = ScalarField::from_bignum(r * w);
+  ```
+  Those are the two scalars in `R = u1*G + u2*Q`. If a prover may choose the slices freely, they may
+  choose `u1`/`u2` freely, and `R` can be steered to any point - **including one whose x-coordinate
+  equals `r`, which is signature forgery.**
+
+  **THE ADJACENT HINT IS CONSTRAINED, WHICH IS WHY THIS LOOKS LIKE AN OVERSIGHT RATHER THAN A
+  DESIGN:** ten lines above, `let w = unsafe { s.__invmod() };` is immediately followed by
+  `assert(s * w == BigNum::one());` with the comment "since the previous line is unconstrained".
+  The pattern was understood; this call was missed.
+
+  **BLAST RADIUS:** `verify_ecdsa` is the shared implementation behind
+  `verify_secp256r1/secp384r1/secp521r1/brainpoolP256r1/…_ecdsa`, used by
+  `not_passports_zk_circuits.nr` - i.e. **passport signature verification in
+  `register_identity*` and `query_identity*`.**
+
+  **DO NOT ASSUME I AM RIGHT.** What is VERIFIED: the comment exists, the hint is unconstrained at
+  that site, and the function is called for both ECDSA scalars. What is NOT verified: whether some
+  later constraint (inside `msm`, `into_bignum`, or a round-trip elsewhere) re-binds the slices to
+  the scalar. **That single question decides whether this is a forgery hole or a stale comment**, and
+  it must be answered by reading `msm`/`into_bignum`, not by assuming either way. Task 31.
+
+  **This is why "check the code, not the tracker" matters:** none of the transcript scans found this,
+  because I never mentioned it - the vendor's own TODO was sitting in a file I ported without reading
+  every line of.
+
   **⚠️ UPGRADEABILITY IS ITSELF A CENSORSHIP LEVER, AND THAT WAS SAID ONCE IN PASSING AND NEVER
   BOOKED (recovered 2026-08-02).** `IdentityRegistry` is UUPS-upgradeable, so **an upgrade could
   un-register people and block their withdrawals** - the same shape as the ASP-root lever in the

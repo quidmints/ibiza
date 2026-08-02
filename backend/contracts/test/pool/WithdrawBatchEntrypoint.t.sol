@@ -5,6 +5,7 @@ import {Test} from 'forge-std/Test.sol';
 import {PrivacyPoolSimple} from 'contracts/pool/implementations/PrivacyPoolSimple.sol';
 import {PrivacyPool} from 'contracts/pool/PrivacyPool.sol';
 import {IPrivacyPool} from 'contracts/pool/interfaces/IPrivacyPool.sol';
+import {IState} from 'contracts/pool/interfaces/IState.sol';
 import {BatchVerifierLib} from 'contracts/pool/lib/BatchVerifierLib.sol';
 import {NoirVerifierMock} from 'contracts/mock/verifiers/NoirVerifierMock.sol';
 // MockEntrypoint is declared inside the Simple pool suite rather than its own file.
@@ -37,6 +38,9 @@ import {MockEntrypoint} from './PrivacyPoolSimple.t.sol';
 contract WithdrawBatchEntrypointTest is Test {
   uint256 internal constant PUB_LEN = 7;
   uint256 internal constant CONTEXT_SLOT = 6;
+  /// BN254 scalar field - the pool rejects a precommitment at or above it.
+  uint256 internal constant FIELD =
+    21888242871839275222246405745257275088548364400416034343698204186575808495617;
 
   MockEntrypoint internal entrypoint;
   NoirVerifierMock internal aggregationVerifier;
@@ -157,6 +161,80 @@ contract WithdrawBatchEntrypointTest is Test {
     IPrivacyPool.Withdrawal[] memory ws = _withdrawals(2);
     uint256[PUB_LEN][] memory s = _matchingSignals(ws);
     vm.expectRevert(BatchVerifierLib.InvalidBatchProof.selector);
+    pool.withdrawBatch(ws, s, '');
+  }
+
+  // ── PAST verification, into settlement ────────────────────────────────────────────────────
+
+  /// Deposit so the pool holds funds AND its root history contains a root the batch can prove
+  /// against, then mark an identity root active. Everything after this reaches `_spend`.
+  function _reachSettlement() internal returns (uint256 stateRoot_, uint256 identityRoot_) {
+    vm.deal(address(entrypoint), 10 ether);
+    vm.prank(address(entrypoint));
+    pool.deposit{value: 10 ether}(address(0xD1), 10 ether, uint256(keccak256('precommitment')) % FIELD);
+    stateRoot_ = pool.currentRoot();
+    identityRoot_ = uint256(keccak256('identity-root'));
+    entrypoint.setActiveRoot(identityRoot_);
+  }
+
+  function _settleableSignals(IPrivacyPool.Withdrawal[] memory ws_, uint256 stateRoot_, uint256 identityRoot_)
+    internal
+    view
+    returns (uint256[PUB_LEN][] memory s_)
+  {
+    s_ = _matchingSignals(ws_);
+    for (uint256 i; i < ws_.length; ++i) {
+      s_[i][0] = uint256(keccak256(abi.encode('new-commitment', i))) % FIELD; // inserted as a leaf
+      s_[i][1] = uint256(keccak256(abi.encode('nullifier', i))) % FIELD; // spent nullifier hash
+      s_[i][2] = 1 ether;                                             // withdrawn value
+      s_[i][3] = stateRoot_;
+      s_[i][5] = identityRoot_;
+    }
+  }
+
+  /// DOUBLE-SPEND ACROSS A BATCH - the case TODO.md sec. 2.4 lists as unproven. Two withdrawals in
+  /// ONE batch sharing a nullifier hash: the first settles, the second must hit `_spend`'s
+  /// already-spent check. Nothing outside the settlement loop can catch this, because both entries
+  /// are individually well-formed and the aggregation proof binds them both happily.
+  function test_RejectsTwoWithdrawalsSharingANullifierInOneBatch() public {
+    (uint256 stateRoot, uint256 identityRoot) = _reachSettlement();
+    IPrivacyPool.Withdrawal[] memory ws = _withdrawals(2);
+    uint256[PUB_LEN][] memory s = _settleableSignals(ws, stateRoot, identityRoot);
+    s[1][1] = s[0][1]; // the SAME nullifier hash in both positions
+
+    vm.expectRevert(IState.NullifierAlreadySpent.selector);
+    pool.withdrawBatch(ws, s, '');
+  }
+
+  /// The same nullifier across SEPARATE batches must also fail - the first batch marks it spent and
+  /// that state has to persist, which is a different code path from the within-batch case above.
+  function test_RejectsANullifierAlreadySpentByAnEarlierBatch() public {
+    (uint256 stateRoot, uint256 identityRoot) = _reachSettlement();
+    IPrivacyPool.Withdrawal[] memory ws = _withdrawals(1);
+    uint256[PUB_LEN][] memory s = _settleableSignals(ws, stateRoot, identityRoot);
+    pool.withdrawBatch(ws, s, ''); // settles
+
+    vm.expectRevert(IState.NullifierAlreadySpent.selector);
+    pool.withdrawBatch(ws, s, ''); // same nullifier again
+  }
+
+  /// A batch proving against a state root the pool never held must be refused, or the whole
+  /// membership argument is decorative.
+  function test_RejectsUnknownStateRoot() public {
+    (, uint256 identityRoot) = _reachSettlement();
+    IPrivacyPool.Withdrawal[] memory ws = _withdrawals(1);
+    uint256[PUB_LEN][] memory s = _settleableSignals(ws, uint256(keccak256('never-held')), identityRoot);
+    vm.expectRevert(IPrivacyPool.UnknownStateRoot.selector);
+    pool.withdrawBatch(ws, s, '');
+  }
+
+  /// The identity root is checked against the registry, not merely carried. A stale or invented one
+  /// is what a revoked identity would present.
+  function test_RejectsInvalidIdentityRoot() public {
+    (uint256 stateRoot,) = _reachSettlement();
+    IPrivacyPool.Withdrawal[] memory ws = _withdrawals(1);
+    uint256[PUB_LEN][] memory s = _settleableSignals(ws, stateRoot, uint256(keccak256('not-active')));
+    vm.expectRevert(IPrivacyPool.InvalidIdentityRoot.selector);
     pool.withdrawBatch(ws, s, '');
   }
 

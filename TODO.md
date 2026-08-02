@@ -1882,7 +1882,14 @@ aggregation proof. Plus `lib/BatchVerifierLib.sol` (verification half) and `lib/
 **🔴 UNTESTED, DO NOT DEPLOY ON THE CURRENT SUITE:**
 1. **`withdrawBatch` itself is never called by any test** - all four revert paths unexercised.
 2. **The happy path** needs a real N=16 proof (~27 GB) - impossible on a dev machine.
-3. **Double-spend ACROSS a batch** (two withdrawals sharing a nullifier) is unproven.
+3. ~~**Double-spend ACROSS a batch** (two withdrawals sharing a nullifier) is unproven.~~
+   ✅ **CLOSED 2026-08-02** by `test/pool/WithdrawBatchEntrypoint.t.sol` - both the within-batch case
+   and the across-batches case, plus UnknownStateRoot and InvalidIdentityRoot inside the settlement
+   loop. Mutation-verified: deleting `_spend`'s already-spent check fails both. Reaching settlement
+   needed a deposit (for a real state root and funds) and `setActiveRoot` for the identity root.
+   **Note what this implies: the settlement loop now runs end-to-end** - the across-batches test only
+   works because the FIRST batch settles - though against a doubled verifier, so the cryptography is
+   still unexercised and item 2 stands.
 `test/pool/WithdrawBatchGuards.t.sol` pins only the commitment PROPERTIES the guards rest on.
 
 ### 2.4b Aggregation sizing, infra and UX — what N to pick and what it costs
@@ -8490,6 +8497,15 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **❓ UNEXPLAINED, AND DELIBERATELY NOT BURIED: re-proving `title_holder` produced a proof its own
+  BYTE-IDENTICAL verifier rejected** with `SumcheckFailed()` during the escrow regeneration run. Same
+  VK, fresh witness-identical proof - it should have verified. I reverted the fixture rather than
+  root-causing it, which was right for landing escrow but leaves a real question open: either the
+  codegen path proves `title_holder` against something other than the key it just wrote, or the
+  fixture-writing step differs for that target. **Anything that re-proves title_holder will hit this
+  again.** Reproduce with `codegen-verifiers.sh` and diff the written vk against the one `bb prove`
+  consumed. Task 30.
+
   **🔍 BACKEND COVERAGE AUDIT (2026-08-02). Frontend excluded - on-device puppeteer, later.**
 
   **✅ SOLIDITY: no gaps.** Every non-generated contract is referenced by a test suite. 419 forge
@@ -8514,7 +8530,9 @@ at registration") has no passport equivalent and needs its own home regardless.
 
   **✅ AGGREGATION: the entrypoint is now reachable and its guards are tested** - see the
   AGGREGATION_VERIFIER fix. Still NOT finished: the happy path needs a real N=16 proof (~27 GB), and
-  double-spend across a batch is unexercised.
+  double-spend across a batch is now COVERED (both within-batch and across-batches), and the
+  settlement loop runs end-to-end against a doubled verifier. The remaining gap is the real
+  cryptography: a genuine N=16 proof (~27 GB).
 
   **⚙️ TOOLCHAIN / CIRCUITS — full record in `backend/circuits/NOIR-DL-PORT.md` (2026-08-02).**
 

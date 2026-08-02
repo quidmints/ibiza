@@ -81,12 +81,18 @@ g=json.load(open(man))['profiles'][name]['generics']
 order=["DG1_LEN","DG15_LEN","EC_LEN","SA_LEN","N","EC_FIELD_SIZE","DG_HASH_ALGO","HASH_ALGO",
        "SIG_TYPE","DG1_SHIFT","DG15_SHIFT","EC_SHIFT","AA_SIG_TYPE","AA_SHIFT"]
 v={k:g[k] for k in order}
+# A ZERO-LENGTH ARRAY CANNOT BE A main() PARAMETER on beta.26 - "Invalid entry point type: [u8; 0]".
+# rarimo's beta.1 sources declare `dg15: [u8; 0]` for every profile without Active Authentication
+# (33 of the 75), so their main.nr cannot be reproduced verbatim on our compiler. Our own
+# register_identity crate already solved this: omit the parameter and bind an empty local, which
+# leaves the CIRCUIT identical because DG15_LEN is a generic either way - the array carries no data.
+dg15_param = "" if v['DG15_LEN']==0 else f"\n\tdg15: [u8; {v['DG15_LEN']}],"
+dg15_local = "\tlet dg15: [u8; 0] = [];\n" if v['DG15_LEN']==0 else ""
 print(f"""//registerIdentity_{name}
 use noir_dl::not_passports_zk_circuits::register_identity;
 
 fn main(
-\tdg1: [u8; {v['DG1_LEN']}],
-\tdg15: [u8; {v['DG15_LEN']}],
+\tdg1: [u8; {v['DG1_LEN']}],{dg15_param}
 \tec: [u8; {v['EC_LEN']}],
 \tsa: [u8; {v['SA_LEN']}],
 \tpk: [Field; {v['N']}],
@@ -95,7 +101,7 @@ fn main(
 \tsk_identity: Field,
 \ticao_root: Field,
 \tinclusion_branches: [Field; 80]) -> pub (Field, Field, Field, Field, Field){{
-\tlet tmp = register_identity::<{', '.join(str(v[k]) for k in order)}>(
+{dg15_local}\tlet tmp = register_identity::<{', '.join(str(v[k]) for k in order)}>(
 \tdg1, dg15, ec, sa, pk, reduction_pk, sig, sk_identity, icao_root, inclusion_branches);
 \t(tmp.0, tmp.1, tmp.2, tmp.3, icao_root)
 }}""")

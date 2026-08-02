@@ -1,11 +1,9 @@
 {
   "_provenance": {
     "recovered": "2026-08-02",
-    "source": "rarimo/passport-zk-circuits-noir GitHub release assets, registerIdentity_*.json",
-    "method": "each compiled artifact embeds its own main.nr in file_map; the 14 generic arguments and the //name comment are read verbatim from that source",
-    "built_with": [
-      "1.0.0-beta.1+03b58fa2dfcc8acc8cf5198b1b23b55676fbdb02"
-    ],
+    "source": "rarimo/passport-zk-circuits-noir release assets (registerIdentity_*.json)",
+    "method": "each compiled Noir artifact embeds its own main.nr in file_map; the 14 generic arguments are read verbatim from it",
+    "validation": "every tuple is cross-checked against the artifact's OWN abi - dg1/dg15/ec/sa/pk array lengths must equal DG1_LEN/DG15_LEN/EC_LEN/SA_LEN/N - and against the //name comment, which rarimo's generator derives from the same parameters. 25 of 75 artifacts failed that check (22 declare dg1 as [u8; 0], which no passport profile can be); 24 were rescued from a '-fix' re-release of the same profile, which is what those tags exist for.",
     "field_order": [
       "DG1_LEN",
       "DG15_LEN",
@@ -22,7 +20,7 @@
       "AA_SIG_TYPE",
       "AA_SHIFT"
     ],
-    "documents_required": "none - every value came from a public artifact"
+    "documents_required": "none"
   },
   "profiles": {
     "11_256_3_2_336_216_NA": {
@@ -42,7 +40,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_11_256_3_2_336_216_NA"
+      "from": "first-published artifact"
     },
     "11_256_3_3_336_248_NA": {
       "generics": {
@@ -61,7 +59,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_11_256_3_3_336_248_NA"
+      "from": "first-published artifact"
     },
     "11_256_3_3_576_240_1_864_5_264": {
       "generics": {
@@ -80,7 +78,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 33
       },
-      "embedded_name": "registerIdentity_11_256_3_3_576_240_1_864_5_264"
+      "from": "first-published artifact"
     },
     "11_256_3_3_576_248_1_1184_5_264": {
       "generics": {
@@ -99,45 +97,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 33
       },
-      "embedded_name": "registerIdentity_11_256_3_3_576_248_1_1184_5_264"
-    },
-    "11_256_3_3_576_248_NA": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 0,
-        "EC_LEN": 180,
-        "SA_LEN": 104,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 11,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "embedded_name": "registerIdentity_11_256_3_3_576_248_NA"
-    },
-    "11_256_3_4_336_232_1_1480_4_256": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 229,
-        "EC_LEN": 217,
-        "SA_LEN": 74,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 11,
-        "DG1_SHIFT": 29,
-        "DG15_SHIFT": 185,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "embedded_name": "registerIdentity_11_256_3_4_336_232_1_1480_4_256"
+      "from": "first-published artifact"
     },
     "11_256_3_4_576_248_1_1496_5_296": {
       "generics": {
@@ -156,7 +116,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 37
       },
-      "embedded_name": "registerIdentity_11_256_3_4_576_248_1_1496_5_296"
+      "from": "first-published artifact"
     },
     "11_256_3_4_584_248_1_1496_4_256": {
       "generics": {
@@ -175,7 +135,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 32
       },
-      "embedded_name": "registerIdentity_11_256_3_4_584_248_1_1496_4_256"
+      "from": "first-published artifact"
     },
     "11_256_3_5_576_248_1_1808_4_256": {
       "generics": {
@@ -194,7 +154,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 32
       },
-      "embedded_name": "registerIdentity_11_256_3_5_576_248_1_1808_4_256"
+      "from": "first-published artifact"
     },
     "11_256_3_5_576_248_1_1808_5_296": {
       "generics": {
@@ -213,26 +173,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 37
       },
-      "embedded_name": "registerIdentity_11_256_3_5_576_248_1_1808_5_296"
-    },
-    "11_256_3_5_576_248_NA": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 0,
-        "EC_LEN": 258,
-        "SA_LEN": 104,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 11,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "embedded_name": "registerIdentity_11_256_3_5_576_248_NA"
+      "from": "first-published artifact"
     },
     "11_256_3_5_576_264_NA": {
       "generics": {
@@ -251,7 +192,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_11_256_3_5_576_264_NA"
+      "from": "first-published artifact"
     },
     "11_256_3_5_584_264_1_2136_4_256": {
       "generics": {
@@ -270,7 +211,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 32
       },
-      "embedded_name": "registerIdentity_11_256_3_5_584_264_1_2136_4_256"
+      "from": "first-published artifact"
     },
     "12_256_3_3_336_232_NA": {
       "generics": {
@@ -289,64 +230,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_12_256_3_3_336_232_NA"
-    },
-    "14_256_3_3_576_240_NA": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 0,
-        "EC_LEN": 156,
-        "SA_LEN": 104,
-        "N": 26,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 14,
-        "DG1_SHIFT": 30,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "embedded_name": "registerIdentity_14_256_3_3_576_240_NA"
-    },
-    "14_256_3_4_336_232_1_1480_5_296": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 298,
-        "EC_LEN": 233,
-        "SA_LEN": 74,
-        "N": 26,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 14,
-        "DG1_SHIFT": 29,
-        "DG15_SHIFT": 185,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 37
-      },
-      "embedded_name": "registerIdentity_14_256_3_4_336_232_1_1480_5_296"
-    },
-    "14_256_3_4_576_248_1_1496_3_256": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 165,
-        "EC_LEN": 219,
-        "SA_LEN": 104,
-        "N": 26,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 14,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 187,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "embedded_name": "registerIdentity_14_256_3_4_576_248_1_1496_3_256"
+      "from": "first-published artifact"
     },
     "15_512_3_3_336_248_NA": {
       "generics": {
@@ -365,7 +249,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_15_512_3_3_336_248_NA"
+      "from": "first-published artifact"
     },
     "1_160_3_3_576_200_NA": {
       "generics": {
@@ -384,7 +268,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_1_160_3_3_576_200_NA"
+      "from": "first-published artifact"
     },
     "1_256_3_4_336_232_1_1480_4_256": {
       "generics": {
@@ -403,7 +287,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 32
       },
-      "embedded_name": "registerIdentity_1_256_3_4_336_232_1_1480_4_256"
+      "from": "first-published artifact"
     },
     "1_256_3_4_336_232_1_1480_5_296": {
       "generics": {
@@ -422,7 +306,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 37
       },
-      "embedded_name": "registerIdentity_1_256_3_4_336_232_1_1480_5_296"
+      "from": "first-published artifact"
     },
     "1_256_3_4_336_232_NA": {
       "generics": {
@@ -441,7 +325,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_1_256_3_4_336_232_NA"
+      "from": "first-published artifact"
     },
     "1_256_3_4_336_248_1_1496_4_256": {
       "generics": {
@@ -460,7 +344,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 32
       },
-      "embedded_name": "registerIdentity_1_256_3_4_336_248_1_1496_4_256"
+      "from": "first-published artifact"
     },
     "1_256_3_4_336_248_1_560_4_256": {
       "generics": {
@@ -479,26 +363,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 32
       },
-      "embedded_name": "registerIdentity_1_256_3_4_336_248_1_560_4_256"
-    },
-    "1_256_3_4_576_232_1_1480_3_256": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 165,
-        "EC_LEN": 217,
-        "SA_LEN": 104,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 1,
-        "DG1_SHIFT": 29,
-        "DG15_SHIFT": 185,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "embedded_name": "registerIdentity_1_256_3_4_576_232_1_1480_3_256"
+      "from": "first-published artifact"
     },
     "1_256_3_4_600_248_1_1496_3_256": {
       "generics": {
@@ -517,7 +382,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 32
       },
-      "embedded_name": "registerIdentity_1_256_3_4_600_248_1_1496_3_256"
+      "from": "first-published artifact"
     },
     "1_256_3_5_336_232_NA": {
       "generics": {
@@ -536,7 +401,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_1_256_3_5_336_232_NA"
+      "from": "first-published artifact"
     },
     "1_256_3_5_336_248_1_2120_3_256": {
       "generics": {
@@ -555,26 +420,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 32
       },
-      "embedded_name": "registerIdentity_1_256_3_5_336_248_1_2120_3_256"
-    },
-    "1_256_3_5_336_248_1_2120_4_256": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 229,
-        "EC_LEN": 297,
-        "SA_LEN": 74,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 1,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 265,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "embedded_name": "registerIdentity_1_256_3_5_336_248_1_2120_4_256"
+      "from": "first-published artifact"
     },
     "1_256_3_5_344_232_NA": {
       "generics": {
@@ -593,26 +439,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_1_256_3_5_344_232_NA"
-    },
-    "1_256_3_5_576_248_NA": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 0,
-        "EC_LEN": 297,
-        "SA_LEN": 104,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 1,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "embedded_name": "registerIdentity_1_256_3_5_576_248_NA"
+      "from": "first-published artifact"
     },
     "1_256_3_6_336_248_1_2432_3_256": {
       "generics": {
@@ -631,7 +458,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 32
       },
-      "embedded_name": "registerIdentity_1_256_3_6_336_248_1_2432_3_256"
+      "from": "first-published artifact"
     },
     "1_256_3_6_336_248_1_2744_4_256": {
       "generics": {
@@ -650,7 +477,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 32
       },
-      "embedded_name": "registerIdentity_1_256_3_6_336_248_1_2744_4_256"
+      "from": "first-published artifact"
     },
     "1_256_3_6_576_248_1_2432_5_296": {
       "generics": {
@@ -669,26 +496,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 37
       },
-      "embedded_name": "registerIdentity_1_256_3_6_576_248_1_2432_5_296"
-    },
-    "1_256_3_6_576_264_1_2448_3_256": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 166,
-        "EC_LEN": 338,
-        "SA_LEN": 104,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 1,
-        "DG1_SHIFT": 33,
-        "DG15_SHIFT": 306,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "embedded_name": "registerIdentity_1_256_3_6_576_264_1_2448_3_256"
+      "from": "first-published artifact"
     },
     "1_256_3_7_336_264_20_2760_6_2008": {
       "generics": {
@@ -707,45 +515,7 @@
         "AA_SIG_TYPE": 20,
         "AA_SHIFT": 251
       },
-      "embedded_name": "registerIdentity_1_256_3_7_336_264_20_2760_6_2008"
-    },
-    "20_160_3_2_576_184_NA": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 0,
-        "EC_LEN": 70,
-        "SA_LEN": 92,
-        "N": 6,
-        "EC_FIELD_SIZE": 256,
-        "DG_HASH_ALGO": 20,
-        "HASH_ALGO": 20,
-        "SIG_TYPE": 20,
-        "DG1_SHIFT": 23,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "embedded_name": "registerIdentity_20_160_3_2_576_184_NA"
-    },
-    "20_160_3_3_576_200_NA": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 0,
-        "EC_LEN": 153,
-        "SA_LEN": 92,
-        "N": 6,
-        "EC_FIELD_SIZE": 256,
-        "DG_HASH_ALGO": 20,
-        "HASH_ALGO": 20,
-        "SIG_TYPE": 20,
-        "DG1_SHIFT": 25,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "embedded_name": "registerIdentity_20_160_3_3_576_200_NA"
+      "from": "first-published artifact"
     },
     "20_256_3_3_336_224_NA": {
       "generics": {
@@ -764,26 +534,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_20_256_3_3_336_224_NA"
-    },
-    "20_256_3_5_336_248_NA": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 0,
-        "EC_LEN": 311,
-        "SA_LEN": 74,
-        "N": 6,
-        "EC_FIELD_SIZE": 256,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 20,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "embedded_name": "registerIdentity_20_256_3_5_336_248_NA"
+      "from": "first-published artifact"
     },
     "21_256_3_3_336_232_NA": {
       "generics": {
@@ -802,7 +553,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_21_256_3_3_336_232_NA"
+      "from": "first-published artifact"
     },
     "21_256_3_3_576_232_NA": {
       "generics": {
@@ -821,26 +572,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_21_256_3_3_576_232_NA"
-    },
-    "21_256_3_4_576_232_NA": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 0,
-        "EC_LEN": 217,
-        "SA_LEN": 104,
-        "N": 6,
-        "EC_FIELD_SIZE": 256,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 21,
-        "DG1_SHIFT": 29,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "embedded_name": "registerIdentity_21_256_3_4_576_232_NA"
+      "from": "first-published artifact"
     },
     "21_256_3_5_576_232_NA": {
       "generics": {
@@ -859,7 +591,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_21_256_3_5_576_232_NA"
+      "from": "first-published artifact"
     },
     "21_256_3_7_336_264_21_3072_6_2008": {
       "generics": {
@@ -878,26 +610,7 @@
         "AA_SIG_TYPE": 21,
         "AA_SHIFT": 251
       },
-      "embedded_name": "registerIdentity_21_256_3_7_336_264_21_3072_6_2008"
-    },
-    "23_160_3_3_576_200_NA": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 0,
-        "EC_LEN": 153,
-        "SA_LEN": 92,
-        "N": 4,
-        "EC_FIELD_SIZE": 192,
-        "DG_HASH_ALGO": 20,
-        "HASH_ALGO": 20,
-        "SIG_TYPE": 23,
-        "DG1_SHIFT": 25,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "embedded_name": "registerIdentity_23_160_3_3_576_200_NA"
+      "from": "first-published artifact"
     },
     "24_256_3_4_336_232_NA": {
       "generics": {
@@ -916,26 +629,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_24_256_3_4_336_232_NA"
-    },
-    "24_256_3_4_336_248_NA": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 0,
-        "EC_LEN": 219,
-        "SA_LEN": 70,
-        "N": 4,
-        "EC_FIELD_SIZE": 224,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 28,
-        "SIG_TYPE": 24,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "embedded_name": "registerIdentity_24_256_3_4_336_248_NA"
+      "from": "first-published artifact"
     },
     "25_384_3_3_336_232_NA": {
       "generics": {
@@ -954,7 +648,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_25_384_3_3_336_232_NA"
+      "from": "first-published artifact"
     },
     "25_384_3_3_336_248_NA": {
       "generics": {
@@ -973,7 +667,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_25_384_3_3_336_248_NA"
+      "from": "first-published artifact"
     },
     "25_384_3_3_336_264_1_2024_3_296": {
       "generics": {
@@ -992,7 +686,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 37
       },
-      "embedded_name": "registerIdentity_25_384_3_3_336_264_1_2024_3_296"
+      "from": "first-published artifact"
     },
     "25_384_3_4_336_264_1_2904_2_256": {
       "generics": {
@@ -1011,7 +705,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 32
       },
-      "embedded_name": "registerIdentity_25_384_3_4_336_264_1_2904_2_256"
+      "from": "first-published artifact"
     },
     "25_384_3_5_576_248_20_3768_3_2008": {
       "generics": {
@@ -1030,7 +724,7 @@
         "AA_SIG_TYPE": 20,
         "AA_SHIFT": 251
       },
-      "embedded_name": "registerIdentity_25_384_3_5_576_248_20_3768_3_2008"
+      "from": "first-published artifact"
     },
     "26_512_3_3_336_248_NA": {
       "generics": {
@@ -1049,7 +743,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_26_512_3_3_336_248_NA"
+      "from": "first-published artifact"
     },
     "26_512_3_3_336_264_1_1968_2_256": {
       "generics": {
@@ -1068,7 +762,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 32
       },
-      "embedded_name": "registerIdentity_26_512_3_3_336_264_1_1968_2_256"
+      "from": "first-published artifact"
     },
     "27_512_3_4_336_248_NA": {
       "generics": {
@@ -1087,7 +781,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_27_512_3_4_336_248_NA"
+      "from": "first-published artifact"
     },
     "28_384_3_3_576_264_24_2024_4_2792": {
       "generics": {
@@ -1106,26 +800,7 @@
         "AA_SIG_TYPE": 24,
         "AA_SHIFT": 349
       },
-      "embedded_name": "registerIdentity_28_384_3_3_576_264_24_2024_4_2792"
-    },
-    "2_256_3_4_336_232_1_1480_4_256": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 229,
-        "EC_LEN": 217,
-        "SA_LEN": 74,
-        "N": 35,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 2,
-        "DG1_SHIFT": 29,
-        "DG15_SHIFT": 185,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "embedded_name": "registerIdentity_2_256_3_4_336_232_1_1480_4_256"
+      "from": "first-published artifact"
     },
     "2_256_3_4_336_248_22_1496_7_2408": {
       "generics": {
@@ -1144,26 +819,7 @@
         "AA_SIG_TYPE": 22,
         "AA_SHIFT": 301
       },
-      "embedded_name": "registerIdentity_2_256_3_4_336_248_22_1496_7_2408"
-    },
-    "2_256_3_4_336_248_NA": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 0,
-        "EC_LEN": 219,
-        "SA_LEN": 74,
-        "N": 35,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 2,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "embedded_name": "registerIdentity_2_256_3_4_336_248_NA"
+      "from": "first-published artifact"
     },
     "2_256_3_5_336_248_22_1808_7_2408": {
       "generics": {
@@ -1182,7 +838,7 @@
         "AA_SIG_TYPE": 22,
         "AA_SHIFT": 301
       },
-      "embedded_name": "registerIdentity_2_256_3_5_336_248_22_1808_7_2408"
+      "from": "first-published artifact"
     },
     "2_256_3_6_336_248_1_2432_3_256": {
       "generics": {
@@ -1201,7 +857,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 32
       },
-      "embedded_name": "registerIdentity_2_256_3_6_336_248_1_2432_3_256"
+      "from": "first-published artifact"
     },
     "2_256_3_6_336_264_1_2448_3_256": {
       "generics": {
@@ -1220,26 +876,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 32
       },
-      "embedded_name": "registerIdentity_2_256_3_6_336_264_1_2448_3_256"
-    },
-    "2_256_3_6_576_248_1_2432_3_256": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 165,
-        "EC_LEN": 336,
-        "SA_LEN": 104,
-        "N": 35,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 2,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 304,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "embedded_name": "registerIdentity_2_256_3_6_576_248_1_2432_3_256"
+      "from": "first-published artifact"
     },
     "3_160_3_3_336_200_NA": {
       "generics": {
@@ -1258,7 +895,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_3_160_3_3_336_200_NA"
+      "from": "first-published artifact"
     },
     "3_160_3_4_576_216_1_1512_3_256": {
       "generics": {
@@ -1277,7 +914,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 32
       },
-      "embedded_name": "registerIdentity_3_160_3_4_576_216_1_1512_3_256"
+      "from": "first-published artifact"
     },
     "3_256_3_3_576_248_NA": {
       "generics": {
@@ -1296,64 +933,7 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_3_256_3_3_576_248_NA"
-    },
-    "3_256_3_4_600_248_1_1496_3_256": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 165,
-        "EC_LEN": 219,
-        "SA_LEN": 95,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 20,
-        "SIG_TYPE": 3,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 187,
-        "EC_SHIFT": 75,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "embedded_name": "registerIdentity_3_256_3_4_600_248_1_1496_3_256"
-    },
-    "3_512_3_3_336_264_NA": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 0,
-        "EC_LEN": 310,
-        "SA_LEN": 106,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 64,
-        "HASH_ALGO": 64,
-        "SIG_TYPE": 3,
-        "DG1_SHIFT": 33,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "embedded_name": "registerIdentity_3_512_3_3_336_264_NA"
-    },
-    "6_160_3_3_336_216_1_1080_3_256": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 165,
-        "EC_LEN": 155,
-        "SA_LEN": 62,
-        "N": 26,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 20,
-        "HASH_ALGO": 20,
-        "SIG_TYPE": 6,
-        "DG1_SHIFT": 27,
-        "DG15_SHIFT": 135,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "embedded_name": "registerIdentity_6_160_3_3_336_216_1_1080_3_256"
+      "from": "first-published artifact"
     },
     "7_160_3_3_336_216_1_1080_3_256": {
       "generics": {
@@ -1372,7 +952,7 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 32
       },
-      "embedded_name": "registerIdentity_7_160_3_3_336_216_1_1080_3_256"
+      "from": "first-published artifact"
     },
     "8_160_3_3_336_216_1_1080_3_256": {
       "generics": {
@@ -1391,52 +971,368 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 32
       },
-      "embedded_name": "registerIdentity_8_160_3_3_336_216_1_1080_3_256"
-    }
-  },
-  "quarantined": {
-    "10_256_3_3_576_248_1_1184_5_264": {
+      "from": "first-published artifact"
+    },
+    "11_256_3_3_576_248_NA": {
       "generics": {
         "DG1_LEN": 93,
-        "DG15_LEN": 262,
+        "DG15_LEN": 0,
         "EC_LEN": 180,
         "SA_LEN": 104,
         "N": 18,
         "EC_FIELD_SIZE": 0,
         "DG_HASH_ALGO": 32,
         "HASH_ALGO": 32,
-        "SIG_TYPE": 10,
+        "SIG_TYPE": 11,
         "DG1_SHIFT": 31,
-        "DG15_SHIFT": 148,
+        "DG15_SHIFT": 0,
         "EC_SHIFT": 72,
         "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 33
+        "AA_SHIFT": 0
       },
-      "embedded_name": "registerIdentity_10_256_3_3_576_248_0_1184_5_264",
-      "reason": "the artifact published under this name embeds a DIFFERENT circuit (registerIdentity_10_256_3_3_576_248_0_1184_5_264); regenerating from it would emit a verifier that rejects every proof for this profile"
+      "from": "re-release v0.1.10-fix"
+    },
+    "11_256_3_4_336_232_1_1480_4_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 229,
+        "EC_LEN": 217,
+        "SA_LEN": 74,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 11,
+        "DG1_SHIFT": 29,
+        "DG15_SHIFT": 185,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "from": "re-release v0.1.6-fix"
+    },
+    "11_256_3_5_576_248_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 258,
+        "SA_LEN": 104,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 11,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.12-fix"
+    },
+    "14_256_3_3_576_240_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 156,
+        "SA_LEN": 104,
+        "N": 26,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 14,
+        "DG1_SHIFT": 30,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.8-fix"
+    },
+    "14_256_3_4_336_232_1_1480_5_296": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 298,
+        "EC_LEN": 233,
+        "SA_LEN": 74,
+        "N": 26,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 14,
+        "DG1_SHIFT": 29,
+        "DG15_SHIFT": 185,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 37
+      },
+      "from": "re-release v0.1.12-fix"
+    },
+    "14_256_3_4_576_248_1_1496_3_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 165,
+        "EC_LEN": 219,
+        "SA_LEN": 104,
+        "N": 26,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 14,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 187,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "from": "re-release v0.1.8-fix"
     },
     "1_256_3_3_576_248_NA": {
       "generics": {
         "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 180,
+        "SA_LEN": 104,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 1,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.23-fix"
+    },
+    "1_256_3_4_576_232_1_1480_3_256": {
+      "generics": {
+        "DG1_LEN": 93,
         "DG15_LEN": 165,
+        "EC_LEN": 217,
+        "SA_LEN": 104,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 1,
+        "DG1_SHIFT": 29,
+        "DG15_SHIFT": 185,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "from": "re-release v0.1.12-fix"
+    },
+    "1_256_3_5_336_248_1_2120_4_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 229,
+        "EC_LEN": 297,
+        "SA_LEN": 74,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 1,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 265,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "from": "re-release v0.1.7-fix"
+    },
+    "1_256_3_5_576_248_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 297,
+        "SA_LEN": 104,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 1,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.9-fix"
+    },
+    "1_256_3_6_576_264_1_2448_3_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 166,
         "EC_LEN": 338,
+        "SA_LEN": 104,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 1,
+        "DG1_SHIFT": 33,
+        "DG15_SHIFT": 306,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "from": "re-release v0.1.9-fix"
+    },
+    "20_160_3_2_576_184_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 70,
+        "SA_LEN": 92,
+        "N": 6,
+        "EC_FIELD_SIZE": 256,
+        "DG_HASH_ALGO": 20,
+        "HASH_ALGO": 20,
+        "SIG_TYPE": 20,
+        "DG1_SHIFT": 23,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.8-fix"
+    },
+    "20_160_3_3_576_200_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 153,
+        "SA_LEN": 92,
+        "N": 6,
+        "EC_FIELD_SIZE": 256,
+        "DG_HASH_ALGO": 20,
+        "HASH_ALGO": 20,
+        "SIG_TYPE": 20,
+        "DG1_SHIFT": 25,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.9-fix"
+    },
+    "20_256_3_5_336_248_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 311,
+        "SA_LEN": 74,
+        "N": 6,
+        "EC_FIELD_SIZE": 256,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 20,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.11-fix"
+    },
+    "21_256_3_4_576_232_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 217,
+        "SA_LEN": 104,
+        "N": 6,
+        "EC_FIELD_SIZE": 256,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 21,
+        "DG1_SHIFT": 29,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.5-fix"
+    },
+    "23_160_3_3_576_200_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 153,
+        "SA_LEN": 92,
+        "N": 4,
+        "EC_FIELD_SIZE": 192,
+        "DG_HASH_ALGO": 20,
+        "HASH_ALGO": 20,
+        "SIG_TYPE": 23,
+        "DG1_SHIFT": 25,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.10-fix"
+    },
+    "24_256_3_4_336_248_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 219,
+        "SA_LEN": 70,
+        "N": 4,
+        "EC_FIELD_SIZE": 224,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 28,
+        "SIG_TYPE": 24,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.11-fix"
+    },
+    "2_256_3_4_336_232_1_1480_4_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 229,
+        "EC_LEN": 217,
         "SA_LEN": 74,
         "N": 35,
         "EC_FIELD_SIZE": 0,
         "DG_HASH_ALGO": 32,
         "HASH_ALGO": 32,
         "SIG_TYPE": 2,
-        "DG1_SHIFT": 33,
-        "DG15_SHIFT": 306,
+        "DG1_SHIFT": 29,
+        "DG15_SHIFT": 185,
         "EC_SHIFT": 42,
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 32
       },
-      "embedded_name": "registerIdentity_2_256_3_6_336_264_1_2448_3_256",
-      "reason": "the artifact published under this name embeds a DIFFERENT circuit (registerIdentity_2_256_3_6_336_264_1_2448_3_256); regenerating from it would emit a verifier that rejects every proof for this profile",
-      "identical_tuple_as": [
-        "2_256_3_6_336_264_1_2448_3_256"
-      ]
+      "from": "re-release v0.1.7-fix"
+    },
+    "2_256_3_4_336_248_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 219,
+        "SA_LEN": 74,
+        "N": 35,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 2,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.7-fix"
     },
     "2_256_3_6_336_264_21_2448_6_2008": {
       "generics": {
@@ -1452,11 +1348,94 @@
         "DG1_SHIFT": 33,
         "DG15_SHIFT": 306,
         "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 20,
+        "AA_SIG_TYPE": 21,
         "AA_SHIFT": 251
       },
-      "embedded_name": "registerIdentity_2_256_3_6_264_336_20_2448_5_2008",
-      "reason": "the artifact published under this name embeds a DIFFERENT circuit (registerIdentity_2_256_3_6_264_336_20_2448_5_2008); regenerating from it would emit a verifier that rejects every proof for this profile"
+      "from": "re-release v0.1.3"
+    },
+    "2_256_3_6_576_248_1_2432_3_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 165,
+        "EC_LEN": 336,
+        "SA_LEN": 104,
+        "N": 35,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 2,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 304,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "from": "re-release v0.1.6-fix"
+    },
+    "3_256_3_4_600_248_1_1496_3_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 165,
+        "EC_LEN": 219,
+        "SA_LEN": 95,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 20,
+        "SIG_TYPE": 3,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 187,
+        "EC_SHIFT": 75,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "from": "re-release v0.1.10-fix"
+    },
+    "3_512_3_3_336_264_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 310,
+        "SA_LEN": 106,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 64,
+        "HASH_ALGO": 64,
+        "SIG_TYPE": 3,
+        "DG1_SHIFT": 33,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.6-fix"
+    },
+    "6_160_3_3_336_216_1_1080_3_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 165,
+        "EC_LEN": 155,
+        "SA_LEN": 62,
+        "N": 26,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 20,
+        "HASH_ALGO": 20,
+        "SIG_TYPE": 6,
+        "DG1_SHIFT": 27,
+        "DG15_SHIFT": 135,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "from": "re-release v0.1.11-fix"
+    }
+  },
+  "quarantined": {
+    "10_256_3_3_576_248_1_1184_5_264": {
+      "reason": "every published artifact for this name embeds registerIdentity_10_256_3_3_576_248_0_1184_5_264 - AA_SIG_TYPE is 0 in the circuit and 1 in the file name, and no re-release fixes it. The name is generated FROM the parameters, so one of the two is wrong upstream and we cannot tell which; building either way risks a verifier that rejects every proof for this profile."
+    },
+    "ID_Card_I": {
+      "reason": "no artifact published under this name in any release"
     }
   }
 }

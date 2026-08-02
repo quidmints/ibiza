@@ -2,7 +2,7 @@ pub fn priv_to_pub(priv: Field) -> (Field, Field){
     let base_x = 5299619240641551281634865583518297030282874472190772894086521144482721001553;
     let base_y = 16950150798460657717958625567821834550301663161624707787222815936182638968203;
 
-    let priv_bits: [u1; 254] = priv.to_be_bits::<254>();
+    let priv_bits: [Field; 254] = crate::utils::bits_to_field(priv.to_be_bits::<254>());
 
     let mut result_x = base_x * (priv_bits[0] as Field);
     let mut result_y = base_y * (priv_bits[0] as Field);

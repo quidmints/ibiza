@@ -424,8 +424,8 @@ where
         lambda.validate_in_range();
 
         // TODO: we can probably optimize this boolean flag jenga mess
-        let x_equal_predicate = x2.eq(x1);
-        let y_equal_predicate = y2.eq(y1);
+        let x_equal_predicate = BigNumTrait::eq(x2, x1);
+        let y_equal_predicate = BigNumTrait::eq(y2, y1);
         let double_predicate = x_equal_predicate | (self.is_infinity | other.is_infinity); // if x1 == x2, evaluate double operation. If y1 = -y2 then we set all input/output parameters to be 0
         let infinity_predicate =
             (x_equal_predicate & !y_equal_predicate) | (self.is_infinity & other.is_infinity);
@@ -529,8 +529,8 @@ where
         y3.validate_in_range();
         lambda.validate_in_range();
 
-        let x_equal_predicate = x2.eq(x1);
-        let y_equal_predicate = y2.eq(y1) == false;
+        let x_equal_predicate = BigNumTrait::eq(x2, x1);
+        let y_equal_predicate = BigNumTrait::eq(y2, y1) == false;
         let double_predicate = x_equal_predicate | (self.is_infinity | other.is_infinity); // if x1 == x2, evaluate double operation. If y1 = -y2 then we set all input/output parameters to be 0
         let infinity_predicate: bool =
             (x_equal_predicate & !y_equal_predicate) | (self.is_infinity & other.is_infinity);
@@ -1053,7 +1053,7 @@ where
 {
     fn eq(self, other: Self) -> bool {
         let coords_equal =
-            self.x.eq(other.x) & self.y.eq(other.y) & !self.is_infinity & !other.is_infinity;
+            BigNumTrait::eq(self.x, other.x) & BigNumTrait::eq(self.y, other.y) & !self.is_infinity & !other.is_infinity;
         let infinity = self.is_infinity & other.is_infinity;
         coords_equal | infinity
     }

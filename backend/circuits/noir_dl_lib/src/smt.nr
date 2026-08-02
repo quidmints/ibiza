@@ -52,7 +52,7 @@ fn smt_verifier_level(
     st_inew: Field,
     sibling: Field,
     new_1_leaf: Field,
-    lrbit: u1,
+    lrbit: Field,
     child: Field
 ) -> Field{
 
@@ -67,11 +67,11 @@ pub fn smt_verifier<let N_LEVELS: u32>(
     root: Field,
     leaf: Field,
     key: Field,
-    siblings: [Field; N_LEVELS]) -> u1{
+    siblings: [Field; N_LEVELS]) -> Field{
     
     let hash1_new = smt_hash1(key, leaf);
 
-    let key_bits: [u1; 254] = key.to_le_bits();
+    let key_bits: [Field; 254] = crate::utils::bits_to_field(key.to_le_bits());
     
     let smt_lev_ins_out = smt_level_ins::<N_LEVELS>(siblings);
 
@@ -89,7 +89,7 @@ pub fn smt_verifier<let N_LEVELS: u32>(
     for i in 1..N_LEVELS{
         levels[N_LEVELS - 1 - i] = smt_verifier_level(sm_outs[N_LEVELS - 1 - i].1, sm_outs[N_LEVELS - 1 - i].0, siblings[N_LEVELS - 1 - i], hash1_new, key_bits[N_LEVELS - 1 - i], levels[N_LEVELS - i]);
     }
-    (levels[0] == root) as u1
+    (levels[0] == root) as Field
 }
 
 
@@ -144,7 +144,7 @@ fn smt_verifier_level_full(
     sibling: Field,
     old_1_leaf: Field,
     new_1_leaf: Field,
-    lrbit: u1,
+    lrbit: Field,
     child: Field,
 ) -> Field {
     let switcher = switcher(child, sibling, lrbit);
@@ -178,10 +178,10 @@ pub fn smt_verifier_full<let N_LEVELS: u32>(
     value: Field,
     old_key: Field,
     old_value: Field,
-    is_old0: u1,
-    fnc: u1,
+    is_old0: Field,
+    fnc: Field,
     siblings: [Field; N_LEVELS],
-) -> u1 {
+) -> Field {
     let fnc_f = fnc as Field;
     let is0_f = is_old0 as Field;
 
@@ -190,7 +190,7 @@ pub fn smt_verifier_full<let N_LEVELS: u32>(
     let hash1_old = smt_hash1(old_key, old_value);
     let hash1_new = smt_hash1(key, value);
 
-    let key_bits: [u1; 254] = key.to_le_bits();
+    let key_bits: [Field; 254] = crate::utils::bits_to_field(key.to_le_bits());
     let lev_ins = smt_level_ins::<N_LEVELS>(siblings);
 
     // (top, i0, iold, inew, na), seeded at "still traversing".
@@ -227,7 +227,7 @@ pub fn smt_verifier_full<let N_LEVELS: u32>(
         );
     }
 
-    (levels[0] == root) as u1
+    (levels[0] == root) as Field
 }
 
 /*

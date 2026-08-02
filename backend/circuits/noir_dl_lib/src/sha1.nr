@@ -39,7 +39,7 @@ fn init() -> ([u32; 5]) {
 // To avoid this problem we change a >> (32 - b) with a / 2**(32-b).
 // Btw, << operator works fine it both cases.
 
-fn rotate_left<let b: u8>(a: u32) -> u32 {
+fn rotate_left<let b: u32>(a: u32) -> u32 {
     let two_pow_32_minus_b: u32 = 1 << ((32 - b) as u32);
     ((a << (b as u32)) & 0xFFFFFFFF) + (a / two_pow_32_minus_b)
 }

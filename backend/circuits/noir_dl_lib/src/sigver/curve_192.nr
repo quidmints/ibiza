@@ -211,7 +211,7 @@ pub fn curve_double(in1: [[Field; 2];2]) -> [[Field; 2]; 2]{
 }
 
 pub fn curve_mult(in1: [[Field; 2];2], scalar: Field) -> [[Field; 2]; 2]{
-    let scalar_bits: [u1; 192]= scalar.to_be_bits::<192>();
+    let scalar_bits: [Field; 192] = crate::utils::bits_to_field(scalar.to_be_bits::<192>());
 
     let mut res = in1;
     let mut found_first_bit= false;

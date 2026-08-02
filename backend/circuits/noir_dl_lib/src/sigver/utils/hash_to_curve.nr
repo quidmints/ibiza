@@ -65,7 +65,7 @@ where
     let g_init: CurveJ<Fq, Curve> = CurveJ { x: g.x, y: g.y, z: Fq::one(), is_infinity: false };
     let mut gen = g_init;
 
-    let cofactor_bits: [u1; 128] = cofactor.to_be_bits();
+    let cofactor_bits: [Field; 128] = crate::utils::bits_to_field(cofactor.to_be_bits());
     let mut it: u32 = 0;
     for i in 0..128 {
         if (cofactor_bits[i] == 1) {

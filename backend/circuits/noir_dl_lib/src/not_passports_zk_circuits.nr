@@ -689,7 +689,7 @@ pub fn extract_dg1_commitment<
     sk_identity: Field) -> Field{
     let mut poseidon_hasher = PoseidonHasher::default();
 
-    let mut dg1_bits: [u1; DG1_LEN * 8] = [0; DG1_LEN * 8];
+    let mut dg1_bits: [Field; DG1_LEN * 8] = [0; DG1_LEN * 8];
 
     for i in 0..DG1_LEN{
         let tmp_bits = u8_to_8_u1(dg1[i]);
@@ -733,7 +733,7 @@ fn extract_passport_hash<
     )->Field{
 
     let mut poseidon_hasher = PoseidonHasher::default();
-    let mut sa_hash_bits: [u1; 252] = [0; 252];
+    let mut sa_hash_bits: [Field; 252] = [0; 252];
 
     if (HASH_TYPE >= 32){
         for i in 0..32{
@@ -777,9 +777,9 @@ fn extract_pk_hash<
     let mut out = 0;
 
     if (SIG_TYPE < 20){
-        let mut pk_bits: [u1; 960] = [0; 960];
+        let mut pk_bits: [Field; 960] = [0; 960];
         for i in 0..8{
-            let bits: [u1; 120] = pubkey[i].to_le_bits();
+            let bits: [Field; 120] = crate::utils::bits_to_field(pubkey[i].to_le_bits());
             for j in 0..120{
                 pk_bits[i * 120 + j] = bits[j];
             }
@@ -806,23 +806,23 @@ fn extract_pk_hash<
         if (EC_FIELD_SIZE > 248){
             DIFF = EC_FIELD_SIZE - 248;
         }
-        let mut x_bits: [u1; EC_FIELD_SIZE] = [0; EC_FIELD_SIZE]; 
-        let mut y_bits: [u1; EC_FIELD_SIZE] = [0; EC_FIELD_SIZE]; 
+        let mut x_bits: [Field; EC_FIELD_SIZE] = [0; EC_FIELD_SIZE]; 
+        let mut y_bits: [Field; EC_FIELD_SIZE] = [0; EC_FIELD_SIZE]; 
 
         for i in 0..((N / 2)){
             if i != ((N/2) - 1){
                 let bits_x = pubkey[i].to_le_bits::<120>();
                 let bits_y = pubkey[i + (N / 2)].to_le_bits::<120>();
                 for j in 0..120{
-                    x_bits[i * 120 + j] = bits_x[j];
-                    y_bits[i * 120 + j] = bits_y[j];
+                    x_bits[i * 120 + j] = bits_x[j] as Field;
+                    y_bits[i * 120 + j] = bits_y[j] as Field;
                 }
             } else {
                 let bits_x = pubkey[i].to_le_bits::<EC_FIELD_SIZE % 120>();
                 let bits_y = pubkey[i + (N / 2)].to_le_bits::<EC_FIELD_SIZE % 120>();
                 for j in 0..(EC_FIELD_SIZE % 120){
-                    x_bits[i * 120 + j] = bits_x[j];
-                    y_bits[i * 120 + j] = bits_y[j];
+                    x_bits[i * 120 + j] = bits_x[j] as Field;
+                    y_bits[i * 120 + j] = bits_y[j] as Field;
                 }
             }
         }
@@ -847,7 +847,7 @@ fn extract_pk_hash<
     out
 }
 
-fn u8_to_8_u1(x:u8) -> [u1; 8]{
+fn u8_to_8_u1(x:u8) -> [Field; 8]{
     let out = unsafe { __u8_to_8_u1(x) };
     assert((out[0] as u8) * 128 +
             (out[1] as u8) * 64 + 
@@ -860,11 +860,11 @@ fn u8_to_8_u1(x:u8) -> [u1; 8]{
     out
 }
 
-unconstrained fn __u8_to_8_u1(x:u8) -> [u1; 8]{
+unconstrained fn __u8_to_8_u1(x:u8) -> [Field; 8]{
     let mut x_clone = x;
-    let mut out: [u1; 8] = [0; 8];
+    let mut out: [Field; 8] = [0; 8];
     for i in 0..8{
-        out[7 - i] = (x_clone % 2) as u1;
+        out[7 - i] = (x_clone % 2) as Field;
         x_clone = x_clone / 2;
     }
     out

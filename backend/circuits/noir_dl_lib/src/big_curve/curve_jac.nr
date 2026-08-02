@@ -265,7 +265,7 @@ where
             let both_not_infinity = !(lhs_infinity & rhs_infinity);
             let both_infinity = !both_not_infinity;
 
-            points_equal = (x_lhs.eq(x_rhs) & y_lhs.eq(y_rhs)) & both_not_infinity;
+            points_equal = (BigNumTrait::eq(x_lhs, x_rhs) & BigNumTrait::eq(y_lhs, y_rhs)) & both_not_infinity;
             points_equal = points_equal | both_infinity;
         }
         points_equal
@@ -313,8 +313,8 @@ where
         let S2 = unsafe { Y2.__mul(Z1Z1Z1) };
         // let R = S2.__submod(S1);
         // x1*z2*z2 == x2*z1*z1 => U2 == U2
-        let x_equal_predicate = U2.eq(U1);
-        let y_equal_predicate = S2.eq(S1);
+        let x_equal_predicate = BigNumTrait::eq(U2, U1);
+        let y_equal_predicate = BigNumTrait::eq(S2, S1);
         let lhs_infinity = self.is_infinity;
         let rhs_infinity = p2.is_infinity;
         let double_predicate =

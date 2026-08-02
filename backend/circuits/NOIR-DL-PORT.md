@@ -1,82 +1,59 @@
-# Porting `noir_dl_lib` to nargo 1.0.0-beta.26 — IN PROGRESS, NOT DONE
+# Porting `noir_dl_lib` to nargo 1.0.0-beta.26 — COMPILES; VECTORS NOT YET CONFIRMED
 
-**State: six crates still do not compile.** `register_identity`, `register_identity_td1`,
-`register_identity_light_td1`, `query_identity`, `query_identity_td1` and `escrow_envelope` all
-depend on `noir_dl`, and all fail. **Do not read this file as a completion record.**
+**All 13 circuit crates compile on beta.26 with zero errors and no ICE**, including the six that
+previously failed: register_identity, register_identity_td1, register_identity_light_td1,
+query_identity, query_identity_td1, escrow_envelope.
 
-## What changed, and why it matters
+**COMPILING IS NOT CORRECTNESS.** Hash and curve code was edited. `nargo test` on this library takes
+over ten minutes and its result is NOT yet recorded here — until the pinned vectors pass, none of
+this is trusted for real value.
 
-The blocker was an ICE — `ice: all function ids should have metadata` — which reports NOTHING about
-its cause and made the problem look intractable. **It is gone.** The library now produces ordinary,
-enumerable compiler errors, which is the difference between a mystery and a work list.
+## The ICE, and why it is definitely gone
 
-**Reproduce the ICE in 3 seconds** (kept, because it will be needed again): a crate whose only
-dependency is `noir_dl`, whose `main.nr` is `fn main(x: Field) -> pub Field { x + 1 }`, and which
-uses nothing from the library, ICEs. Mere inclusion is enough. That is what made bisection cheap;
-an earlier attempt failed only because it was run in `nargo test` mode.
+The blocker was `ice: all function ids should have metadata`, which reports nothing about its cause.
+**Two ways the "it's gone" claim could have been false were both checked and both ruled out:**
+1. *Probe artifact* — the reproduction crate uses nothing from the library, so it might have skipped
+   code. Ruled out: the REAL crates showed the identical error profile, and now compile.
+2. *Hidden behind an early abort* — 80 errors could have masked a later crash. Ruled out the only
+   way it can be: **all 80 were fixed, and no ICE appeared.**
 
-**Root cause of the ICE:** beta.26's comptime interpreter crashes evaluating
-`BigNumParams::new(...)` at GLOBAL scope. `new` calls `U60Repr::from` and `get_double_modulus`, so a
-global forces that arithmetic through comptime. The identical call inside a function compiles.
-Fixed by converting 22 such globals to `pub fn NAME() -> BigNumParams<..>` and rewriting their uses.
-**This is semantics-preserving** — same function, same literal arguments — but it moves the work out
-of comptime, so **gate counts must be measured** once the library builds. If Noir does not fold the
-constants, circuits get bigger. Nobody has measured this yet.
+**Root cause:** beta.26's comptime interpreter crashes evaluating `BigNumParams::new(...)` at GLOBAL
+scope (`new` calls `U60Repr::from` and `get_double_modulus`, so a global forces that arithmetic
+through comptime). 22 such globals became `pub fn NAME() -> BigNumParams<..>`. Same function, same
+literal arguments — but the work moved out of comptime, so **gate counts must be measured**; if the
+constants no longer fold, circuits get bigger. Nobody has measured this.
 
-**Also fixed** (4 sites, all old-dialect):
-- `let mut temporaries: [[Field; N]] = &[];` → `= [];` (`&[]` is now a 0-length array reference)
-- `comptime global BARRETT_REDUCTION_OVERFLOW_BITS` → plain `global` (it is read from runtime code)
-- `std::wrapping_mul(v, k)` → `v.wrapping_mul(k)` plus `use std::ops::WrappingMul;`
+**Keep the 3-second reproduction** — a crate whose only dependency is `noir_dl`, with
+`fn main(x: Field) -> pub Field { x + 1 }`, using nothing from the library. Mere inclusion was enough
+to ICE. That is what made bisection cheap; an earlier attempt failed only because it ran in
+`nargo test` mode.
 
-**Dependencies bumped** — every pin was stale against beta.26: `sort` v0.3.0→v0.4.0,
-`poseidon` v0.2.0→v0.3.0, `sha256` v0.2.0→v0.3.0. The comment on the poseidon pin claimed it was
-"pinned to the same version pp uses" while sitting on v0.2.0 with pp on v0.3.0 — **the comment was
-false**, and v0.2.0 does not build on beta.26 at all.
+## The choice that matters most: `u1` at the BOUNDARY, not throughout
 
-## What remains — 80 errors, all mechanical, none yet done
+`u1` is gone in beta.26 and `to_le_bits`/`to_be_bits` now return `[bool; N]`. The obvious fix —
+`u1` → `bool` library-wide — was tried and **reverted**: it turned 80 errors into 59 new ones,
+because this library does ARITHMETIC on those bits throughout, and it would have meant editing
+modular-arithmetic and hash expressions, where a rewritten line is a silently different result.
 
-| count | error | fix |
-|---|---|---|
-| 32 | `` `u1` has been removed, use `bool` instead `` | `[u1; N]` → `[bool; N]`. **Careful:** these are ECDSA scalar bits; anywhere they feed arithmetic rather than selection, `bool` is not a drop-in — this is why the 4 `Cannot assign an expression of type bool to a value of type Field` errors appear. |
-| 16+2 | `wrapping_add` not found / unresolved | free fn → method + `use std::ops::WrappingAdd;` |
-| 10 | `Multiple applicable items in scope` (`U2.eq(U1)`) | `BigNumTrait` and `std::cmp::Eq` both provide `eq`; disambiguate explicitly. |
-| 8 | `Expected type u32, found type u64` | integer-width tightening |
-| 5 | `Bitwise operations are invalid on Field types` | cast to a sized integer first |
-| 3 | `The numeric generic is not of type u8` | generic kind annotation |
+Instead `u1` → `Field` (which is what the arithmetic already assumed) with a single conversion at
+each bit source, `crate::utils::bits_to_field`. **Every algorithm body is byte-identical.** That took
+80 errors to 21 in one step.
 
-## What "the ICE is gone" does and does NOT mean
+Other changes, all chosen to keep call sites unchanged:
+- `std::wrapping_add` is now a trait method — kept as a local `fn wrapping_add(a: u64, b: u64)`
+  wrapper in sha384/sha512 rather than rewriting each nested call.
+- `.eq()` became ambiguous (`BigNumTrait` vs `std::cmp::Eq`) at 10 sites on BigNum values.
+  **`BigNumTrait::eq` is the behaviour-preserving choice** — it compares modular values where `Eq`
+  compares limbs, and the two differ for unreduced representations. Picking the other one would
+  have compiled and been wrong.
+- 4 dialect fixes in `bignum` (empty slice literal, a `comptime global` read at runtime,
+  `std::wrapping_mul` → method), `rotate_left`'s `u8` generic → `u32`, and `sha256_var`'s length
+  argument → `u32` (test vectors only).
 
-**Do not read the absence of an ICE as proof the ICE is fixed everywhere.** Compilation now aborts on
-80 errors, and an abort can hide a crash that would have happened later. The claim is narrower than
-it looks, so here is exactly what backs it.
+**Every dependency pin was stale against beta.26** and all were bumped: `sort` v0.3.0→v0.4.0,
+`poseidon` v0.2.0→v0.3.0 (in BOTH noir_dl_lib and escrow_envelope), `sha256` v0.2.0→v0.3.0. The
+comment on the library's poseidon pin claimed it matched pp while sitting on v0.2.0 with pp on
+v0.3.0 — **the comment was false**, and v0.2.0 does not build on beta.26 at all.
 
-**What IS established, by a controlled A/B with no confounding errors:** with only the fixed `bignum`
-module present the crate compiled COMPLETELY CLEAN — zero errors — and in that state, adding one
-`global X: BigNumParams<..> = BigNumParams::new(..)` produced the ICE, while the identical call moved
-into a function compiled clean again. That configuration reached and passed the stage where the ICE
-fires, so the diagnosis and the fix are real *for that construct*.
-
-**What is NOT established:** that no other ICE remains in the library. The remaining 80 errors stop
-the build before the later stages run.
-
-**The falsifiable prediction, so the next run can check it rather than re-derive it:** once the 80
-errors are fixed, either the library compiles, or a NEW ICE appears. **I cannot say which.** If a new
-ICE appears, the 3-second reproduction above still works and the same bisection applies — that is the
-reason it is written down rather than described.
-
-**80 is a FLOOR, not a total.** These are frontend/type-check errors. Noir resolves generic function
-bodies fully only on instantiation, so monomorphisation-stage errors cannot appear yet and will only
-surface once these are cleared. Budget for the list growing, not shrinking.
-
-**Verified against the real crates, not just the probe** (this matters — the probe uses nothing from
-the library, so it could in principle skip code): `register_identity` 80, `query_identity` 80,
-`escrow_envelope` 88, no ICE in any.
-
-## Do not skip
-
-**Upstream is not an escape.** `noir-bignum` v0.9.2 (latest) pulls `poseidon` v0.2.6, which beta.26
-also rejects — checked. The bignum ecosystem trails beta.26, so this port has to be done here.
-
-**Nothing is verified beyond compilation.** `nargo test` for this library has never run on beta.26,
-so once it builds, the pinned vectors must be run before any of it is trusted for real value — the
-`u1`→`bool` change in particular can alter results silently rather than failing to compile.
+**Upstream is not an escape** — checked: `noir-bignum` v0.9.2 (latest) pulls `poseidon` v0.2.6, which
+beta.26 also rejects. The bignum ecosystem trails the toolchain, so this port had to happen here.

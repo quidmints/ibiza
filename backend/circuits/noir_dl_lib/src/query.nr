@@ -28,7 +28,7 @@ pub fn date_decoder(yy: u32, mm: u32, dd: u32) -> Field {
 
 // Date is hex for utf-8 encoded YYMMDD
 // To compare dates we need current date (20 | 21 centuary)
-pub fn date_is_less(date1: Field, date2: Field, current: Field) -> u1{
+pub fn date_is_less(date1: Field, date2: Field, current: Field) -> Field{
     let data1_bytes = date1.to_be_bytes::<6>();
     let data2_bytes = date2.to_be_bytes::<6>();
     let datac_bytes = current.to_be_bytes::<6>();
@@ -53,7 +53,7 @@ pub fn date_is_less(date1: Field, date2: Field, current: Field) -> u1{
         + (yy1 == yy2) as Field
             * ((mm1 < mm2) as Field + (mm1 == mm2) as Field * (dd1 < dd2) as Field); 
 
-    verdict as u1
+    verdict as Field
 }
 
 /// Prove a document leaf is CURRENT in `registrationSmt`, at `root`.
@@ -93,7 +93,7 @@ pub fn identity_state_verifier(
     assert(verified == 1, "SMT Check failed");
 }
 
-fn citizenship_check(citizenship: Field, bitmask: Field, is_needed: u1) {
+fn citizenship_check(citizenship: Field, bitmask: Field, is_needed: Field) {
     let country_codes = [
         4276823, //ABW
         4277831, //AFG
@@ -497,7 +497,7 @@ pub fn query_identity(
     let _ = citizenship_check(
         citizenship,
         citizenship_mask,
-        selector_bits[0],
+        selector_bits[0] as Field,
     );
 
 
@@ -685,7 +685,7 @@ pub fn query_identity_td1(
     let _ = citizenship_check(
         citizenship,
         citizenship_mask,
-        selector_bits[0],
+        selector_bits[0] as Field,
     );
 
     birth_date *= selector_bits[17] as Field;

@@ -10,7 +10,15 @@
 // Verified against Python `hashlib.sha512` below, covering both the one-block and multi-block
 // padding paths. Do not modify without re-running those.
 use crate::sha384::{msg_u8_to_u64, sha_c};
-use std::wrapping_add;
+use std::ops::WrappingAdd;
+
+/// `std::wrapping_add` was a free function; on beta.26 it is a `WrappingAdd` trait method.
+/// Kept as a local wrapper so every call site stays byte-identical - this is hash code, and
+/// a rewritten expression is a silently different digest.
+fn wrapping_add(a: u64, b: u64) -> u64 {
+    a.wrapping_add(b)
+}
+
 
 pub fn digest<let N: u32>(msg: [u8; N]) -> [u8; 64] {
     let mut msg_block: [u8; 128] = [0; 128];

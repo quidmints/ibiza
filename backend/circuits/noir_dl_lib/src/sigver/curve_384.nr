@@ -210,8 +210,8 @@ pub fn curve_double(in1: [[Field; 4]; 2]) -> [[Field; 4]; 2]{
     [x3.limbs, y3.limbs]
 }
 
-pub fn curve_mult(in1: [[Field; 4];2], scalar: [u1; 384]) -> [[Field; 4]; 2]{
-    let scalar_bits: [u1; 384]= scalar;
+pub fn curve_mult(in1: [[Field; 4];2], scalar: [Field; 384]) -> [[Field; 4]; 2]{
+    let scalar_bits: [Field; 384]= scalar;
 
     let mut res = in1;
     let mut found_first_bit= false;
@@ -264,7 +264,7 @@ pub fn get_val_from_table(table: [[[[Field; 4]; 2]; 4]; 4], x: u32, y: u32) -> [
     table[x][y]
 }
 
-pub fn curve_two_mult(p1: [[Field; 4];2], p2: [[Field; 4];2], scalars:[[u1; 384]; 2]) -> [[Field; 4]; 2]{
+pub fn curve_two_mult(p1: [[Field; 4];2], p2: [[Field; 4];2], scalars:[[Field; 384]; 2]) -> [[Field; 4]; 2]{
     let table = curve_precompute_table(p1, p2);
 
     let s1_bits = scalars[0];
@@ -313,15 +313,15 @@ pub fn ecdsa_ver(sig: [[Field; 4]; 2], pk: [[Field; 4]; 2], hashed: [u8; 48]) {
         let tmp_bits_0 = hs.limbs[2 - i].to_be_bits::<120>();
         let tmp_bits_1 = rs.limbs[2 - i].to_be_bits::<120>();
         for j in 0..120{
-            scalars[0][j + 120 * i + 24] = tmp_bits_0[j];
-            scalars[1][j + 120 * i + 24] = tmp_bits_1[j];
+            scalars[0][j + 120 * i + 24] = tmp_bits_0[j] as Field;
+            scalars[1][j + 120 * i + 24] = tmp_bits_1[j] as Field;
         }
     }
     let tmp_bits_0 = hs.limbs[3].to_be_bits::<24>();
     let tmp_bits_1 = rs.limbs[3].to_be_bits::<24>();
     for j in 0..24{
-        scalars[0][j] = tmp_bits_0[j];
-        scalars[1][j] = tmp_bits_1[j];
+        scalars[0][j] = tmp_bits_0[j] as Field;
+        scalars[1][j] = tmp_bits_1[j] as Field;
     }
 
     let r_point = curve_two_mult(Brainpool384R1_GENERATOR, pk, scalars);

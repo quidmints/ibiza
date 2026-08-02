@@ -1,4 +1,12 @@
-use std::wrapping_add;
+use std::ops::WrappingAdd;
+
+/// `std::wrapping_add` was a free function; on beta.26 it is a `WrappingAdd` trait method.
+/// Kept as a local wrapper so every call site stays byte-identical - this is hash code, and
+/// a rewritten expression is a silently different digest.
+fn wrapping_add(a: u64, b: u64) -> u64 {
+    a.wrapping_add(b)
+}
+
 
 
 fn truncate_to_48(input: [u8; 64]) -> [u8; 48] {

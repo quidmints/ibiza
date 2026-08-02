@@ -57,7 +57,7 @@ where
     // Check that s is the inverse of w since the previous line is unconstrained
     assert(s * w == BigNum::one());
 
-    // 4. Compute u1 = ew mod n and u2 = rw mod n
+    // 4. Compute Field = ew mod n and u2 = rw mod n
     let u_1: ScalarField<SCALAR_SLICES> = ScalarField::from_bignum(e * w);
     let u_2: ScalarField<SCALAR_SLICES> = ScalarField::from_bignum(r * w);
 
@@ -208,7 +208,7 @@ pub fn verify_brainpoolp512t1_ecdsa<let HASH_BYTE_SIZE: u32>(
 #[test]
 fn test_secp521r1_signature_verification() {
     let sha256_hash: [u8; 32] =
-        sha256::sha256_var("Hello World! This is Noir-ECDSA".as_bytes(), "Hello World! This is Noir-ECDSA".as_bytes().len() as u64);
+        sha256::sha256_var("Hello World! This is Noir-ECDSA".as_bytes(), "Hello World! This is Noir-ECDSA".as_bytes().len() as u32);
     assert_eq(
         sha256_hash,
         [
@@ -258,7 +258,7 @@ fn test_secp521r1_signature_verification() {
 #[test]
 fn test_secp384r1_signature_verification() {
     let sha256_hash: [u8; 32] =
-        sha256::sha256_var("Hello World! This is Noir-ECDSA".as_bytes(), "Hello World! This is Noir-ECDSA".as_bytes().len() as u64);
+        sha256::sha256_var("Hello World! This is Noir-ECDSA".as_bytes(), "Hello World! This is Noir-ECDSA".as_bytes().len() as u32);
     assert_eq(
         sha256_hash,
         [
@@ -304,7 +304,7 @@ fn test_secp384r1_signature_verification() {
 #[test]
 fn test_secp256r1_signature_verification() {
     let sha256_hash: [u8; 32] =
-        sha256::sha256_var("Hello World! This is Noir-ECDSA".as_bytes(), "Hello World! This is Noir-ECDSA".as_bytes().len() as u64);
+        sha256::sha256_var("Hello World! This is Noir-ECDSA".as_bytes(), "Hello World! This is Noir-ECDSA".as_bytes().len() as u32);
     assert_eq(
         sha256_hash,
         [
@@ -330,7 +330,7 @@ fn test_secp256r1_signature_verification() {
 #[test]
 fn test_brainpoolp256r1_signature_verification() {
     let sha256_hash: [u8; 32] =
-        sha256::sha256_var("Hello World! This is Noir-ECDSA".as_bytes(), "Hello World! This is Noir-ECDSA".as_bytes().len() as u64);
+        sha256::sha256_var("Hello World! This is Noir-ECDSA".as_bytes(), "Hello World! This is Noir-ECDSA".as_bytes().len() as u32);
     assert_eq(
         sha256_hash,
         [
@@ -361,7 +361,7 @@ fn test_brainpoolp256r1_signature_verification() {
 #[test]
 fn test_brainpoolp384r1_signature_verification() {
     let sha256_hash: [u8; 32] =
-        sha256::sha256_var("Hello World! This is Noir-ECDSA".as_bytes(), "Hello World! This is Noir-ECDSA".as_bytes().len() as u64);
+        sha256::sha256_var("Hello World! This is Noir-ECDSA".as_bytes(), "Hello World! This is Noir-ECDSA".as_bytes().len() as u32);
     assert_eq(
         sha256_hash,
         [
@@ -412,7 +412,7 @@ fn test_brainpoolp384r1_signature_verification() {
 #[test]
 fn test_brainpoolp384t1_signature_verification() {
     let sha256_hash: [u8; 32] =
-        sha256::sha256_var("Hello World! This is Noir-ECDSA".as_bytes(), "Hello World! This is Noir-ECDSA".as_bytes().len() as u64);
+        sha256::sha256_var("Hello World! This is Noir-ECDSA".as_bytes(), "Hello World! This is Noir-ECDSA".as_bytes().len() as u32);
     assert_eq(
         sha256_hash,
         [
@@ -463,7 +463,7 @@ fn test_brainpoolp384t1_signature_verification() {
 #[test]
 fn test_brainpoolp512r1_signature_verification() {
     let sha256_hash: [u8; 32] =
-        sha256::sha256_var("Hello World! This is Noir-ECDSA".as_bytes(), "Hello World! This is Noir-ECDSA".as_bytes().len() as u64);
+        sha256::sha256_var("Hello World! This is Noir-ECDSA".as_bytes(), "Hello World! This is Noir-ECDSA".as_bytes().len() as u32);
     assert_eq(
         sha256_hash,
         [
@@ -518,7 +518,7 @@ fn test_brainpoolp512r1_signature_verification() {
 #[test]
 fn test_brainpoolp512t1_signature_verification() {
     let sha256_hash: [u8; 32] =
-        sha256::sha256_var("Hello World! This is Noir-ECDSA".as_bytes(), "Hello World! This is Noir-ECDSA".as_bytes().len() as u64);
+        sha256::sha256_var("Hello World! This is Noir-ECDSA".as_bytes(), "Hello World! This is Noir-ECDSA".as_bytes().len() as u32);
     assert_eq(
         sha256_hash,
         [

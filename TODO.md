@@ -8490,6 +8490,49 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **⚙️ TOOLCHAIN / CIRCUITS — full record in `backend/circuits/NOIR-DL-PORT.md` (2026-08-02).**
+
+  **✅ ALL 13 CIRCUIT CRATES NOW COMPILE ON beta.26, no ICE.** The six that could not
+  (register_identity{,_td1,_light_td1}, query_identity{,_td1}, escrow_envelope) were blocked by an
+  ICE in `noir_dl_lib`. noir_dl_lib 77/77, pp 87/87, escrow_envelope 4/4, withdraw_identity 5/5,
+  notary_action 5/5, ragequit 3/3. `verify-migration.sh`: **no coverage lost**.
+  Roster went 80 -> 77 for ONE reason, recorded inline in MIGRATION-BASELINE.txt: the three
+  `sigver::curve_384::*` tests went with the dead file they tested.
+
+  **🔴 THE FINISH LINE IS THE VERIFIERS, AND IT IS NOT OPTIONAL.** A verifier is generated from a
+  circuit's VK; the VK follows the constraint system; the constraint system follows the compiler and
+  the library source. These crates could not build on beta.26 AT ALL before, so every committed
+  `contracts/passport/verifiers2/noir/NoirRegisterIdentity_*.sol` came from beta.13. **Using beta.26
+  for them at all means regenerating. There is no version of this where the old verifiers stay
+  valid** - stale ones reject valid proofs on-chain. Task 24.
+
+  **✅ UNBLOCKED: `bb` was installed ALL ALONG** at `~/.bb/bb`, off PATH and at **v0.82.2**, which is
+  why it read as absent. "Not installed" was wrong. **Now upgraded to 5.1.0** (bbup), so
+  nargo beta.26 + bb 5.1.0 finally match what `codegen-verifiers.sh` enforces.
+  **Put `~/.bb` on PATH** or the script still reports it missing.
+
+  **🧬 THE ORPHANS ARE INHERITED, AND WE SHOULD STOP INHERITING THEM.**
+  `noir_dl_lib/src/bignum/` is a vendored copy of `noir-lang/noir-bignum` and `big_curve/` of
+  `noir_bigcurve`; upstream ships every field ITS users might want, so nine `fields/*` modules
+  (`U256`..`U8192`, `ed25519Fr`) are unreferenced generality that arrived with the library, not
+  orphans of our design. **Prune to what we use** (task 25) - the standing rule is no dead code.
+  `curve_384.nr` was a different case and is already deleted: a SECOND, never-wired Brainpool P384R1
+  under a secp384r1 name. Nothing was lost - `sigver::ecdsa::verify_brainpoolp384r1_ecdsa` is live at
+  `not_passports_zk_circuits.nr:549`.
+
+  **🔗 THE SYNC PATH IS BROKEN AND SHOULD BE REPAIRED, NOT ACCEPTED.** rarimo's
+  `passport-zk-circuits-noir` was last touched 2025-11-18 and never made this port, so we have
+  silently become the fork with no route back. Decide and record which: (a) push the beta.26 port
+  upstream so both sides converge, (b) declare a hard fork and prune aggressively since sync is not
+  coming, or (c) pin a vendor commit + changelog so the divergence is at least legible. **Today it
+  is (b) by accident, which is the worst of the three.** Task 27.
+
+  **⚠️ THE ICE IS STILL AN UNFIXED UPSTREAM BUG.** `backend/circuits/noir-ice-repro/` is a 14-line
+  dependency-free reproduction; beta.26 is the newest release and still has it. Our source carries an
+  ACCOMMODATION (22 `global ... = BigNumParams::new(..)` -> `pub fn`), semantics-preserving and
+  **measured at ZERO gate cost** (1 ACIR opcode, identical to an empty circuit - the constants still
+  fold). **Revert it when upstream is fixed.** Task 26.
+
   **❌ THE RARIMO SIDE IS *NOT* IN ALIGNMENT (measured 2026-08-02). Correcting an earlier entry.**
 
   **The toolchain PIN is aligned:** `codegen-verifiers.sh` enforces nargo 1.0.0-beta.26 / bb 5.1.0,

@@ -10,9 +10,19 @@ it was, and what we changed.**
 
 ## Why the two were merged at all
 
-rarime proves **who you are** from a biometric passport. Privacy Pools proves **where money came
-from** without naming you. Neither is sufficient alone for the thing this repo exists to build: a
-person who can prove eligibility and hold value without those two facts being linkable.
+rarime proves **who you are** from a biometric passport. Privacy Pools proves **membership in an
+association set** — that your deposit is one of a chosen subset — **without revealing which one is
+yours**.
+
+**Privacy Pools does NOT prove where money came from, and saying so inverts the design.** Nothing
+about origin is proven or disclosed on-chain. A screening provider curates a set OFF-CHAIN, using
+whatever analysis it likes, and the circuit proves only that your deposit lies inside it. The
+property is **provable dissociation** — "I am one of these depositors, none of whom are the ones you
+excluded" — which is weaker than provenance and deliberately so: it is what lets an honest user
+distance themselves from tainted deposits without ever identifying their own.
+
+Neither is sufficient alone for the thing this repo exists to build: a person who can prove
+eligibility and hold value without those two facts being linkable.
 
 Merging them creates one property neither had: **the identity that gates a withdrawal and the note
 being withdrawn are bound in a single proof**, so an operator sees a valid withdrawal without

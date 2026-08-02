@@ -2187,8 +2187,10 @@ someone's decision, a registration set is a fact about holding a passport.
    separate predicate a deployment may enable, rather than deleted.
 
 That is what "coexist" means concretely: two independent gates on different properties — who you
-are, and where the money came from — neither replacing the other, and neither being an approval
-list.
+are, and which association set your deposit sits in — neither replacing the other, and neither being
+an approval list. (Precisely: the ASP performs chain analysis OFF-CHAIN to curate the set; the
+circuit proves MEMBERSHIP of it. Nothing proves where the money came from — that is dissociation,
+not provenance, and conflating the two overstates what a deployment can claim.)
 
 **What this changes in the code:** `IdentityAspRegistry` stops being the gate (it becomes either the
 registered-identity mirror or is dropped in favour of reading rarime's own registration state);

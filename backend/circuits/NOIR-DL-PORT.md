@@ -8,7 +8,34 @@ query_identity, query_identity_td1, escrow_envelope.
 over ten minutes and its result is NOT yet recorded here — until the pinned vectors pass, none of
 this is trusted for real value.
 
-## The ICE, and why it is definitely gone
+## THE BUG ITSELF — isolated, and it is upstream's
+
+**`noir-ice-repro/` is a 14-line, dependency-free reproduction.** `nargo compile` on it still ICEs.
+
+**Trigger: a GENERIC OPERATOR-OVERLOAD impl invoked during comptime evaluation of a `global`.**
+Narrowed by elimination — the identical call from `main` compiles; an ordinary trait (`From`) in a
+global compiles; removing the const generic compiles. Only operator-overload + generic + global ICEs.
+
+**This is a compiler defect, not our misuse**, and that matters: it means no amount of rewriting our
+crypto source is "the fix". beta.26 is the NEWEST release and still has it, and a search of
+noir-lang/noir found **no matching issue** — so it is unreported. The nearest prior art is PR #12580
+("delayed elaboration of complex globals"), which is the same area of the compiler.
+
+**What our source change actually is.** Moving `BigNumParams::new` out of global scope is an
+ACCOMMODATION, not a repair, and it should be reverted when upstream fixes this. Two things make it
+acceptable to carry meanwhile, both measured rather than assumed:
+- **It costs zero gates.** A circuit reading the params is **1 ACIR opcode — identical to an empty
+  control circuit**. The constants still fold; nothing got bigger. There was never a
+  safety-for-size trade here, because these are PUBLIC constants a prover cannot lie about either
+  way — comptime folding was simply the right design and remains in effect.
+- It is the same function with the same literal arguments.
+
+**Solving it properly means patching `noirc` and running a custom toolchain**, which trades an
+unreported upstream bug for a locally-built compiler that `codegen-verifiers.sh` does not pin. That
+is a toolchain decision, not a code decision — hence it is written down here rather than taken
+unilaterally.
+
+## Why the ICE is definitely gone from our build
 
 The blocker was `ice: all function ids should have metadata`, which reports nothing about its cause.
 **Two ways the "it's gone" claim could have been false were both checked and both ruled out:**

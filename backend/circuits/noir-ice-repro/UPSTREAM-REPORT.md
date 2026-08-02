@@ -10,15 +10,10 @@ wanted as well — an issue was filed rather than a PR because that needs a fork
 `BigNumParams::new` globals to functions so the circuits build on stock beta.26; revert that when
 upstream releases, not when the issue closes.
 
-I could not file this myself: `gh` is not installed on this machine and I have no GitHub
-credentials. Everything below is ready to paste. To do it from here:
-
-    ! brew install gh && gh auth login
-    ! cd /Users/ricktobacco/Documents/quidmint/ibiza/backend/circuits/noir-ice-repro && \
-      gh issue create --repo noir-lang/noir --title "$(sed -n '/^## Title/,/^$/p' UPSTREAM-REPORT.md | tail -n +2)" --body-file /dev/stdin
-
-A PR is the better form if you are willing to fork `noir-lang/noir` — the patch is
-`noir-fix.patch` in this directory and applies cleanly to tag `v1.0.0-beta.26`.
+**WHY AN ISSUE AND NOT A PR.** A pull request to `noir-lang/noir` requires forking it under our
+account; an issue does not, and nothing was forked. The issue carries the full patch inline, so a
+maintainer can apply it directly. If a PR is wanted later, `noir-fix.patch` here applies cleanly to
+tag `v1.0.0-beta.26` — fork, apply, push a branch, open the PR against `master`.
 
 ---
 

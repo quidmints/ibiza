@@ -8497,19 +8497,27 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
-  **🔧 FIX APPLIED (2026-08-02): the ECDSA scalar decomposition is now CONSTRAINED.**
-  `ScalarField::from_bignum` now asserts the round-trip:
-  `assert(BigNumTrait::eq(result.into_bignum(), x))`. `into_bignum` is the exact inverse - it
-  reconstructs the value from `base4_slices` and applies `skew` - so honest slices reproduce `x` and
-  forged ones cannot. Same shape as the `w = unsafe { s.__invmod() }` hint in `verify_ecdsa`, which
-  was already followed by `assert(s * w == BigNum::one())`.
-  **The hole was real, confirmed three ways:** (1) `msm_with_hint_internal` consumes `base4_slices`
-  to index its point table and NEVER re-derives them; (2) `into_bignum` is never called on `u_1`/`u_2`
-  in the verify path; (3) the sibling constructor `From<Field>` DOES validate the decomposition - but
-  **only when `N < 64`**, and every curve we use exceeds that (secp256r1 65, secp384r1 97,
-  secp521r1 131), with the `N >= 64` branch COMMENTED OUT as "this does not work".
-  **Status: compiles; `nargo test` on noir_dl_lib was still running when this was written - the
-  ECDSA vectors are the ones that matter and MUST be confirmed green before this is trusted.**
+  **❌ MY FIX WAS WRONG AND IS REVERTED. THE HOLE IS STILL OPEN (2026-08-02).**
+  I added `assert(BigNumTrait::eq(result.into_bignum(), x))` to `from_bignum`, committed it, and
+  **it fails 7 ECDSA tests** - so `into_bignum` is NOT the exact inverse of `from_bignum` and the
+  naive round-trip is not the constraint. Reverted to `d727889`; noir_dl_lib is green again at 77/77.
+  **A likely cause for whoever picks this up:** `from_bignum` calls `get_wnaf_slices2` while the
+  sibling `From<Field>` calls `get_wnaf_slices` - **different functions**, and `into_bignum` may
+  invert only one of them. Establish which decomposition `into_bignum` actually inverts before
+  writing any assertion.
+
+  **I ALSO NEARLY REPORTED THE BROKEN FIX AS A SUCCESS, TWICE:** the background notification said
+  "exit code 0" (that is the WRAPPER's exit; nargo exited 1), and my own `grep | tail -1` truncated
+  "70 passed, 7 failed" to "70 tests passed". **Both are already-documented traps in this file and
+  they still caught me.** Read the recorded `EXIT=` line, and never let a summarising pipe decide
+  whether a suite is green.
+
+  **THE HOLE ITSELF IS UNCHANGED AND STILL CRITICAL** - see the entry below. What the failed attempt
+  DID establish, and what is worth keeping:
+  - `into_bignum` does not invert `get_wnaf_slices2`, so any fix must use the right inverse
+  - the vendor's `From<Field>` validation is the model to follow, but its `N >= 64` branch - the only
+    one relevant to our curves - is commented out as non-working, so **there is no working reference
+    implementation to copy.** That is why this is hard, and why it was left undone upstream.
 
   **🔴 STILL OPEN, SAME FILE, SAME CLASS - the remaining in-code TODOs in vendored `big_curve`:**
   1. **`scalar_field.nr` `From<Field>`: the `N >= 64` validation is commented out**, and its own doc

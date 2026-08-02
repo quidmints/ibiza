@@ -234,28 +234,9 @@ impl<let N: u32> ScalarFieldTrait for ScalarField<N> {
     {
         x.validate_in_field();
         let mut (slices, skew): ([u8; N], bool) = unsafe { get_wnaf_slices2(x) };
-        let result = Self { base4_slices: slices, skew };
 
-        // CONSTRAIN THE HINT. `get_wnaf_slices2` is `unsafe`, i.e. UNCONSTRAINED: a malicious
-        // prover supplies whatever slices it likes. This function is used for BOTH ECDSA scalars
-        // (`sigver/ecdsa.nr`: `u_1 = from_bignum(e * w)`, `u_2 = from_bignum(r * w)`) and the
-        // slices are then fed straight to `BigCurve::msm`, which indexes its point table with them
-        // and never re-derives them. Unchecked, a prover chooses `u1`/`u2` freely and steers
-        // `R = u1*G + u2*Q` onto any point - including one whose x-coordinate equals `r`. That is
-        // signature forgery, on every curve `verify_ecdsa` backs.
-        //
-        // `into_bignum` is the exact inverse (it reconstructs the value from the slices and applies
-        // `skew`), so the round-trip is the constraint: honest slices reproduce `x`, forged ones
-        // cannot. This is the same shape as the `w = unsafe { s.__invmod() }` hint ten lines into
-        // `verify_ecdsa`, which is immediately followed by `assert(s * w == BigNum::one())` - the
-        // pattern was understood there and simply missing here.
-        //
-        // `BigNumTrait::eq` explicitly: `.eq()` is ambiguous on beta.26 (BigNumTrait vs
-        // std::cmp::Eq), and it is BigNumTrait's modular comparison that is wanted.
-        let roundtrip: BigNum = result.into_bignum();
-        assert(BigNumTrait::eq(roundtrip, x), "wNAF slices do not decode to the scalar");
-
-        result
+        // TODO: NONE OF THIS IS CONSTRAINED YET. FIX!
+        Self { base4_slices: slices, skew }
     }
 
     fn into_bignum<BigNum>(self) -> BigNum

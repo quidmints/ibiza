@@ -23,6 +23,7 @@ import {
   withdrawalSecrets,
 } from "./notes.ts";
 
+// @contract PrivacyPool
 /** Mirrors discovery.ts's POOL_EVENTS_ABI (private there). A drift shows up as notes not found. */
 const ABI = [
   "event Deposited(address indexed _depositor, uint256 indexed _precommitmentBucket, uint256 _commitment, uint256 _label, uint256 _value, uint256 _precommitmentHash)",

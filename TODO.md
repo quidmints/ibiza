@@ -8604,7 +8604,7 @@ at registration") has no passport equivalent and needs its own home regardless.
   - **`codegen-verifiers.sh` is step 4 of 5**; step 5 is `tools/prove-escrow-fixtures.sh`, for the
     numbered `escrow_envelope0/1/2` fixtures `IdentityRegistry.t.sol` loads. Skipping it yields
     `SumcheckFailed()` far from the cause - I skipped it once and broke 18 tests.
-  - **`aggregate_withdrawals` and the 83 `NoirRegisterIdentity_*.sol` are NOT in codegen TARGETS.**
+  - **`aggregate_withdrawals` and the 76 `NoirRegisterIdentity_*.sol` are NOT in codegen TARGETS.**
     Changing those circuits refreshes no verifier, and the mismatch surfaces nowhere near the cause.
   - ~~**Nothing constructs a pool in production.**~~ ✅ **FIXED 2026-08-02.** `DeployLib` now has
     `deploySimplePool` / `deployComplexPool`, both taking `_aggregationVerifier`, both deterministic
@@ -8647,7 +8647,7 @@ at registration") has no passport equivalent and needs its own home regardless.
   - **`title_holder` looks worse in a coverage count than it is** - 0 in-circuit tests, but covered
     from outside by `pp::title_holder::test_matches_wallet_derivation` and a Solidity verifier suite.
 
-  **IF YOU DO ONE THING NEXT:** task **24** is the largest correctness debt (83 passport verifiers
+  **IF YOU DO ONE THING NEXT:** task **24** is the largest correctness debt (76 passport verifiers
   generated on beta.13, in no regeneration script); task **28** is the largest RISK debt (sanctions
   screening with zero tests, and its sibling already has the refactor that makes it testable).
 

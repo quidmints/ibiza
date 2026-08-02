@@ -216,4 +216,4 @@ circuits still build on stock beta.26, which is why the accommodation above was 
   the cause.
 - **regenerate only what changed** — re-proving unchanged circuits is churn, and `title_holder`
   currently fails when re-proved (TODO.md).
-- **not covered by the script:** `aggregate_withdrawals` and the 83 `NoirRegisterIdentity_*.sol`.
+- **not covered by the script:** `aggregate_withdrawals` and the 76 `NoirRegisterIdentity_*.sol`.

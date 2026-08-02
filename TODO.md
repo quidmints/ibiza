@@ -8490,6 +8490,36 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **❌ THE RARIMO SIDE IS *NOT* IN ALIGNMENT (measured 2026-08-02). Correcting an earlier entry.**
+
+  **The toolchain PIN is aligned:** `codegen-verifiers.sh` enforces nargo 1.0.0-beta.26 / bb 5.1.0,
+  and installed nargo IS beta.26. **`bb` is not on PATH on this machine at all**, so verifier codegen
+  cannot be run here regardless.
+
+  **But six crates ICE on plain `nargo compile`:** register_identity, register_identity_td1,
+  register_identity_light_td1, query_identity, query_identity_td1, **escrow_envelope** —
+  `ice: all function ids should have metadata`.
+  **THIS CORRECTS WHAT I BANKED BEFORE**, which said the passport crates "compile on beta.26, only
+  `nargo test` crashes". That is wrong: they do not compile. Compiling fine: pp, noir_dl_lib,
+  withdraw_identity, aggregate_withdrawals, notary_action, title_holder, ragequit — **so the PP
+  withdrawal path is aligned and the passport/identity ENROLMENT path is not.** `escrow_envelope`
+  being in the broken set matters most: it is ours, not rarimo's, and it is how a revocation secret
+  gets registered before anyone can withdraw.
+
+  **ROOT CAUSE NARROWED TO `noir_dl_lib` ITSELF, with a 3-second reproduction.** A crate that merely
+  DECLARES `noir_dl` as a dependency and uses nothing from it ICEs. The failing crates are exactly
+  those depending on it; every passing crate does not. Minimal trigger inside the lib is
+  **`bignum` + `sigver` together** — neither compiles alone (unresolved siblings), and dropping any
+  single submodule of either still ICEs. Earlier module-deletion bisection failed because it was run
+  in TEST mode; the repro above is compile-mode and cheap, so this is now tractable.
+
+  **A SECOND, SEPARATE MISALIGNMENT: `noir_dl_lib` and `escrow_envelope` still pin poseidon v0.2.0**
+  while the migrated crates use v0.3.0 — and v0.2.0 is itself beta.26-incompatible
+  (`error: Comptime global RATE used in non-comptime code`, poseidon2.nr:22). **Bumping it to v0.3.0
+  does NOT fix the ICE**, so these are two independent problems and fixing the pin is necessary but
+  not sufficient. (This is the "why are we still saying poseidon v0.2.0" question, answered: because
+  noir_dl_lib really does still use it.)
+
   **✅ THE ERC-20 FIRST-SPEND DEAD END, CLOSED WITHOUT A CONTRACT CHANGE (`withdrawPlan.ts`, 12
   tests).** I had proposed ERC-4337 + paymaster. Checking the mechanism first made that the wrong
   size of fix: `Entrypoint.relay` ALREADY takes its fee in the withdrawn asset, and the only missing

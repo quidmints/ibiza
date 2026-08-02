@@ -8846,10 +8846,37 @@ at registration") has no passport equivalent and needs its own home regardless.
   path needs — are blocked on a real document (task 6), not on the toolchain.** Emitting them
   untested would add four more unusable verifiers to a repo already holding 76.
 
-  **THE REMAINING DECISION IS TASK 27's, not an engineering one:** the 76 are dead weight here and
-  cannot be refreshed without rarimo's generator. Delete them (they are recoverable from git),
-  vendor the generator, or record them as pinned upstream artifacts. Today it is the worst option by
-  default — kept, unusable, and read as if they were ours.
+  **CORRECTION (user, 2026-08-02): "they are not dead weight, they need to be regenerated."
+  Right on both counts, and my framing was wrong.** They are the deployable verifiers for real-world
+  passport profiles - what lets an actual traveller's proof be accepted. Nothing references them
+  *in this repo* only because verifiers are wired by DEPLOYED ADDRESS, which is a wiring fact, not a
+  verdict on their value. And they do need regenerating: the VK follows the compiler, so beta.13
+  verifiers reject proofs from our beta.26 toolchain - silently, at deploy time.
+
+  **BUT REGENERATION IS BLOCKED ON DOCUMENTS, NOT ON EFFORT - verified upstream 2026-08-02:**
+  - The generator EXISTS (I said it did not; wrong): `register_identity/js/autogen.sh` +
+    `process_passport.js` in `rarimo/passport-zk-circuits-noir`. It writes `src/main.nr` with the 14
+    generic arguments and takes the circuit NAME from that file's first line.
+  - **The parameters are DER byte lengths of a REAL DOCUMENT**: `compile_params` is
+    `{dg1_len: dg1_bytes.length, dg15_len: dg15_bytes.length, ec_len: ec_bytes.length,
+    sa_len: sa_bytes.length, n, ec_field_size: <from the key's ASN.1 params>, ...}`.
+  - **The names are LOSSY and cannot be inverted.** The naming expression is
+    `sig_type _ dg_hash_type*8 _ (dg1==93?3:1) _ ceil((ec_len+8)/64) _ ec_shift*8 _ dg1_shift*8 _ ...`
+    so `ec_len`/`dg15_len` survive only as 64-byte BUCKETS, and `sa_len`, `n`, `ec_field_size` and
+    `hash_type` do not appear at all.
+  - **No parameter table exists anywhere reachable**: not in either rarimo repo, not in our tree, not
+    in the wallet (which ships only our five `.circuit` files). Upstream's `test/inputs/passport` and
+    `test/inputs/generated` are EMPTY placeholders reading *"Here inputs will appear"* - real passport
+    data is not published, correctly.
+
+  **SO THE UNBLOCK IS AN INPUT, AND THERE ARE THREE WAYS TO GET IT:** (a) ask rarimo for the 76
+  parameter tuples - they generated them and must hold them, which makes this one request rather than
+  an engineering programme; (b) regenerate each profile as a real document of that profile is
+  scanned, folding into task 6/15; (c) use document dumps we already hold, if any.
+
+  **THE PIPELINE ITSELF IS PROVEN AND WAITING** - `RegisterIdentityLightHonkVerifier` was generated
+  and tested on-chain by exactly this route on 2026-08-02, so profile regeneration is a table away,
+  not a build away.
 
   **✅ UNBLOCKED: `bb` was installed ALL ALONG** at `~/.bb/bb`, off PATH and at **v0.82.2**, which is
   why it read as absent. "Not installed" was wrong. **Now upgraded to 5.1.0** (bbup), so

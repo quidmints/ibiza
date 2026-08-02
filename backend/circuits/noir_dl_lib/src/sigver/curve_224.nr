@@ -8,17 +8,20 @@ global TWO_POWER_120: Field = 1329227995784915872903807060280344576;
 
 global SECP224R1_GENERATOR: [[Field; 2]; 2] = [[0x3c1d356c21122343280d6115c1d21, 0xb70e0cbd6bb4bf7f321390b94a],[0x4375a05a07476444d5819985007e34, 0xbd376388b5f723fb4c22dfe6cd]];
 
-global Secp224r1_Fq_PARAMS: BigNumParams<2, 224> = BigNumParams::new(
+// beta.26 ICEs evaluating this at global scope (see NOIR-DL-PORT.md).
+pub fn Secp224r1_Fq_PARAMS() -> BigNumParams<2, 224> {
+    BigNumParams::new(
     true,
     [0xffffff000000000000000000000001, 0xffffffffffffffffffffffffff], 
     [0xffffffffffffffffffffffff0, 0x1000000000000000000000000000]
-);
+)
+}
 
 pub struct Secp224r1_Fq_Params {}
 
 impl BigNumParamsGetter<2, 224> for Secp224r1_Fq_Params {
     fn get_params() -> BigNumParams<2, 224> {
-        Secp224r1_Fq_PARAMS
+        Secp224r1_Fq_PARAMS()
     }
 }
 
@@ -26,15 +29,18 @@ pub struct Secp224r1_Fr_Params {}
 
 impl BigNumParamsGetter<2, 224> for Secp224r1_Fr_Params {
     fn get_params() -> BigNumParams<2, 224> {
-        Secp224r1_Fr_PARAMS
+        Secp224r1_Fr_PARAMS()
     }
 }
 
-global Secp224r1_Fr_PARAMS: BigNumParams<2, 224> = BigNumParams::new(
+// beta.26 ICEs evaluating this at global scope (see NOIR-DL-PORT.md).
+pub fn Secp224r1_Fr_PARAMS() -> BigNumParams<2, 224> {
+    BigNumParams::new(
     true,
     [0xff16a2e0b8f03e13dd29455c5c2a3d, 0xffffffffffffffffffffffffff], 
     [0xe95d1f470fc1ec22d6baa3a3d5c3d, 0x1000000000000000000000000000]
-);
+)
+}
 
 
 global a: BigNum<2, 224, Secp224r1_Fq_Params> = BigNum {

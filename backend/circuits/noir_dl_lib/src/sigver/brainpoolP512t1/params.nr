@@ -6,11 +6,13 @@ pub struct BrainpoolP512t1_Fq_Params {}
 
 impl BigNumParamsGetter<5, 512> for BrainpoolP512t1_Fq_Params {
     fn get_params() -> BigNumParams<5, 512> {
-        BrainpoolP512t1_Fq_PARAMS
+        BrainpoolP512t1_Fq_PARAMS()
     }
 }
 
-global BrainpoolP512t1_Fq_PARAMS: BigNumParams<5, 512> = BigNumParams::new(
+// beta.26 ICEs evaluating this at global scope (see NOIR-DL-PORT.md).
+pub fn BrainpoolP512t1_Fq_PARAMS() -> BigNumParams<5, 512> {
+    BigNumParams::new(
     true,
     [
         0x81ff2f2d82c68528aa6056583a48f3,
@@ -26,17 +28,20 @@ global BrainpoolP512t1_Fq_PARAMS: BigNumParams<5, 512> = BigNumParams::new(
         0x6daeb8a15d5ea2f03461e1e8373af6,
         0x17f8d7f4ed,
     ],
-);
+)
+}
 
 pub struct BrainpoolP512t1_Fr_Params {}
 
 impl BigNumParamsGetter<5, 512> for BrainpoolP512t1_Fr_Params {
     fn get_params() -> BigNumParams<5, 512> {
-        BrainpoolP512t1_Fr_PARAMS
+        BrainpoolP512t1_Fr_PARAMS()
     }
 }
 
-global BrainpoolP512t1_Fr_PARAMS: BigNumParams<5, 512> = BigNumParams::new(
+// beta.26 ICEs evaluating this at global scope (see NOIR-DL-PORT.md).
+pub fn BrainpoolP512t1_Fr_PARAMS() -> BigNumParams<5, 512> {
+    BigNumParams::new(
     true,
     [
         0xb1d381085ddaddb58796829ca90069,
@@ -52,7 +57,8 @@ global BrainpoolP512t1_Fr_PARAMS: BigNumParams<5, 512> = BigNumParams::new(
         0x6daeb8a15d5ea2f03461e1e8373af6,
         0x17f8d7f4ed,
     ],
-);
+)
+}
 
 pub type BrainpoolP512t1Fq = BigNum<5, 512, BrainpoolP512t1_Fq_Params>;
 pub type BrainpoolP512t1Fr = BigNum<5, 512, BrainpoolP512t1_Fr_Params>;

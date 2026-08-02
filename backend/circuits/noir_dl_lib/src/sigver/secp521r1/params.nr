@@ -6,11 +6,13 @@ pub struct Secp521r1_Fq_Params {}
 
 impl BigNumParamsGetter<5, 521> for Secp521r1_Fq_Params {
     fn get_params() -> BigNumParams<5, 521> {
-        Secp521r1_Fq_PARAMS
+        Secp521r1_Fq_PARAMS()
     }
 }
 
-global Secp521r1_Fq_PARAMS: BigNumParams<5, 521> = BigNumParams::new(
+// beta.26 ICEs evaluating this at global scope (see NOIR-DL-PORT.md).
+pub fn Secp521r1_Fq_PARAMS() -> BigNumParams<5, 521> {
+    BigNumParams::new(
     true,
     [
         0xffffffffffffffffffffffffffffff,
@@ -20,17 +22,20 @@ global Secp521r1_Fq_PARAMS: BigNumParams<5, 521> = BigNumParams::new(
         0x01ffffffffff,
     ],
     [0x10, 0x0, 0x0, 0x0, 0x200000000000],
-);
+)
+}
 
 pub struct Secp521r1_Fr_Params {}
 
 impl BigNumParamsGetter<5, 521> for Secp521r1_Fr_Params {
     fn get_params() -> BigNumParams<5, 521> {
-        Secp521r1_Fr_PARAMS
+        Secp521r1_Fr_PARAMS()
     }
 }
 
-global Secp521r1_Fr_PARAMS: BigNumParams<5, 521> = BigNumParams::new(
+// beta.26 ICEs evaluating this at global scope (see NOIR-DL-PORT.md).
+pub fn Secp521r1_Fr_PARAMS() -> BigNumParams<5, 521> {
+    BigNumParams::new(
     true,
     [
         0xb5c9b8899c47aebb6fb71e91386409,
@@ -46,7 +51,8 @@ global Secp521r1_Fr_PARAMS: BigNumParams<5, 521> = BigNumParams::new(
         0x0,
         0x200000000000,
     ],
-);
+)
+}
 
 pub type Secp521r1Fq = BigNum<5, 521, Secp521r1_Fq_Params>;
 pub type Secp521r1Fr = BigNum<5, 521, Secp521r1_Fr_Params>;

@@ -8,17 +8,20 @@ global TWO_POWER_120: Field = 1329227995784915872903807060280344576;
 
 global Brainpool384R1_GENERATOR: [[Field; 4]; 2] = [[0x26e03436d646aaef87b2e247d4af1e, 0xa3e77ef14fe3db7fcafe0cbd10e8e8, 0xf068cf45ffa2a63a81b7c13f6b8847, 0x1d1c64],[0x4646217791811142820341263c5315, 0xb29feec5864e19c054ff99129280e, 0x7520f9c2a45cb1eb8e95cfd55262b7, 0x8abe1d]];
 
-global Brainpool384r1_Fq_PARAMS: BigNumParams<4, 384> = BigNumParams::new(
+// beta.26 ICEs evaluating this at global scope (see NOIR-DL-PORT.md).
+pub fn Brainpool384r1_Fq_PARAMS() -> BigNumParams<4, 384> {
+    BigNumParams::new(
     true,
     [0xd3a729901d1a71874700133107ec53, 0x7109ed5456b412b1da197fb71123ac, 0x82a3386d280f5d6f7e50e641df152f, 0x8cb91e],
     [0x7bce07a71566f10a03bf684a267166, 0x449cae56ede9ed590cef1c4d721904, 0x16d8ec6b8ff25adfd3cc6fa65dda2c, 0x1d1b575b]
-);
+)
+}
 
 pub struct Brainpool384r1_Fq_Params {}
 
 impl BigNumParamsGetter<4, 384> for Brainpool384r1_Fq_Params {
     fn get_params() -> BigNumParams<4, 384> {
-        Brainpool384r1_Fq_PARAMS
+        Brainpool384r1_Fq_PARAMS()
     }
 }
 
@@ -26,15 +29,18 @@ pub struct Brainpool384r1_Fr_Params {}
 
 impl BigNumParamsGetter<4, 384> for Brainpool384r1_Fr_Params {
     fn get_params() -> BigNumParams<4, 384> {
-        Brainpool384r1_Fr_PARAMS
+        Brainpool384r1_Fr_PARAMS()
     }
 }
 
-global Brainpool384r1_Fr_PARAMS: BigNumParams<4, 384> = BigNumParams::new(
+// beta.26 ICEs evaluating this at global scope (see NOIR-DL-PORT.md).
+pub fn Brainpool384r1_Fr_PARAMS() -> BigNumParams<4, 384> {
+    BigNumParams::new(
     true,
     [0x3ab6af6b7fc3103b883202e9046565, 0x7109ed5456b31f166e6cac0425a7cf, 0x82a3386d280f5d6f7e50e641df152f, 0x8cb91e],
     [0xfdb467a652109600adcccf8a71f8a1, 0x449cae56ee1c506f2fe165031e7189, 0x16d8ec6b8ff25adfd3cc6fa65dda2c, 0x1d1b575b]
-);
+)
+}
 
 
 global a: BigNum<4, 384, Brainpool384r1_Fq_Params> = BigNum {

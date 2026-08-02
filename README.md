@@ -77,6 +77,42 @@ Other measured gas work along the way:
   than once per withdrawal, which is exactly equivalent because a root's validity is a pure function
   of pool state.
 
+## How we changed Privacy Pools' screening architecture, and why
+
+**Upstream shape.** In Privacy Pools an ASP publishes an association-set root; a withdrawal proves
+its label is in that set. One authority, one root, one predicate — and the ASP can publish a new
+root omitting your commitment at any time after you deposited. Your private exit disappears an hour
+later without anyone taking your money. **That retroactive lever is the property we changed.**
+
+**What we changed it to.** Screening became a **closed set of independent predicates**, each with
+its own anchored source, rather than a single curated root:
+
+- **identity** — holder-rooted registration, proven once at escrow (`escrow_envelope`), with
+  revocation as a status in the same tree rather than a separate authority
+- **sanctions** — `backend/cre/ofac_sdn` anchors the OFAC SDN list via
+  `RegistrySourceAnchor.publishSnapshot`
+- **notary** — `backend/cre/notary_registry` anchors a notary registry the same way
+- **the original ASP chain-analysis set** — preserved as an OPTIONAL predicate a deployment may
+  enable, not deleted
+
+**Why that shape.** Two reasons, both structural rather than cosmetic:
+
+1. **Anchored external authority instead of an operator's opinion.** Each source is scraped by a
+   Chainlink CRE workflow where every DON node fetches the same export independently and must
+   produce a byte-identical result before a report is generated. A single relayer could substitute a
+   tampered snapshot; this cannot. That property is the entire justification for admitting a
+   predicate into a set that is otherwise deliberately tiny.
+2. **A closed set is auditable; discretion is not.** Anyone can enumerate what may be checked. The
+   upstream design lets an ASP decide, per-root, in a way nobody can enumerate after the fact.
+
+**What this does NOT yet achieve, stated plainly because the claim is easy to overstate:** the
+retroactive lever is **reduced, not removed**. Turning the equality check into an append-only
+`mapping(root => publishedAt)` would remove it — at the cost of making a genuinely tainted root
+permanently unremovable — and that is a governance decision, not an engineering one. `IdentityRegistry`
+is also UUPS-upgradeable, so the upgrade key can un-register people independently of any of this.
+**Both are open decisions recorded in `TODO.md`; until one is taken, "this fork has no retroactive
+third-party lever" is false.**
+
 ## Why "one key, many documents"
 
 A person with two passports is the user this design exists for — and the naive shape leaks them.

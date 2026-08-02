@@ -8497,6 +8497,59 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **🧭 COLD-START BRIEFING (2026-08-02). Read this before touching circuits or artifacts.**
+  **Upstream provenance and every change we made to upstream code now live in `README.md`** - which
+  file came from Privacy Pools, which from rarimo, which is ours, and the reproducing command. The
+  short version: **51 non-generated contracts, 58 files in `noir_dl_lib`, 3 rarimo circuit files and
+  62 wallet files have changed since the squashed fork import `0762975`. We are a heavily modified
+  fork, not a thin skin - do not assume any upstream file is untouched.**
+
+  **TRAPS - these bite silently:**
+  - **The toolchain is a locally patched compiler that exists on ONE machine**
+    (`1.0.0-beta.26+quid-icefix1`). CI and other developers WILL fail the guard, correctly. The
+    circuits still build on stock beta.26; the `BigNumParams` accommodation was kept so they do.
+    Stock binary at `~/.nargo/bin/nargo.beta26-release.bak`.
+  - **`bb` must be on PATH** (`export PATH="$HOME/.bb:$PATH"`) or codegen reports it missing.
+  - **`codegen-verifiers.sh` is step 4 of 5**; step 5 is `tools/prove-escrow-fixtures.sh`, for the
+    numbered `escrow_envelope0/1/2` fixtures `IdentityRegistry.t.sol` loads. Skipping it yields
+    `SumcheckFailed()` far from the cause - I skipped it once and broke 18 tests.
+  - **`aggregate_withdrawals` and the 83 `NoirRegisterIdentity_*.sol` are NOT in codegen TARGETS.**
+    Changing those circuits refreshes no verifier, and the mismatch surfaces nowhere near the cause.
+  - **Nothing constructs a pool in production.** `DeployLib` holds salts only; all 5 construction
+    sites are tests. `AGGREGATION_VERIFIER` therefore has no deployment path - batching cannot be
+    switched on for real until something wires it.
+  - **Regenerate only what changed.** Re-proving unchanged circuits is churn (ZK proofs are
+    non-deterministic) and `title_holder` currently FAILS when re-proved (task 30).
+
+  **FALSE SUCCESSES that nearly fooled me, recorded so they do not fool the next run:**
+  - **A background-task notification's "exit code 0" is the WRAPPER's exit, not the command's.** A
+    `cargo test` that aborted with exit 101 was reported as "completed (exit code 0)". Read the
+    recorded `EXIT=`/`CARGO_EXIT=` line in the log, never the harness summary.
+  - **`noirc_frontend`'s suite needs `RUST_MIN_STACK=134217728` on macOS**, or
+    `deeply_nested_terms` overflows the stack in release and aborts the run, hiding everything after.
+  - **A green wallet test file proves nothing if the module cannot load** - six `pp/` modules were
+    unloadable by `node --test`, which is why that directory had zero tests for so long.
+  - **`grep -c` and `\b` failed silently twice here**, producing two false audit conclusions
+    (`RootValidity` "untested"; a bogus dropped-test list). Verify an empty result before believing it.
+
+  **VEINS OF WORK NOTICED BUT NOT STARTED** (recorded so they are not lost with the context):
+  - **`PrivacyPoolComplex` is never deployed anywhere** - salt declared in `DeployLib`, never used,
+    no deployment scripts at all. The whole ERC-20 story ships to nobody today, which is what makes
+    task 22 a guard rather than a repair.
+  - **`IdentityRegistry.t.sol` WRITES `identity_witness.json`** (`vm.writeJson`) that other tests
+    consume - an ordering dependency nothing enforces.
+  - **`escrow_documents.json` is a pipeline input with no regeneration guard**; if the registration
+    tree and the proofs disagree about the root, the symptom is `SumcheckFailed()`.
+  - **`MockEntrypoint` lives inside `PrivacyPoolSimple.t.sol`**, so new suites import from a test file.
+  - **The wallet's bundled `assets/circuits/*.circuit`** are refreshed by codegen, but nothing
+    checks they match the deployed verifiers.
+  - **`title_holder` looks worse in a coverage count than it is** - 0 in-circuit tests, but covered
+    from outside by `pp::title_holder::test_matches_wallet_derivation` and a Solidity verifier suite.
+
+  **IF YOU DO ONE THING NEXT:** task **24** is the largest correctness debt (83 passport verifiers
+  generated on beta.13, in no regeneration script); task **28** is the largest RISK debt (sanctions
+  screening with zero tests, and its sibling already has the refactor that makes it testable).
+
   **❓ UNEXPLAINED, AND DELIBERATELY NOT BURIED: re-proving `title_holder` produced a proof its own
   BYTE-IDENTICAL verifier rejected** with `SumcheckFailed()` during the escrow regeneration run. Same
   VK, fresh witness-identical proof - it should have verified. I reverted the fixture rather than

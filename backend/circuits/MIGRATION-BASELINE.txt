@@ -159,9 +159,6 @@
   sigver::curve_224::test_ecdsa
   sigver::curve_224::test_mult_matches_reference
   sigver::curve_224::test_two_mult_matches_reference
-  sigver::curve_384::test_double
-  sigver::curve_384::test_ecdsa
-  sigver::curve_384::test_mult_matches_reference
   sigver::ecdsa::test_brainpoolp256r1_signature_verification
   sigver::ecdsa::test_brainpoolp384r1_signature_verification
   sigver::ecdsa::test_brainpoolp384t1_signature_verification
@@ -184,6 +181,13 @@
   smt::test_rejects_wrong_value
 
 ## noir_dl_lib test roster (captured on beta.13)
+# 2026-08-02: THREE TESTS REMOVED ON PURPOSE - sigver::curve_384::{test_double, test_ecdsa,
+# test_mult_matches_reference}, and curve_384.nr's source hash with them. The file was DELETED as
+# dead code: nothing imported it (only its own `mod` line), and TODO.md sec. 2.5b had already
+# called for its deletion because it is Brainpool P384R1 under a secp384r1 name. The roster is
+# 80 -> 77 for that reason ALONE; the beta.26 port dropped nothing else and every remaining test
+# passes. Live P384 verification is unaffected - it uses sigver::ecdsa::verify_{secp384r1,
+# brainpoolp384r1}_ecdsa, which are separate and were never routed through curve_384.
   big_curve::utils::derive_offset_generators::test_compute_and_print_offset_generators
   bignum::utils::u60_representation_test::test_conversion
   bignum::utils::u60_representation_test::test_get_bit
@@ -241,9 +245,6 @@
   sigver::curve_224::test_ecdsa
   sigver::curve_224::test_mult_matches_reference
   sigver::curve_224::test_two_mult_matches_reference
-  sigver::curve_384::test_double
-  sigver::curve_384::test_ecdsa
-  sigver::curve_384::test_mult_matches_reference
   sigver::ecdsa::test_brainpoolp256r1_signature_verification
   sigver::ecdsa::test_brainpoolp384r1_signature_verification
   sigver::ecdsa::test_brainpoolp384t1_signature_verification
@@ -375,7 +376,6 @@
   83f864b1a6d733e3  noir_dl_lib/src/sigver/brainpoolP512t1/params.nr
   322e24534211a28d  noir_dl_lib/src/sigver/curve_192.nr
   d320b2b042518901  noir_dl_lib/src/sigver/curve_224.nr
-  e0082b958097968f  noir_dl_lib/src/sigver/curve_384.nr
   7ba71cc51ffb7ead  noir_dl_lib/src/sigver/ecdsa.nr
   f86954f66c1374c0  noir_dl_lib/src/sigver/mod.nr
   42d371f3e416ed43  noir_dl_lib/src/sigver/secp224r1/curve.nr

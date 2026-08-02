@@ -8,6 +8,26 @@ query_identity, query_identity_td1, escrow_envelope.
 over ten minutes and its result is NOT yet recorded here — until the pinned vectors pass, none of
 this is trusted for real value.
 
+## WHY THERE ARE ORPHANS AT ALL — there is no coincidence, and it is not our design
+
+**`noir_dl_lib/src/bignum/` is a VENDORED COPY of `noir-lang/noir-bignum`** (identical layout:
+`bignum.nr`, `fields/`, `fns/`, `params.nr`, `runtime_bignum.nr`, `utils/`). Upstream ships every
+field ITS users might want — `U256`..`U8192`, ed25519, pallas, vesta, mnt4/6_753, bls12_377/381 —
+and we vendored the library whole while using only the passport subset. **The nine zero-reference
+`fields/*` modules are upstream generality, not orphans of our making.** `big_curve/` is the same
+story (`noir_bigcurve`).
+
+**That makes pruning a real decision, not a cleanup.** Deleting unused fields diverges us further
+from upstream and makes any future sync harder. Against that: rarimo's own
+`passport-zk-circuits-noir` has not been touched since 2025-11-18 and never made this beta.26 port,
+so the sync path is ALREADY broken. **Decide deliberately; do not let it happen by accident.**
+
+**`curve_384.nr` was a DIFFERENT case and deleting it left nothing missing.** It was a SECOND,
+never-wired implementation of Brainpool P384R1 under a secp384r1 name. The capability is live and
+unaffected: `sigver::ecdsa::verify_brainpoolp384r1_ecdsa` is used at
+`not_passports_zk_circuits.nr:549`, and `verify_secp384r1_ecdsa` exists beside it. So the duplicate
+went, the function stayed — which is exactly why sec. 2.5b called it a trap rather than a component.
+
 ## ASSUMPTION AUDIT — what a re-check of this work overturned
 
 **I PORTED DEAD CODE.** `sigver/curve_384.nr` had ZERO references (only its own `mod` line), and
@@ -38,8 +58,12 @@ systems, so those committed verifiers are stale and on-chain proofs against them
 is inherent to the toolchain move rather than caused by the source edits — the crates did not build
 on beta.26 at all before — but it means compiling and passing tests is NOT the finish line.
 
-**`bb` IS NOT INSTALLED ON THIS MACHINE** (`which bb` -> not found), so verifiers cannot be
-regenerated or even diffed here. Until that happens, do not treat the passport path as migrated.
+**`bb` WAS INSTALLED ALL ALONG** — at `~/.bb/bb`, not on PATH, and at **v0.82.2**, far below the
+required 5.1.0. "Not installed" was wrong; "wrong version, invisible to the script" was the truth.
+**Now fixed: bbup installed and `bb` upgraded to 5.1.0**, so nargo beta.26 + bb 5.1.0 finally match
+what `codegen-verifiers.sh` enforces. **Put `~/.bb` on PATH** or the script still reports it missing.
+
+**SO THE VERIFIERS CAN NOW BE REGENERATED HERE — that work is next, and it is not optional.**
 
 ## THE BUG ITSELF — isolated, and it is upstream's
 

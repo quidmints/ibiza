@@ -8497,6 +8497,37 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **🔧 FIX APPLIED (2026-08-02): the ECDSA scalar decomposition is now CONSTRAINED.**
+  `ScalarField::from_bignum` now asserts the round-trip:
+  `assert(BigNumTrait::eq(result.into_bignum(), x))`. `into_bignum` is the exact inverse - it
+  reconstructs the value from `base4_slices` and applies `skew` - so honest slices reproduce `x` and
+  forged ones cannot. Same shape as the `w = unsafe { s.__invmod() }` hint in `verify_ecdsa`, which
+  was already followed by `assert(s * w == BigNum::one())`.
+  **The hole was real, confirmed three ways:** (1) `msm_with_hint_internal` consumes `base4_slices`
+  to index its point table and NEVER re-derives them; (2) `into_bignum` is never called on `u_1`/`u_2`
+  in the verify path; (3) the sibling constructor `From<Field>` DOES validate the decomposition - but
+  **only when `N < 64`**, and every curve we use exceeds that (secp256r1 65, secp384r1 97,
+  secp521r1 131), with the `N >= 64` branch COMMENTED OUT as "this does not work".
+  **Status: compiles; `nargo test` on noir_dl_lib was still running when this was written - the
+  ECDSA vectors are the ones that matter and MUST be confirmed green before this is trusted.**
+
+  **🔴 STILL OPEN, SAME FILE, SAME CLASS - the remaining in-code TODOs in vendored `big_curve`:**
+  1. **`scalar_field.nr` `From<Field>`: the `N >= 64` validation is commented out**, and its own doc
+     comment claims the OPPOSITE ("if N >= 64 we perform extra checks"). Doc contradicts code. Find
+     every caller with `N >= 64`; if any is reachable from a proof, it has the same forgery shape as
+     the bug just fixed.
+  2. **`mod.nr:712` `// TODO: HANDLE CURVES WHERE A != 0`** in `double_with_hint`. **Our curves have
+     a != 0** (secp256r1 has a = -3; the brainpool curves have a != 0), so this is not hypothetical.
+     The lambda constraint below it references `+ a`, so it may in fact be handled and the comment
+     stale - **read the constraint, do not trust either the comment or this note.**
+  3. **`hash_to_curve.nr:14` and `:74` - "assert in field?"** Unvalidated field membership on inputs.
+  4. `mod.nr:426`, `mod.nr:812`, `constrained_ops.nr:148` - optimisation/《check!》notes, lower risk.
+
+  **THE LESSON, which is why this is written at the top rather than filed away:** I ported this
+  library, deleted a module from it, bumped its dependencies and ran its tests - **without reading
+  it.** Every transcript scan missed this because I never mentioned it. Vendored code needs reading,
+  not just building.
+
   **🚨🚨 POSSIBLE ECDSA SOUNDNESS HOLE IN VENDORED `big_curve` - FOUND 2026-08-02 BY READING THE
   CODE RATHER THAN THE TRACKER. TREAT AS CRITICAL UNTIL DISPROVEN.**
 

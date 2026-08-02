@@ -8497,6 +8497,15 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **⚠️ UPGRADEABILITY IS ITSELF A CENSORSHIP LEVER, AND THAT WAS SAID ONCE IN PASSING AND NEVER
+  BOOKED (recovered 2026-08-02).** `IdentityRegistry` is UUPS-upgradeable, so **an upgrade could
+  un-register people and block their withdrawals** - the same shape as the ASP-root lever in the
+  decisions above, but reachable by the upgrade key rather than the postman. `Entrypoint` is
+  UUPSUpgradeable too, and its storage-layout note is now live because a deployment path exists
+  (see the DeployLib entry). **Nothing in the no-retroactive-lever story accounts for the upgrade
+  key.** Whatever is decided for the authority set (decision 2) should be decided for this at the
+  same time, or the answer is inconsistent by construction.
+
   **🙋 DECISIONS FLAGGED FOR YOU AND NEVER COLLECTED (recovered 2026-08-02 by scanning the
   transcript for places I refused to guess).** Each was raised mid-work, answered "that is your
   call", and then left in conversation. The topics are discussed elsewhere in this file; **the

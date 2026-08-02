@@ -8490,6 +8490,32 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **🔍 BACKEND COVERAGE AUDIT (2026-08-02). Frontend excluded - on-device puppeteer, later.**
+
+  **✅ SOLIDITY: no gaps.** Every non-generated contract is referenced by a test suite. 419 forge
+  tests pass. (`RootValidity` briefly looked uncovered in the audit - a false positive from a broken
+  `\b` in my own grep; it has TWO suites, `RootValidityCopies` and `PoseidonSMTRootValidity`.)
+
+  **🔴 GAP 1 - `backend/cre/ofac_sdn` has ZERO tests, and it is STRUCTURALLY untestable.**
+  Everything lives in `main.go` behind `//go:build wasip1`, so no ordinary `go test` can reach it.
+  **Its sibling was already fixed this exact way and is the template:** `notary_registry` splits the
+  pure logic into `registry.go` with NO build tag (24 tests) while `main.go` keeps it. ofac_sdn parses
+  the Treasury SDN export, builds a keccak Merkle tree and anchors the root on-chain - parsing and
+  Merkle construction are exactly the pure logic that refactor exists to expose. **This is sanctions
+  screening with no tests at all.** Task 28.
+
+  **🟠 GAP 2 - four circuits declare ZERO `#[test]`:** `query_identity`, `query_identity_td1`,
+  `register_identity_light_td1`, `title_holder`. Counts elsewhere: pp 85, noir_dl_lib 74,
+  escrow_envelope 4, aggregate_withdrawals 3, register_identity_td1 2, notary_action 2,
+  withdraw_identity 2, register_identity 1, ragequit 1. **`title_holder` is partly covered from
+  outside** (`pp::title_holder::test_matches_wallet_derivation`, plus a Solidity verifier suite), so
+  the sharpest gaps are the two `query_identity` variants - the selector logic that decides what a
+  passport proof reveals. Task 29.
+
+  **✅ AGGREGATION: the entrypoint is now reachable and its guards are tested** - see the
+  AGGREGATION_VERIFIER fix. Still NOT finished: the happy path needs a real N=16 proof (~27 GB), and
+  double-spend across a batch is unexercised.
+
   **⚙️ TOOLCHAIN / CIRCUITS — full record in `backend/circuits/NOIR-DL-PORT.md` (2026-08-02).**
 
   **✅ ALL 13 CIRCUIT CRATES NOW COMPILE ON beta.26, no ICE.** The six that could not

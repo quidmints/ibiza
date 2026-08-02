@@ -8667,7 +8667,8 @@ at registration") has no passport equivalent and needs its own home regardless.
     "harmless now (nothing deployed)" was true only while no deployment path existed. `Entrypoint` IS
     `UUPSUpgradeable`. Re-read that entry before deploying anything.
   - **Regenerate only what changed.** Re-proving unchanged circuits is churn (ZK proofs are
-    non-deterministic) and `title_holder` currently FAILS when re-proved (task 30).
+    non-deterministic). `title_holder` used to FAIL when re-proved; that was task 30 and it is fixed -
+    the codegen no longer overwrites a committed witness. Churn is now the only reason to be selective.
 
   **FALSE SUCCESSES that nearly fooled me, recorded so they do not fool the next run:**
   - **A background-task notification's "exit code 0" is the WRAPPER's exit, not the command's.** A
@@ -8703,18 +8704,41 @@ at registration") has no passport equivalent and needs its own home regardless.
   (GAP 1 below). It was worse than "untested" — unsorted leaves meant every publish would have
   reverted, so nothing it produced could ever have been anchored.
 
-  **AND TASK 24 IS NOT THE CLEAN START IT LOOKS LIKE.** Re-proving is exactly what hits the
-  unexplained `title_holder` `SumcheckFailed()` recorded above (task 30). Root-cause that first, or
-  expect to meet it 76 times.
+  **TASK 24 IS NOW UNBLOCKED.** It was gated on the unexplained `title_holder` `SumcheckFailed()`,
+  which any re-prove would have hit; that was task 30, root-caused and fixed 2026-08-02 (see below).
+  Regenerating verifiers no longer destroys the witness it regenerates from.
 
-  **❓ UNEXPLAINED, AND DELIBERATELY NOT BURIED: re-proving `title_holder` produced a proof its own
-  BYTE-IDENTICAL verifier rejected** with `SumcheckFailed()` during the escrow regeneration run. Same
-  VK, fresh witness-identical proof - it should have verified. I reverted the fixture rather than
-  root-causing it, which was right for landing escrow but leaves a real question open: either the
-  codegen path proves `title_holder` against something other than the key it just wrote, or the
-  fixture-writing step differs for that target. **Anything that re-proves title_holder will hit this
-  again.** Reproduce with `codegen-verifiers.sh` and diff the written vk against the one `bb prove`
-  consumed. Task 30.
+  **✅ TASK 30 SOLVED 2026-08-02. It was not the vk, and it was not the toolchain.** The question was
+  why re-proving `title_holder` produced a proof its own BYTE-IDENTICAL verifier rejected with
+  `SumcheckFailed()`, with the same VK and a passing native `bb verify`. Both hypotheses recorded
+  here - "proves against a key other than the one it wrote", "the fixture step differs for that
+  target" - were wrong. **Nothing was corrupt; the proof was of a DIFFERENT STATEMENT.**
+
+  `nargo` reads `Prover.toml`, so both loops in `codegen-verifiers.sh` did `cp <witness> Prover.toml`
+  before executing. **`Prover.toml` is a COMMITTED INPUT** for any circuit whose baseline is not named
+  `Prover.baseline.toml`, and `title_holder` is one - so generating its SECOND fixture permanently
+  replaced the baseline witness, and the replacement was committed in `db1df14`. Every run afterwards
+  proved the baseline fixture from the id1 witness.
+
+  **WHY EVERY SIGNAL SAID FINE:** `bb prove` succeeded, `bb verify` accepted (the proof is valid),
+  the vk was unchanged, the verifier byte-identical. Only Solidity rejected it, because
+  `TitleHolderHonkVerifier.t.sol` HARDCODES the two public inputs and they belong to the real
+  baseline. **A proof of the wrong statement is indistinguishable from a proof of the right one until
+  something pins the statement** - and only the on-chain test does.
+
+  Reproduced both directions before fixing: the committed witness yields the id1 public inputs and
+  `[FAIL: SumcheckFailed()]`; the pre-`db1df14` witness yields the baseline's and 3/3 pass with a
+  freshly generated proof.
+
+  **FIXED AT THE CAUSE:** one `execute_witness` helper saves `Prover.toml`, runs nargo, restores it,
+  *verifies* the restore, and restores on failure too. **Re-proving `title_holder` is now safe**, so
+  the "regenerate only what changed" warning above stands on churn alone, not on this.
+
+  **⚠️ DO NOT "SIMPLIFY" IT TO `nargo execute -p <name>`.** That is the obvious fix and it is worse:
+  nargo splits the extension at the FIRST dot, so `-p Prover.titleid1` resolves to `Prover.toml` and
+  the argument is **discarded silently** - `-p Prover.doesnotexist` exits 0 and solves `Prover.toml`.
+  Measured: with `Prover.toml` absent it errors naming `Prover.toml`, and a dotless name reads
+  correctly. Every witness here is `Prover.<what>.toml`, across six files including two generators.
 
   **🔍 BACKEND COVERAGE AUDIT (2026-08-02). Frontend excluded - on-device puppeteer, later.**
 

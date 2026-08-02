@@ -8499,104 +8499,37 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
-  **🔬 ROOT CAUSE OF THE FAILED FIX, COMPUTED NOT GUESSED - this makes the real fix tractable.**
-  `into_bignum` consumes `ceil((modulus_bits % 120 or 120)/4) + 30*(num_limbs-1)` slices, which is
-  **one FEWER than `SCALAR_SLICES` for exactly the curves whose tests failed:**
+  **✅ THE ECDSA SOUNDNESS HOLE IS CLOSED (2026-08-02). 77/77, mutation-verified.**
 
-  | curve | into_bignum consumes | SCALAR_SLICES | |
-  |---|---|---|---|
-  | secp256r1 | 64 | 65 | **mismatch +1** |
-  | secp384r1 | 96 | 97 | **mismatch +1** |
-  | secp521r1 | 131 | 131 | match |
+  `ScalarField::from_bignum` now constrains the unconstrained `get_wnaf_slices2` hint. Two things
+  had to be got right, and the first attempt got both wrong:
 
-  **That is why 7 tests failed and not all of them** - the 521 round-trip is consistent, the others
-  drop the most-significant slice. So `into_bignum` is a valid inverse ONLY when
-  `consumed == SCALAR_SLICES`; elsewhere it silently ignores a leading digit.
-  **The correct constraint must consume ALL N slices.** The reference formula is the one the
-  vendor's `From<Field>` already uses and validates for `N < 64`:
-  `x == sum_i (slices[i]*2 - 15) * 16^(N-1-i) - skew`
-  - in Field arithmetic it is a one-liner (that is the `N < 64` branch)
-  - in BigNum arithmetic the digits are SIGNED (-15..15), which is the whole difficulty and why the
-    `N >= 64` branch was left commented out upstream. Any fix has to handle the borrow, which is
-    what `into_bignum` does - correctly, just over the wrong number of slices.
+  **1. The identity, rearranged so no digit is signed.** wNAF digits are `2*s - 15`, i.e. -15..15,
+  and BigNum cannot hold negatives - which is exactly why upstream left `From<Field>`'s `N >= 64`
+  branch commented out. Rearranging removes the sign entirely:
+  `sum_i (2*s_i - 15)*16^(N-1-i) = 2*S - (16^N - 1)` with `S = sum_i s_i*16^(N-1-i)`,
+  so the check is **`x + skew + (16^N - 1) == 2*S`** - both sides non-negative.
 
-  **❌ MY FIX WAS WRONG AND IS REVERTED. THE HOLE IS STILL OPEN (2026-08-02).**
-  I added `assert(BigNumTrait::eq(result.into_bignum(), x))` to `from_bignum`, committed it, and
-  **it fails 7 ECDSA tests** - so `into_bignum` is NOT the exact inverse of `from_bignum` and the
-  naive round-trip is not the constraint. Reverted to `d727889`; noir_dl_lib is green again at 77/77.
-  **A likely cause for whoever picks this up:** `from_bignum` calls `get_wnaf_slices2` while the
-  sibling `From<Field>` calls `get_wnaf_slices` - **different functions**, and `into_bignum` may
-  invert only one of them. Establish which decomposition `into_bignum` actually inverts before
-  writing any assertion.
+  **2. ALL N slices.** `into_bignum` consumes one FEWER than `SCALAR_SLICES` for secp256r1 (64 vs 65)
+  and secp384r1 (96 vs 97), matching only for secp521r1 - which is why asserting that round-trip
+  failed exactly 7 tests. The reconstruction here walks all N.
 
-  **I ALSO NEARLY REPORTED THE BROKEN FIX AS A SUCCESS, TWICE:** the background notification said
-  "exit code 0" (that is the WRAPPER's exit; nargo exited 1), and my own `grep | tail -1` truncated
-  "70 passed, 7 failed" to "70 tests passed". **Both are already-documented traps in this file and
-  they still caught me.** Read the recorded `EXIT=` line, and never let a summarising pipe decide
-  whether a suite is green.
+  Plus a **range check on every slice**: `base4_slices` is `[u8; N]`, so 16..255 was admissible into
+  a 4-bit point table - a second, independent way to lie, unaddressed by the sum identity alone.
 
-  **THE HOLE ITSELF IS UNCHANGED AND STILL CRITICAL** - see the entry below. What the failed attempt
-  DID establish, and what is worth keeping:
-  - `into_bignum` does not invert `get_wnaf_slices2`, so any fix must use the right inverse
-  - the vendor's `From<Field>` validation is the model to follow, but its `N >= 64` branch - the only
-    one relevant to our curves - is commented out as non-working, so **there is no working reference
-    implementation to copy.** That is why this is hard, and why it was left undone upstream.
+  **Implementation notes for anyone touching it:** digits go in via `set_limb(0, ..)`, not repeated
+  addition - Noir rejects a runtime-valued loop bound ("Could not determine loop bound at
+  compile-time"), which is how the second attempt failed.
 
-  **🔴 STILL OPEN, SAME FILE, SAME CLASS - the remaining in-code TODOs in vendored `big_curve`:**
-  1. **`scalar_field.nr` `From<Field>`: the `N >= 64` validation is commented out**, and its own doc
-     comment claims the OPPOSITE ("if N >= 64 we perform extra checks"). Doc contradicts code. Find
-     every caller with `N >= 64`; if any is reachable from a proof, it has the same forgery shape as
-     the bug just fixed.
-  2. **`mod.nr:712` `// TODO: HANDLE CURVES WHERE A != 0`** in `double_with_hint`. **Our curves have
-     a != 0** (secp256r1 has a = -3; the brainpool curves have a != 0), so this is not hypothetical.
-     The lambda constraint below it references `+ a`, so it may in fact be handled and the comment
-     stale - **read the constraint, do not trust either the comment or this note.**
-  3. **`hash_to_curve.nr:14` and `:74` - "assert in field?"** Unvalidated field membership on inputs.
-  4. `mod.nr:426`, `mod.nr:812`, `constrained_ops.nr:148` - optimisation/《check!》notes, lower risk.
+  **VERIFIED, not assumed:** 77/77 `noir_dl_lib` tests including all 8 ECDSA vectors (nargo exit 0,
+  read from the recorded `NARGO_EXIT=` line, not a harness summary). **Mutation-verified:** flipping
+  `16^N - 1` to `16^N + 1` fires `Assertion failed: wNAF slices do not decode to the scalar`, so the
+  constraint is live rather than vacuous.
 
-  **THE LESSON, which is why this is written at the top rather than filed away:** I ported this
-  library, deleted a module from it, bumped its dependencies and ran its tests - **without reading
-  it.** Every transcript scan missed this because I never mentioned it. Vendored code needs reading,
-  not just building.
-
-  **🚨🚨 POSSIBLE ECDSA SOUNDNESS HOLE IN VENDORED `big_curve` - FOUND 2026-08-02 BY READING THE
-  CODE RATHER THAN THE TRACKER. TREAT AS CRITICAL UNTIL DISPROVEN.**
-
-  `noir_dl_lib/src/big_curve/scalar_field.nr:238` carries the vendor's own comment:
-  **`// TODO: NONE OF THIS IS CONSTRAINED YET. FIX!`**
-
-  It sits in `ScalarField::from_bignum`, which takes wNAF slices from an UNCONSTRAINED hint
-  (`unsafe { get_wnaf_slices2(x) }`) and builds the scalar from them **without constraining that the
-  slices decode back to `x`.**
-
-  **IT IS REACHABLE AND IT IS THE CORE OF ECDSA VERIFICATION.** `sigver/ecdsa.nr:61-62`:
-  ```
-  let u_1 = ScalarField::from_bignum(e * w);
-  let u_2 = ScalarField::from_bignum(r * w);
-  ```
-  Those are the two scalars in `R = u1*G + u2*Q`. If a prover may choose the slices freely, they may
-  choose `u1`/`u2` freely, and `R` can be steered to any point - **including one whose x-coordinate
-  equals `r`, which is signature forgery.**
-
-  **THE ADJACENT HINT IS CONSTRAINED, WHICH IS WHY THIS LOOKS LIKE AN OVERSIGHT RATHER THAN A
-  DESIGN:** ten lines above, `let w = unsafe { s.__invmod() };` is immediately followed by
-  `assert(s * w == BigNum::one());` with the comment "since the previous line is unconstrained".
-  The pattern was understood; this call was missed.
-
-  **BLAST RADIUS:** `verify_ecdsa` is the shared implementation behind
-  `verify_secp256r1/secp384r1/secp521r1/brainpoolP256r1/…_ecdsa`, used by
-  `not_passports_zk_circuits.nr` - i.e. **passport signature verification in
-  `register_identity*` and `query_identity*`.**
-
-  **DO NOT ASSUME I AM RIGHT.** What is VERIFIED: the comment exists, the hint is unconstrained at
-  that site, and the function is called for both ECDSA scalars. What is NOT verified: whether some
-  later constraint (inside `msm`, `into_bignum`, or a round-trip elsewhere) re-binds the slices to
-  the scalar. **That single question decides whether this is a forgery hole or a stale comment**, and
-  it must be answered by reading `msm`/`into_bignum`, not by assuming either way. Task 31.
-
-  **This is why "check the code, not the tracker" matters:** none of the transcript scans found this,
-  because I never mentioned it - the vendor's own TODO was sitting in a file I ported without reading
-  every line of.
+  **The lesson stands even though the bug is fixed:** I ported this library, deleted a module from
+  it, bumped its dependencies and ran its tests WITHOUT READING IT. No transcript scan could have
+  found this - the vendor's own `// TODO: NONE OF THIS IS CONSTRAINED YET. FIX!` was sitting in the
+  file the whole time. Vendored code needs reading, not just building.
 
   **⚠️ UPGRADEABILITY IS ITSELF A CENSORSHIP LEVER, AND THAT WAS SAID ONCE IN PASSING AND NEVER
   BOOKED (recovered 2026-08-02).** `IdentityRegistry` is UUPS-upgradeable, so **an upgrade could

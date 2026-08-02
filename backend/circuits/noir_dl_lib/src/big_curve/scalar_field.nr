@@ -235,7 +235,44 @@ impl<let N: u32> ScalarFieldTrait for ScalarField<N> {
         x.validate_in_field();
         let mut (slices, skew): ([u8; N], bool) = unsafe { get_wnaf_slices2(x) };
 
-        // TODO: NONE OF THIS IS CONSTRAINED YET. FIX!
+        // CONSTRAIN THE HINT. `get_wnaf_slices2` is unconstrained, and these slices are fed
+        // straight to `BigCurve::msm` (which indexes its point table with them and never re-derives
+        // them) for BOTH ECDSA scalars in `sigver/ecdsa.nr`. Unchecked, a prover picks u1/u2 freely
+        // and steers R = u1*G + u2*Q onto any point - signature forgery on every curve.
+        //
+        // `into_bignum` is NOT usable as the inverse here: it consumes
+        // ceil((modulus_bits%120 or 120)/4) + 30*(num_limbs-1) slices, which is one FEWER than N for
+        // secp256r1 (64 vs 65) and secp384r1 (96 vs 97). Asserting that round-trip fails those two
+        // curves and passes secp521r1, where the counts coincide.
+        //
+        // So reconstruct over ALL N slices instead. The digits are signed (2*s - 15, i.e. -15..15),
+        // which is what makes the BigNum form awkward and why upstream left `From<Field>`'s N>=64
+        // branch commented out. Rearranging removes the sign entirely:
+        //     sum_i (2*s_i - 15)*16^(N-1-i)  =  2*S - (16^N - 1),   S = sum_i s_i*16^(N-1-i)
+        // so the identity to check is   x + skew + (16^N - 1) == 2*S   - both sides non-negative.
+        let mut s_acc: BigNum = BigNum::new();
+        let mut pow: BigNum = BigNum::one();
+        // Built via set_limb, not repeated addition: a digit is 0..15 and 16 fits in limb 0, and a
+        // runtime-bounded loop is rejected ("Could not determine loop bound at compile-time").
+        let mut sixteen: BigNum = BigNum::new();
+        sixteen.set_limb(0, 16);
+        for i in 0..N {
+            // RANGE-CHECK EVERY SLICE. `base4_slices` is [u8; N], so a prover could otherwise
+            // supply 16..255 - the point table is 4-bit, and an out-of-range digit is the second
+            // way to lie here, independent of the sum identity below.
+            assert(slices[N - 1 - i] < 16, "wNAF slice out of range");
+            let mut digit: BigNum = BigNum::new();
+            digit.set_limb(0, slices[N - 1 - i] as Field);
+            s_acc = s_acc + digit * pow;
+            pow = pow * sixteen;
+        }
+        // pow is now 16^N; the identity is x + skew + (16^N - 1) == 2*S.
+        let mut lhs: BigNum = x + pow - BigNum::one();
+        if skew {
+            lhs = lhs + BigNum::one();
+        }
+        assert(BigNumTrait::eq(lhs, s_acc + s_acc), "wNAF slices do not decode to the scalar");
+
         Self { base4_slices: slices, skew }
     }
 

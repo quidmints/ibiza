@@ -374,4 +374,84 @@ contract RegistrySourceAnchorTest is Test {
     anchor.pinWorkflow(bytes32(0));
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════════════════════
+  //  THE GO WORKFLOW AND THIS CONTRACT MUST AGREE, AND EVERY TEST ABOVE IS BLIND TO WHETHER THEY DO
+  //
+  //  Every leaf set above is built in Solidity, so this suite proves the contract is consistent
+  //  with itself. `backend/cre/sanctions_lists` builds the real one in Go, and the two conventions
+  //  have to line up exactly: strictly ascending leaves, sorted pairs at each internal node, an odd
+  //  node PROMOTED unchanged rather than hashed with itself.
+  //
+  //  THE FAILURE IS SILENT ON THE GO SIDE. That workflow shipped sorting its ENTRIES by uid and
+  //  then mapping them to leaf HASHES, which are in no order at all - so every publish would have
+  //  reverted `LeavesNotStrictlySorted`, and neither side said so, because neither had ever seen
+  //  the other's output. That is what this pair of tests closes.
+  //
+  //  FIXTURE PROVENANCE: written by the REAL Go builder from a verbatim excerpt of the OFAC SDN
+  //  export - SEVEN designations spanning all four types OFAC publishes. Regenerate with:
+  //    cd backend/cre/sanctions_lists && go test -run EmitSolidity ./...
+  //
+  //  THE COUNT IS LOAD-BEARING AND WAS ORIGINALLY FOUR, WHICH PROVED NOTHING. Ascending leaves make
+  //  the sorted-pair rule a no-op at the first level, and a power-of-two count never produces an odd
+  //  level, so nothing was ever promoted - deleting the pair sorting from the Go builder left this
+  //  suite green. The generator now refuses to write a fixture whose tree fails to exercise both
+  //  rules, so the shape this test depends on is enforced on the side that produces it.
+  // ═══════════════════════════════════════════════════════════════════════════════════════════
+
+  function _sanctionsFixture()
+    internal
+    view
+    returns (bytes32 registryId_, bytes32 root_, bytes32[] memory leaves_)
+  {
+    string memory raw = vm.readFile('test/fixtures/sanctions_snapshot.txt');
+    string[] memory lines = vm.split(raw, '\n');
+
+    uint256 count_;
+    for (uint256 i = 0; i < lines.length; ++i) {
+      if (bytes(lines[i]).length == 0) continue;
+      string[] memory parts = vm.split(lines[i], ' ');
+      bytes32 value = vm.parseBytes32(string.concat('0x', parts[1]));
+      if (keccak256(bytes(parts[0])) == keccak256('registryId')) registryId_ = value;
+      else if (keccak256(bytes(parts[0])) == keccak256('root')) root_ = value;
+      else ++count_;
+    }
+
+    leaves_ = new bytes32[](count_);
+    uint256 j;
+    for (uint256 i = 0; i < lines.length; ++i) {
+      if (bytes(lines[i]).length == 0) continue;
+      string[] memory parts = vm.split(lines[i], ' ');
+      if (keccak256(bytes(parts[0])) == keccak256('leaf')) {
+        leaves_[j++] = vm.parseBytes32(string.concat('0x', parts[1]));
+      }
+    }
+  }
+
+  /// THE BASELINE: the leaf set the Go workflow would actually submit is accepted, and the root
+  /// this contract recomputes from it is the one Go computed. Note what is NOT submitted - the root
+  /// is never passed in; `_computeRoot` derives it, and the fixture's value is only the expectation.
+  function test_theGoSnapshotPublishesAndYieldsTheSameRoot() public {
+    (bytes32 registryId, bytes32 goRoot, bytes32[] memory leaves) = _sanctionsFixture();
+    assertEq(leaves.length, 7, 'fixture did not carry the expected leaf count');
+
+    vm.prank(postman);
+    (uint256 index, bytes32 onChainRoot) = anchor.publishSnapshot(registryId, leaves);
+
+    assertEq(index, 0, 'first snapshot should be index 0');
+    assertEq(onChainRoot, goRoot, 'Go and Solidity disagree about the Merkle root of one leaf set');
+    assertEq(anchor.latestRoot(registryId), goRoot, 'the anchored root is not the computed one');
+  }
+
+  /// AND IT IS NOT VACUOUS. Swapping two adjacent leaves - exactly the difference between the Go
+  /// builder's output and the ordering bug it shipped with - must revert. Without this, a
+  /// `publishSnapshot` that ignored ordering entirely would pass the test above.
+  function test_theGoOrderingIsWhatMakesItPublishable() public {
+    (bytes32 registryId, , bytes32[] memory leaves) = _sanctionsFixture();
+
+    (leaves[0], leaves[1]) = (leaves[1], leaves[0]);
+
+    vm.prank(postman);
+    vm.expectRevert(RegistrySourceAnchor.LeavesNotStrictlySorted.selector);
+    anchor.publishSnapshot(registryId, leaves);
+  }
 }

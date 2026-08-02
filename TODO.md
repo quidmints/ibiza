@@ -8490,6 +8490,36 @@ at registration") has no passport equivalent and needs its own home regardless.
   SHOWN to the user - a code comment is not a disclosure. **This is the second time this session that
   a single-keyword grep produced a false "absent" claim; search the concept, not the word.**
 
+  **✅ THE ERC-20 FIRST-SPEND DEAD END, CLOSED WITHOUT A CONTRACT CHANGE (`withdrawPlan.ts`, 12
+  tests).** I had proposed ERC-4337 + paymaster. Checking the mechanism first made that the wrong
+  size of fix: `Entrypoint.relay` ALREADY takes its fee in the withdrawn asset, and the only missing
+  piece is gas AT the fresh address. So when the user also holds a note in the NATIVE pool, both
+  withdrawals are sent to THE SAME derived address - the token arrives with ETH beside it.
+  **The privacy cost is zero**: the two legs are linked to each other, but that link exists anyway
+  the moment the tokens are spent from that address, and neither is linked to the depositor because
+  both emerge from pools.
+  **With no native note it REFUSES by default.** A wallet that silently withdraws tokens to an
+  address that can never move them has handed the user a permanent loss dressed as a privacy win.
+  **RESIDUAL, AND IT IS THE ONLY CASE 4337 IS STILL FOR:** a user holding ONLY tokens and no ETH
+  anywhere. A paymaster taking its fee in the withdrawn token removes the need for ETH entirely.
+
+  **⚠️ CORRECTION TO WHAT I BANKED EARLIER.** I wrote "PrivacyPoolComplex exists, so this is real".
+  It exists as CODE and is never deployed - its salt is declared in DeployLib and never used, there
+  are no deployment scripts, and nothing instantiates it. `Entrypoint` supports any asset, so the
+  dead end is real the day an ERC-20 pool is registered, but **it is not a live break today**. This
+  is a guard placed before the failure, not a repair after it.
+
+  **✅ THE WITHDRAWAL PATH IS JOINED (`withdrawFlow.ts`, 12 tests).** Everything underneath was
+  tested and pinned but nothing composed it, so no screen could drive a withdrawal.
+  **NOTE SELECTION IS A PRIVACY DECISION, not bookkeeping.** The circuit spends ONE note and returns
+  the remainder as change, so the smallest covering note is chosen: spending a large note for a small
+  withdrawal leaves a large change note whose value is a distinctive number that every later spend
+  carries. **Notes cannot be combined**, so "insufficient" is reported against the largest SINGLE
+  note - quoting the balance makes the wallet refuse while visibly holding enough.
+  An exact-match branch was written and then DELETED: an exact match is by definition the minimum of
+  the covering notes, so it could never change the result (no-unreachable-code rule).
+  **Still open: the React screen itself.** The logic is done and tested; the presentation is not.
+
   **✅ THE CONTEXT PIN WAS ONE-DIRECTIONAL; NOW IT IS BOTH (8 tests, `relay.test.ts`).**
   `RelayContext.t.sol` already hardcoded the value TypeScript produced and compared Solidity to it -
   so it caught SOLIDITY drifting and was blind to TYPESCRIPT drifting, because it never runs any

@@ -1,11 +1,97 @@
 # ibiza
 
-A fork of **Privacy Pools** and **rarimo/rarime** unified onto one Foundry + Noir/Honk stack.
+A fork of **Privacy Pools** and **rarimo/rarime**, merged onto one Foundry + Noir/Honk stack.
 
-`TODO.md` is the canonical tracker. This file exists for one job the tracker cannot do: **say what
-came from upstream and what we changed**, so nobody has to guess whether a file is ours.
+`TODO.md` is the canonical tracker and holds current state, traps and open decisions. This file
+answers the questions the tracker cannot: **where the code came from, why the fork was made the way
+it was, and what we changed.**
 
 ---
+
+## Why the two were merged at all
+
+rarime proves **who you are** from a biometric passport. Privacy Pools proves **where money came
+from** without naming you. Neither is sufficient alone for the thing this repo exists to build: a
+person who can prove eligibility and hold value without those two facts being linkable.
+
+Merging them creates one property neither had: **the identity that gates a withdrawal and the note
+being withdrawn are bound in a single proof**, so an operator sees a valid withdrawal without
+learning whose it is. Everything below follows from paying for that.
+
+## Why ONE toolchain
+
+The fork inherited **two proving stacks**: rarime's passport circuits in **Circom/Groth16**, Privacy
+Pools' in **Circom** too but a different pipeline, with separate verifiers, separate trusted setups
+and separate tooling. That is not a tidiness problem:
+
+- **Two verifiers on the same withdrawal cannot share a proof.** A withdrawal that must check both
+  identity and note membership pays for two verifications and two calldata payloads.
+- **Groth16 needs a per-circuit trusted setup.** Every passport profile (35 of them) is a separate
+  ceremony. Honk needs none.
+- **A shared hash is required for the fusion to work at all.** The identity tree and the pool's
+  commitment tree must agree on Poseidon, or a single proof cannot span both.
+
+So everything was ported to **Noir + UltraHonk**: one prover, one verifier shape, no per-circuit
+ceremony, and one Poseidon shared across circuits, Solidity (`poseidon-solidity`) and the wallet
+(`@iden3/js-crypto`) — each cross-checked against the others rather than assumed compatible.
+
+The cost is that we now depend on the Noir toolchain's maturity, which is where several of the
+sharpest problems in `TODO.md` come from (a compiler ICE we patched, a bignum ecosystem that trails
+the compiler, proof formats that shift between `bb` versions).
+
+## Why aggregation was the first big piece
+
+Gas, measured rather than assumed: **a single withdrawal cost ~3.07M gas**, dominated by the
+in-circuit Honk verification. That is not a product — it is a demo.
+
+**Aggregation is the only structural answer.** One recursive proof attests to N withdrawals, so the
+verification cost is paid once per batch instead of once per withdrawal:
+
+| | gas / withdrawal |
+|---|---|
+| single withdrawal | ~3.07M |
+| **batched, N=16** | **~68k** |
+| batched, N=64 | ~41k |
+
+That is a ~45× improvement at N=16, and it is why `aggregate_withdrawals`, `BatchVerifierLib` and
+`PrivacyPool.withdrawBatch` exist. It also forced the toolchain question: recursive ZK proofs need a
+Noir/bb combination that produces them correctly, which is what drove the beta.26 + bb 5.1.0 pin.
+
+Other measured gas work along the way:
+- **keccak batch commitment instead of Poseidon** — the N=16 aggregation circuit fell from
+  **11,610,552 to 550,404 gates**, and the N=2 case from 1,396,874 to 81,668. The Poseidon variant's
+  in-circuit verifications were **vacuous** — present in the gate count, absent in effect.
+- withdrawal verifier size brought under the **EIP-170** 24,576-byte limit (24,534 → 23,527) with
+  `optimizer_runs = 1` scoped to the verifiers.
+- **root memo** in `withdrawBatch`: distinct state/identity roots are checked once per batch rather
+  than once per withdrawal, which is exactly equivalent because a root's validity is a pure function
+  of pool state.
+
+## Why "one key, many documents"
+
+A person with two passports is the user this design exists for — and the naive shape leaks them.
+If each document produced its own identity, holding two would be visible, and **multi-citizenship
+makes the leak worse rather than better**.
+
+So identity is **holder-rooted**: one key owns many documents, the holder root is what the pool sees,
+and which document was used is not disclosed. That is what `HolderStateKeeper`, `HolderRegistration`
+and the escrow envelope exist for, and why `register_identity` has TD1/TD3/light variants — the same
+holder, different document formats.
+
+## What we fixed in the rarime SDK and wallet
+
+- **`@rarimo/rarime-rn-sdk`** provides Noir proving on-device via prebuilt AARs. We forked it to
+  `quidmints/rarime-rn-sdk`; **PR #1 (merged 2026-07-27)** migrated it to the expo-file-system 57
+  File/Directory API, which the package declared as a dependency while still calling the string-path
+  API that version removed — consumers hit "undefined is not a function". It also fixed a path bug
+  in `TrustedSetupFileName` and made the noir directory exist before bytecode is written.
+- **Six `pp/` wallet modules could not be loaded by `node --test` at all** — type-only imports used
+  as values, extensionless relative imports, and a TypeScript `enum` (which Node's strip-only mode
+  refuses). That is why that directory had zero tests; all fixed, and it now has ~132.
+- **Root-seed handling**: `revealRootMnemonic` / `exportEncryptedBackup` bypass the session cache and
+  force re-authentication, because those two operations hand over the key rather than use it.
+- **Fresh withdrawal recipients** derived from the same seed (`pp/recipient.ts`), so a payout address
+  is never one the user funded — and never a key they must back up separately.
 
 ## Provenance map
 
@@ -13,100 +99,75 @@ came from upstream and what we changed**, so nobody has to guess whether a file 
 |---|---|
 | `backend/contracts/contracts/pool/**` | **Privacy Pools** (`0xbow-io/privacy-pools-core`) |
 | `backend/contracts/contracts/{certificate,passport,registration,state,sdk,utils}/**` | **rarimo** (`rarimo/passport-contracts`) |
-| `backend/contracts/contracts/libraries/**` | rarimo, plus our inline Poseidon variants |
 | `backend/circuits/{pp,withdraw_identity,ragequit}` | Privacy Pools circuits, ported Circom → Noir |
 | `backend/circuits/{register_identity*,query_identity*}` | **rarimo** (`rarimo/passport-zk-circuits-noir`) |
-| `backend/circuits/noir_dl_lib` | **rarimo**, which itself vendors `noir-lang/noir-bignum` and `noir_bigcurve` |
+| `backend/circuits/noir_dl_lib` | **rarimo**, which itself vendors `noir-lang/noir-bignum` + `noir_bigcurve` |
 | `frontend/identity-wallet` | **rarimo/rarime** wallet |
 | `backend/circuits/{escrow_envelope,title_holder,notary_action,aggregate_withdrawals}` | **ours** |
 | `backend/contracts/contracts/{title,holder,pool/spv}/**`, `registry/RegistrySourceAnchor.sol` | **ours** |
 | `backend/cre/**`, `tools/**` | **ours** |
 
-**The fork was imported as ONE squashed commit** (`0762975`), so there is no upstream history to
-diff against in this repo. Everything since is divergence. Regenerate the current list with:
+**The fork was imported as ONE squashed commit** (`0762975`), so there is no upstream history to diff
+against here. Everything since is divergence:
 
 ```sh
 git diff --name-only 0762975..HEAD -- backend/contracts/contracts \
   | grep -vE 'verifiers2|Verifier\.sol'
 ```
 
-As of 2026-08-02 that is **51 non-generated contracts**, plus 58 files in `noir_dl_lib`, 3 rarimo
-circuit files, and 62 in the wallet. **We are a heavily modified fork, not a thin skin over
-upstream.** Do not assume any upstream file is untouched.
+As of 2026-08-02: **51 non-generated contracts**, 58 files in `noir_dl_lib`, 3 rarimo circuit files,
+62 in the wallet. **We are a heavily modified fork, not a thin skin. Do not assume any upstream file
+is untouched.**
 
----
+## Changes to upstream code whose consequences exceed their diff
 
-## Changes to upstream code that will surprise you
+### `noir_dl_lib` (rarimo → vendoring noir-bignum / noir_bigcurve)
 
-Ordinary edits are visible in `git log`. These are the ones with consequences beyond their diff.
+Ported to nargo 1.0.0-beta.26; full detail in `backend/circuits/NOIR-DL-PORT.md`.
 
-### `noir_dl_lib` (rarimo → and it vendors noir-bignum/noir_bigcurve)
-
-Ported to nargo 1.0.0-beta.26. Full detail in `backend/circuits/NOIR-DL-PORT.md`.
-
-- **`u1` → `Field` at the BOUNDARY, not throughout.** `to_le_bits`/`to_be_bits` now return
-  `[bool; N]`; substituting `bool` library-wide was tried and reverted, because the library does
-  arithmetic on those bits and it would have meant editing modular-arithmetic and hash expressions.
-  A single `crate::utils::bits_to_field` conversion at each bit source keeps every algorithm body
-  byte-identical.
-- **`.eq()` disambiguated to `BigNumTrait::eq`** at 10 sites. `std::cmp::Eq` compares limbs where
-  `BigNumTrait::eq` compares modular values; they differ for unreduced representations, so the
-  other choice would have compiled and been silently wrong.
-- **`std::wrapping_add` kept as a local wrapper** rather than rewriting nested calls in sha384/512.
-- **22 `global … = BigNumParams::new(..)` became `pub fn`.** This is an ACCOMMODATION for a Noir
-  compiler bug, not a design choice — **revert it when the fix ships upstream.** Zero measured gate
-  cost (1 ACIR opcode, identical to an empty circuit; the constants still fold).
-- **`sigver/curve_384.nr` DELETED** — a second, never-wired Brainpool P384R1 under a secp384r1
-  name. Nothing lost: `sigver::ecdsa::verify_brainpoolp384r1_ecdsa` is live.
-- **Dependency pins bumped:** `sort` v0.3.0→v0.4.0, `poseidon` v0.2.0→v0.3.0, `sha256` v0.2.0→v0.3.0.
-  Every one was stale against beta.26; poseidon v0.2.0 does not build on it at all.
+- **`u1` → `Field` at the BOUNDARY, not throughout.** `to_le_bits` now returns `[bool; N]`;
+  substituting `bool` library-wide was tried and reverted, because the library does arithmetic on
+  those bits and it meant editing modular-arithmetic and hash expressions. One conversion at each
+  bit source keeps every algorithm body byte-identical.
+- **`.eq()` disambiguated to `BigNumTrait::eq`.** `std::cmp::Eq` compares limbs; `BigNumTrait::eq`
+  compares modular values. They differ for unreduced representations — the other choice would have
+  compiled and been silently wrong.
+- **22 `global … = BigNumParams::new(..)` became `pub fn`** — an ACCOMMODATION for a Noir compiler
+  bug, **to revert when the fix ships upstream.** Zero measured gate cost.
+- **`sigver/curve_384.nr` deleted** — a second, never-wired Brainpool P384R1 under a secp384r1 name.
+- **Dependency pins bumped** (`sort`, `poseidon`, `sha256`); all were stale against beta.26.
+- **⚠️ `ScalarField::from_bignum` carried the vendor's own `// TODO: NONE OF THIS IS CONSTRAINED
+  YET. FIX!`** on the ECDSA scalar decomposition. See `TODO.md` — this is the most serious thing in
+  the repo's history and was found by reading the file, not by any tracker.
 
 ### `noir-lang/noir` itself
 
 A 3-hunk ICE fix (`backend/circuits/noir-ice-repro/noir-fix.patch`) with a 14-line reproduction.
-**Not vendored** — the built compiler is installed locally and its source tree is ephemeral.
-See "Toolchain" below. Not yet submitted upstream: `noir-ice-repro/UPSTREAM-REPORT.md` is ready
-to file and needs GitHub credentials this environment does not have.
+Not vendored; the built compiler is local. See **Toolchain** below.
 
 ### Privacy Pools Solidity
 
-Additive rather than rewrites, but they change the contract's surface:
-
-- **`PrivacyPool.withdrawBatch`** + `MAX_BATCH` + batch errors, with `lib/BatchVerifierLib.sol` and
-  `lib/BatchCommitmentLib.sol`. Upstream has no batching.
-- **`AGGREGATION_VERIFIER` is a constructor argument and immutable.** It was previously declared and
-  read but NEVER ASSIGNED, so `withdrawBatch` was unreachable. Zero is still allowed (a pool that
-  does not batch is legitimate, and upstream has no such verifier) but is refused explicitly with
-  `AggregationNotConfigured` rather than calling into an empty address.
-- **`PrivacyPoolSimple` / `PrivacyPoolComplex` constructors gained `_aggregationVerifier`.**
-- `Entrypoint`, `State`, `ProofLib` and the pool interfaces all carry local changes.
-
-### rarimo passport circuits
-
-`register_identity/src/main.nr`, `register_identity_td1/{Nargo.toml,src/main.nr}`.
-
-### `escrow_envelope`
-
-poseidon pinned v0.2.0→v0.3.0 to match `pp` and to build on beta.26.
+Additive, but they change the contract surface:
+- `withdrawBatch` + `MAX_BATCH` + batch errors, with `BatchVerifierLib` / `BatchCommitmentLib`
+- `AGGREGATION_VERIFIER` as an immutable constructor argument — it was previously **declared, read,
+  and never assigned**, so batching was unreachable
+- `DeployLib` gained actual deployment functions; it previously held salts and nothing else, so no
+  pool was ever constructed outside a test
 
 ---
 
-## Toolchain (read before running anything that generates artifacts)
+## Toolchain (read before generating any artifact)
 
 **`nargo` is a LOCALLY PATCHED beta.26** reporting `1.0.0-beta.26+quid-icefix1`. The suffix is
 load-bearing: an unmarked patched build is indistinguishable from the release and would slip past
-`codegen-verifiers.sh`'s guard, making the pin meaningless. **CI and other developers will fail that
-guard, correctly** — they have stock beta.26. **The circuits still build on stock beta.26**; the
-accommodation above was kept precisely so they do.
+`codegen-verifiers.sh`'s guard. **CI and other developers will fail that guard, correctly** — the
+circuits still build on stock beta.26, which is why the accommodation above was kept.
 
 - stock binary: `~/.nargo/bin/nargo.beta26-release.bak`, or `noirup --version 1.0.0-beta.26`
-- rebuild recipe: in the header of `backend/circuits/codegen-verifiers.sh`
-- **`bb` 5.1.0 must be on PATH**: `export PATH="$HOME/.bb:$PATH"`, else codegen reports it missing
-
-**Artifact generation is a 5-step pipeline** and `codegen-verifiers.sh` is only step 4; step 5 is
-`tools/prove-escrow-fixtures.sh`. Skipping it produces `SumcheckFailed()` far from the cause.
-**Regenerate only what changed** — re-proving unchanged circuits is churn, and one target
-(`title_holder`) currently fails when re-proved (TODO.md, task 30).
-
-**Not covered by `codegen-verifiers.sh`:** `aggregate_withdrawals` (deliberately) and the 83
-`NoirRegisterIdentity_*.sol` passport verifiers. Changing those circuits refreshes nothing.
+- **`bb` 5.1.0 must be on PATH**: `export PATH="$HOME/.bb:$PATH"`
+- artifact generation is a **5-step pipeline**; `codegen-verifiers.sh` is step 4 and
+  `tools/prove-escrow-fixtures.sh` is step 5. Skipping step 5 produces `SumcheckFailed()` far from
+  the cause.
+- **regenerate only what changed** — re-proving unchanged circuits is churn, and `title_holder`
+  currently fails when re-proved (TODO.md).
+- **not covered by the script:** `aggregate_withdrawals` and the 83 `NoirRegisterIdentity_*.sol`.

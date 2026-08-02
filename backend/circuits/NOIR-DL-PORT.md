@@ -83,6 +83,14 @@ previous behaviour was a CRASH, so there is nothing to regress.
 **Verified:** the 14-line repro compiles; the original `global ... = <operator overload>` form
 compiles; all 13 real crates compile on the patched compiler.
 
+**REGRESSION-TESTED AGAINST NOIR'S OWN SUITE: `noirc_frontend` 2223 passed, 0 failed, cargo exit 0.**
+A first run aborted at `tests::deeply_nested::deeply_nested_terms` with a stack overflow — that is
+ENVIRONMENTAL, not the patch: the same tests pass under `RUST_MIN_STACK=134217728` (macOS default
+thread stack is too small for that test in a release build), and the full green run above used it.
+**Note the trap:** the background-task notification reported "exit code 0" for that aborted run,
+because that is the exit of the wrapper shell, NOT of cargo — cargo had exited 101. Always read the
+recorded `CARGO_EXIT=` line, never the harness summary.
+
 **NOT APPLIED TO THE PINNED TOOLCHAIN.** This repo must build with RELEASED beta.26, so the
 accommodation in `noir_dl_lib` stays until the fix ships upstream. Revert it then — that is the
 whole point of having recorded it as an accommodation. Task 26 is now "submit upstream".

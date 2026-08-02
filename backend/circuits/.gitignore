@@ -35,3 +35,6 @@ process_passport_*.js
 # codegen-passport-verifiers.sh builds from. Without this negation the *.json rule above (which
 # exists to keep compiled artifacts out) would silently drop the one input that cannot be rebuilt.
 !passport-profiles.json
+
+# transient per-profile build tree used by codegen-passport-verifiers.sh
+.passport-build/

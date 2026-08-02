@@ -48,16 +48,30 @@ if [ "${actual_nargo}" != "${REQUIRED_NARGO}" ] || [ "${actual_bb}" != "${REQUIR
   exit 1
 fi
 
+# ONLY_FILE lets a caller name profiles EXACTLY, one per line. The substring FILTER is convenient
+# but unsafe for scripted batches - "1_256_3_3_576_248_NA" is a substring of
+# "11_256_3_3_576_248_NA", so a filter meant for one profile silently builds two.
+if [ -n "${ONLY_FILE:-}" ]; then
+  names=$(python3 -c "
+import json
+m=json.load(open('${MANIFEST}'))['profiles']
+want=[l.strip() for l in open('${ONLY_FILE}') if l.strip()]
+missing=[w for w in want if w not in m]
+if missing: raise SystemExit('not in manifest: %s' % missing[:3])
+print('\n'.join(want))")
+else
 names=$(python3 -c "
 import json,sys
 m=json.load(open('${MANIFEST}'))
 f='${FILTER}'
 print('\n'.join(n for n in m['profiles'] if not f or f in n))")
+fi
 
 [ -n "${names}" ] || { echo "no profiles matched '${FILTER}'" >&2; exit 1; }
 echo "profiles to build: $(echo "${names}" | wc -l | tr -d ' ')"
 
 mkdir -p "${WORK}/src"
+rm -f "${WORK}/failures.txt"
 cat > "${WORK}/Nargo.toml" <<'TOML'
 [package]
 name = "register_identity_profile"
@@ -107,11 +121,23 @@ fn main(
 }}""")
 PY
 
-  ( cd "${WORK}" && nargo compile )
+  # CONTINUE-ON-FAILURE, deliberately, and only for the CRS ceiling described below. Every failure
+  # is recorded and re-reported at the end: a pass that stops at the first blocked profile cannot
+  # tell you how many others are fine, and silently skipping them would be worse than either.
+  if ! ( cd "${WORK}" && nargo compile ); then
+    echo "FAILED_COMPILE ${name}" >> "${WORK}/failures.txt"; continue
+  fi
   artifact="${WORK}/target/register_identity_profile.json"
   [ -f "${artifact}" ] || { echo "ERROR: ${name} produced no artifact" >&2; exit 1; }
 
-  ( cd "${WORK}" && bb write_vk -t evm -b "${artifact}" -o target )
+  # bb cannot materialise a CRS larger than 2^24 points on macOS: it writes the decompressed
+  # bn254_g1.dat in ONE call, and a single write of exactly 2 GiB fails with EINVAL ("Invalid
+  # argument"). That is a host limitation, not a circuit or parameter problem - the same profile
+  # builds on Linux, or on any host where ~/.bb-crs/bn254_g1.dat already exists (bb reads it and
+  # never writes). Reproduced with a cleared cache, twice.
+  if ! ( cd "${WORK}" && bb write_vk -t evm -b "${artifact}" -o target ); then
+    echo "FAILED_WRITE_VK ${name}" >> "${WORK}/failures.txt"; continue
+  fi
   out="${DEST}/NoirRegisterIdentity_${name}.sol"
   ( cd "${WORK}" && bb write_solidity_verifier -t evm -k target/vk -o "${out}" )
 
@@ -129,4 +155,10 @@ done
 
 echo
 echo "regenerated ${built} passport verifiers into ${DEST}"
+if [ -s "${WORK}/failures.txt" ]; then
+  echo
+  echo "!! $(wc -l < "${WORK}/failures.txt" | tr -d ' ') PROFILES DID NOT BUILD - their .sol is UNCHANGED:"
+  cat "${WORK}/failures.txt"
+  exit 1
+fi
 echo "NEXT: forge build --sizes   (EIP-170 is 24,576 bytes and these are close to it)"

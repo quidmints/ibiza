@@ -20,7 +20,8 @@
       "AA_SIG_TYPE",
       "AA_SHIFT"
     ],
-    "documents_required": "none"
+    "documents_required": "none",
+    "coverage": "75 of the 76 committed verifiers. ID_Card_I is the exception and cannot be regenerated: its VK matches no published asset, including the TD1 profile it was diffed against. rarimo additionally publishes 6 registerIdentity profiles this repo does not have, four of them TD1 - see TODO task 24."
   },
   "profiles": {
     "11_256_3_2_336_216_NA": {
@@ -1428,12 +1429,29 @@
         "AA_SHIFT": 32
       },
       "from": "re-release v0.1.11-fix"
+    },
+    "10_256_3_3_576_248_1_1184_5_264": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 262,
+        "EC_LEN": 180,
+        "SA_LEN": 104,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 10,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 148,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 33
+      },
+      "from": "v0.2.5 artifact",
+      "note": "The artifact's own //name comment reads ..._0_1184_5_264 while the asset is named ..._1_1184_5_264 - AA_SIG_TYPE is 0 in the circuit, 1 in the name. RESOLVED as an upstream naming bug rather than a parameter ambiguity: our committed verifier shares all 61 VK constants with rarimo's published .sol of this name, and NO asset exists under the _0_ name, so this circuit is the one this file was built from. AA_SIG_TYPE=0 is legal - not_passports_zk_circuits.nr:625 guards `if (AA_SIG_TYPE != 0)`, i.e. carry DG15 without verifying its key."
     }
   },
   "quarantined": {
-    "10_256_3_3_576_248_1_1184_5_264": {
-      "reason": "every published artifact for this name embeds registerIdentity_10_256_3_3_576_248_0_1184_5_264 - AA_SIG_TYPE is 0 in the circuit and 1 in the file name, and no re-release fixes it. The name is generated FROM the parameters, so one of the two is wrong upstream and we cannot tell which; building either way risks a verifier that rejects every proof for this profile."
-    },
     "ID_Card_I": {
       "reason": "no artifact published under this name in any release"
     }

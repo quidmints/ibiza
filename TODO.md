@@ -8698,8 +8698,10 @@ at registration") has no passport equivalent and needs its own home regardless.
   - **`title_holder` looks worse in a coverage count than it is** - 0 in-circuit tests, but covered
     from outside by `pp::title_holder::test_matches_wallet_derivation` and a Solidity verifier suite.
 
-  **IF YOU DO ONE THING NEXT:** task **24** is the largest correctness debt (76 passport verifiers
-  generated on beta.13, in no regeneration script). ~~task **28**~~ — **DONE 2026-08-02**: the
+  **IF YOU DO ONE THING NEXT:** ~~task **24**~~ - **RE-SCOPED AND PARTLY DONE 2026-08-02.** It was
+  recorded as "83 passport verifiers generated on beta.13, in no regeneration script". **There are
+  76** (counted; this file said 83 here and 76 below), **they cannot be regenerated in this repo at
+  all**, and **nothing references them** - see GAP 1's successor below. ~~task **28**~~ — **DONE 2026-08-02**: the
   sanctions workflow is rewritten multi-jurisdiction, tested, and cross-checked against the contract
   (GAP 1 below). It was worse than "untested" — unsorted leaves meant every publish would have
   reverted, so nothing it produced could ever have been anchored.
@@ -8821,12 +8823,33 @@ at registration") has no passport equivalent and needs its own home regardless.
   Roster went 80 -> 77 for ONE reason, recorded inline in MIGRATION-BASELINE.txt: the three
   `sigver::curve_384::*` tests went with the dead file they tested.
 
-  **🔴 THE FINISH LINE IS THE VERIFIERS, AND IT IS NOT OPTIONAL.** A verifier is generated from a
-  circuit's VK; the VK follows the constraint system; the constraint system follows the compiler and
-  the library source. These crates could not build on beta.26 AT ALL before, so every committed
-  `contracts/passport/verifiers2/noir/NoirRegisterIdentity_*.sol` came from beta.13. **Using beta.26
-  for them at all means regenerating. There is no version of this where the old verifiers stay
-  valid** - stale ones reject valid proofs on-chain. Task 24.
+  **🔴 THE FINISH LINE IS THE VERIFIERS — and the reasoning below is right while its conclusion is
+  not executable (corrected 2026-08-02).** A verifier is generated from a circuit's VK; the VK
+  follows the constraint system; the constraint system follows the compiler and the library source.
+  These crates could not build on beta.26 AT ALL before, so every committed
+  `contracts/passport/verifiers2/noir/NoirRegisterIdentity_*.sol` came from beta.13, and a stale
+  verifier rejects valid proofs on-chain. All true.
+
+  **BUT THE 76 CANNOT BE REGENERATED IN THIS REPO, so "regenerating them" was never a task anyone
+  could do.** They are rarimo's, built from 76 PARAMETERISED PROFILES that do not exist here — we
+  have three `register_identity` crates with hardcoded globals and no profile generator. They
+  arrived in the fork import `0762975` and `git diff 0762975..HEAD` over that directory is EMPTY.
+  **And nothing references them**: no contract, test or script names one, only docs. The live path
+  takes `HolderRegistration.icaoRegistrationVerifier` as a deployed ADDRESS, so the repo had 76
+  verifiers it cannot use and none it can.
+
+  **✅ ONE THAT WE CAN NOW EXISTS**: `passport/verifiers/RegisterIdentityLightHonkVerifier.sol`,
+  generated on the patched beta.26, in codegen TARGETS, and tested against a REAL proof on-chain
+  (3 tests, 2.46M gas, every public input tampered in turn). `register_identity_light_td1` is the
+  only identity circuit with a committed witness, hence the only one whose verifier can be proven
+  rather than merely emitted. **The other four — including `register_identity_td1`, which the ICAO
+  path needs — are blocked on a real document (task 6), not on the toolchain.** Emitting them
+  untested would add four more unusable verifiers to a repo already holding 76.
+
+  **THE REMAINING DECISION IS TASK 27's, not an engineering one:** the 76 are dead weight here and
+  cannot be refreshed without rarimo's generator. Delete them (they are recoverable from git),
+  vendor the generator, or record them as pinned upstream artifacts. Today it is the worst option by
+  default — kept, unusable, and read as if they were ours.
 
   **✅ UNBLOCKED: `bb` was installed ALL ALONG** at `~/.bb/bb`, off PATH and at **v0.82.2**, which is
   why it read as absent. "Not installed" was wrong. **Now upgraded to 5.1.0** (bbup), so

@@ -77,8 +77,14 @@ here claiming "the script is incomplete" was wrong and is retracted.
 4. `backend/circuits/codegen-verifiers.sh` -> verifier + vk
 5. `tools/prove-escrow-fixtures.sh` -> escrow_envelope<i>.proof/.public
 
-**STILL OPEN:** the passport `NoirRegisterIdentity_*.sol` verifiers are not in this script's TARGETS
-at all and need their own path (task 24).
+**RESOLVED 2026-08-02, differently than expected.** The 76 passport `NoirRegisterIdentity_*.sol` are
+not in TARGETS and **cannot be** - they are rarimo's, generated from 76 parameterised profiles this
+repo does not contain, with no generator here, and nothing references them. What DID belong in
+TARGETS is our own identity circuit: `register_identity_light_td1` ->
+`passport/verifiers/RegisterIdentityLightHonkVerifier.sol`, generated on the patched beta.26 and
+tested on-chain against a real proof. It is the only one of the five with a committed witness; the
+other four are blocked on a real document (task 6), not on the toolchain. Disposal of the 76 is
+task 27's fork/sync decision, not an engineering step.
 
 ## SUPERSEDED NOTE (kept — its diagnosis of the blocker was right, its blame was wrong)
 
@@ -116,6 +122,11 @@ from these circuits on the OLD toolchain. **Moving the circuits to beta.26 chang
 systems, so those committed verifiers are stale and on-chain proofs against them will fail.** This
 is inherent to the toolchain move rather than caused by the source edits — the crates did not build
 on beta.26 at all before — but it means compiling and passing tests is NOT the finish line.
+
+**WHY IT WAS TOO BROAD (2026-08-02): "these circuits" are not ours.** The 76 verifiers were built
+from rarimo's parameterised profiles, not from the three crates in this repo, so their staleness is
+real but unfixable here and irrelevant to anything we deploy — nothing references them. The finish
+line for OUR circuits is unchanged and is now reached for the one that can be proven.
 
 **`bb` WAS INSTALLED ALL ALONG** — at `~/.bb/bb`, not on PATH, and at **v0.82.2**, far below the
 required 5.1.0. "Not installed" was wrong; "wrong version, invisible to the script" was the truth.

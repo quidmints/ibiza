@@ -51,15 +51,19 @@ the compiler, proof formats that shift between `bb` versions).
 
 ## Why aggregation was the first big piece
 
-Gas, measured rather than assumed: **a single withdrawal cost ~3.07M gas**, dominated by the
-in-circuit Honk verification. That is not a product — it is a demo.
+Gas: **a single withdrawal costs roughly 3.1M gas**, dominated by the in-circuit Honk verification.
+That is not a product — it is a demo.
+
+⚠️ **Treat that figure as approximate.** Three numbers (2.85M, 3.07M, 3.1M) appear across working
+notes at different points of the optimizer work, and only ~3.1M is traceable to `TODO.md`. The
+batched figures below ARE sourced. **Re-measure before quoting any of this externally.**
 
 **Aggregation is the only structural answer.** One recursive proof attests to N withdrawals, so the
 verification cost is paid once per batch instead of once per withdrawal:
 
 | | gas / withdrawal |
 |---|---|
-| single withdrawal | ~3.07M |
+| single withdrawal | ~3.1M (approximate — see above) |
 | **batched, N=16** | **~68k** |
 | batched, N=64 | ~41k |
 

@@ -8731,7 +8731,8 @@ at registration") has no passport equivalent and needs its own home regardless.
   coming, or (c) pin a vendor commit + changelog so the divergence is at least legible. **Today it
   is (b) by accident, which is the worst of the three.** Task 27.
 
-  **⚠️ THE ICE IS STILL AN UNFIXED UPSTREAM BUG.** `backend/circuits/noir-ice-repro/` is a 14-line
+  **✅ THE ICE IS FILED UPSTREAM: noir-lang/noir#13440** (2026-08-02), with the 14-line reproduction,
+  the narrowing table and the 3-hunk patch. Still UNFIXED upstream, so `backend/circuits/noir-ice-repro/` is a 14-line
   dependency-free reproduction; beta.26 is the newest release and still has it. Our source carries an
   ACCOMMODATION (22 `global ... = BigNumParams::new(..)` -> `pub fn`), semantics-preserving and
   **measured at ZERO gate cost** (1 ACIR opcode, identical to an empty circuit - the constants still

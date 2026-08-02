@@ -1,4 +1,14 @@
-# Upstream submission — ready to file at https://github.com/noir-lang/noir/issues/new
+# Upstream submission — ✅ FILED as noir-lang/noir#13440 (2026-08-02)
+
+**https://github.com/noir-lang/noir/issues/13440**
+
+Kept for the record: the reproduction, the narrowing table and the suggested patch below are what
+was submitted. `noir-fix.patch` in this directory applies cleanly to tag `v1.0.0-beta.26` if a PR is
+wanted as well — an issue was filed rather than a PR because that needs a fork of noir-lang/noir.
+
+**Our accommodation stays until the fix ships in a RELEASE.** `noir_dl_lib` still converts its
+`BigNumParams::new` globals to functions so the circuits build on stock beta.26; revert that when
+upstream releases, not when the issue closes.
 
 I could not file this myself: `gh` is not installed on this machine and I have no GitHub
 credentials. Everything below is ready to paste. To do it from here:

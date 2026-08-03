@@ -5508,7 +5508,23 @@ capability goes to the Noir side.
 **THE ORDERED PLAN - steps 1-4 need no document, 5 does, and 6 MUST NOT PRECEDE 5.** *"is this first
 step to getting away from groth16?"* (user, 2026-07-30). Yes, first of six:
 
-1. **VERIFY THE PREMISE** (unblocked, needs a fetch of rarime's public Circom repo). That their Circom
+1. **✅ STEP 1 DONE 2026-08-03 - AND THE PREMISE IS FALSE, so the plan collapses to "needs
+   documents" exactly as this step was written to catch.** `RegisterIdentityBuilder` takes TEN
+   parameters and they are precisely the ten the profile NAME encodes: `SIGNATURE_TYPE,
+   DG_HASH_TYPE, DOCUMENT_TYPE, EC_BLOCK_NUMBER, EC_SHIFT, DG1_SHIFT, AA_SIGNATURE_ALGO,
+   DG15_SHIFT, DG15_BLOCK_NUMBER, AA_SHIFT`. **There is no `EC_LEN` and no `SA_LEN` anywhere in it** -
+   `signedAttributes` is sized by a HARDCODED `var SIGNED_ATTRIBUTES_LEN = 1024`, `encapsulatedContent`
+   by `EC_BLOCK_NUMBER * HASH_BLOCK_SIZE`, and `CHUNK_NUMBER` (the key limb count) is derived from
+   `SIGNATURE_TYPE` by an internal switch.
+   **WHY CIRCOM DOESN'T NEED THEM AND NOIR DOES:** circom is handed content ALREADY PADDED, and SHA
+   padding encodes the true length in the DATA. Our Noir port takes `ec: [u8; EC_LEN]` raw and pads
+   in-circuit, so it needs a number circom never had to know. Padding our arrays instead would make
+   the circuit pad twice and hash the wrong span.
+   **ALSO CHECKED:** none of the six orphans has a published rarimo NOIR artifact (82 published
+   profiles enumerated from their releases), so the file_map recovery that produced
+   `passport-profiles.json` for the other 75 cannot reach these. **Steps 2-4 are NOT mechanical and
+   must not be started; the six need one document each, like task 6.**
+   (Original wording kept for context: it needed a fetch of rarime's public Circom repo.) That their Circom
    circuits instantiate each profile with explicit `EC_LEN`/`SA_LEN` is **an INFERENCE, not a checked
    fact.** The circuits must carry concrete lengths somewhere, but that repo's layout has not been
    looked at. If the premise is false the plan collapses back to "needs documents", so verify before

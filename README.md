@@ -13,8 +13,8 @@ Support & Community Governance". It never reached users. The name is inherited f
 was designed, versioned, and never landed, which is worth saying plainly rather than quietly
 reusing.
 
-**The chain behind it never launched and the project was abandoned — but its vision is the one SPV
-achieves.** Lightning Bitcoin set out to be an internet-of-value protocol: fast, secure global
+**The chain behind it never launched and the project was abandoned — but its vision is the one
+[SPV](https://github.com/quidmints/SPV) achieves.** Lightning Bitcoin set out to be an internet-of-value protocol: fast, secure global
 payments, with governance held by its participants rather than an operator. It tried to reach that
 by launching a chain and a validator set, and it did not get there. SPV reaches it without either —
 value moves against Bitcoin collateral rather than against a new consensus layer, so there is no
@@ -23,8 +23,9 @@ in order for the payment to work. Taking the name is therefore a claim of succes
 nostalgia: the same goal, by a route that does not require the part that killed the original.
 
 **And that is why this repo exists at all.** ibiza is not an end in itself — its primary purpose is
-to generate demand for SPV. Private, permissionless settlement with credible identity and screening
-is the thing people actually want to use; SPV is the thing underneath that makes the money work.
+to generate demand for [SPV](https://github.com/quidmints/SPV). Private, permissionless settlement
+with credible identity and screening is the thing people actually want to use; SPV is the thing
+underneath that makes the money work.
 This repo is the demand side, and it should be read and prioritised as such: a decision here is
 right when it brings more real usage to SPV, and merely interesting when it does not.
 

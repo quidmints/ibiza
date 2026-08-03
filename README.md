@@ -82,7 +82,9 @@ Other measured gas work along the way:
   **11,610,552 to 550,404 gates**, and the N=2 case from 1,396,874 to 81,668. The Poseidon variant's
   in-circuit verifications were **vacuous** — present in the gate count, absent in effect.
 - withdrawal verifier size brought under the **EIP-170** 24,576-byte limit (24,534 → 23,527) with
-  `optimizer_runs = 1` scoped to the verifiers.
+  `optimizer_runs = 1` scoped to the verifiers. **⚠️ That constraint is probably obsolete now:** on
+  the current toolchain the verifiers measure ~17,723 bytes with ~6,853 spare, so `runs = 1` — chosen
+  for SIZE over execution cost — may be costing gas for nothing. Not yet re-tested (TODO.md).
 - **root memo** in `withdrawBatch`: distinct state/identity roots are checked once per batch rather
   than once per withdrawal, which is exactly equivalent because a root's validity is a pure function
   of pool state.

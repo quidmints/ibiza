@@ -8033,6 +8033,43 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18dg "BUT WE DO AGGREGATION" - the gas argument against STARKs does not survive it (user, 2026-08-04)
+
+**The challenge lands, and the argument I gave was the weakest one.** I rejected STARKs on EVM
+verification cost (~1-5M gas). Aggregation amortises exactly that:
+
+| | on-chain cost |
+|---|---|
+| single Honk proof | ~200k+ |
+| **Honk at N=16** | **~68k / withdrawal** |
+| a STARK batch proof at 1-5M, over 16 | **62k - 312k / withdrawal** |
+
+So a STARK stack BRACKETS our figure rather than being disqualified by it, and both shrink further as
+N grows. **Gas is not the discriminator once you aggregate** - and STARKs recurse at least as well as
+Honk (Plonky2's whole design is recursion), so the aggregation itself is not the obstacle either.
+
+**WHAT ACTUALLY SURVIVES, in order of strength:**
+1. **ON-DEVICE PROVING.** Users prove their OWN withdrawal on a phone in ~1.3 s, and the witness never
+   leaves. That is the design's privacy property, not a convenience. STARK proving is memory-hungry,
+   and the passport circuits run 2^18-2^25; a phone is the binding constraint, not a server.
+2. **NOTHING TO INHERIT.** rarimo publishes **Noir**. A STARK stack means authoring ~92 circuits
+   (79 passport + 10 light + PP's 3) from scratch with no upstream to diff against - and today's light
+   work is the counter-example: ten verifiers regenerated from a template in minutes, with correctness
+   proven by a VK collision against the existing artifact.
+3. **THE TRUST WIN IS SMALLER THAN IT LOOKS.** A raw STARK verified on-chain at 1-5M per batch is
+   plausible; the standard practice (RISC Zero, Polygon) is to WRAP the STARK in a SNARK for EVM
+   verification - which reintroduces a trusted setup. One ceremony instead of 92, which is exactly
+   what the universal SRS already gives us.
+
+**SO THE CONCLUSION HOLDS BUT THE REASONING CHANGES:** STARKs were not ruled out by gas. They are
+ruled out by on-device proving and by having no circuits to inherit. Anyone revisiting this should
+attack THOSE two, and should note that #1 is measurable today (prove a 2^18 passport circuit on
+phone-class hardware) rather than a matter of opinion.
+
+- [ ] If the on-device constraint ever relaxes (server-side proving, or a delegated prover that does
+      not see the witness), reason 1 disappears and this decision genuinely reopens. Record it then
+      rather than treating the stack as settled forever.
+
 ### 2.18de WHICH AXIS DECIDES: SOUNDNESS vs COST, and 1 assumption vs 79 (user, 2026-08-04)
 
 *"but this doesnt need a ceremony? which axis is better? why does it matter?"*

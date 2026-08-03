@@ -139,6 +139,39 @@ The cost is that we now depend on the Noir toolchain's maturity, which is where 
 sharpest problems in `TODO.md` come from (a compiler ICE we patched, a bignum ecosystem that trails
 the compiler, proof formats that shift between `bb` versions).
 
+### On-device proving is the binding constraint — and it is measured, not assumed
+
+Users prove their **own** registration and withdrawal on a phone; the witness never leaves the device.
+That is the privacy property, so **whatever the prover needs, a mid-range Android phone must have.**
+
+Measured with the pinned toolchain (`bb write_vk`, peak RSS, in the Linux build container):
+
+| circuit | padded size | profiles | peak memory |
+|---|---|---|---|
+| smallest passport (`2_256_3_4_336_248_NA`) | 2^18 | **58 of 78** | **337 MB** |
+| largest passport (`25_384_3_5_576_248_20_3768_3_2008`) | 2^25 | 2 | **~33 GB** (12.5 GB resident + 21 GB swap) |
+
+Two things follow, and the second is uncomfortable:
+
+- The **common case fits a phone.** 337 MB is within reach of a Samsung A16-class device (4–8 GB RAM),
+  though not by a wide margin once Android's per-app limits are counted.
+- The **heaviest profiles fit no phone at all**, in *any* proving system. Those two are not an
+  on-device path today regardless of stack, and nothing about Honk causes that — it is the circuit.
+
+**⚠️ WHAT THIS DOES NOT ESTABLISH — and the claim is often made carelessly, including earlier in this
+repo's own notes.** "STARKs cannot run on a phone" is **NOT VERIFIED HERE.** STARK provers are
+generally more memory-hungry than SNARK provers for an equivalent trace, which is the basis for the
+concern, but nobody has measured a Plonky2/RISC-Zero-class prover on this circuit or this hardware.
+Treat it as a hypothesis with a known experiment:
+
+> Compile one 2^18-equivalent passport circuit for a STARK backend and record peak RSS and wall-clock
+> on a Samsung A16 (or equivalent 4 GB Android device). If it lands near 337 MB, the on-device
+> objection to STARKs collapses and the stack decision genuinely reopens — see `TODO.md` sec. 2.18dg,
+> which already records that aggregation defeated the *gas* objection.
+
+Until that is run, the honest statement is: **Honk is measured to fit the common case; STARKs are
+assumed not to, and the assumption is untested.**
+
 ### Why this proving system, and not a "better" one
 
 The setup axis is what decided it, and it is worth stating plainly: **removing four trusted parties

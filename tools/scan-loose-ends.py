@@ -54,7 +54,14 @@ CODE_EXTS = (".sol", ".nr", ".ts", ".tsx", ".go", ".rs", ".py", ".sh")
 SKIP_DIRS = ("node_modules", "/lib/", "/build/", "/target/", "/.git/", "/out/", "/cache/")
 
 
-def scan_transcript(path, ctx=190):
+def scan_transcript(path, ctx=190, role="assistant"):
+    """Run the vocabulary families over one role's messages.
+
+    role="assistant" answers "what did the model say and never book".
+    role="user" answers "what did the USER flag that was never acted on" — a different question, and
+    one the families were NOT applied to originally. If you say "this is fragile" or "don't forget X",
+    no amount of scanning my output will find it.
+    """
     hits = {k: [] for k in FAMILIES}
     seen = set()
     with open(path, errors="ignore") as fh:
@@ -63,7 +70,7 @@ def scan_transcript(path, ctx=190):
                 msg = (json.loads(line).get("message") or {})
             except Exception:
                 continue
-            if msg.get("role") != "assistant":
+            if msg.get("role") != role:
                 continue
             c = msg.get("content")
             # READ text AND thinking. Measured on a real 56 MB transcript, assistant content is
@@ -228,6 +235,16 @@ def main():
             if not ap_doc.is_absolute():
                 ap_doc = pathlib.Path(a.root) / a.against
             scan_prompts(a.transcript, ap_doc.read_text(errors="ignore"))
+        print("\n" + "=" * 78)
+        print("YOUR PROMPTS, run through the SAME families — what YOU flagged and nobody acted on")
+        print("=" * 78)
+        uhits = scan_transcript(a.transcript, role="user")
+        for fam, items in uhits.items():
+            if items:
+                print(f"\n--- USER/{fam.upper()}: {len(items)} ---")
+                for s in items[:a.limit]:
+                    print(f"  • {s[:250]}")
+
         hits = scan_transcript(a.transcript)
         for fam, items in hits.items():
             flagged = [s for s in items if not booked(s, docs)]

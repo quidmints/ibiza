@@ -135,7 +135,9 @@ PY
   # is recorded and re-reported at the end: a pass that stops at the first blocked profile cannot
   # tell you how many others are fine, and silently skipping them would be worse than either.
   if ! ( cd "${WORK}" && nargo compile ); then
-    echo "FAILED_COMPILE ${name}" >> "${WORK}/failures.txt"; continue
+    # REPORT AT THE MOMENT OF FAILURE, not only in the summary. A failure recorded silently and
+    # printed 20 minutes later reads, in a live log, exactly like success.
+    echo "!! FAILED_COMPILE ${name}" | tee -a "${WORK}/failures.txt" >&2; continue
   fi
   artifact="${WORK}/target/register_identity_profile.json"
   [ -f "${artifact}" ] || { echo "ERROR: ${name} produced no artifact" >&2; exit 1; }
@@ -146,7 +148,9 @@ PY
   # builds on Linux, or on any host where ~/.bb-crs/bn254_g1.dat already exists (bb reads it and
   # never writes). Reproduced with a cleared cache, twice.
   if ! ( cd "${WORK}" && bb write_vk -t evm -b "${artifact}" -o target ); then
-    echo "FAILED_WRITE_VK ${name}" >> "${WORK}/failures.txt"; continue
+    # REPORT AT THE MOMENT OF FAILURE, not only in the summary. A failure recorded silently and
+    # printed 20 minutes later reads, in a live log, exactly like success.
+    echo "!! FAILED_WRITE_VK ${name}" | tee -a "${WORK}/failures.txt" >&2; continue
   fi
   out="${DEST}/NoirRegisterIdentity_${name}.sol"
   ( cd "${WORK}" && bb write_solidity_verifier -t evm -k target/vk -o "${out}" )

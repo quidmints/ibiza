@@ -24,11 +24,13 @@ nostalgia: the same goal, by a route that does not require the part that killed 
 
 **And that is why this repo exists at all.** ibiza is not an end in itself — its primary purpose is
 to generate demand for [SPV](https://github.com/quidmints/SPV). Private, permissionless settlement
-with credible identity and screening is what people actually want to use. SPV is where the money
-itself comes from: it issues QU!D against bitcoin and ether reserves, on a redemption schedule that
-is a dated maturity ladder rather than a promise of instant convertibility — so the reserves can be
-duration-matched to the claims against them and earn while they wait. The two repos are not a stack.
-This one brings the users and the settlement; that one issues and backs the asset they hold.
+with credible identity and screening is what people actually want to use. The two repos are not a
+stack: this one brings the users and the settlement, and SPV is the protocol they settle in.
+
+**What SPV is, this README deliberately does not restate** — read
+[its own `spec.md` and `docs/FAQ.md`](https://github.com/quidmints/SPV). A summary here would be a
+second source of truth that drifts, and the informational docs in that repo already contradict its
+contracts in about ten places, so a paraphrase written from memory is worse than a link.
 This repo is the demand side, and it should be read and prioritised as such: a decision here is
 right when it brings more real usage to SPV, and merely interesting when it does not.
 

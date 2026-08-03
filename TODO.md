@@ -9194,6 +9194,17 @@ at registration") has no passport equivalent and needs its own home regardless.
   retire the §3 entries only once you have made it. The argument may well be right; it is the
   unilateral settling of it, and leaving the contradiction in place, that is wrong.
 
+  **THEY ARE NOT THE SAME KIND OF QUESTION, AND RULING ON THEM TOGETHER WOULD BE A MISTAKE:**
+  - **5564 IS a genuine either/or.** HD-derived fresh recipients (`pp/recipient.ts`, shipped) and
+    stealth addresses solve the SAME problem. Doing both is waste, so one of them should go.
+  - **THE PAYMASTER IS NOT.** The gas stipend only works for a user who HOLDS AN ETH NOTE. For a
+    user holding ONLY tokens, a paymaster taking its fee in the withdrawn token is the ONLY thing
+    that helps — nothing else in the design reaches them. **So "residual" (task 22's current
+    framing, also mine) UNDERSTATES it: that is a coverage gap, not a redundancy.** How much it
+    matters depends on whether a token-only user is someone you intend to serve, which is a product
+    question. Note it is not urgent either way: no ERC-20 pool is deployed
+    (`PrivacyPoolComplex` has no operational deploy script), so this becomes live the day one is.
+
   **THE ARGUMENT: stealth addresses are the WRONG TOOL HERE.** ERC-5564 solves
   "a third party pays me without linking", via announcements the recipient scans. In a withdrawal the
   user controls both ends and knows the payout in advance, so plain HD derivation is strictly simpler

@@ -7771,7 +7771,7 @@ nothing is lost if the list is.**
 | 12 | multi-country notary registry | **sec. 2.18ao** - the per-jurisdiction status vocabulary, and why Ukrainian entries are deliberately absent |
 | 13 | anonymise the notary | **sec. 2.18am** (built: circuit, verifier, ledger wiring) + **2.18bm** (enrolment still names them) |
 | 15 | passport scanner | **sec. 2.18ap/aq** - config done, scanner absent; wrap upstream AndyQ + jmrtd, diffed in 2.18aq |
-| 16 | anonymous notary enrolment | **sec. 2.18bm** + the traps written into `TitleLedger.registerNotary` and `NotaryRegistryProof.t.sol` |
+| 16 | anonymous notary enrolment | **sec. 2.18bo** (the three levers, and which one is cheap) -> **2.18cd** for the 4-step order, step 1 unblocked by 2.18cf. "Poseidon mirror + proof instead of the leaf" is step 4 ALONE; do not start there. Traps: `TitleLedger.registerNotary`, `NotaryRegistryProof.t.sol` |
 | - | the aggregator (N=16) | **sec. 2.4**, status corrected 2026-07-31; unstarted, all preconditions met |
 | - | the OPRF | **2.18ax/bj/bk** - not a circuit, needs RFC 9497 in TypeScript, and 2.18bx revises its cost |
 | - | provenance / removing the postman | **2.18bp -> bq -> br -> bs -> bu -> bv -> bw -> bx -> by**, in that order; each corrects the last |
@@ -7969,15 +7969,40 @@ operator key kept for notary administration can publish fabricated register snap
 the same role**. That is not a deployment act. It is a role-splitting problem, and 2.18cl's checkbox
 was wrong to call it operational.
 
-**WHY THE POSTMAN EXISTED AT ALL, since that was the other half of the question.** Not for CRE. The
-role is *declared* in `RegistrySourceAnchor` but its original job is the notary path: someone has to
-assert *"this pseudonymous commitment belongs to a notary who appears in the public register"*, and
-nobody can do that trustlessly while the notary stays anonymous. `TitleLedger` then **reused** it
-deliberately - *"the SAME trust boundary the notary registry itself already rests on, not a separate,
-independently-scrutinized admin key"* - on the sound principle that one auditable boundary beats two.
-**The reuse was right; sharing it with a machine relay is what breaks it.** Task #16 (anonymous
-enrolment) removes the enrolment half by moving the check into the circuit, but not the revocation
-half.
+**WHY THE POSTMAN EXISTED AT ALL - AND I HAD THE DIRECTION BACKWARDS (user, 2026-08-03).** I wrote that
+its "original job is the notary path". **Wrong, and the inversion matters.** `REGISTRY_POSTMAN` is
+`RegistrySourceAnchor`'s OWN role for submitting CRE snapshots - **the DON's write path**, which is
+also why 2.18bo is titled *where the postman came from*. `TitleLedger` **borrowed** it for notary
+binding, deliberately: *"the SAME trust boundary the notary registry itself already rests on, not a
+separate, independently-scrutinized admin key"*. The intent - one trust assumption instead of two -
+was right. What it quietly did was hand **a snapshot-submission role the power to decide who is a
+notary**. Different powers wearing one hat.
+
+Underneath both: a register entry is **public data with no key**, so someone must assert *"this
+commitment is that person"*. That is the irreducible reason a postman exists anywhere here.
+
+**AND THE TWO POSTMEN MUST NOT BE CONFUSED - line 7132 is not about this one.** *"THE POSTMAN CANNOT
+BE REMOVED - I was wrong to say so"* refers to the **sanctions/CRE** postman.
+`sanctions_lists/sources.go:149` states the condition exactly: where the publisher signs nothing, the
+only authenticity is a TLS session the DON node *"cannot prove to anyone afterwards - so the snapshot
+rests on DON honesty, and the postman CANNOT be removed for this source"*. That is the role doing its
+ORIGINAL job. What 2.18bo removes is `TitleLedger`'s **borrowed** use of it - a different question with
+a different answer, and reading one as the other has already produced one wrong conclusion.
+
+**HOW 2.18bo REMOVES THE BORROWED USE: split the three levers.**
+1. **Arbitrary revocation** - `revokeNotary` today requires **no proof of fault**. Make it require
+   evidence: a proof that the register no longer lists that entry, checked against the CRE-anchored
+   root the contract already trusts. No new party, pure contract work, cheapest of the three.
+2. **Impersonation** - removable with circuits **already built**. `query_identity` proves selective
+   MRZ disclosure, so a notary proves in zero knowledge that they hold a current registered document,
+   that its name matches register entry E's `fullName`, and that E is in the active-notary root.
+   Nobody asserts anything; the attacker now needs a genuine passport matching the target's name
+   rather than an admin key.
+3. **Refusal** - dissolves once (2) lands: self-service enrolment has nobody to decline.
+
+**THE HONEST WEAKNESS, stated rather than implied:** names are not unique, and region narrows without
+closing it. The comparison is against *"one role key can impersonate any notary in the country"*, not
+against perfection.
 
 - [ ] **Split the role before wiring any forwarder.** Snapshot publication takes quid's write-once
       address (2.18cm); notary enrolment/revocation keeps a human-held role. Supersedes 2.18cl's
@@ -8336,8 +8361,13 @@ engineering one, and far larger than the code.
 may not survive a session, so the build steps are mirrored here.
 
 **#16 anonymous notary enrolment** - ordered, and the order is load-bearing (2.18bp/bn):
-1. evidence-bound revocation **- but see 2.18cb: impossible if the register expresses inactivity by
-   absence**, so settle the schema first;
+1. evidence-bound revocation **- and 2.18cf SETTLED the schema question this was waiting on
+   (2026-08-03): Ukraine expresses inactivity by FIELD, not absence.** 400 of 6,159 records carry
+   `тимчасово не діє` and remain PRESENT in the export, so suspension is a **presence claim** - the
+   provable case in 2.18cb's axis 4, not the collapsing one. **Step 1 is unblocked and is the small,
+   cheap one.** Still unmeasured, and it is a different question: whether a PERMANENTLY struck-off
+   notary disappears from the export entirely, which would be an absence claim again. Evidence-bound
+   revocation must handle suspension now and say explicitly what it does about disappearance;
 2. provenance (2.18bv/cc), because anonymity before it converts a detectable forgery into an
    undetectable one;
 3. name-binding enrolment, reusing `query_identity`'s selective disclosure of the MRZ name field;

@@ -8928,7 +8928,30 @@ at registration") has no passport equivalent and needs its own home regardless.
   postman cannot be removed for any of them** (sec. 2.18bv). Both are properties of what the
   authorities publish, now declared per source rather than discovered later.
 
-  **🟠 GAP 2 - four circuits declare ZERO `#[test]`:** `query_identity`, `query_identity_td1`,
+  **✅ GAP 2 RE-EXAMINED AND PARTLY CLOSED 2026-08-03 - the framing was misleading, like title_holder's.**
+  The two `query_identity` crates are WRAPPERS; the selector logic they wrap is tested where it lives,
+  in `noir_dl_lib/src/query.nr` (14 tests, including `test_an_empty_selector_discloses_nothing`,
+  `test_bit_0_alone_reveals_the_nullifier_and_nothing_else`, `test_the_nullifier_is_zero_for_everyone_when_its_bit_is_clear`,
+  `test_asking_about_citizenship_no_longer_discloses_the_personal_number`). Counting `#[test]` per
+  CRATE said zero; counting coverage says otherwise. **A third instance of the same measurement error.**
+
+  **WHAT GENUINELY HAD NO COVERAGE WAS THE SEAM**, and no same-language test could reach it: the
+  circuit returns 23 public signals whose ORDER is a tuple literal in `main.nr`, while
+  `sdk/lib/PublicSignalsBuilder.sol` writes each one at a HARDCODED assembly offset
+  (`mstore(add(dataPointer_, 416), selector_)` = index 12). Neither side can see the other. Transpose
+  two entries and everything compiles, every Noir test passes, every Forge test passes - and the
+  verifier reads `timestampUpperbound` out of the slot holding `timestampLowerbound`. **The proof
+  still verifies; it just means something else.** Same class as the LeanIMT sibling ordering and the
+  relay `context` pin.
+  **Closed by `tools/check-query-public-signals.py`** - compares the circuit's tuple against the
+  ASSEMBLY OFFSETS (not the doc comments; the offsets are what runs), covering the 14 signals the
+  wrapper names for itself. **Mutation-verified**: swapping the two timestamp bounds is caught at
+  both indices. Two spelling differences (`identity_count_*` vs `identityCounter*`) are recorded as
+  reviewed aliases rather than by loosening the comparison.
+  **Still open in this area:** the first 9 signals come from the library's return tuple and are not
+  named in the wrapper, so they are not covered by this check.
+
+  **🟠 GAP 2 (original) - four circuits declare ZERO `#[test]`:** `query_identity`, `query_identity_td1`,
   `register_identity_light_td1`, `title_holder`. Counts elsewhere: pp 85, noir_dl_lib 74,
   escrow_envelope 4, aggregate_withdrawals 3, register_identity_td1 2, notary_action 2,
   withdraw_identity 2, register_identity 1, ragequit 1. **`title_holder` is partly covered from

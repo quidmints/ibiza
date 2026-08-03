@@ -157,6 +157,7 @@ later without anyone taking your money. **That retroactive lever is the property
 
 **What we are changing it to — and read this before the list.** The design is a **closed set of
 independent predicates**, each with its own anchored source, rather than a single curated root.
+**Every predicate must pass — they are conjunctive, and none is optional or per-deployment.**
 **It is not wired to the pool yet.** The sanctions and notary pipelines are built as far as the
 on-chain anchor and stop there: no deposit or withdrawal reads them, there is no blacklist
 function, tree or root anywhere in the contracts, and admission to the association set is still a
@@ -169,8 +170,7 @@ as designed away, not yet demonstrated away**. Treat this section as the target 
   UK OFSI consolidated, UN Security Council; one per deployment) via
   `RegistrySourceAnchor.publishSnapshot`
 - **notary** — `backend/cre/notary_registry` anchors a notary registry the same way
-- **the original ASP chain-analysis set** — preserved as an OPTIONAL predicate a deployment may
-  enable, not deleted
+- **the original ASP chain-analysis set** — kept as a full predicate, not deleted
 
 **Why that shape.** Two reasons, both structural rather than cosmetic:
 

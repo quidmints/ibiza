@@ -78,6 +78,25 @@ commit that is not yours, do not amend or rebase it.
 
 ## Before closing a thread
 
+**⚠️ IBIZA'S FINDINGS LIVE IN SPV'S TRANSCRIPT DIRECTORY.** Sessions are filed by the directory the
+CLI was launched from, not by the repo being edited. Most ibiza work to date happened in threads
+started under `~/.claude/projects/-Users-ricktobacco-Documents-quidmint-SPV/`, so **scanning ibiza's
+own transcripts will surface almost nothing.** Sweep SPV's directory against ibiza's tracker:
+
+```sh
+for t in ~/.claude/projects/-Users-ricktobacco-Documents-quidmint-SPV/*.jsonl; do
+  python3 tools/scan-loose-ends.py --transcript "$t" --against TODO.md --root .
+done
+```
+
+**`--against` is the half that matters most**, and it answers a different question from the families:
+they score what the MODEL said and never booked; `--against` scores what the USER ASKED FOR and
+never got. A prompt can be entirely unaddressed and never trip a vocabulary family, because its
+sentences read as ordinary prose — that is how a design intent stayed unbooked through 454 prompts.
+It is a READING LIST, not a defect list: read every row.
+
+## Legacy note
+
 ```sh
 python3 tools/scan-loose-ends.py --transcript ~/.claude/projects/<proj>/<session>.jsonl
 ```

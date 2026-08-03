@@ -134,6 +134,62 @@ def booked(term, docs):
     return present >= (len(toks) + 1) // 2      # a majority of its identifiers already recorded
 
 
+def scan_prompts(path, doc):
+    """PER-PROMPT coverage — the piece the family scan STRUCTURALLY CANNOT DO.
+
+    The family scan scores PASSAGES of what the MODEL said. A user prompt can therefore be entirely
+    unaddressed and never surface, because its individual sentences each read as ordinary prose and
+    trip no vocabulary. The families answer "what did the model say and not book"; this answers the
+    different and more important question: **"what did the USER ask for and not get".**
+
+    Ported from SPV/tools/scan-loose-ends.py, where it was written after a design intent sat unbooked
+    through a 454-prompt discussion: no sentence in it tripped a family, and a keyword filter dropped
+    every contextual follow-up ("run it", "model it", "prove it") because the subject was implicit.
+
+    Deliberately noisy. It is a READING LIST, not a defect list.
+    """
+    D = doc.lower()
+    msgs = []
+    for line in open(path, errors="ignore"):
+        if not line.strip():
+            continue
+        try:
+            ev = json.loads(line)
+        except Exception:
+            continue
+        m = ev.get("message") or {}
+        if m.get("role") != "user":
+            continue
+        c = m.get("content")
+        s = c if isinstance(c, str) else (" ".join(
+            x.get("text", "") for x in c if isinstance(x, dict) and x.get("type") == "text")
+            if isinstance(c, list) else "")
+        s = s.strip()
+        if (not s or s.startswith("[SYSTEM") or s.startswith("<task-notification")
+                or "<system-reminder>" in s[:60] or s.startswith("[Request interrupted")):
+            continue
+        msgs.append(s)
+    STOP = {"should","because","through","there","which","would","could","really","thread","context",
+            "before","without","against","message","between","another","already","something",
+            "anything","everything","nothing","continue","understand"}
+    rows = []
+    for i, s in enumerate(msgs):
+        toks = {t for t in re.findall(r"[a-zA-Z_][a-zA-Z0-9_]{5,}", s.lower()) if t not in STOP}
+        if len(toks) < 4:
+            continue
+        miss = sum(1 for t in toks if t not in D)
+        rows.append((miss / len(toks), i, s))
+    rows.sort(reverse=True)
+    print("\n" + "=" * 78)
+    print(f"PER-PROMPT COVERAGE — {len(msgs)} prompts vs the target doc")
+    print("=" * 78)
+    print("⚠️ A READING LIST, not a defect list. Read EVERY row — sampling the top few is how a")
+    print("   design intent stayed unbooked through 454 prompts.")
+    for r, i, s in rows[:60]:
+        print(f"\n[{i}] uncovered={r:.2f}\n   {re.sub(chr(10),' ',s)[:240]}")
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--transcript", help="path to the session .jsonl")
@@ -141,6 +197,8 @@ def main():
     ap.add_argument("--docs", nargs="*", default=["TODO.md", "README.md"],
                     help="tracker files to cross-check against")
     ap.add_argument("--limit", type=int, default=8, help="passages shown per family")
+    ap.add_argument("--against", help="doc to score PER-PROMPT coverage against (e.g. ../ibiza/TODO.md). "
+                                      "Answers 'what did the USER ask for and not get' — the families cannot.")
     a = ap.parse_args()
 
     docs = []
@@ -165,6 +223,11 @@ def main():
         print("\n" + "=" * 78)
         print("TRANSCRIPT SCAN — what was SAID and may never have been BOOKED")
         print("=" * 78)
+        if a.against:
+            ap_doc = pathlib.Path(a.against)
+            if not ap_doc.is_absolute():
+                ap_doc = pathlib.Path(a.root) / a.against
+            scan_prompts(a.transcript, ap_doc.read_text(errors="ignore"))
         hits = scan_transcript(a.transcript)
         for fam, items in hits.items():
             flagged = [s for s in items if not booked(s, docs)]

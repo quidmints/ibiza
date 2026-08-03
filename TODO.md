@@ -7950,6 +7950,52 @@ Costs a signature-set check per snapshot and needs the DON's on-chain key set.
       signature. It exists as a pre-Forwarder bootstrap - **delete it once the Forwarder is wired**,
       or it is a permanent fabrication lever that no pin constrains.
 
+### 2.18cm `quidmints/quid` HAS THE BETTER FORWARDER PATTERN - AND NEVER WIRES IT (user, 2026-08-03)
+
+*"the forwarder wiring should be part of the deployment sequence. check out github.com/quidmints/quid"*.
+Read at `../quid` (working tree, and note **another thread has `evm/scripts/DeployL1.s.sol` modified**,
+so this is a snapshot). Three things, and the second one validates the instruction.
+
+**1. ITS ACCESS PATTERN IS STRICTLY BETTER THAN OURS, AND IT ANSWERS 2.18cl DIRECTLY.** `UMA.sol` does
+not use a grantable role. It uses a single address plus a **write-once** setter:
+
+    modifier onlyForwarder() { if (msg.sender != FORWARDER) revert NotForwarder(); _; }
+    function setForwarder(address _f) external onlyOwner {
+        require(FORWARDER == address(0), "already set"); ...
+
+That is the shape 2.18cl argued toward. An `AccessControl` role can be **granted to an EOA at any
+later time** - which is exactly how `REGISTRY_POSTMAN` becomes a human key again after we "fix" it by
+granting it to the Forwarder. A write-once address cannot: there is no second grant, no role admin,
+and no path back to a key. **The fix for our postman is structural, not operational.**
+
+**2. AND `setForwarder` IS NEVER CALLED - ANYWHERE.** Measured: zero call sites outside its own
+definition, in scripts, tests or source. So after any deployment `FORWARDER == address(0)`, and since
+`msg.sender` can never be the zero address, **`onReport` reverts for every possible caller**. The CRE
+forensic watchdog - evidence storage and auto-dispute - is **inert in production**. Fail-CLOSED, so
+nothing is at risk; the feature simply does not exist while appearing to. **Zero tests touch the
+forwarder path**, which is how it survived.
+
+**3. THE STUB IS BAIT, AND WIRING IT NAIVELY WOULD BE WORSE THAN LEAVING IT.**
+`address constant FORWARDER = address(0xF0F0); // stub` sits in `DeployL1.s.sol:45` and
+`DeployBase.s.sol:65` and is referenced **zero times** - dead code by rule 1. But the obvious "fix" of
+passing it to `setForwarder` in the deploy sequence would be a **permanent brick**: the setter is
+write-once, so a stub address can never be corrected. The wiring step needs a REAL address or none.
+
+**WHAT THIS MEANS HERE.** `backend/contracts` has **no deployment scripts at all** - no forge script,
+no hardhat, nothing. So 2.18cl's "grant REGISTRY_POSTMAN to the Forwarder and nothing else" has
+nowhere to live, and the same silent-inertness failure is available to us the moment we deploy.
+
+- [ ] **Replace `REGISTRY_POSTMAN` with quid's write-once forwarder address** in
+      `RegistrySourceAnchor`. This is the real answer to 2.18cl: it removes the human key by
+      CONSTRUCTION rather than by remembering not to grant the role. Keep a role only if a
+      pre-Forwarder bootstrap is genuinely needed - and if so, see 2.18cl's last item.
+- [ ] **Write ibiza's deployment sequence**, with forwarder wiring as an explicit step that FAILS
+      LOUDLY when the address is unknown, rather than a constant nobody passes. The lesson from quid
+      is that "set it later" and "never set" are indistinguishable without a check.
+- [ ] Cross-repo, for whoever owns `quid`: `setForwarder` is uncalled (watchdog inert), the `0xF0F0`
+      stub is unused and unsafe to wire, and `UMA.onReport` discards `metadata` exactly as ours did -
+      **with no pin at all to check it against**, so 2.18ck's finding applies there in a stronger form.
+
 ### 2.18cj THE ENCLAVE 2.18bx WANTED ALREADY EXISTS, IN OUR OWN STACK (user, 2026-08-03)
 
 *"we cant ask anybody to sign anything unless it's operated by us"* and *"if anything helps that is

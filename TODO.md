@@ -7772,6 +7772,54 @@ nothing is lost if the list is.**
 **Each collapses several design branches, and until one lands, further design in this area is
 building on an assumption.**
 
+### 2.18ch THE REAL PKI IS IN HAND, AND IT UNBLOCKS MORE THAN TASK 8 (2026-08-03)
+
+The operator downloaded the ICAO PKD set. What it contains and what each part is worth:
+
+| file | what it is | what it unblocks |
+|---|---|---|
+| `ICAO_ML_20260721154956.ml` | the signed Master List | **task 8** - CSCA roots |
+| `icaopkd-001-complete-10245.ldif` | 31,410 **DSC**s + CRLs | **testing certificate admission** |
+| `icaopkd-002-complete-527.ldif` | country-submitted master lists | cross-check on the above |
+| `Health_ML_*`, `*Health*.cer`, BCSC/BCSC-NC | vaccination / barcode signers | **nothing here** - different trust domain |
+
+**TASK 8's DATA IS DONE.** `tools/build-icao-master-root.py` verifies the CMS signature, extracts the
+certificates and prints the root. Measured, not estimated: **581 CSCA certificates, 103 countries,
+403 RSA / 178 EC, 391 DISTINCT public keys** (190 are link/rollover certs re-certifying a key that is
+already present - deduplicating is what makes the leaf set a set of KEYS, which is what
+`keccak256(icaoMember_.publicKey)` looks up).
+
+    icaoMasterTreeMerkleRoot = 0x63e9022d5269f33b8d2d0a56cbef49584f94ac3e5753176cce03c13ec3826072
+
+**THE LEAF ENCODING WAS READ FROM THE CODE, NOT ASSUMED** - the wrong one yields a plausible root
+that rejects every proof. `CRSASigner.verifyICAOSignature` feeds `icaoMemberKey_` straight into
+`decrypt(signature, exponent, modulus)`, so RSA leaves are the RAW MODULUS (no ASN.1 wrapper, no
+leading zero); EC leaves are the uncompressed point from the SPKI BIT STRING. Sanity-checked rather
+than trusted: EC key lengths come out at exactly 65/97/129/133 bytes (P-256, P-384, brainpool-512,
+P-521) and RSA at 256/384/512/768, so nothing is being silently truncated.
+
+**AND THE PART I HAD WRITTEN OFF AS NEEDING A PASSPORT DOES NOT.** `registerCertificate` is
+permissionless and works by proving a CSCA is in the master tree, verifying THAT CSCA's signature
+over a DSC, and admitting the DSC to `certificatesSmt`. With the master list AND the DSC feed that
+whole bridge is testable against real data with **no document at all**. Verified end to end before
+writing anything down: of 4,000 sampled DSCs, **every one chains to a master-list CSCA**, and a
+full RSA PKCS#1 v1.5 verification succeeds -
+
+    CSCA 4096-bit, e=65537 -> DSC 2048-bit, SHA-256, TBS 695 B, signature 512 B
+    keyOffset 278, expirationOffset 138, notAfter 2036-01-28
+    Merkle proof: 9 elements, recomputes to the root above (checked the way processProof does)
+
+Committed as `backend/contracts/test/fixtures/icao_certificate_admission.json`. **Every byte is
+genuine** - no synthetic certificate anywhere in it.
+
+**WHAT STILL NEEDS A REAL DOCUMENT, so nobody re-reads this as more than it is:** task 6's happy path
+and task 10's six orphan profiles both need an SOD/DG1. The raw `EC_LEN`/`SA_LEN` those need live in
+a passport's own DER; certificates do not carry them. The DSC feed does not help there.
+
+**STILL A DECISION, NOT A TASK** (belongs in sec. 4): ICAO's terms require every entity using the
+list to set its OWN policy for trusting these certificates and warn some may be non-conformant.
+Anchoring all 581 unfiltered is itself a policy - the permissive one.
+
 ### 2.18cg THE ICAO MASTER LIST, LOCATED (2026-08-03) - public, and the catch is governance not access
 
 Task 8 needs the REAL published CSCA list. It exists, it is FREE, and it does not require PKD

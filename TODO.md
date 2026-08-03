@@ -7754,7 +7754,7 @@ nothing is lost if the list is.**
 | # | task | context lives in |
 |---|---|---|
 | 6 | permissionless enrolment path (no backend signer) | sec. 2.18g/2.18h; `registerDocumentViaIcao` + `register_identity_td1` built, happy path blocked on a document |
-| 8 | publish the CSCA master root, wire certificate admission | sec. 2.18ad item 5 - needs the REAL published ICAO list; **never fake a root**, not in a fixture, not behind a flag (2.18k) |
+| 8 | publish the CSCA master root, wire certificate admission | sec. 2.18ad item 5 + **THE LIST IS LOCATED, see 2.18cg below**; **never fake a root**, not in a fixture, not behind a flag (2.18k) |
 | 10 | Groth16 -> Honk, 6 orphan profiles | **sec. 2.18aj** - the six decoded, and the ordered plan whose steps 1-4 need no document |
 | 12 | multi-country notary registry | **sec. 2.18ao** - the per-jurisdiction status vocabulary, and why Ukrainian entries are deliberately absent |
 | 13 | anonymise the notary | **sec. 2.18am** (built: circuit, verifier, ledger wiring) + **2.18bm** (enrolment still names them) |
@@ -7771,6 +7771,45 @@ nothing is lost if the list is.**
 
 **Each collapses several design branches, and until one lands, further design in this area is
 building on an assumption.**
+
+### 2.18cg THE ICAO MASTER LIST, LOCATED (2026-08-03) - public, and the catch is governance not access
+
+Task 8 needs the REAL published CSCA list. It exists, it is FREE, and it does not require PKD
+membership - which the earlier note left open.
+
+**WHAT IT IS.** The ICAO Master List: the CSCA (Country Signing Certificate Authority) certificates
+of ICAO PKD members, passed to ICAO through diplomatic channels. **579 certificates, issued
+2026-07-15, refreshed quarterly**, distributed in **LDIF** and signed by an ICAO Master List Signer
+Certificate. It is the authoritative MULTI-COUNTRY set.
+
+**NOT the German BSI master list** (user, 2026-08-03: *"germany is not necessarily our target, we
+need to support all countries"*). BSI publishes its own, covering 80+ countries, but it is one
+state's curation of whom IT trusts. ICAO's is the list every PKD member is on.
+
+**ACCESS, precisely:**
+- **Public download**: bottom of `https://www.icao.int/icao-pkd/icao-master-list`, behind a
+  terms-and-conditions acceptance. **No membership.** The form is interactive, so the file cannot be
+  fetched by a plain GET - a human has to accept the terms once. Direct `curl` of the page is 403
+  (bot protection); the download endpoints under `pkddownloadsg.icao.int` are not openly reachable.
+- **Member portal** `https://download.pkd.icao.int/` needs PKD membership - NOT required for the above.
+
+**THE REAL CATCH IS NOT ACCESS, IT IS A DECISION WE MUST MAKE.** ICAO's own terms:
+*"Any receiving state or entity making use of the Master List must determine its own policies for
+establishing trust in the certificates contained on the list"*, and *"The Master List may contain
+certificates that are not conformant with existing technical standards... No responsibility is
+assumed for issues that may arise due to such non-conformance."*
+So importing it is not "publish the root and done": **which of the 579 we trust, and what we do with
+non-conformant certificates, is a policy choice that belongs next to sec. 4's decisions.** Anchoring
+all 579 unfiltered is itself a policy - the permissive one - and should be chosen deliberately.
+
+**TOOLING EXISTS; DO NOT WRITE AN LDIF PARSER.**
+- `nicocha/CSCA-masterlist` - decodes the ICAO LDIF, exports one PEM per certificate.
+- `AndyQ/NFCPassportReader/scripts` - builds unique CSCA PEMs from a country master list or the PKD
+  repository. **Already our chosen upstream for the scanner (task 15)**, so one dependency serves both.
+- `ZeroPass/pymrtd` - full ICAO 9303 trustchain verification, useful as a cross-check oracle.
+
+**NEXT STEP IS ONE HUMAN CLICK**, then the LDIF drops into the same shape as the sanctions and notary
+work: parse, build the tree, anchor the root, cross-check the root in Solidity.
 
 ### 2.18ca THE UKRAINIAN DATASET, LOCATED - and a field our scraper assumes may not exist
 

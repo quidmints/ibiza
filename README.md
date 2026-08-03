@@ -94,8 +94,9 @@ and separate tooling. That is not a tidiness problem:
 
 - **Two verifiers on the same withdrawal cannot share a proof.** A withdrawal that must check both
   identity and note membership pays for two verifications and two calldata payloads.
-- **Groth16 needs a per-circuit trusted setup.** Every passport profile (35 of them) is a separate
-  ceremony. Honk needs none.
+- **Groth16 needs a per-circuit trusted setup.** Every passport profile — **81 of them** — is a
+  separate ceremony. Honk needs a *universal* SRS instead: **one setup, already performed, shared by
+  every circuit.** Not "no ceremony" — one instead of 81, and a public one rather than a vendor's.
 - **A shared hash is required for the fusion to work at all.** The identity tree and the pool's
   commitment tree must agree on Poseidon, or a single proof cannot span both.
 
@@ -108,11 +109,54 @@ verifier and wiring layer: 6 Groth16-era per-passport verifiers remain, and they
 profiles that still lack a Noir twin — the other 29 had twins and have been deleted. **Do not read "one toolchain" as finished end-to-end** — see `TODO.md`.
 
 Verifiers are bound by address at deploy time rather than by symbol, so a reference count cannot
-distinguish a live verifier from an unwired one. Those 35 are unresolved, not known dead.
+distinguish a live verifier from an unwired one. Those 6 are unresolved, not known dead.
+
+### What we took from rarimo, and what we deliberately did not
+
+We adopted rarimo's **proving system**. We did **not** adopt their **circuit design**, and the
+difference is the single most consequential fact about this repo's shape:
+
+| | stack | verifiers needed |
+|---|---|---|
+| Privacy Pools side | Noir / UltraHonk | **3** |
+| rarimo passport side | Noir / UltraHonk | **79** |
+
+Same proving system, **26× the verifiers.** PP's circuits do not change shape per user; rarimo bakes
+each document's array lengths in as compile-time generics, so every combination of
+`DG1_LEN/EC_LEN/SA_LEN/N` becomes a different circuit and therefore a different verifier.
+
+**Nearly every recurring problem on the passport side descends from that one choice, not from Honk:**
+the six orphan profiles and the `EC_LEN` hunt (`EC_LEN` only matters because it is *compile-time*), 82
+release artifacts to recover with 7 initially missed and one degenerate, and three profiles whose
+verifiers needed ~33 GiB working sets to build. PP is the control: the same stack, three verifiers, no
+manifest, no orphans.
+
+The unexamined alternative is **size classes** — 3–5 circuits covering ranges rather than 79 exact
+shapes — paid for in worst-case proving time on a phone. Nobody has measured that ratio; see `TODO.md`
+sec. 2.18dd.
 
 The cost is that we now depend on the Noir toolchain's maturity, which is where several of the
 sharpest problems in `TODO.md` come from (a compiler ICE we patched, a bignum ecosystem that trails
 the compiler, proof formats that shift between `bb` versions).
+
+### The size cost is real, but it is not where you would guess
+
+A Honk verifier is ~10× a Groth16 one — measured on the same profile family, **18,430 bytes against
+1,736** — and verification is ~2× the gas (~490k against ~200–250k). That is the price of the setup
+property above, and it is payable: gas is money, a compromised ceremony is forged proofs.
+
+**But the contracts currently over the 24,576-byte EIP-170 limit are not the verifiers.** As of
+2026-08-04 there are **18**, and the verifiers are not among them — the largest passport verifier has
+~6,100 bytes of headroom. The over-limit list is `HolderStateKeeper` (53,431), `StateKeeper` (50,044),
+`PoseidonSMT` (38,374), `IdentityRegistry`, the SMT mocks and two dispatchers: **state contracts, not
+proof contracts.**
+
+The likely cause is our own Poseidon **inlining**. `internal` libraries are copied into every call
+site, and size tracks call-site count closely — `PoseidonSMT` has 2 and is 38 KB, `StateKeeper` 6 at
+50 KB, `HolderStateKeeper` 7 at 53 KB, roughly **+3 KB per call site**. Inlining was adopted to skip
+the DELEGATECALL, which is worth **4,186 gas per hash — 12%, not the ~91% an older note claimed**
+(`test/libraries/PoseidonInlineGas.t.sol` pins both numbers). Whether 12% is worth ~3 KB per call site
+has not been measured against EIP-170, and nothing has been split. See `TODO.md`.
 
 ## Why aggregation was the first big piece
 

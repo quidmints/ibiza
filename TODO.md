@@ -9185,7 +9185,16 @@ at registration") has no passport equivalent and needs its own home regardless.
   the WITHDRAWN TOKEN, means the fresh address never needs ETH at all - ever. That closes the
   ERC-20 dead end, which nothing else does.
 
-  **AND IT ANSWERS THE 5564 QUESTION: stealth addresses are the WRONG TOOL HERE.** ERC-5564 solves
+  **⚠️ THE 5564 AND PAYMASTER "DECISIONS" WERE MINE, NOT YOURS - AND THE DOC CONTRADICTS ITSELF.**
+  Below I concluded 5564 is "a non-requirement". But §3 STILL LISTS IT AS WORK TO BUILD (three
+  places: the pure-TS/Solidity item lists, and the "removes the fresh-address problem" entry). Both
+  cannot be true. Likewise task 22 was narrowed from "build an ERC-4337 paymaster" to "the residual
+  case only", on the strength of the gas-stipend argument - **also my call, never yours.**
+  **Neither was dropped by decision. Treat the argument below as ANALYSIS AWAITING YOUR RULING**, and
+  retire the §3 entries only once you have made it. The argument may well be right; it is the
+  unilateral settling of it, and leaving the contradiction in place, that is wrong.
+
+  **THE ARGUMENT: stealth addresses are the WRONG TOOL HERE.** ERC-5564 solves
   "a third party pays me without linking", via announcements the recipient scans. In a withdrawal the
   user controls both ends and knows the payout in advance, so plain HD derivation is strictly simpler
   and leaks less (no announcement to scan, no extra registry). 5564 would only earn its place if

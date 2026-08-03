@@ -70,14 +70,58 @@ docker build --platform linux/amd64 -f "${CIRCUITS_DIR}/passport-verifiers.Docke
 printf '%s\n' "${PROFILES[@]}" > "${CIRCUITS_DIR}/.docker-profiles.txt"
 trap 'rm -f "${CIRCUITS_DIR}/.docker-profiles.txt"' EXIT
 
+# SWAP THE GUI WILL NOT GIVE YOU (2026-08-03). Docker Desktop caps the swap slider at 4 GB, and
+# `~/Library/Group Containers/group.com.docker/` is TCC-protected, so the setting cannot be scripted -
+# a shell gets "Operation not permitted" even as its owner.
+#
+# BUT SWAP IS A KERNEL PROPERTY OF THE VM, NOT A DESKTOP SETTING. A privileged container can add a
+# swapfile to that kernel, and every container then sees it. Measured: 3071 MB -> 5119 MB with a 2 GB
+# file, on an ext4 volume with ~79 GB free. So the ceiling is disk, not the slider.
+#
+# It MUST live on a named volume: /tmp and the overlay root cannot host a swapfile, and `swapon`
+# rejects them with the unhelpful "Invalid argument".
+BB_SWAP_GB="${BB_SWAP_GB:-32}"
+
+# CORES: all of them, and THREAD COUNT IS NOT THE LEVER - the table above already settled it.
+# `HARDWARE_CONCURRENCY=2` was tried, bb honoured it ("num threads: 2"), and the peak did not move,
+# because the peak is the circuit's polynomials (2^25 x 32 bytes each), not per-thread scratch.
+# One refinement to the table, measured 2026-08-03: `--cpuset-cpus=0-1` DOES change what the
+# container sees (`nproc` reports 2) whereas `--cpus=2` does not (still 8) - so the flag is not
+# "silently ignored" at the container level. It changes nothing that matters, because the memory is
+# not per-thread. BB_CPUSET is left available; do not expect it to rescue an OOM.
+BB_CPUSET="${BB_CPUSET:-}"
+CPUSET_ARG=()
+[ -n "${BB_CPUSET}" ] && CPUSET_ARG=(--cpuset-cpus="${BB_CPUSET}")
+
+docker volume create ibiza-swap >/dev/null
+
 echo "building ${#PROFILES[@]} profile(s) in the container"
+echo "  swap: ${BB_SWAP_GB} GiB on the ibiza-swap volume; cores: ${BB_CPUSET:-all}"
+
+# --privileged is required for `swapon`, and is the whole reason it is here. This is a local build
+# container over a mounted source tree; it signs nothing and holds no key.
 docker run --rm --platform linux/amd64 \
+  --privileged \
+  ${CPUSET_ARG[@]+"${CPUSET_ARG[@]}"} \
   -v "${REPO_ROOT}":/repo \
   -v ibiza-bb-crs:/root/.bb-crs \
+  -v ibiza-swap:/swap \
   -w /repo/backend/circuits \
   -e ONLY_FILE=/repo/backend/circuits/.docker-profiles.txt \
   "${IMAGE}" \
-  ./codegen-passport-verifiers.sh
+  bash -lc '
+    set -e
+    if [ ! -f /swap/bb.swap ] || [ "$(stat -c%s /swap/bb.swap)" -lt "$(( '"${BB_SWAP_GB}"' * 1024 * 1024 * 1024 ))" ]; then
+      echo "allocating '"${BB_SWAP_GB}"' GiB swapfile (once; it persists in the volume)"
+      rm -f /swap/bb.swap
+      fallocate -l '"${BB_SWAP_GB}"'G /swap/bb.swap
+      chmod 600 /swap/bb.swap
+      mkswap /swap/bb.swap >/dev/null
+    fi
+    swapon /swap/bb.swap 2>/dev/null || true
+    echo "memory now:"; free -g | head -3
+    ./codegen-passport-verifiers.sh
+  '
 
 echo
 echo "NEXT, on the host:"

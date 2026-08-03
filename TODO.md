@@ -7835,6 +7835,43 @@ a passport's own DER; certificates do not carry them. The DSC feed does not help
 list to set its OWN policy for trusting these certificates and warn some may be non-conformant.
 Anchoring all 581 unfiltered is itself a policy - the permissive one.
 
+### 2.18cj THE ENCLAVE 2.18bx WANTED ALREADY EXISTS, IN OUR OWN STACK (user, 2026-08-03)
+
+*"we cant ask anybody to sign anything unless it's operated by us"* and *"if anything helps that is
+where the SPV rust is running"*. Both land, and together they settle the unsigned-source problem.
+
+**ASKING THE AUTHORITIES TO SIGN IS OFF THE TABLE.** Measured, all four are unsigned: SDN.XML,
+UK_ConList.xml and UN_consolidated.xml contain ZERO signature elements, and 2.18ce already found the
+Ukrainian export carries no `.p7s`, `.sig` or КЕП marker in 2.7 MB. Only ICAO signs (CMS SignedData).
+So for the other four the choice is DON-majority trust or an attestor **we run**.
+
+**AND THE ATTESTOR EXISTS.** `../SPV/quid-ln/quid-cvm` is a confidential-VM backend on **AMD SEV-SNP**
+(vendor `sev` crate, not hand-rolled), and it already exposes exactly the primitive this needs:
+- `get_report(None, Some(report_data), None)` - a hardware-signed attestation binding ARBITRARY data
+- **`attest_identity(tls_pk: &[u8; 32], evm_addr: &[u8; 20])`** - binds a TLS public key AND an EVM
+  address into that report
+
+**WHY THIS BEATS BOTH ALTERNATIVES.** A capability that verifies TLS in-sandbox cannot produce
+transferable evidence - TLS record keys are SYMMETRIC, so a node can forge a transcript of a session
+it genuinely had, which is the whole reason TLSNotary/zkTLS need MPC. An enclave sidesteps that
+entirely: the report is signed by AMD's key over a measurement of the CODE, so "this fetch was
+performed by this program" is checkable by anyone, with no MPC and no new Chainlink capability.
+
+**THE SHAPE, and it is cheap on L1:** attest once to bind an EVM address to the code measurement;
+pin the MEASUREMENT on-chain; thereafter the anchor accepts updates signed by that address. Routine
+refreshes cost one signature, not a proof. `attest_identity` is already written for exactly this
+binding.
+
+**AND THE ARCHITECTURE ALLOWS IT WITHOUT COUPLING.** sec. 7: *"Sharing OPERATORS is free (the batcher
+and any watcher can run on the same fleet); sharing a REPO breaks the invariant."* An attestor on the
+SPV fleet is operators, not repos - SPV still contains zero references to PP.
+
+**WHAT IT DOES NOT FIX, stated so nobody overclaims:** it makes the FETCH honest, not the DATA
+authentic. A compromised OFAC web server still poisons the result, because nothing upstream is
+signed. It removes the postman AND the DON majority from the trust set, and replaces them with the
+code measurement plus AMD's root - which is a real assumption (side channels, and we operate the
+host). For ICAO none of this is needed; the signature is strictly better.
+
 ### 2.18ci ICAO IS THE SOURCE-SIGNED REGISTER 2.18bv NEEDED - the postman is removable HERE (2026-08-03)
 
 **2.18bv concluded that SOURCE-SIGNED DATA removes the trusted publisher completely** - the workflow

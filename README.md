@@ -34,9 +34,9 @@ right when it brings more real usage to SPV, and merely interesting when it does
 
 **The second is the metaphor, and it is the reason the name fits this repo specifically.** In
 *It's All Gone Pete Tong*, the protagonist — a DJ — goes deaf, and afterwards produces a track called
-**"Hear No Evil"** made entirely without using his ears. He does not work around the loss by
-approximating what he can no longer hear; he builds by a different sense altogether, and the result
-stands on its own rather than as a lesser substitute.
+**"Hear No Evil"** made entirely without using his ears. He gets there by approximating the sense
+he lost through the ones he has left — feeling the music as vibration, reading lips. The substitute
+channel carries enough of the signal to do the job, and the job gets done.
 
 That is exactly what this system does with **see no evil, hear no evil, speak no evil**:
 
@@ -48,11 +48,16 @@ That is exactly what this system does with **see no evil, hear no evil, speak no
   a set membership rather than an address, the citizenship check has its own selector bit so it
   cannot leak a national ID, and a withdrawal names no depositor.
 
-The point of the film's metaphor is not deprivation. **The track was good.** A system that cannot
-see, hear, or speak about its users is not a degraded version of one that can — it is built on a
-different sense, and it has to be judged as its own thing. That is the standard this repo is held
-to, and it is why "privacy" here means the information is never acquired rather than acquired and
-withheld.
+That substitution is precisely what a zero-knowledge proof is. The pool cannot observe who is
+withdrawing, so it takes the fact it actually needed — that the withdrawal is valid — through a
+different channel. A proof is to observation what vibration is to hearing: not the original sense,
+but enough of the signal to act on.
+
+And the point of the film is not deprivation. **The track was good.** A system that cannot see,
+hear, or speak about its users is not a degraded version of one that can; it reaches the same
+result through a substitute channel, and it has to be judged on the result. That is the standard
+this repo is held to, and it is why "privacy" here means the information is never acquired rather
+than acquired and withheld.
 
 `TODO.md` is the canonical tracker and holds current state, traps and open decisions. This file
 answers the questions the tracker cannot: **where the code came from, why the fork was made the way

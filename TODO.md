@@ -7835,6 +7835,44 @@ a passport's own DER; certificates do not carry them. The DSC feed does not help
 list to set its OWN policy for trusting these certificates and warn some may be non-conformant.
 Anchoring all 581 unfiltered is itself a policy - the permissive one.
 
+### 2.18ci ICAO IS THE SOURCE-SIGNED REGISTER 2.18bv NEEDED - the postman is removable HERE (2026-08-03)
+
+**2.18bv concluded that SOURCE-SIGNED DATA removes the trusted publisher completely** - the workflow
+fetches by any means and verifies the authority's signature INSIDE THE SANDBOX against a key pinned
+in the contract, so *"a fabricated entry fails signature verification, so it cannot be published at
+all"*. No attestor, no upstream SDK change, no self-observed TLS (which 2.18bu proved unreachable).
+
+**THAT DESIGN HAS BEEN BLOCKED ON A MISSING INGREDIENT, and it is no longer missing.** 2.18bw's third
+check was whether either register we had actually signs its data, and neither was confirmed. **The
+ICAO Master List does.** Verified 2026-08-03:
+- CMS SignedData, `sha256WithRSAEncryption`, digest sha256 - `openssl cms -verify` succeeds
+- the Master List Signer certificate is issued by
+  **`C=UN, O=United Nations, OU=Certification Authorities, CN=United Nations CSCA`**
+- and that UN CSCA is ITSELF in the list: **4 certificates, 3 distinct RSA-3072 keys**
+  (`0156`, `0367`, and `0368`/`0389` which share a key - a rollover pair)
+
+**SO CSCA ADMISSION NEEDS NO AUTHORITY AT ALL.** Not a postman, not a TSS committee, not an owner
+key. The workflow verifies ICAO's signature against the pinned UN CSCA key and consensus runs over an
+ALREADY-VERIFIED result, which is exactly 2.18bv's shape. Pin the CSCA rather than the signer so
+signer rotation does not require a contract change; ICAO reissues quarterly.
+
+**TWO CORRECTIONS TO WHAT I SAID EARLIER IN THIS SESSION**, both recorded so the reasoning is not
+re-run:
+1. *"No CRE is needed because the list is signed"* - **wrong framing**. The CRE is still the right
+   home; it is simply not the source of authenticity. Consensus stops being what makes the data
+   trustworthy and becomes what makes the WORKFLOW's execution agreed - which is 2.18bt's pinning.
+2. *"Reuse the ASP_POSTMAN role for CSCA admission"* - **unnecessary for this source.** That proposal
+   was right about `changeICAOMasterTreeRoot(bytes32)` being the `updateRoot` anti-pattern PP
+   deliberately deleted (an authority publishing a whole off-chain root, able to omit a country
+   silently), and right that our fork has no TSS to hold it. But reusing the postman would import an
+   authority this data does not need. **Insert-only admission remains the right shape; the signature,
+   not a role, is what authorises it.**
+
+**STILL OPEN HERE:** which of the 3 UN CSCA keys certifies the CURRENT signer (verify the chain, do
+not guess), and whether the eContent digest can be tied to the derived root on-chain - the eContent
+is 876 KB, so hashing it in calldata or in-circuit is out; chunked incremental hashing on an L2 is
+the only route that keeps the update permissionless AND verified.
+
 ### 2.18cg THE ICAO MASTER LIST, LOCATED (2026-08-03) - public, and the catch is governance not access
 
 Task 8 needs the REAL published CSCA list. It exists, it is FREE, and it does not require PKD

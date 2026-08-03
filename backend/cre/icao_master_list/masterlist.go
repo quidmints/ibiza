@@ -24,6 +24,16 @@
 // Fetch by any means; the signature is what is trusted.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 //
+// WHY THE ASN.1 IS NOT DELEGATED TO A LIBRARY (standing rule 8 - evaluated 2026-08-03, not skipped).
+// `go.mozilla.org/pkcs7` parses this file correctly - 2 embedded certificates, 876,231 bytes of
+// content - but **`p7.Verify()` FAILS on the genuine ICAO master list with "Message has no
+// signers"**, because it matches the SignerInfo to a certificate by issuer-and-serial and the
+// signer's issuer DN differs AS BYTES from the CSCA's subject DN. That is the same name-encoding
+// trap that makes DN-based chaining reject the real file. Nor can the library be used for the
+// envelope alone: `AuthenticatedAttributes` has an UNEXPORTED element type, so it cannot return the
+// raw attribute bytes the signature is actually computed over. Both were tried before this was
+// written by hand.
+//
 // Nothing here touches the network, the CRE runtime, or a chain: stdlib plus keccak.
 package main
 

@@ -7896,11 +7896,24 @@ list's digest.
 **So the trusted publisher is gone for the authenticity half: a fabricated master list cannot be
 anchored by anyone**, postman, committee or owner.
 
-**STILL OPEN:** whether the eContent digest can be tied to the derived MERKLE ROOT on-chain. This
-authenticates the DIGEST, not the root, so today the root is AUDITABLE - anyone can re-derive it from
-a list whose digest the contract has authenticated - rather than ENFORCED. Closing that needs the
-876 KB: chunked incremental hashing on an L2, or a challenge window over the activation delay
-`RegistrySourceAnchor` already has. Do not describe the root as trustless until one of those exists. The eContent is
+**✅ AND NO CHALLENGE WINDOW IS NEEDED - I over-engineered this, corrected 2026-08-03 (user).**
+I argued the root stays merely "auditable" until `digest -> root` is enforced on-chain, and proposed
+either 876 KB of L1 calldata or an optimistic dispute. **Both are unnecessary, because the existing
+CRE report path already carries a verified result.** sec. 2.18bv said it in one clause and I did not
+follow it: *"consensus still runs over an ALREADY-VERIFIED result."*
+- `backend/cre/icao_master_list` verifies ICAO's signature **inside the sandbox**, per node
+- every DON node does so independently and must agree byte-for-byte before a report exists
+- `RegistrySourceAnchor.onReport` accepts that report exactly as the sanctions anchor does
+
+So a fabricated root cannot be reported: a node would have to break ICAO's RSA signature, not merely
+lie. **There is nothing for a challenge window to catch**, and the on-chain digest verification
+(`IcaoMasterListSignature.t.sol`) is a belt-and-braces check on the anchoring transaction rather than
+a load-bearing requirement. The dispute machinery I sketched was solving a problem the architecture
+had already solved.
+
+**AND NO TLS VERIFICATION IS USED OR NEEDED HERE.** sec. 2.18bu's blocker never applied to this
+source: TLS proves TRANSPORT authenticity, the signature proves DATA authenticity, and the second is
+strictly stronger. The unblocked capability work belongs to the UNSIGNED registers. The eContent is
 876 KB, so hashing it in calldata or in-circuit is out; chunked incremental hashing on an L2 is the
 only route that keeps the update permissionless AND verified.
 

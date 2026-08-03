@@ -31,6 +31,7 @@ require (
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/smartcontractkit/chainlink-protos/cre/go v0.0.0-20260707203317-661b54b51a33 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
+	go.mozilla.org/pkcs7 v0.10.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

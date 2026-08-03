@@ -66,7 +66,12 @@ def scan_transcript(path, ctx=190):
             if msg.get("role") != "assistant":
                 continue
             c = msg.get("content")
-            txt = " ".join(x.get("text", "") for x in c if isinstance(x, dict)) if isinstance(c, list) else str(c)
+            # READ text AND thinking. Measured on a real 56 MB transcript, assistant content is
+            # 2,617 `text` blocks, 2,390 `thinking` blocks and 4,174 `tool_use` blocks — so keying on
+            # "text" alone covered 28% of what the model actually produced. Thinking blocks are
+            # exactly where an unbooked finding hides: reasoning that never reached the reply.
+            txt = (" ".join(x.get("text", "") or x.get("thinking", "") for x in c if isinstance(x, dict))
+                   if isinstance(c, list) else str(c))
             for fam, pat in FAMILIES.items():
                 for mo in re.finditer(pat, txt, re.I):
                     s = txt[max(0, mo.start() - ctx):mo.end() + ctx].replace("\n", " ").strip()

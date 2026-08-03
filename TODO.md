@@ -741,6 +741,79 @@ before touching the aggregator again.
 So the ENTIRE contract-side path - generating the real N=16 verifier, checking it fits EIP-170, and
 forge-testing the batch entrypoint - can be done here. Only producing an actual N=16 proof cannot.
 
+### THE SECOND JOB FOR THE SAME BIG BOX: three passport verifiers (2026-08-03)
+
+**Park these two together - they are the only work in this repo blocked purely on RAM.** Different
+step, same answer: a machine with more memory. Everything else about both is finished and proven.
+
+**WHAT IS LEFT:** three of the 75 recovered passport profiles could not be regenerated here.
+```
+25_384_3_5_576_248_20_3768_3_2008
+27_512_3_4_336_248_NA
+28_384_3_3_576_264_24_2024_4_2792
+```
+Their `.sol` are UNTOUCHED - still rarimo's stale beta.1 UltraPlonk verifiers, unusable either way -
+so nothing regressed by leaving them. **72 of 75 are done**, committed and validated.
+
+**AND NOTE THE CONTRAST WITH THE TABLE ABOVE**, because it is counter-intuitive and will mislead the
+next person: at N=16 `bb write_vk` peaks at **116 MB** and only `bb prove` needs the big box. For
+these passport circuits it is **`write_vk` itself** that cannot run - even `bb gates` is OOM-killed.
+The reason is blackbox expansion: `write_vk` constructs the circuit to expand ACIR blackbox opcodes,
+and a full ICAO chain (RSA-4096 / ECDSA-P521 / SHA-512 in-circuit) expands to far more than the
+aggregation circuit's 11.6M gates. **"write_vk is cheap" is true of aggregation, not universally.**
+
+**IT IS NOT A NARROW MISS, AND MORE GiB ON A 16 GB HOST WILL NOT DO IT.** bb expands to fill whatever
+it is given and is then killed:
+
+| Docker VM | peak reached | % of VM |
+|---|---|---|
+| 11.7 GiB | 11.2 GiB | 96% |
+| 12.68 GiB | 12.09 GiB | 95% |
+
+The kernel's own record is the authority - `task=bb, global_oom, anon-rss:11690980kB,
+total-vm:20322528kB` - and that **~19.4 GiB of address space** is what it actually wants. A 16 GB
+host cannot host it: macOS wired memory alone is ~3.0 GiB and cannot be swapped, so a 14 GiB VM
+already exceeds the machine (14 + 3 > 16).
+
+**EVERY LEVER WAS TRIED AND MEASURED. DO NOT RETRY THESE:**
+- `HARDWARE_CONCURRENCY=2` - bb honours it (`num threads: 2`); **peak unchanged**. Memory is set by
+  the polynomials (2^25 x 32 bytes each), not by parallelism.
+- `BB_STORAGE_BUDGET` - **no effect**. An earlier claim that it cut 9.7 GB to 5.3 GB was a FALSE
+  POSITIVE from comparing two DIFFERENT circuits.
+- `--cpuset-cpus` - **silently ignored**; bb reads host CPU count and still reported 8 threads.
+- **VM swap does not rescue it.** With 3 GiB of swap the kernel OOM-killed while **2.7 GiB was still
+  FREE**: the allocation outruns reclaim. Swap saves idle pages, not a fast-growing working set.
+- Pre-seeding a 2^25 CRS - bb dies before it reaches the CRS (the file's mtime proves it untouched).
+- `docker stats` at 10 s intervals **missed the spike entirely** (read 6.9 GiB on a container that
+  died at 11.2). Sample at <=5 s, or read `dmesg` in the VM, which is what settled this.
+
+**WHAT IS ALREADY BUILT AND PROVEN, so the big box only has to run it:**
+- `backend/circuits/passport-verifiers.Dockerfile` - stock nargo 1.0.0-beta.26 + bb 5.1.0, pins
+  verified at image build time. Stock nargo is correct here and produces a BYTE-IDENTICAL artifact to
+  our patched compiler (md5 8ea5345bad87c71a45808ae4b6179c99).
+- `backend/circuits/build-passport-verifiers-docker.sh` - refuses to start on an under-provisioned VM
+  rather than letting bb be OOM-killed with no diagnostic.
+- **Cross-platform determinism is PROVEN**: profile `11_256_3_2_336_216_NA` built in the container
+  reproduces the macOS-built verifier byte for byte (md5 351cc246cffaebe5a1b3dcf62b187b86). So
+  whatever the big box emits is consistent with the 72 built here.
+- `backend/circuits/passport-profiles.json` carries all 75 recovered parameter tuples.
+
+**TO FINISH, ON A HOST WITH >=32 GB (about 20 minutes):**
+```sh
+docker build --platform linux/amd64 -f backend/circuits/passport-verifiers.Dockerfile \
+  -t ibiza-passport-verifiers:beta26-bb5.1.0 backend/circuits
+backend/circuits/build-passport-verifiers-docker.sh   # its default list is exactly these three
+```
+Then on any machine: the structural validation (75 distinct bodies, distinct VK_HASH, renamed
+contracts, NUMBER_OF_PUBLIC_INPUTS = 13), `forge build --sizes`, `forge test`.
+
+**Seed the CRS volume first if the download is slow** - it needs 2^25 points and bb will otherwise
+fetch and decompress ~2 GiB per cold container:
+```sh
+curl -L --range 0-2147483647 -o bn254_g1.dat http://crs.aztec-cdn.foundation/g1.dat
+docker run --rm -v ibiza-bb-crs:/crs -v "$PWD":/host ubuntu:24.04 cp /host/bn254_g1.dat /crs/
+```
+
 **NOTHING IS HARDWIRED TO 16.** `BATCH_N` is a single global (`src/main.nr:38`); every array
 dimension and loop bound derives from it, and the pinned inner key is `withdraw_identity`'s
 112-field vk, which is independent of N. So a smaller N is the SAME circuit with fewer iterations,
@@ -8837,6 +8910,11 @@ at registration") has no passport equivalent and needs its own home regardless.
   **And nothing references them**: no contract, test or script names one, only docs. The live path
   takes `HolderRegistration.icaoRegistrationVerifier` as a deployed ADDRESS, so the repo had 76
   verifiers it cannot use and none it can.
+
+  **⚠️ THREE OF THE REGENERATED SET ARE BLOCKED ON RAM, and they are parked beside the N=16
+  aggregation blocker** in "THE SECOND JOB FOR THE SAME BIG BOX" (sec. 2.4pre) - the only two pieces
+  of work here waiting on a bigger machine. 72 of 75 passport verifiers are regenerated; the three
+  exceptions keep their stale beta.1 verifiers and block nothing the others cover.
 
   **✅ ONE THAT WE CAN NOW EXISTS**: `passport/verifiers/RegisterIdentityLightHonkVerifier.sol`,
   generated on the patched beta.26, in codegen TARGETS, and tested against a REAL proof on-chain

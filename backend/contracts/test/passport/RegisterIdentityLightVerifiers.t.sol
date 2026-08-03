@@ -3,8 +3,8 @@ pragma solidity 0.8.28;
 
 import {Test} from 'forge-std/Test.sol';
 
-import {RegisterIdentityLightHonkVerifier} from
-  '../../contracts/passport/verifiers/RegisterIdentityLightHonkVerifier.sol';
+import {RegisterIdentityLightID256HonkVerifier} from
+  '../../contracts/passport/verifiers/RegisterIdentityLightID256HonkVerifier.sol';
 
 /*
  * THE FIRST PASSPORT-REGISTRATION VERIFIER THIS REPO CAN ACTUALLY PROVE AGAINST (task 24).
@@ -34,11 +34,11 @@ import {RegisterIdentityLightHonkVerifier} from
  * public inputs below are the circuit's own return tuple, copied from `bb`'s `public_inputs` output.
  * Regenerate both together via `codegen-verifiers.sh`; a proof and its inputs are one artifact.
  */
-contract RegisterIdentityLightHonkVerifierTest is Test {
-  RegisterIdentityLightHonkVerifier internal verifier;
+contract RegisterIdentityLightID256HonkVerifierTest is Test {
+  RegisterIdentityLightID256HonkVerifier internal verifier;
 
   function setUp() public {
-    verifier = new RegisterIdentityLightHonkVerifier();
+    verifier = new RegisterIdentityLightID256HonkVerifier();
   }
 
   function _proof() internal view returns (bytes memory) {

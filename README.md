@@ -104,8 +104,8 @@ ceremony, and one Poseidon shared across circuits, Solidity (`poseidon-solidity`
 (`@iden3/js-crypto`) — each cross-checked against the others rather than assumed compatible.
 
 **The SOURCE migration is complete — zero `.circom` files remain.** What is NOT complete is the
-verifier and wiring layer: 35 Groth16-era per-passport verifiers remain, and 6 profiles still lack
-a Noir twin. **Do not read "one toolchain" as finished end-to-end** — see `TODO.md`.
+verifier and wiring layer: 6 Groth16-era per-passport verifiers remain, and they are exactly the 6
+profiles that still lack a Noir twin — the other 29 had twins and have been deleted. **Do not read "one toolchain" as finished end-to-end** — see `TODO.md`.
 
 Verifiers are bound by address at deploy time rather than by symbol, so a reference count cannot
 distinguish a live verifier from an unwired one. Those 35 are unresolved, not known dead.

@@ -78,10 +78,15 @@ commit that is not yours, do not amend or rebase it.
 
 ## Before closing a thread
 
-**⚠️ IBIZA'S FINDINGS LIVE IN SPV'S TRANSCRIPT DIRECTORY.** Sessions are filed by the directory the
-CLI was launched from, not by the repo being edited. Most ibiza work to date happened in threads
-started under `~/.claude/projects/-Users-ricktobacco-Documents-quidmint-SPV/`, so **scanning ibiza's
-own transcripts will surface almost nothing.** Sweep SPV's directory against ibiza's tracker:
+**⚠️ IBIZA HAS NO TRANSCRIPT DIRECTORY. IT NEVER WILL.** Sessions are filed by the directory the CLI
+is launched from, not the repo being edited — and the CLI is always launched from the same place. So
+`~/.claude/projects/` contains exactly ONE directory,
+`-Users-ricktobacco-Documents-quidmint-SPV/`, and **every ibiza conversation ever held is in it.**
+
+This is not "most of it" or "some of it": there is nowhere else for it to be. Anyone auditing ibiza
+from inside ibiza gets a clean result for the wrong reason — the same shape as `refs=0` on verifiers,
+a measurement that cannot see what it claims to cover. Sweep the one directory against ibiza's
+tracker:
 
 ```sh
 for t in ~/.claude/projects/-Users-ricktobacco-Documents-quidmint-SPV/*.jsonl; do

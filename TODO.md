@@ -7950,6 +7950,54 @@ Costs a signature-set check per snapshot and needs the DON's on-chain key set.
       signature. It exists as a pre-Forwarder bootstrap - **delete it once the Forwarder is wired**,
       or it is a permanent fabrication lever that no pin constrains.
 
+### 2.18cw REMOVING ALL FOUR, AND EACH REPLACEMENT IS STRICTLY STRONGER (user, 2026-08-03)
+
+*"there must be a way that we can strengthen security while removing the postman entirely"*. There is,
+and it is not a trade. **Every authority in this repo exists at a point where a fact is ASSERTED
+instead of PROVEN.** Replace each assertion with a proof against source-signed or quorum-signed data
+and the authority disappears BECAUSE the guarantee got stronger, not despite it.
+
+| authority | today ONE KEY can | after, an attacker needs |
+|---|---|---|
+| `REGISTRY_POSTMAN` (anchor) | publish a fabricated register | forge ICAO's CMS signature, or compromise a DON quorum |
+| `REGISTRY_POSTMAN` (TitleLedger) | enrol a fake notary; revoke ANY notary | a genuine passport matching a register entry; the register to actually delist them |
+| `CONTROLLER` (IdentityRegistry) | revoke anyone - and must DE-ANONYMISE to do it | the published list to name them; nobody reads an envelope |
+| backend signer (HolderRegistration) | admit anyone, or refuse anyone with a real passport | a genuine ICAO certificate chain |
+
+**AND MY "SOME CONTROLLER IS UNAVOIDABLE" CLAIM (2.18cu) WAS WRONG - measured today.** I said
+`document.not-current` has no source of truth to prove against. It has two, and neither needs an
+authority:
+1. **EXPIRY IS IN THE DOCUMENT ITSELF.** `query_identity` ALREADY takes
+   `expiration_date_lowerbound/upperbound` as public inputs (`main.nr:15-16`, `query.nr:354`). Document
+   currency is a property of the signed MRZ, not an external fact - **the circuit exists and its
+   verifier was regenerated today.**
+2. **ISSUER REVOCATION HAS A SIGNED FEED WE ALREADY HOLD.** The PKD ships CRLs
+   (`icaopkd-002-complete-527.ldif` + deltas). CMS-signed like the master list, so anchoring them
+   needs no authority either, and the holder proves non-membership the same way as for sanctions.
+
+**SO ALL FOUR FALL, AND THE HARD PART IS ONE CIRCUIT PLUS ONE SIGNATURE CHECK** - the name-binding
+circuit (2.18cr) and in-contract DON signature verification (2.18cp). Everything else is already
+written.
+
+**THE ONE THAT DWARFS ALL FOUR, AND IT IS NOT A POSTMAN.** Ten `_authorizeUpgrade` sites, every one
+owner- or role-gated, including `RegistrySourceAnchor`, `Entrypoint`, `TitleLedger` and `StateKeeper`.
+**An owner who can `upgradeToAndCall` can replace every proof check listed above.** Removing four
+postmen while that stands is renaming the authority, not removing it - and it would be this session's
+own failure mode at the largest possible scale.
+
+**THE REPO ALREADY KNOWS THE ANSWER AND APPLIED IT ELSEWHERE:** *"only PP's fund-custody contracts -
+PrivacyPool/State - are deliberately immutable, a trust-minimization choice for the vault logic
+specifically"*. The proof-path contracts deserve the same treatment once the proofs are in place.
+
+**ORDER MATTERS, because immutability is irreversible:**
+- [ ] 1. Land the proofs first - name-binding circuit, DON signature verification, CRL anchoring,
+      expiry bound enforced at withdrawal. Freezing before this locks in the postman forever.
+- [ ] 2. Remove the four authorities as each proof lands, smallest blast radius first.
+- [ ] 3. THEN freeze the proof-path contracts (immutable, or an owner-renounced timelock). Until this
+      step, the honest claim is "fewer authorities", never "trustless".
+- [ ] Never claim the postman is gone while step 3 is open - the upgrade key IS the postman, with a
+      larger power than any of the four.
+
 ### 2.18cv THE POSTMAN INVENTORY - one is gone, four are not (user: "there is no postman anymore", 2026-08-03)
 
 **Not yet.** What was deleted was `_ASP_POSTMAN` (e9837fe), and it gated **nothing** - declared,

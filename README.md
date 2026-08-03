@@ -139,6 +139,34 @@ The cost is that we now depend on the Noir toolchain's maturity, which is where 
 sharpest problems in `TODO.md` come from (a compiler ICE we patched, a bignum ecosystem that trails
 the compiler, proof formats that shift between `bb` versions).
 
+### Why this proving system, and not a "better" one
+
+The setup axis is what decided it, and it is worth stating plainly: **removing four trusted parties
+and then accepting 79 unverifiable ceremonies would be incoherent.** Groth16 needs a ceremony *per
+circuit*; at 79 shapes that is 79 chances for one to be done badly, and in practice it means trusting
+rarimo's. Honk needs **one large public multi-party ceremony shared by the whole ecosystem, so it is
+scrutinised by everyone and a compromise would be a global event, not a silent local one.**
+
+**We did not pick the theoretically strongest option, and should not pretend otherwise.** STARKs and
+Halo2/IPA are *fully transparent* — no ceremony at all, which beats a universal SRS on the very axis
+above. They lost on EVM verification cost (~1–5M gas, against a withdrawal budget already ~3.1M).
+Halo2 **with KZG** is closer — universal SRS like Honk, mature aggregation — and lost on different
+grounds:
+
+- **No high-level circuit language.** Halo2 circuits are hand-written Rust against a low-level API.
+  Noir is a language, and every `EC_LEN`-class investigation in `TODO.md` was tractable only because
+  the circuit reads like code.
+- **Nothing to inherit.** The migration was a *port* — rarimo publishes Noir circuits, so 79 passport
+  shapes came across mechanically. In Halo2 every one would be written from scratch, with no upstream
+  and no reference implementation to diff against.
+- **Mobile proving is packaged.** Proving happens on a phone; barretenberg ships prebuilt AARs via
+  `@rarimo/rarime-rn-sdk`.
+
+So the choice was not "which system is best in the abstract" but "which is EVM-affordable, has a real
+language, proves on a phone, and lets us inherit circuits instead of authoring them." Honk is the only
+one meeting all four here. Aggregation (§ below) uses Honk recursion and needs one level, not a deep
+recursive chain — which is where Halo2's accumulation would have paid off most.
+
 ### The size cost is real, but it is not where you would guess
 
 A Honk verifier is ~10× a Groth16 one — measured on the same profile family, **18,430 bytes against

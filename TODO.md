@@ -7950,6 +7950,43 @@ Costs a signature-set check per snapshot and needs the DON's on-chain key set.
       signature. It exists as a pre-Forwarder bootstrap - **delete it once the Forwarder is wired**,
       or it is a permanent fabrication lever that no pin constrains.
 
+### 2.18cr EVIDENCE-BOUND REVOCATION IS NOT CONTRACT-ONLY - I said it was, and the envelope says otherwise (2026-08-03)
+
+I offered `IdentityRegistry.revoke` as *"contract-only, buildable next"* - the one that removes a real
+authority rather than a decorative one. **Checked the mechanism before building around it, and it does
+not hold.**
+
+**WHY. THE BINDING IS INSIDE A SEALED ENVELOPE, BY DESIGN.** `register` requires the escrow proof's
+envelope to be sealed to `CONTROLLER_KEY_X/Y`, and rejects any other key with `WrongControllerKey` -
+trap 5's stated reason being that otherwise the registration is *"unreadable by the only party that
+could ever act on it - a registration nobody can revoke"*. So on-chain there is **no plaintext link
+from a commitment to a real-world identity**, and that is not an oversight: it is the privacy property
+the whole design exists to provide. `revoke` is gated on `CONTROLLER` because **only the controller
+can see who is who.**
+
+**SO A CONTRACT CANNOT CHECK A SANCTIONS ROOT AGAINST A COMMITMENT.** Nothing on-chain can tell whether
+snapshot leaf L and commitment C describe the same person. A version that merely required the caller
+to CITE an anchored `(registryId, index)` would verify that the snapshot exists while proving nothing
+about whether it justifies this revocation - a check that constrains the wrong half, which is the
+false-safety shape standing rule 3 exists to refuse. **Not built, deliberately.**
+
+**WHAT IT ACTUALLY NEEDS - and the direction is the easier one, which is worth knowing:**
+| | proves | needs |
+|---|---|---|
+| **revocation** | the subject **IS** on the list | INCLUSION - a plain Merkle proof, no ordering required |
+| **admission** (2.18cq) | the subject is **NOT** on the list | NON-inclusion by bracketing - needs the strictly-ascending leaves |
+
+Both need the SAME missing piece: a circuit binding the registered document's name to a sanctions leaf.
+It is the same name-binding circuit as 2.18bo step 2 for notaries - **one circuit unblocks the notary
+path, pool admission, and evidence-bound revocation.** That is the highest-leverage unbuilt item in
+this area, and it is why building any of the three in isolation would be wasted work.
+
+- [ ] Name-binding circuit: prove `hash(document name fields) == leaf` for a leaf in an anchored
+      registry root, reusing `query_identity`'s selective MRZ disclosure. Unblocks three paths.
+- [ ] THEN evidence-bound `revoke`: inclusion proof replaces `CONTROLLER`'s discretion for the
+      sanctions predicate specifically. Other predicates (document-not-current) have no external
+      register behind them and keep a controller - say so rather than implying the role disappears.
+
 ### 2.18cq THE BLACKLIST IS NOT INTEGRATED WITH THE ASP AT ALL - and the lean way in already exists (user, 2026-08-03)
 
 *"are you sure that we integrated with the original PP label ASP in the most lean and elegant possible

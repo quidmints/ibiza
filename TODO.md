@@ -7977,6 +7977,59 @@ left rather than a slower one.
 - [ ] The revoke path is separate: it is the holder revoking their OWN document, so a signer there is
       a different question from enrolment censorship. Decide it explicitly rather than by analogy.
 
+### 2.18cz WHAT FOLDS AND WHAT CANNOT - and 7 profiles we are missing (user, 2026-08-04)
+
+*"are you sure there is no other way... fold as many things together as possible for efficiency
+without creating privacy leaks"*.
+
+**ON THE SIX: EXHAUSTED, now against every source rather than one.** All 54 releases of
+`passport-zk-circuits-noir` enumerated - **82 distinct artifacts, and none of the six**. rarimo's
+Circom `test/inputs/{passport,generated}` contain only Readmes: real passport inputs are deliberately
+unpublished. So `EC_LEN` genuinely exists nowhere outside a document.
+
+**BUT THE SEARCH FOUND SOMETHING BETTER: WE ARE MISSING 7 PUBLISHED PROFILES.** Our manifest has 75;
+rarimo has published 82. Obtainable now, same recovery method as the original 75:
+```
+14_256_1_4_1752_576_1_1496_3_512   1_256_1_5_2376_336_1_2120_4_512
+20_256_3_5_336_248_25_2120_5_1816  20_256_3_6_336_248_NA
+21_160_1_2_560_576_NA              25_384_1_3_336_256_NA
+26_512_3_2_336_248_1_1384_2_256
+```
+**Four are `DOCUMENT_TYPE=1` (TD1/ID cards)** - worth noting next to the quarantined `ID_Card_I`.
+
+- [ ] Add the 7: download artifacts, read generics from the embedded `main.nr`, extend the manifest,
+      generate verifiers. Coverage 75 -> 82, and it needs no document and no new RAM.
+
+**ON FOLDING - ONE IS FREE, ONE IS NOT, AND THE DIFFERENCE IS THE PRIVACY CONSTRAINT.**
+
+**THE FREE ONE, AND IT IS THE BIGGEST NUMBER IN THIS AREA: INLINE POSEIDON.** Every Poseidon call in
+`PoseidonSMT`, `StateKeeper`, `IdentityRegistry`, `HolderStateKeeper` and `TitleLedger` pays the
+DELEGATECALL price. A depth-32 insert is ~32 hashes: **over 1M gas today, ~90k inlined - a ~91% cut**,
+repo-wide, with **zero privacy implication**. It benefits registration, revocation, ASP admission and
+the title ledger at once. Nothing about the sanctions design changes it, and it should not wait on it.
+Its own precondition stands: vendor properly with a per-arity differential test, never ship the
+`sed`'d copies in `contracts/libraries/inline/` - a Poseidon that is fast and subtly wrong silently
+forks every commitment in the system.
+
+**WHAT WILL NOT FOLD TO ZERO, and the reason is exactly the leak the user asked me to avoid.** The
+sanctions check reuses everything structural the holder already runs - same Poseidon, same SMT
+machinery, same verifier - so its MARGINAL cost is far below a separate subsystem. But it cannot
+collapse into the existing `commitment -> 0` term, because that term proves *nobody revoked me* and
+says nothing about a name. Closing that gap needs the holder's NAME bound to their leaf, and:
+- publish a deterministic `hash(name)` in the leaf and **anyone can grind the register and match** -
+  the precise disclosure 2.18bm removes from `notaryDataHash`, reintroduced one layer down;
+- blind it, and no one can match it against the public list either - including honestly.
+
+**THAT IS WHAT THE OPRF IS FOR (2.18ax/bj/bk), and this is the argument that makes it load-bearing
+rather than optional**: a blinded, deterministic-per-subject value is exactly the primitive that lets
+a public list be matched without the leaf being grindable. Until it exists, the choice is a leak or an
+authority - and both have been rejected here already.
+
+- [ ] Inline Poseidon FIRST - independent of every design question above, ~91% on every insert.
+- [ ] Treat the OPRF as a dependency of self-proved non-membership (2.18cu), not a separate nicety.
+      Without it, folding the sanctions check into the holder's existing proof leaks or needs a
+      postman.
+
 ### 2.18cy THE SIX ORPHANS: EC_LEN IS THE ONLY MISSING GENERIC, AND IT IS DOCUMENT-SPECIFIC (2026-08-04)
 
 Chased the one avenue that could have closed these without a passport - rarimo's CIRCOM circuits,

@@ -7868,10 +7868,26 @@ re-run:
    authority this data does not need. **Insert-only admission remains the right shape; the signature,
    not a role, is what authorises it.**
 
-**STILL OPEN HERE:** which of the 3 UN CSCA keys certifies the CURRENT signer (verify the chain, do
-not guess), and whether the eContent digest can be tied to the derived root on-chain - the eContent
-is 876 KB, so hashing it in calldata or in-circuit is out; chunked incremental hashing on an L2 is
-the only route that keeps the update permissionless AND verified.
+**✅ THE CHAIN IS VERIFIED (2026-08-03), and it carries a trap worth knowing before anyone
+implements this.** The CMS embeds TWO certificates: the Master List Signer, and the UN CSCA that
+issued it. Checked by signature, not by name:
+
+    UN CSCA, RSA-3072, e=65537, SELF-SIGNED (a root)
+    sha256(modulus) = 19d41f41feead44d9f2828a9811b2842e4ed31113b0aa80e5897848e1db2a1f4
+    -> it signs the Master List Signer's TBS under SHA-256: VERIFIED
+    -> and its key IS in the master list, as certificate 0368 (0389 is its rollover twin)
+
+**THE TRAP: `signerCert.issuer != cscaCert.subject` AS BYTES.** The two DNs are encoded differently,
+so **an implementation that chains by DN equality REJECTS the real ICAO master list**, while one that
+chains by verifying the signature accepts it. This is exactly the non-conformance ICAO warns about in
+its own terms, and it is a silent failure - the chain looks broken when it is not. **Chain by
+signature; use the DN only as a hint.** It also settles the pinning question in favour of the KEY
+rather than the certificate or the name: 0368 and 0389 share a key, so pinning the key covers both
+and survives the rollover.
+
+**STILL OPEN:** whether the eContent digest can be tied to the derived root on-chain. The eContent is
+876 KB, so hashing it in calldata or in-circuit is out; chunked incremental hashing on an L2 is the
+only route that keeps the update permissionless AND verified.
 
 ### 2.18cg THE ICAO MASTER LIST, LOCATED (2026-08-03) - public, and the catch is governance not access
 

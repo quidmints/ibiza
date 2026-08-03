@@ -7950,7 +7950,83 @@ Costs a signature-set check per snapshot and needs the DON's on-chain key set.
       signature. It exists as a pre-Forwarder bootstrap - **delete it once the Forwarder is wired**,
       or it is a permanent fabrication lever that no pin constrains.
 
-### 2.18ct FEWER MOVING PARTS: THE NON-MEMBERSHIP PROOF ALREADY EXISTS - retract 2.18cq's bracketing (user, 2026-08-03)
+### 2.18cv THE POSTMAN INVENTORY - one is gone, four are not (user: "there is no postman anymore", 2026-08-03)
+
+**Not yet.** What was deleted was `_ASP_POSTMAN` (e9837fe), and it gated **nothing** - declared,
+admin'd and granted while guarding no function, so removing it changed no behaviour. Measured, these
+still gate write paths:
+
+| authority | gates | removed by |
+|---|---|---|
+| `REGISTRY_POSTMAN` | `RegistrySourceAnchor.onReport` - now the ONLY entrypoint, so the role is MORE load-bearing than before, not less | verify DON signatures in-contract (2.18cp) |
+| `REGISTRY_POSTMAN` (borrowed) | `TitleLedger.registerNotary:304`, `revokeNotary:334` | 2.18bo's three levers; needs the role split (2.18cn) first |
+| `CONTROLLER` | `IdentityRegistry.revoke:319` | 2.18cu, for the sanctions predicate ONLY |
+| backend signer | every `HolderRegistration` entry point but one | `Registration2.registerViaNoir`, already in-repo and unused (2.18cs) |
+
+**SO: ONE DECORATIVE POSTMAN DELETED, FOUR REAL AUTHORITIES STANDING.** Saying otherwise would be the
+exact error this session kept finding - a pin nothing checks, a role that gates nothing, an "ENFORCED"
+heading over a liveness test. **The ASP postman was the easy one because it was never real.**
+
+- [ ] Track these four to zero. None is blocked on a decision: three share the same circuit (2.18cu)
+      or the same role split (2.18cn), and the fourth is a swap to code already written.
+
+### 2.18cu SELF-PROVED NON-MEMBERSHIP - reinstating 2.18ct's retraction, which was wrong twice (user, 2026-08-03)
+
+*"remember why you proposed it, we need to solve the problem with a better approach that makes no
+compromises"*. Re-examined, and **both grounds I retracted on are wrong.**
+
+**GROUND (b) WAS BACKWARDS - failure direction follows the list's POLARITY, not the presence of a gate.**
+- **allowlist**: you must be IN it. Nobody adds you -> you can never prove -> censored. Fails CLOSED.
+- **blacklist non-membership**: you must NOT be in it. Nobody is added -> **everyone proves trivially**.
+  Fails **OPEN**.
+
+Inaction SHRINKS a blacklist, so a stalled feed lets more people through, not fewer. The censorship
+lever becomes an affirmative, visible, rule-bound act of ADDING someone - precisely what 2.13b asks
+for. I conflated *"a gate that must succeed"* with *"an allowlist"*.
+
+**GROUND (a) WAS WRONG TOO - the two proofs are not the same claim.**
+
+| | proves | requires |
+|---|---|---|
+| merged tree `commitment -> 0` | *nobody has revoked me* | an actor running a matcher, AND the controller opening envelopes to de-anonymise |
+| sanctions non-membership | *I am not on the source list* | nothing - the holder proves it themselves |
+
+The merged tree only knows what the controller PUT in it. So feed-into-`revoke` - the design I called
+elegant - **reinstates a trusted actor with de-anonymisation power**. I traded the no-authority
+property away to save a circuit term and did not notice, because "fewer moving parts" measured the
+wrong axis.
+
+**THE UNCOMPROMISED DESIGN, whose every piece is already in this repo:** the holder proves
+non-membership of the sanctions list **at withdrawal, in-circuit, against the anchored root**. No
+controller reads anyone. No matcher runs over the population. **Nobody can be silent, because there is
+nobody whose action is required.**
+
+**AND ITS ONE REAL OBJECTION IS ALREADY SOLVED HERE.** A stale root under-approximates the blacklist,
+so a newly-listed person could prove against an old root forever - verbatim `IdentityRegistry` trap 1,
+answered by `isValidRoot`: `MAX_ROOT_AGE` enforced, **"with the latest root always valid so inaction
+stays harmless"**. Bounded staleness AND fail-open, in shipped code. Reuse it; do not redesign it.
+
+**WHAT KEEPS A CONTROLLER, said plainly rather than implied away:** predicates with no external
+register behind them - `document.not-current` and its kind. There is no source of truth to prove
+against, so an authority is unavoidable there. The sanctions predicate is the one that can be made
+authority-free, and claiming more would overstate it.
+
+**COST, RESTATED HONESTLY - "marginal cost is zero" dies with the feed design.** The withdrawal circuit
+gains a bracketing term: two inclusion proofs plus two ordering comparisons. So the ~8-opcode estimate
+does need the recheck I first flagged and then wrongly withdrew. **That is the price of not
+compromising, and it is the right trade.**
+
+- [ ] Withdrawal-time non-membership against the anchored sanctions root, root validity by
+      `isValidRoot`'s existing rule. Supersedes 2.18cq's admission gate AND 2.18ct's feed.
+- [ ] Recheck the ~8-opcode estimate against the bracketing term (third revision of this number; the
+      first two were artifacts of designs since dropped).
+
+### 2.18ct FEWER MOVING PARTS - SUPERSEDED BY 2.18cu, both its grounds were wrong (user, 2026-08-03)
+
+**READ 2.18cu FIRST.** This section retracted 2.18cq's bracketing design on two grounds, and both
+collapsed under re-examination: the fail-closed argument confused gate-direction with list-polarity,
+and the redundancy argument compared two proofs that establish different claims under different trust.
+Kept for the reasoning trail; **its conclusion is not current.**
 
 *"if you reduce moving parts or make existing parts more elegant take that into consideration, look at
 it from all sides"*. Done, and the biggest saving is deleting a design I proposed two sections ago.

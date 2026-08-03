@@ -53,7 +53,9 @@ withdrawing, so it takes the fact it actually needed — that the withdrawal is 
 different channel. A proof is to observation what vibration is to hearing: not the original sense,
 but enough of the signal to act on.
 
-And the point of the film is not deprivation. **The track was good.** A system that cannot see,
+The film is not making a metaphor. It depicts a deaf DJ finishing a record, literally — the
+metaphor is ours, drawn from it. And what it supports is not a story about deprivation:
+**the track was good.** A system that cannot see,
 hear, or speak about its users is not a degraded version of one that can; it reaches the same
 result through a substitute channel, and it has to be judged on the result. That is the standard
 this repo is held to, and it is why "privacy" here means the information is never acquired rather

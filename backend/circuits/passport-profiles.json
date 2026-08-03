@@ -1449,6 +1449,25 @@
       },
       "from": "v0.2.5 artifact",
       "note": "The artifact's own //name comment reads ..._0_1184_5_264 while the asset is named ..._1_1184_5_264 - AA_SIG_TYPE is 0 in the circuit, 1 in the name. RESOLVED as an upstream naming bug rather than a parameter ambiguity: our committed verifier shares all 61 VK constants with rarimo's published .sol of this name, and NO asset exists under the _0_ name, so this circuit is the one this file was built from. AA_SIG_TYPE=0 is legal - not_passports_zk_circuits.nr:625 guards `if (AA_SIG_TYPE != 0)`, i.e. carry DG15 without verifying its key."
+    },
+    "1_160_3_4_576_200_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 209,
+        "SA_LEN": 104,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 20,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 1,
+        "DG1_SHIFT": 25,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "DERIVED, not recovered (TODO sec. 2.18da) - rarimo publishes no Noir artifact for this profile. Identical to 1_160_3_3_576_200_NA except EC_BLOCK_NUMBER 3->4, so every generic is carried over unchanged and only EC_LEN is inferred: 180 -> 209 is exactly +29, one SHA-1 DataGroupHash entry (20-byte hash + 9 DER), i.e. the same document carrying one more data group. 209 is also the ONLY quantised value in the 4-block window (185-247) observed across the 75 published profiles. If a real document of this profile ever contradicts it, the verifier simply never matches - it cannot accept anything it should not."
     }
   },
   "quarantined": {

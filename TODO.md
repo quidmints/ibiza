@@ -8033,6 +8033,55 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18dh TESTING THE STARK PATH AS FAR AS THIS MACHINE ALLOWS - and "no rewrite" is mostly RIGHT (user, 2026-08-04)
+
+*"do the best you can to test STARK right now... we wouldnt have to write circuits from scratch with
+stark right?"* Tested to the limit of what can be run here, and **the claim holds better than I said.**
+
+**1. ACIR IS GENUINELY PORTABLE, CONFIRMED.** `nargo compile` emits ACIR, not a barretenberg artifact:
+our compiled circuit carries **42 MB of decompressed ACIR** in `bytecode` (gzip+base64). The circuits
+are not written against Honk.
+
+**2. AN ACIR STARK BACKEND EXISTS.** `eryxcoop/acvm-backend-plonky2` - Plonky2, open source, last
+pushed 2025-06-04. So the interface has a second implementation, which is what "no rewrite" requires.
+
+**3. AND THE SURFACE WE NEED IS SMALL - THIS IS THE PART I HAD WRONG.** I claimed a STARK move means
+implementing RSA, eight ECDSA curves and four hash functions in a backend. **It does not, because
+rarimo implemented them IN NOIR rather than as blackboxes:**
+
+| primitive | where it lives | portable? |
+|---|---|---|
+| SHA-1 / 224 / 384 / 512 | `noir_dl_lib/src/sha{1,224,384,512}.nr` - **Noir source** | **yes** |
+| RSA bignum, ECDSA over 8 curves | Noir + Brillig (`__compute_quadratic_expression_with_borrow_flags`, `__invmod`, `get_wnaf_slices2`) | **yes** |
+| Poseidon | the `poseidon` Noir crate, 19 call sites | **yes** |
+| the only real blackbox demands | RANGE, AND, XOR, `sha256_compression`, BrilligCall, MemoryOp | **all listed as implemented** by the Plonky2 backend |
+
+**So the blackbox set our circuits actually require is nearly exactly what that backend already
+supports.** The "you would be writing a backend instead of circuits" objection is much weaker than I
+stated it.
+
+**WHAT I COULD NOT RUN, AND WHY - stated so nobody reads this as a green light:**
+- It needs a **FORKED NOIR** (`brweisz/noir`), not stock nargo, and was last touched **14 months
+  before** our pinned beta.26. ACIR has changed across that gap; whether our artifacts even load is
+  unknown.
+- Building it is a Rust + Plonky2 nightly build of a forked compiler - hours, not minutes, and it
+  proves nothing about correctness on our circuits without a witness we do not have.
+- **RANGE is capped at 33 bits** in that backend. Our bignum decomposes into limbs, so this may be
+  fine or may be fatal; **it is the single cheapest thing to check next.**
+- **Plonky2 has no EVM verifier.** On-chain it needs a SNARK wrapper - which reintroduces a trusted
+  setup, one instead of many, i.e. exactly what the universal SRS already gives us.
+
+**REVISED CONCLUSION.** Of the three reasons I gave for Honk over STARKs, **gas died to aggregation
+(2.18dg), and "no circuits to inherit" is now largely dead too.** What survives is thinner than
+claimed: an unverified on-device memory question, a 14-month-stale experimental backend needing a
+forked compiler, and the EVM-verification wrapper. **That is a maturity argument, not a cryptographic
+one** - and maturity arguments expire.
+
+- [ ] Cheapest decisive test, in order: (a) does our ACIR load in that backend at all, given the
+      version gap; (b) is the 33-bit RANGE cap fatal to our bignum limbs. Both are hours, not weeks.
+- [ ] Do NOT restate "we would rewrite every circuit" - measured false. The circuits are Noir; the
+      exotic crypto is Noir; only a handful of opcodes are backend-provided.
+
 ### 2.18dg "BUT WE DO AGGREGATION" - the gas argument against STARKs does not survive it (user, 2026-08-04)
 
 **The challenge lands, and the argument I gave was the weakest one.** I rejected STARKs on EVM

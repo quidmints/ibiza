@@ -139,38 +139,31 @@ The cost is that we now depend on the Noir toolchain's maturity, which is where 
 sharpest problems in `TODO.md` come from (a compiler ICE we patched, a bignum ecosystem that trails
 the compiler, proof formats that shift between `bb` versions).
 
-### On-device proving is the binding constraint — and it is measured, not assumed
+### Who actually pays what — three different workloads, easily confused
 
-Users prove their **own** registration and withdrawal on a phone; the witness never leaves the device.
-That is the privacy property, so **whatever the prover needs, a mid-range Android phone must have.**
+An earlier version of this section quoted `write_vk` figures as if a phone paid them. **It does not.**
+Three separate workloads, measured:
 
-Measured with the pinned toolchain (`bb write_vk`, peak RSS, in the Linux build container):
-
-| circuit | padded size | profiles | peak memory |
+| workload | who runs it | how often | cost |
 |---|---|---|---|
-| smallest passport (`2_256_3_4_336_248_NA`) | 2^18 | **58 of 78** | **337 MB** |
-| largest passport (`25_384_3_5_576_248_20_3768_3_2008`) | 2^25 | 2 | **~33 GB** (12.5 GB resident + 21 GB swap) |
+| **`write_vk`** — generate the verification key and the `.sol` verifier | **us, at build time** | **once per circuit, already done** | 337 MB (2^18) to ~33 GB (2^25) |
+| **prove a withdrawal** | the **user's phone** | every withdrawal | `withdraw_identity`, 44,176 gates — **~1.3 s desktop, 15–40 s on a Samsung A16** |
+| **prove an aggregation batch** | a **batcher**, on a server | per batch | 12.16M gates, ~28 GB, minutes — paid out of PP's relay fee |
 
-Two things follow, and the second is uncomfortable:
+So **the 33 GB is a one-time cost we have already paid**, not something a user or the project repeats.
+It is why the build needed a 32 GB swapfile (see `backend/circuits/build-passport-verifiers-docker.sh`),
+and it is finished for all 79 passport profiles and the 10 light verifiers. It recurs only if a circuit
+changes.
 
-- The **common case fits a phone.** 337 MB is within reach of a Samsung A16-class device (4–8 GB RAM),
-  though not by a wide margin once Android's per-app limits are counted.
-- The **heaviest profiles fit no phone at all**, in *any* proving system. Those two are not an
-  on-device path today regardless of stack, and nothing about Honk causes that — it is the circuit.
+**The one real on-device concern is REGISTRATION, not withdrawal.** Withdrawal is 44k gates and
+comfortably fits a budget phone. Registration proves `register_identity`, which spans 2^18 to 2^25 —
+and the two 2^25 profiles are **not** a phone workload in any proving system. That is a property of
+those circuits, not of Honk, and it is one more argument for the size-class work in `TODO.md`.
 
-**⚠️ WHAT THIS DOES NOT ESTABLISH — and the claim is often made carelessly, including earlier in this
-repo's own notes.** "STARKs cannot run on a phone" is **NOT VERIFIED HERE.** STARK provers are
-generally more memory-hungry than SNARK provers for an equivalent trace, which is the basis for the
-concern, but nobody has measured a Plonky2/RISC-Zero-class prover on this circuit or this hardware.
-Treat it as a hypothesis with a known experiment:
-
-> Compile one 2^18-equivalent passport circuit for a STARK backend and record peak RSS and wall-clock
-> on a Samsung A16 (or equivalent 4 GB Android device). If it lands near 337 MB, the on-device
-> objection to STARKs collapses and the stack decision genuinely reopens — see `TODO.md` sec. 2.18dg,
-> which already records that aggregation defeated the *gas* objection.
-
-Until that is run, the honest statement is: **Honk is measured to fit the common case; STARKs are
-assumed not to, and the assumption is untested.**
+**⚠️ STILL NOT MEASURED:** peak memory for `bb prove` (as opposed to `write_vk`) on a 2^18 registration
+circuit, on phone-class hardware. And "STARKs cannot run on a phone" has **never been tested here** —
+see `TODO.md` sec. 2.18dg. The experiment that would settle both: prove one 2^18 registration circuit
+on an A16, on each backend, and record peak RSS and wall-clock.
 
 ### Why this proving system, and not a "better" one
 

@@ -7991,6 +7991,45 @@ left rather than a slower one.
 - [ ] The revoke path is separate: it is the holder revoking their OWN document, so a signer there is
       a different question from enrolment censorship. Decide it explicitly rather than by analogy.
 
+### 2.18dd IT WAS NEVER THE STACK - it is PER-PROFILE SPECIALISATION (user, 2026-08-04)
+
+*"so the right move was actually to rewrite rarimo to be on the same stack as PP?"* **The instinct is
+right and the diagnosis needs one correction: rarimo IS already on PP's stack.** Both are Noir /
+UltraHonk. What differs is circuit DESIGN, and the gap is enormous:
+
+| | stack | verifiers needed |
+|---|---|---|
+| PP (`contracts/pool/verifiers/`) | Noir / UltraHonk | **3** |
+| rarimo passport (`verifiers2/noir/`) | Noir / UltraHonk | **79** |
+
+**26x, on the same proving system.** PP writes circuits whose SHAPE DOES NOT VARY PER USER. rarimo
+bakes each document's array lengths in as compile-time generics, so every combination of
+`DG1_LEN/EC_LEN/SA_LEN/N` is a different circuit and therefore a different verifier.
+
+**AND THAT SINGLE CHOICE CAUSES EVERY PROBLEM THIS SESSION SPENT ITSELF ON:**
+- the six orphans and the whole `EC_LEN` hunt (2.18cy/2.18da) - `EC_LEN` only matters because it is
+  COMPILE-TIME;
+- 82 artifacts to recover, a manifest to maintain, 7 quietly missing (2.18cz), one degenerate;
+- three profiles that needed 33 GiB working sets to build (2.18-swap);
+- much of the EIP-170 pressure, at 18,430 bytes per verifier (2.18dc).
+None of it is inherent to Honk. **PP proves the same stack does not have to work this way.**
+
+**THE ALTERNATIVE, AND ITS REAL COST.** One circuit with arrays padded to a MAXIMUM and the true
+length passed as a witness collapses 79 into ~1. The price is that every proof pays the worst case: a
+simple RSA-2048/SHA-1 passport costs what RSA-4096/SHA-512 costs. **Proving happens ON A PHONE**, so
+that is a real UX cost, and it is presumably why rarimo specialised.
+
+**THE MIDDLE GROUND NOBODY HAS PRICED: SIZE CLASSES.** Three to five circuits covering ranges rather
+than 79 exact shapes. Keeps proving within a small factor of optimal and deletes the manifest, the
+orphans, the recovery problem and most of the EIP-170 pressure at once.
+
+- [ ] Price size classes: measure proving time for the smallest profile against the largest, on
+      phone-class hardware. If the ratio is small, the per-profile model is pure cost and the whole
+      class of problems above disappears. **This is the highest-leverage unexamined question in the
+      repo** - and note it is a question about rarimo's design, not about a stack choice.
+- [ ] Do NOT re-open Noir vs Groth16 on the strength of this (2.18dc): the verifier count is a circuit
+      -design consequence, and Groth16 would need 79 trusted setups for the same 79 shapes.
+
 ### 2.18dc IS NOIR/ULTRAHONK STRICTLY BETTER THAN CIRCOM/GROTH16? NO - and the reason we chose it is one axis (user, 2026-08-04)
 
 *"i just hope we chose the right stack"*. Measured in our own tree, same profile family:

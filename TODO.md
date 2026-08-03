@@ -577,7 +577,17 @@ and the second was written when §2.1 was still open.
 **SO THE ONLY REMAINING GATE IS THE EXPLICIT INSTRUCTION** (user, 2026-07-27: *"we are building our
 own aggregator but dont do this yet"*), and every reason given for it has since been satisfied. **The
 aggregator does not exist** — there is no `backend/circuits/agg*` — so this is genuinely unstarted,
-not partially built. It is the largest single remaining piece of work in the repo, and worth
+not partially built.
+
+> **STALE - corrected 2026-08-04.** `backend/circuits/aggregate_withdrawals/` DOES exist, compiles, and
+> its verifier is generated: `contracts/pool/verifiers/AggregationHonkVerifier.sol`, **circuitSize 2^24,
+> 9 public inputs**. So it IS partially built. What is genuinely missing is narrower than "unstarted":
+> **no `Prover.toml`, no end-to-end prove/verify on the CURRENT pin** (the recorded end-to-end run was
+> beta.13 + bb 1.2.0; we are on beta.26 + bb 5.1.0), and **no forge test exercises it**. The path is:
+> prove `withdraw_identity` (which HAS a committed Prover.toml) 16 times, feed those in, then write_vk
+> and prove the aggregate under the 32 GiB swapfile.
+
+It is the largest single remaining piece of work in the repo, and worth
 re-confirming as a deliberate decision rather than inheriting a deferral whose stated grounds are
 gone.
 

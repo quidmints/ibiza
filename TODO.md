@@ -8106,7 +8106,7 @@ that is a real UX cost, and it is presumably why rarimo specialised.
 than 79 exact shapes. Keeps proving within a small factor of optimal and deletes the manifest, the
 orphans, the recovery problem and most of the EIP-170 pressure at once.
 
-- [ ] Price size classes: measure proving time for the smallest profile against the largest, on
+- [x] **ANSWERED by 2.18df: five classes, 2^18 to 2^25 = 128x.** No proving run needed; each verifier declares its own circuitSize. Superseded: measure proving time for the smallest profile against the largest, on
       phone-class hardware. If the ratio is small, the per-profile model is pure cost and the whole
       class of problems above disappears. **This is the highest-leverage unexamined question in the
       repo** - and note it is a question about rarimo's design, not about a stack choice.
@@ -8181,7 +8181,7 @@ for the wrong `EC_LEN` simply never verifies a real proof of that profile; it ca
 it should not. **The CLIENT holds the real document and therefore knows the true `EC_LEN`**, so it
 selects the matching verifier. Nothing needs a passport on OUR side.
 
-- [ ] Build the 20 candidates (start with `1_160_3_4_576_200_NA`, which is determined), register them
+- [x] **DROPPED on the repo owner's instruction ("no inerts") and one was BACKED OUT (ca43fb1).** A derived verifier displaced a Circom one that covers the whole block window. Superseded: build the 20 candidates, register them
       keyed by profile+EC_LEN, and let the client select. Retires the six orphans without a document.
 - [ ] Cheap first check before building: 2.18cy showed `SA_LEN`/`DG1_LEN`/`N` are recoverable from the
       name, so only `EC_LEN` (and `DG15_LEN` on the two AA profiles) is being enumerated.
@@ -8235,7 +8235,7 @@ rarimo has published 82. Obtainable now, same recovery method as the original 75
 ```
 **Four are `DOCUMENT_TYPE=1` (TD1/ID cards)** - worth noting next to the quarantined `ID_Card_I`.
 
-- [ ] Add the 7: download artifacts, read generics from the embedded `main.nr`, extend the manifest,
+- [x] DONE, PARTIALLY: 3 built, 3 quarantined as degenerate (dg1 length 0), 1 blocked by a nargo bug. Downloaded artifacts, read generics from the embedded `main.nr`, extended the manifest,
       generate verifiers. Coverage 75 -> 82, and it needs no document and no new RAM.
 
 **ON FOLDING - ONE IS FREE, ONE IS NOT, AND THE DIFFERENCE IS THE PRIVACY CONSTRAINT.**
@@ -8263,7 +8263,7 @@ rather than optional**: a blinded, deterministic-per-subject value is exactly th
 a public list be matched without the leaf being grindable. Until it exists, the choice is a leak or an
 authority - and both have been rejected here already.
 
-- [ ] Inline Poseidon FIRST - independent of every design question above, ~91% on every insert.
+- [x] **WRONG AND ALREADY DONE.** Inlining landed long ago and is worth **12%**, not 91% - see the correction in 2.x and `PoseidonInlineGas.t.sol`. Left struck through because the 91% figure drove a priority call.
 - [ ] Treat the OPRF as a dependency of self-proved non-membership (2.18cu), not a separate nicety.
       Without it, folding the sanctions check into the holder's existing proof leaks or needs a
       postman.
@@ -8478,7 +8478,7 @@ document's name matches a sanctions leaf, INCLUSION only (2.18cr's easier column
 always the tractable direction; removing admission means it is the only one.
 
 **TWO SMALLER REDUCTIONS, from the same pass:**
-- [ ] **Delete `publishSnapshot`.** It duplicates `onReport` minus the workflow check, and is the one
+- [x] **DONE (726116a).** `publishSnapshot` deleted; `onReport` is the only entrypoint. It duplicated it minus the workflow check, and was the one
       path no pin constrains (2.18ck). Deleting removes a moving part AND closes the bypass - the
       same act, which is what makes it worth doing rather than gating it harder.
 - [ ] **`ROOT_ACTIVATION_DELAY` is still live** in `latestActiveRoot`, although 2.18br concluded it
@@ -8486,7 +8486,7 @@ always the tractable direction; removing admission means it is the only one.
       detectable. Either act on that conclusion or record why it was reversed; a delay nobody can
       justify is the clamp standing rule 3 names.
 
-- [ ] Retract the admission-by-bracketing item in 2.18cq. Screening is a feed into `revoke`, not a
+- [x] DONE - and then 2.18cu retracted the retraction. Screening is NOT a feed into `revoke`, not a
       new gate.
 
 ### 2.18cs EVIDENCE FOR #41, FROM THE SHIPPED CODE - two of its open questions are already answered (2026-08-03)
@@ -8702,7 +8702,7 @@ a different answer, and reading one as the other has already produced one wrong 
 closing it. The comparison is against *"one role key can impersonate any notary in the country"*, not
 against perfection.
 
-- [ ] **Split the role before wiring any forwarder.** Snapshot publication takes quid's write-once
+- [x] **DONE.** `NOTARY_REGISTRAR` now gates the TitleLedger pair, with two tests proving separation. Snapshot publication still needs quid's write-once
       address (2.18cm); notary enrolment/revocation keeps a human-held role. Supersedes 2.18cl's
       "grant it to the Forwarder and nothing else", which as written is a privilege escalation.
 

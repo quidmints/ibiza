@@ -21,3 +21,6 @@ yarn-error.*
 .env
 .env.*
 !.env.example
+
+# Slither analysis output - regenerated on demand, never reviewed as source.
+backend/contracts/slither-out/

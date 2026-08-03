@@ -7882,10 +7882,19 @@ identity check a swapped workflow is **rejected**, not watched. What the delay i
 deserves 24 hours. The same reasoning transfers to 2.18cj's SEV-SNP measurement: pin it, compare it,
 and rogue code cannot post - no watching required.
 
-**WHAT THIS DELIBERATELY DOES NOT CLAIM.** `publishSnapshot` carries no workflow ID at all and stays
-an operator bootstrap gated only by the role. That is intentional (it is how the anchor runs before a
-Forwarder is wired), but it means **REGISTRY_POSTMAN remains a trusted key** until the role is held
-solely by the Forwarder. The pin binds **reports**, not the role.
+**WHAT THIS DELIBERATELY DOES NOT CLAIM - and I first understated it, so here it is proven instead of
+caveated.** `metadata` is **caller-supplied calldata**. A postman that is an ordinary key does not
+need to run the pinned workflow to pass the identity check: it writes the pinned ID into the header
+itself. `test_anEoaPostmanForgesTheHeaderAndPublishesFabricatedLeaves` does exactly that and
+**publishes a designation no register ever contained**. It passes, and it is meant to.
+
+**SO THE PIN IS WORTH EXACTLY WHAT "THE FORWARDER HOLDS THE ROLE" IS WORTH.** It defends against a
+rogue WORKFLOW *given an honest relay* - the Forwarder builds this header from an OCR-verified report
+rather than accepting it as an argument. Granted to an EOA, the check is bypassed by writing 32 bytes.
+`publishSnapshot` doesn't even require the 32 bytes. **The postman remains the vulnerability of
+2.18bn; nothing here touched it.**
+
+**WHAT WOULD ACTUALLY REMOVE IT** (see 2.18cl).
 
 - [x] Enforce the pinned workflow per report - `onReport`, offset 45 of the 109-byte header
 - [x] Correct the `WORKFLOW_ACTIVATION_DELAY` doc and the "only seen" claim in it
@@ -7897,6 +7906,49 @@ solely by the Forwarder. The pin binds **reports**, not the role.
   asserting the hole).
 - [ ] Grant REGISTRY_POSTMAN to the Forwarder address alone once its calling convention is confirmed;
       until then the operator key is a second, unpinned publisher.
+
+### 2.18cl "WE DONT NEED A POSTMAN AT ALL THOUGH?" - the chain cannot see a TLS session (user, 2026-08-03)
+
+*"the TLS work was supposed to remove it because it's a vulnerability?"* Right about the vulnerability,
+and right that 2.18ck did not remove it. But TLS verification alone cannot, and the reason is the
+whole point:
+
+**TLS VERIFICATION AUTHENTICATES THE DATA TO THE DON, NOT TO THE CHAIN.** A workflow that checks the
+register's certificate inside the sandbox knows the bytes came from the right domain. The contract
+never sees that session - it sees a transaction. So the chain needs something it can verify ITSELF,
+and there are only two kinds:
+
+1. **A SOURCE SIGNATURE.** The authority signs the data; anyone may relay it; the contract checks the
+   signature. **No role at all** - submission is permissionless because forgery fails verification
+   rather than being refused by an authority. This is 2.18bv's design, and 2.18ci found the ingredient:
+   **ICAO signs its Master List**, and `IcaoMasterListSignature.t.sol` already verifies that signature
+   ON-CHAIN for ~233k gas. For CSCA admission the postman is removable **today**.
+2. **A DON SIGNATURE.** For the four registers that sign nothing (OFAC SDN, UK ConList, UN
+   consolidated, and the Ukrainian export - all measured unsigned in 2.18cj), the only thing the chain
+   can check is that the DON attested the report. That is precisely what Chainlink's KeystoneForwarder
+   does before calling `onReport`.
+
+**WHICH REDUCES THE POSTMAN FROM A KEY TO A CONTRACT, AND THAT IS THE REAL ANSWER.** "Postman" is a
+vulnerability when it is a HUMAN KEY that can fabricate, censor and backdate (2.18bn's three levers).
+Held solely by the Forwarder it is not a key at all - it is "reports must arrive via the verified
+path", and the fabrication lever disappears because the Forwarder will not build a header for a report
+the DON did not sign. **The role name survives; the trusted party does not.**
+
+**THE STRONGER OPTION, IF WE WANT NO ROLE ANYWHERE:** verify the OCR/DON signatures in
+`RegistrySourceAnchor` itself and drop `onlyRole` entirely, making submission permissionless for
+unsigned sources too. Same shape as option 1, with the DON's quorum key in place of the authority's.
+Costs a signature-set check per snapshot and needs the DON's on-chain key set.
+
+- [ ] **Grant REGISTRY_POSTMAN to the Forwarder address and to nothing else** - this is the actual
+      fix for 2.18bn, and it is a deployment act, not a code change. Blocked only on confirming the
+      Forwarder's calling convention (2.18ck's open item).
+- [ ] **Remove the role from the ICAO path entirely** - source-signed, so it needs no authority.
+      Verify the CMS signature on-chain and let anyone submit. The verifier already exists and passes.
+- [ ] Decide whether to verify DON signatures in-contract (permissionless for unsigned sources) or
+      accept the Forwarder as the relay. **Not** a code task until the trade is decided.
+- [ ] `publishSnapshot` is the bigger hole and outlives all of this: it carries no workflow ID and no
+      signature. It exists as a pre-Forwarder bootstrap - **delete it once the Forwarder is wired**,
+      or it is a permanent fabrication lever that no pin constrains.
 
 ### 2.18cj THE ENCLAVE 2.18bx WANTED ALREADY EXISTS, IN OUR OWN STACK (user, 2026-08-03)
 

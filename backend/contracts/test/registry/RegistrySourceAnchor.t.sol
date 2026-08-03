@@ -319,6 +319,33 @@ contract RegistrySourceAnchorTest is Test {
     anchor.onReport(shifted, abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('c'))));
   }
 
+  /*
+   * WHAT THE WORKFLOW PIN DOES **NOT** BUY, PROVEN RATHER THAN CAVEATED.
+   *
+   * `metadata` is CALLER-SUPPLIED CALLDATA. A postman that is an ordinary key does not need to run
+   * the pinned workflow to satisfy the identity check - it writes the pinned ID into the header
+   * itself and publishes whatever leaves it likes. This test passes, and it is SUPPOSED to: it is
+   * the postman vulnerability of sec. 2.18bn stated executably.
+   *
+   * So the pin defends against a ROGUE WORKFLOW GIVEN AN HONEST RELAY. It is worth exactly as much
+   * as the Forwarder holding REGISTRY_POSTMAN, because the Forwarder builds this header from an
+   * OCR-verified report instead of accepting it as an argument. Granted to an EOA, the check below
+   * is bypassed by writing 32 bytes. Delete this test the day the role is Forwarder-only - until
+   * then it is the honest statement of what is guarded.
+   */
+  function test_anEoaPostmanForgesTheHeaderAndPublishesFabricatedLeaves() public {
+    bytes32 fabricated = keccak256('a designation no register ever contained');
+
+    vm.prank(postman); // an ordinary key: it never ran the pinned workflow
+    (, bytes32 root) = anchor.onReport(
+      _metadata(TEST_WORKFLOW), // ...and simply asserts that it did
+      abi.encode(NOTARY_REGISTRY, _oneLeafSet(fabricated))
+    );
+
+    assertEq(root, fabricated, 'the pin does not constrain a postman that can write its own metadata');
+    assertEq(anchor.latestRoot(NOTARY_REGISTRY), fabricated);
+  }
+
   /// A truncated header must be REFUSED, not sliced - reading past it would compare whatever
   /// follows in calldata and fail in a way indistinguishable from an honest rejection.
   function test_onReport_revertsOnTruncatedMetadata() public {

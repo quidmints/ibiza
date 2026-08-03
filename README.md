@@ -104,17 +104,11 @@ ceremony, and one Poseidon shared across circuits, Solidity (`poseidon-solidity`
 (`@iden3/js-crypto`) — each cross-checked against the others rather than assumed compatible.
 
 **The SOURCE migration is complete — zero `.circom` files remain.** What is NOT complete is the
-verifier and wiring layer: `passport/verifiers2/per-passport` still holds 35 Groth16-era verifiers,
-and 6 profiles still lack a Noir twin. **Do not read "one toolchain" as finished end-to-end** — see
-TODO.md tasks 10 and 36.
+verifier and wiring layer: 35 Groth16-era per-passport verifiers remain, and 6 profiles still lack
+a Noir twin. **Do not read "one toolchain" as finished end-to-end** — see `TODO.md`.
 
-**Verifiers ARE wired by address**, in `sdk/AQueryProofExecutor.sol` (`_setVerifier(address)`, and
-`$.verifier` in builder storage). An earlier version of this paragraph claimed nothing wired them,
-which was the premise of a "these 35 are dead" conclusion that then collapsed: because the binding
-is by address at deploy time and not by symbol, a reference count scores a LIVE verifier and an
-unwired one identically — the control run confirmed the live Noir verifiers also score zero. So a
-symbol grep cannot tell you which verifiers are live, and the 35 are unresolved rather than known
-dead.
+Verifiers are bound by address at deploy time rather than by symbol, so a reference count cannot
+distinguish a live verifier from an unwired one. Those 35 are unresolved, not known dead.
 
 The cost is that we now depend on the Noir toolchain's maturity, which is where several of the
 sharpest problems in `TODO.md` come from (a compiler ICE we patched, a bignum ecosystem that trails

@@ -47,11 +47,7 @@ contract Entrypoint is
 
   /// @dev 0xb19546dff01e856fb3f010c267a7b1c60363cf8a4664e21cc89c26224620214e
   bytes32 internal constant _OWNER_ROLE = keccak256('OWNER_ROLE');
-  /// @dev 0xfc84ade01695dae2ade01aa4226dc40bdceaf9d5dbd3bf8630b1dd5af195bbc5
-  bytes32 internal constant _ASP_POSTMAN = keccak256('ASP_POSTMAN');
 
-  /// @notice EIP-712 typehash for an off-chain admission authorization (see
-  ///         `admitIdentityWithAuthorization`).
   /// @inheritdoc IEntrypoint
   mapping(uint256 _scope => IPrivacyPool _pool) public scopeToPool;
 
@@ -95,10 +91,9 @@ contract Entrypoint is
   }
 
   /// @inheritdoc IEntrypoint
-  function initialize(address _owner, address _postman, address _evidenceRegistry) external initializer {
+  function initialize(address _owner, address _evidenceRegistry) external initializer {
     // Sanity check initial addresses
     if (_owner == address(0)) revert ZeroAddress();
-    if (_postman == address(0)) revert ZeroAddress();
     if (_evidenceRegistry == address(0)) revert ZeroAddress();
 
     // ERC-7812 evidence registry: shared, tamper-evident anchor for every ASP root (the same
@@ -112,42 +107,34 @@ contract Entrypoint is
     // Initialize roles
     _setRoleAdmin(DEFAULT_ADMIN_ROLE, _OWNER_ROLE);
     _setRoleAdmin(_OWNER_ROLE, _OWNER_ROLE); // Owner can manage owner role
-    _setRoleAdmin(_ASP_POSTMAN, _OWNER_ROLE); // Owner can manage postman role
 
     _grantRole(_OWNER_ROLE, _owner);
-    _grantRole(_ASP_POSTMAN, _postman);
   }
 
   /*///////////////////////////////////////////////////////////////
                       ASSOCIATION SET METHODS
   //////////////////////////////////////////////////////////////*/
 
-  /// @inheritdoc IEntrypoint
-  /// @dev DELIBERATELY THE ONLY WAY THE ASP ROOT CAN EVER CHANGE. `updateRoot(root, ipfsCID)` -
-  ///      which let the postman publish an arbitrary off-chain-computed root - was REMOVED, not
-  ///      deprecated. Leaving it in place would have kept the removal channel wide open and made
-  ///      the append-only property here worthless, since a postman could simply publish a tree
-  ///      omitting whoever they liked and bypass this function entirely.
-
-  /**
-   * @notice Admit an identity using an OFF-CHAIN postman signature, submitted by anyone.
+  /*
+   * THERE IS NO ADMISSION PATH IN THIS CONTRACT, AND UNTIL 2026-08-03 THE COMMENTS SAID OTHERWISE.
    *
-   * Folds admission into a transaction the user is already sending (their first deposit), instead
-   * of requiring a separate postman-sent transaction. Same authority - only the postman can
-   * authorize an admission - but the postman no longer needs to run a transaction-sending service
-   * or hold ETH, and the user saves a whole transaction's base cost and latency.
+   * This block described `admitIdentityWithAuthorization` / `_admitIdentity` - an EIP-712 admission
+   * signed by an `ASP_POSTMAN`, with replay protection in `aspAdmitted[_holderRoot]` and an
+   * append-only `_aspTree`. **None of those exist.** No function, no mapping, no tree; the role was
+   * declared, given a role admin and granted in `initialize`, and then gated nothing. Removed
+   * together, because a role that guards no function is not a safety margin - it is an invitation to
+   * assume a check that is not there, and `frontend/.../pp/stateTree.ts` had already recorded the
+   * assumption as fact.
    *
-   * Why this does NOT widen the postman's power: `_admitIdentity` can only ever INSERT. There is no
-   * removal path to authorize, so a leaked or misused signature can at worst admit an identity that
-   * the postman already decided to admit. See sec. 2.13 for why insert-only is the point.
+   * WHAT IS ACTUALLY ENFORCED, so this is not read as a gap where none exists: exclusion lives in
+   * `IdentityRegistry.revoke`, which writes a non-zero predicate over a commitment so every
+   * clean-status inclusion proof for it becomes impossible. That is the PP-native mechanism -
+   * exclusion, not exposure - and it is gated by `CONTROLLER`, a single address.
    *
-   * @dev Replay protection is `aspAdmitted[_holderRoot]`, which already reverts a second admission
-   *      of the same identity - so no separate nonce is needed. `_deadline` bounds how long a
-   *      signature stays usable if the postman changes its mind before it is redeemed.
-   * @param _holderRoot The identity's holder root
-   * @param _deadline Unix timestamp after which the authorization is void
-   * @param _signature Postman's EIP-712 signature over (holderRoot, deadline)
-   * @return _root The ASP root after insertion
+   * WHAT REPLACES THE REMOVED ROLE when an admission path is built: not another role. Admission
+   * should be a PROOF against the CRE-anchored sanctions root, whose leaves `_computeRoot` already
+   * forces to be strictly ascending, so non-membership is provable by bracketing two adjacent
+   * leaves. See TODO sec. 2.18cq for the binding that still blocks it.
    */
 
 

@@ -183,7 +183,7 @@ contract WithdrawEndToEndTest is EscrowFixtureBase {
     registry = new MockEvidenceRegistry();
 
     Entrypoint impl = new Entrypoint();
-    bytes memory init = abi.encodeCall(Entrypoint.initialize, (owner, postman, address(registry)));
+    bytes memory init = abi.encodeCall(Entrypoint.initialize, (owner, address(registry)));
     entrypoint = Entrypoint(payable(address(new ERC1967Proxy(address(impl), init))));
 
     // ONE identity tree now (sec. 2.13k): registration AND revocation status live together, with

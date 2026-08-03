@@ -7,8 +7,10 @@
 // `lean-imt/InternalLeanIMT.sol` the ASP tree uses. Deliberately NOT a second copy of that class,
 // though — three properties genuinely differ, and each one is a correctness trap if carried over:
 //
-//  1. DUPLICATE LEAVES ARE LEGAL HERE. IdentityAspTree rejects an already-admitted leaf because
-//     Entrypoint._admitIdentity enforces `aspAdmitted[_holderRoot]` on-chain. State._insert enforces
+//  1. DUPLICATE LEAVES ARE LEGAL HERE. IdentityAspTree rejects an already-admitted leaf as a LOCAL
+//     rule. This comment used to say the chain enforced it, via `Entrypoint._admitIdentity` and
+//     `aspAdmitted[_holderRoot]` — CORRECTED 2026-08-03: no such function, mapping or ASP tree
+//     exists in Entrypoint, so NOTHING on-chain rejects a re-admission. State._insert enforces
 //     NOTHING of the kind — it inserts whatever it is given. So this class must not reject
 //     duplicates (that would make the mirror diverge from the chain it is mirroring), and
 //     `LeanIMT.indexOf` — which returns the FIRST match — is not a safe way to locate a leaf.

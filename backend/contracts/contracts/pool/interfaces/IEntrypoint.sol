@@ -174,12 +174,6 @@ interface IEntrypoint {
   /// @notice Thrown when admitting an identity already present in the ASP tree
   error AlreadyAdmitted();
 
-  /// @notice Thrown when an admission authorization's deadline has passed
-  error AuthorizationExpired();
-
-  /// @notice Thrown when an admission authorization was not signed by an ASP_POSTMAN
-  error InvalidAuthorization();
-
   /// @notice Thrown when a leaf is not a valid BN254 field element
   error LeafOutOfField();
 
@@ -230,10 +224,9 @@ interface IEntrypoint {
   /**
    * @notice Initializes the contract state
    * @param _owner The initial owner
-   * @param _postman The initial postman
    * @param _evidenceRegistry The ERC-7812 evidence registry every ASP root is anchored in
    */
-  function initialize(address _owner, address _postman, address _evidenceRegistry) external;
+  function initialize(address _owner, address _evidenceRegistry) external;
 
 
 

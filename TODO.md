@@ -7468,6 +7468,11 @@ holds for the DATA path. But the WORKFLOW path genuinely needs a contest window,
 swap cannot be prevented cryptographically - only seen. **So the delay does not disappear; it MOVES
 to where it has a job**: guarding version changes rather than every snapshot.
 
+> **2.18ck (2026-08-03) overturns the premise, not the conclusion.** A swap *can* be prevented
+> cryptographically - compare the report's workflow ID to the pin, which `onReport` was not doing.
+> The delay still belongs on the WORKFLOW path, but its job is the **authorised re-pin** (a
+> governance act), not detecting a swap that is now simply rejected.
+
 **ON THE BLACKLIST AND LABEL GOVERNORS - partly, and the distinction matters.** Provenance removes an
 attester wherever the fact is SOURCED EXTERNALLY: a sanctions list, a notary register, a title
 register. If the blacklist is fed by an external published list (OFAC SDN is the example 2.13c names),
@@ -7497,6 +7502,13 @@ our existing authorities"* (user, 2026-07-31). Done for the trust-critical half.
 - **ENFORCED**: `_publishSnapshot` reverts `NoActiveWorkflow` when nothing is active. A pin nothing
   checks would be a public statement of intent with no bearing on what the anchor accepts - the exact
   shape 2.18bg calls theatre.
+
+  > **CORRECTED BY 2.18ck (2026-08-03): this was LIVENESS, not enforcement.** "Nothing is active"
+  > answers *whether some pin exists*, never *whether this report came from it* - and `onReport`
+  > discarded the metadata naming the workflow, so a swapped workflow published successfully. Both
+  > the "ENFORCED" heading above and the "a swap cannot be prevented cryptographically - only seen"
+  > line two bullets up were wrong, the second only *because* of the first. Read 2.18ck before
+  > citing either.
 
 **SIX TESTS, and the first is written against a FRESH anchor** rather than the pinned one from
 `setUp`, because a test that cannot fail is what this suite is least allowed to contain:
@@ -7834,6 +7846,57 @@ a passport's own DER; certificates do not carry them. The DSC feed does not help
 **STILL A DECISION, NOT A TASK** (belongs in sec. 4): ICAO's terms require every entity using the
 list to set its OWN policy for trusting these certificates and warn some may be non-conformant.
 Anchoring all 581 unfiltered is itself a policy - the permissive one.
+
+### 2.18ck THE WORKFLOW PIN WAS NEVER ENFORCED - `onReport` threw away the field that names it (2026-08-03)
+
+*"attested binaries or workflows can't be swapped though? we check the signature in the CRE while it
+runs and dont allow it to run if it's running rouge code?"* The instinct behind the question was
+right, and checking it found that the contract did not do it.
+
+**WHAT WAS THERE.** `RegistrySourceAnchor.onReport(bytes /* metadata */, bytes report)` discarded
+`metadata` on an explicit written rationale: *"intentionally unused; nothing here needs it, since
+`onlyRole(REGISTRY_POSTMAN)` already gates who may call this."* That reasoning gates the **caller**
+and says nothing about the **code**. The Forwarder relays whatever the DON ran, so a rogue workflow's
+report arrives from the *same authorised address* as an honest one. The only workflow check in the
+publish path was `if (activeWorkflowId() == bytes32(0)) revert NoActiveWorkflow()` - a **liveness**
+test ("some pin exists"), never an **identity** one ("this report came from it").
+
+**SO THE SWAP THIS SECTION ASKS ABOUT WOULD HAVE SUCCEEDED.** And the proof was sitting in our own
+test file: `anchor.onReport('some-metadata', report)` published happily. Fourteen arbitrary bytes were
+acceptable provenance. `pinWorkflow`'s append-only list, `WorkflowAlreadyPinned`, the 24-hour timelock
+and the `WorkflowPinned` events all worked - and then nothing compared a report against any of it.
+`_publishSnapshot`'s own comment says **"A PIN NOTHING CHECKS IS DECORATION"**, which means this
+contract wrote down its failure mode and then shipped it one level up.
+
+**THE FIX IS THE COMPARISON, NOT A WATCHER.** The layout was taken from the SDK we actually depend on
+(cre-sdk-go v1.15.0 `cre/report_fields.go`, citing `chainlink-common ocr3/types.Metadata`) rather than
+guessed: `version 1 || executionId 32 || timestamp 4 || donId 4 || donConfigVersion 4 || workflowId 32
+|| workflowName 10 || workflowOwner 20 || reportId 2` = **109 bytes, workflow ID at offset 45**.
+`onReport` now length-checks, slices offset 45, and requires equality with `activeWorkflowId()`.
+
+**AND IT CORRECTS A CLAIM THIS FILE HELPED WRITE.** `WORKFLOW_ACTIVATION_DELAY`'s doc asserted that
+**"a workflow SWAP cannot be prevented cryptographically, only seen"**, which is why the delay was
+justified as a contest window. That was only true *because the metadata was discarded*. With the
+identity check a swapped workflow is **rejected**, not watched. What the delay is actually for is the
+**authorised re-pin** - changing which code the anchor believes is a governance act, and that is what
+deserves 24 hours. The same reasoning transfers to 2.18cj's SEV-SNP measurement: pin it, compare it,
+and rogue code cannot post - no watching required.
+
+**WHAT THIS DELIBERATELY DOES NOT CLAIM.** `publishSnapshot` carries no workflow ID at all and stays
+an operator bootstrap gated only by the role. That is intentional (it is how the anchor runs before a
+Forwarder is wired), but it means **REGISTRY_POSTMAN remains a trusted key** until the role is held
+solely by the Forwarder. The pin binds **reports**, not the role.
+
+- [x] Enforce the pinned workflow per report - `onReport`, offset 45 of the 109-byte header
+- [x] Correct the `WORKFLOW_ACTIVATION_DELAY` doc and the "only seen" claim in it
+- [x] Non-vacuity for the offset: a header carrying the pinned ID **one byte off** must still fail,
+      so an off-by-one shared by test and contract cannot hide (misreading it rejects VALID reports -
+      a failure shaped exactly like a healthy rejection)
+- [x] Truncated metadata refused rather than sliced past
+- **454/454 forge tests pass** (was 447; +4 here, and one existing test rewritten because it had been
+  asserting the hole).
+- [ ] Grant REGISTRY_POSTMAN to the Forwarder address alone once its calling convention is confirmed;
+      until then the operator key is a second, unpinned publisher.
 
 ### 2.18cj THE ENCLAVE 2.18bx WANTED ALREADY EXISTS, IN OUR OWN STACK (user, 2026-08-03)
 

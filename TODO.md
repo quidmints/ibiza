@@ -7977,6 +7977,47 @@ left rather than a slower one.
 - [ ] The revoke path is separate: it is the holder revoking their OWN document, so a signer there is
       a different question from enrolment censorship. Decide it explicitly rather than by analogy.
 
+### 2.18cy THE SIX ORPHANS: EC_LEN IS THE ONLY MISSING GENERIC, AND IT IS DOCUMENT-SPECIFIC (2026-08-04)
+
+Chased the one avenue that could have closed these without a passport - rarimo's CIRCOM circuits,
+which those six DO exist as (we hold their Groth16 verifiers). **The tuple name decodes completely**,
+which was worth learning: `circuits/identityManagement/registerIdentityBuilder.circom` takes exactly
+the tuple in order -
+
+    SIGNATURE_TYPE, DG_HASH_TYPE, DOCUMENT_TYPE, EC_BLOCK_NUMBER,
+    EC_SHIFT, DG1_SHIFT, AA_SIGNATURE_ALGO, DG15_SHIFT, DG15_BLOCK_NUMBER, AA_SHIFT
+
+so `1_160_3_4_576_200_NA` is RSA-2048/SHA-1, TD3, 4 EC blocks, shifts 576/200, no Active Auth.
+
+**BUT CIRCOM IS PARAMETERISED IN BLOCKS AND NOIR IN BYTES, AND THAT GAP IS THE WHOLE PROBLEM.**
+Measured against all 75 published profiles:
+
+| generic | recoverable from the tuple? |
+|---|---|
+| `DG1_LEN` | **yes** - 93 for every TD3 profile, 0 of 65 shapes ambiguous |
+| `SA_LEN` | **yes** - 0 of 65 shapes ambiguous |
+| `N` | **yes** - a function of `SIGNATURE_TYPE` (18 for RSA-2048, 26 for RSA-3072, 6 for ECDSA) |
+| `EC_LEN` | **NO** - and it is the one that matters |
+
+`EC_BLOCK_NUMBER` only bounds it: it is `ceil((EC_LEN + 9) / blocksize)`, so block 4 admits any
+`EC_LEN` in a 64-byte window. Even at FULL tuple shape, 2 of 65 keys map to two different `EC_LEN`
+values (`1_256_3_4_336_232` -> 217 and 233). And **none of the six has an exact-shape match** among
+the 75 to copy from.
+
+**SO THE EARLIER CONCLUSION SURVIVES, NOW PROVEN THREE WAYS** rather than asserted: the Circom source
+is coarser than Noir needs; tuple shape does not pin `EC_LEN` even within the published set; and no
+published profile shares a shape with any of the six. `EC_LEN` is the byte length of a real
+document's eContent - it is a property of a PASSPORT, not of a parameter table.
+
+**WHAT THIS BUYS ANYWAY, and it is not nothing:** when a document of one of these profiles does turn
+up, **only `EC_LEN` needs measuring**. The other thirteen generics are already derivable from the
+name, so each orphan costs one measurement, not a reverse-engineering exercise.
+
+- [ ] Six orphans need one SOD each. NOT RAM-blocked, NOT toolchain-blocked - the swap fix does not
+      touch them. Same document dependency as task 6.
+- [ ] Until then the Groth16 verifiers for those six MUST stay: they are those profiles' only
+      verifier, and `_verifyCircomZKProof` stays reachable for exactly that reason (2.18co).
+
 ### 2.18cw REMOVING ALL FOUR, AND EACH REPLACEMENT IS STRICTLY STRONGER (user, 2026-08-03)
 
 *"there must be a way that we can strengthen security while removing the postman entirely"*. There is,

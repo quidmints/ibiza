@@ -7950,11 +7950,14 @@ Costs a signature-set check per snapshot and needs the DON's on-chain key set.
       signature. It exists as a pre-Forwarder bootstrap - **delete it once the Forwarder is wired**,
       or it is a permanent fabrication lever that no pin constrains.
 
-### 2.18cm `quidmints/quid` HAS THE BETTER FORWARDER PATTERN - AND NEVER WIRES IT (user, 2026-08-03)
+### 2.18cm THE FORWARDER PATTERN, TAKEN FROM `quid` AS REFERENCE ONLY (user, 2026-08-03)
 
-*"the forwarder wiring should be part of the deployment sequence. check out github.com/quidmints/quid"*.
-Read at `../quid` (working tree, and note **another thread has `evm/scripts/DeployL1.s.sol` modified**,
-so this is a snapshot). Three things, and the second one validates the instruction.
+*"the forwarder wiring should be part of the deployment sequence. check out github.com/quidmints/quid"*,
+then: ***"the quid repo is not something we are actively working on at all, nor should we, it's just
+for reference."*** **SO NOTHING BELOW IS A TASK IN THAT REPO** - it is prior art and a worked example
+of the failure we are trying not to repeat. Do not open work there on the strength of this section.
+Read at `../quid` (working tree, and another thread had `evm/scripts/DeployL1.s.sol` modified, so it
+is a snapshot). Three observations, and the second one validates the instruction.
 
 **1. ITS ACCESS PATTERN IS STRICTLY BETTER THAN OURS, AND IT ANSWERS 2.18cl DIRECTLY.** `UMA.sol` does
 not use a grantable role. It uses a single address plus a **write-once** setter:
@@ -7992,9 +7995,10 @@ nowhere to live, and the same silent-inertness failure is available to us the mo
 - [ ] **Write ibiza's deployment sequence**, with forwarder wiring as an explicit step that FAILS
       LOUDLY when the address is unknown, rather than a constant nobody passes. The lesson from quid
       is that "set it later" and "never set" are indistinguishable without a check.
-- [ ] Cross-repo, for whoever owns `quid`: `setForwarder` is uncalled (watchdog inert), the `0xF0F0`
-      stub is unused and unsafe to wire, and `UMA.onReport` discards `metadata` exactly as ours did -
-      **with no pin at all to check it against**, so 2.18ck's finding applies there in a stronger form.
+One more observation, recorded because it tells us where OUR gap generalises and **not** because it is
+work: `UMA.onReport` discards `metadata` exactly as ours did, with no pin at all to check it against.
+2.18ck was not a one-off mistake in one contract - it is what the `IReceiver` signature invites, since
+the interface hands you a field you must actively decide to use.
 
 ### 2.18cj THE ENCLAVE 2.18bx WANTED ALREADY EXISTS, IN OUR OWN STACK (user, 2026-08-03)
 

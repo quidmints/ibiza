@@ -7812,6 +7812,21 @@ full RSA PKCS#1 v1.5 verification succeeds -
 Committed as `backend/contracts/test/fixtures/icao_certificate_admission.json`. **Every byte is
 genuine** - no synthetic certificate anywhere in it.
 
+**✅ AND THE TEST EXISTS AND PASSES (6/6): `test/certificate/IcaoCertificateAdmission.t.sol`.** Every
+other test on this path used synthetic bytes - `CRSADispatcher.t.sol` builds attributes from a
+counter - which probes edge cases but never answers whether the code accepts a genuine authority's
+chain. It does:
+  - the real CSCA is provably in the master tree (`MerkleProof.verify` over all 581 published certs),
+    **and a key outside the list is rejected** against the same root
+  - **a real national CSCA's 4096-bit RSA signature over a real DSC verifies ON-CHAIN**, SHA-256,
+    through our own `CRSASigner` - and flipping one byte of the signed DSC is rejected
+  - the dispatcher extracts the DSC's own 2048-bit modulus from the CSCA-signed attributes at the
+    caller-supplied offset, **and a shifted offset reverts** rather than returning adjacent memory,
+    which is sec. 2.18m's out-of-bounds read exercised against a real certificate for the first time
+  The prefix was read out of the certificate, not assumed: `keyOffset = 279`, preceded by
+  `02 82 01 01 00` (INTEGER header + leading zero), which is what `X509._checkPrefix` matches.
+  **447 forge tests pass** (was 441).
+
 **WHAT STILL NEEDS A REAL DOCUMENT, so nobody re-reads this as more than it is:** task 6's happy path
 and task 10's six orphan profiles both need an SOD/DG1. The raw `EC_LEN`/`SA_LEN` those need live in
 a passport's own DER; certificates do not carry them. The DSC feed does not help there.

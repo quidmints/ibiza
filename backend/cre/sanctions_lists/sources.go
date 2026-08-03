@@ -146,10 +146,24 @@ type Authenticity int
 const (
 	// authenticityTransportOnly: the publisher signs nothing. The only authenticity is the TLS
 	// session the DON node itself opened, which it cannot prove to anyone afterwards - so the
-	// snapshot rests on DON honesty, and the postman CANNOT be removed for this source
-	// (sec. 2.18bv/2.18br). This is not a claim that no signed artifact exists anywhere; it records
-	// that the export we fetch is unsigned and that no detached signature was found beside it.
-	// Finding one is a change to this field, not to any code.
+	// snapshot RESTS ON DON HONESTY for this source (sec. 2.18bv/2.18br).
+	//
+	// AND THAT IS A TRUST ASSUMPTION, NOT AN AUTHORITY. An earlier version of this comment concluded
+	// "...and the postman CANNOT be removed for this source". That does not follow, and the two must
+	// not be collapsed (sec. 2.18cp):
+	//   - what is irreducible here is WHOM YOU TRUST ABOUT THE CONTENT - the DON, because nothing
+	//     else vouches for bytes the publisher never signed;
+	//   - what is removable is WHO MAY SUBMIT. Verify the DON's report signature on-chain and the
+	//     submitter becomes untrusted: anyone may relay, and a forged report fails the check. That is
+	//     the same move ICAO's CMS signature makes for a signed source, with the DON's quorum key in
+	//     place of the authority's.
+	// Removal additionally needs REPLAY PROTECTION, because a permissionless relay could re-submit an
+	// old valid report and regress `latestRoot`. The metadata header already carries what that needs
+	// (timestamp at offset 33, execution ID at 1).
+	//
+	// This is not a claim that no signed artifact exists anywhere; it records that the export we
+	// fetch is unsigned and that no detached signature was found beside it. Finding one is a change
+	// to this field, not to any code.
 	authenticityTransportOnly Authenticity = iota + 1
 
 	// authenticityDetachedSignature: a `.p7s`/CMS or XAdES artifact is published alongside, so the

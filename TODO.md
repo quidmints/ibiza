@@ -7950,6 +7950,39 @@ Costs a signature-set check per snapshot and needs the DON's on-chain key set.
       signature. It exists as a pre-Forwarder bootstrap - **delete it once the Forwarder is wired**,
       or it is a permanent fabrication lever that no pin constrains.
 
+### 2.18cp "WHY CAN'T IT BE REMOVED?" - it can; the claim conflated trust with authority (user, 2026-08-03)
+
+I cited `sources.go:149` - *"the snapshot rests on DON honesty, and the postman CANNOT be removed for
+this source"* - as settled. **The conclusion does not follow from its own premise, and the question
+exposed it.** Two different things were collapsed into one word:
+
+| | unsigned source (OFAC/UK/UN/Ukraine) | signed source (ICAO) |
+|---|---|---|
+| **whom you trust about the CONTENT** | the DON - irreducible, nothing else vouches for bytes the publisher never signed | nobody: the authority signed it |
+| **who may SUBMIT** | **removable** | **removable** |
+
+**"Rests on DON honesty" constrains the first column only.** The postman is not the DON - it is
+whoever holds the key that sends the transaction. Verify the DON's report signature **in the contract**
+and that key stops being trusted: anyone may relay, and a forged report fails the check. It is exactly
+the move ICAO's CMS signature makes for a signed source, with the DON's quorum key in place of the
+authority's. Chainlink's own Forwarder already does this verification - which is why "grant the role to
+the Forwarder" reduces the postman to a relay. Doing it in-contract removes the role outright.
+
+**WHAT REMOVAL ACTUALLY REQUIRES, and this is the part the old claim hid by being too pessimistic:**
+1. the DON's on-chain signer set / config digest, to check a quorum signature;
+2. **replay protection** - a permissionless relay can re-submit an OLD valid report and regress
+   `latestRoot`, which a trusted postman implicitly prevented by not doing it. The metadata header
+   already carries what this needs: **timestamp at offset 33, execution ID at offset 1** (2.18ck).
+
+**SO THE HONEST STATEMENT IS THE NARROW ONE:** for an unsigned source, **DON TRUST cannot be removed**;
+the postman can. For a signed source, both can. `sources.go` corrected in place - the field records
+what the export is, and no longer draws a conclusion about authority from it.
+
+- [ ] Verify DON report signatures in `RegistrySourceAnchor` and drop `onlyRole` from the report path,
+      with replay protection keyed on the header's timestamp/execution ID. This supersedes "grant the
+      role to the Forwarder" (2.18cl/2.18cm) as the STRONGER option, and it is the only one that
+      removes the key rather than relocating it.
+
 ### 2.18cn ONE ROLE, THREE POWERS - "why are you conflating the postman and the forwarder?" (user, 2026-08-03)
 
 **I WAS CONFLATING THEM, AND THE CODE SAYS WHY THAT IS WORSE THAN SLOPPY WORDING.** A forwarder is not

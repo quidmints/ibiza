@@ -7950,6 +7950,33 @@ Costs a signature-set check per snapshot and needs the DON's on-chain key set.
       signature. It exists as a pre-Forwarder bootstrap - **delete it once the Forwarder is wired**,
       or it is a permanent fabrication lever that no pin constrains.
 
+### 2.18cx THE PERMISSIONLESS ENROLMENT PATH IS ALREADY WIRED - what remains is a product decision (2026-08-03)
+
+Measured while attempting authority #4's removal in one pass. **`registerDocumentViaIcao` already
+exists in `HolderRegistration` and already takes no signature** - its own comment says so: *"Every
+OTHER entry point on this contract requires a backend signer's signature... `registerDocumentViaIcao`
+takes no signature: it consumes a `register_identity` proof, which verifies the whole ICAO chain
+in-circuit, and the only thing the caller must satisfy is arithmetic."*
+
+So the replacement is not merely written (2.18cs) - **it is deployed alongside the gated one.** The
+backend signer survives on the OTHER entry points: `registerDocumentViaNoir`, `renewDocumentViaNoir`
+and the revoke path.
+
+**AND DELETING THOSE IS A PRODUCT DECISION, NOT A CLEANUP - which is why it stopped here.** They are
+consumed by the wallet: `frontend/identity-wallet/src/sdk/holder/HolderContracts.ts:18-19` encodes
+calldata for both, and `sdk/index.ts` names all three. Removing them breaks the shipped client, and
+forces every holder onto the full ICAO circuit - which needs a verifier for THEIR passport profile.
+**Six profiles have no Noir verifier at all** (2.18co), so those holders would have no enrolment path
+left rather than a slower one.
+
+**THE HONEST SEQUENCE:**
+- [ ] Close the six-profile gap first (2.18co), or deleting the signer paths strands those holders.
+- [ ] Then retire `registerDocumentViaNoir`/`renewDocumentViaNoir` and update the wallet SDK in the
+      same change - the ICAO path supersedes both, and keeping a signature-gated duplicate means the
+      censorship lever survives no matter what the permissionless path can do.
+- [ ] The revoke path is separate: it is the holder revoking their OWN document, so a signer there is
+      a different question from enrolment censorship. Decide it explicitly rather than by analogy.
+
 ### 2.18cw REMOVING ALL FOUR, AND EACH REPLACEMENT IS STRICTLY STRONGER (user, 2026-08-03)
 
 *"there must be a way that we can strengthen security while removing the postman entirely"*. There is,

@@ -8043,6 +8043,51 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18dj FOLDING ATTACKS THE 28 GB WITHOUT LEAVING THE STACK - and `bb` already ships it (user, 2026-08-04)
+
+*"Aztec built ProtoGalaxy and ClientIVC precisely so a client folds many proofs without a full
+recursive verification per step."* **Correct, and it reframes the whole STARK discussion.**
+
+**WHAT OUR AGGREGATOR DOES TODAY.** `aggregate_withdrawals/src/main.nr:157` calls
+`std::verify_proof_with_type` **once per proof, inside the circuit** - a FULL in-circuit UltraHonk
+verification, ~725k gates each. Sixteen of them is the 11.6M gates and the ~27-28 GB. **The cost is
+the architecture, not the proving system:** we chose recursive verification, and folding is the
+alternative that Aztec built for exactly this.
+
+**AND IT IS IN OUR PINNED TOOLCHAIN, UNUSED.** `bb 5.1.0` exposes:
+```
+-s,--scheme [BB_SCHEME]   Options: {chonk, avm, ultra_honk}
+--ivc_inputs_path         For IVC, path to input stack with bytecode and witnesses
+```
+`chonk` is the folding/ClientIVC scheme (the `check` subcommand's help even refers to "the VKs in the
+folding stack"). So this needs **no new backend, no forked compiler, no re-audit of a different
+proving system, and no decision about already-anchored state** - which is what every STARK option
+costs.
+
+**THE ONE CATCH, AND IT IS SHAPED LIKE AZTEC'S OWN DESIGN:** `write_solidity_verifier` only targets
+`evm`/`evm-no-zk` against an **UltraHonk** VK. A ClientIVC/Chonk proof is therefore NOT directly
+EVM-verifiable; it needs a final UltraHonk wrap - one full recursive verification of the folded
+accumulator, ONCE per batch instead of sixteen times. **That is precisely the trade that makes it
+worth doing**, and it is how Aztec's own client-side proving reaches L1.
+
+**SO THE HONEST RANKING OF WAYS TO FIX THE BATCHER CHANGES:**
+1. **Fold with `chonk`, wrap once in UltraHonk.** In-stack, in the pinned `bb`, no migration. **Should
+   be tried before anything else.**
+2. Keep recursive verification and accept ~28 GB.
+3. Migrate to a STARK backend - the option I spent this session pricing, and the most expensive one.
+
+**WHICH ALSO WEAKENS 2.18di's LOSS #3.** "Expensive recursion" is a property of the aggregator we WROTE,
+not of Honk. If folding lands, the batcher's hardware requirement stops being an argument for STARKs at
+all - and that was the last surviving cryptographic argument (gas died in 2.18dg, post-quantum in
+2.18di's correction, "no circuits to inherit" in 2.18dh).
+
+- [ ] Prototype `bb prove -s chonk --ivc_inputs_path <stack>` over 16 `withdraw_identity` instances and
+      measure peak RSS against the recursive aggregator's ~27-28 GB. **This is the highest-value
+      unstarted measurement in the repo** - it is cheap, in-stack, and it decides whether the batcher
+      needs a server at all.
+- [ ] Then price the final UltraHonk wrap of the folded accumulator (one recursive verification, not
+      sixteen) and confirm the existing Solidity verifier shape still applies.
+
 ### 2.18di WHAT STAYING FULLY NOIR ACTUALLY COSTS (user, 2026-08-04)
 
 Four losses, in descending order of how much they should worry anyone. All numbers measured in this

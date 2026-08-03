@@ -1526,25 +1526,6 @@
       },
       "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree)."
     },
-    "21_160_1_2_560_576_NA": {
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 0,
-        "EC_LEN": 70,
-        "SA_LEN": 92,
-        "N": 6,
-        "EC_FIELD_SIZE": 256,
-        "DG_HASH_ALGO": 20,
-        "HASH_ALGO": 20,
-        "SIG_TYPE": 21,
-        "DG1_SHIFT": 70,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree)."
-    },
     "25_384_1_3_336_256_NA": {
       "generics": {
         "DG1_LEN": 95,
@@ -1584,9 +1565,31 @@
       "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree)."
     }
   },
-  "quarantined": {
-    "ID_Card_I": {
-      "reason": "no artifact published under this name in any release"
+  "quarantined": [
+    {
+      "ID_Card_I": {
+        "reason": "no artifact published under this name in any release"
+      }
+    },
+    {
+      "name": "21_160_1_2_560_576_NA",
+      "generics": {
+        "DG1_LEN": 0,
+        "DG15_LEN": 0,
+        "EC_LEN": 70,
+        "SA_LEN": 92,
+        "N": 6,
+        "EC_FIELD_SIZE": 256,
+        "DG_HASH_ALGO": 20,
+        "HASH_ALGO": 20,
+        "SIG_TYPE": 21,
+        "DG1_SHIFT": 70,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "reason": "DEGENERATE ARTIFACT, not a toolchain gap. Its own ABI declares dg1 with length 0 - a passport circuit that reads NO MRZ, so it cannot prove anything about a document. Published under noir 1.0.0-beta.1; beta.26 refuses it with \"Invalid type found in the entry point to a program\", which is the compiler catching the defect rather than a regression. Not patched around: emitting a circuit for it would produce a verifier that verifies nothing."
     }
-  }
+  ]
 }

@@ -7991,6 +7991,37 @@ left rather than a slower one.
 - [ ] The revoke path is separate: it is the holder revoking their OWN document, so a signer there is
       a different question from enrolment censorship. Decide it explicitly rather than by analogy.
 
+### 2.18dc IS NOIR/ULTRAHONK STRICTLY BETTER THAN CIRCOM/GROTH16? NO - and the reason we chose it is one axis (user, 2026-08-04)
+
+*"i just hope we chose the right stack"*. Measured in our own tree, same profile family:
+
+| | runtime size | EIP-170 headroom |
+|---|---|---|
+| Groth16 `PPerPassport_1_160_3_4_576_200_NAVerifier2` | **1,736 B** | 22,840 |
+| Honk `NoirRegisterIdentity_1_160_3_3_576_200_NA` | **18,430 B** | **6,146** |
+
+**GROTH16 WINS ON SIZE BY ~10.6x**, and that is not cosmetic - it is a direct cause of the EIP-170
+pressure this repo already carries. Groth16 also has smaller proofs (3 group elements) and a cheaper,
+constant-time pairing check, so it wins on calldata and verification gas too.
+
+**WHAT WE BOUGHT INSTEAD, and why it is still the right call HERE:**
+1. **NO PER-CIRCUIT TRUSTED SETUP.** Groth16 needs a ceremony PER CIRCUIT. We have **81 live passport
+   profiles**. That is 81 ceremonies, or trusting rarimo's - and this whole session has been about
+   removing exactly that kind of "someone we must trust". Honk uses a universal SRS: one artifact,
+   every circuit. **This axis alone decides it.**
+2. **RECURSION.** The N=16 aggregator verifies proofs inside a proof. Groth16 does not do this
+   natively; Honk does. Section 2.4's entire design depends on it.
+3. **Circuits are maintainable.** Noir is a language; Circom is a constraint DSL. Sections 2.18m and
+   the `EC_LEN` work in 2.18cy were only tractable because the circuit reads like code.
+
+**SO THE TRADE IS EXPLICIT: we pay ~10x verifier size and more verification gas to remove 81 trusted
+setups and to make recursion possible.** Anyone reopening this should argue against THAT trade, not
+against Honk in general - and should note that the Groth16 verifiers we keep for the six orphans are
+evidence the two can coexist where it helps.
+
+- [ ] When EIP-170 is finally addressed (deferred by the repo owner until last), remember the cause is
+      partly this choice. The fix is splitting verifiers, not revisiting the stack.
+
 ### 2.18da THE ORPHANS ARE ENUMERABLE AFTER ALL - EC_LEN is quantised by data-group count (user, 2026-08-04)
 
 *"could we do this in any way synthetically?"* **Yes, and it collapses the problem from a passport

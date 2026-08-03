@@ -7977,6 +7977,77 @@ left rather than a slower one.
 - [ ] The revoke path is separate: it is the holder revoking their OWN document, so a signer there is
       a different question from enrolment censorship. Decide it explicitly rather than by analogy.
 
+### 2.18da THE ORPHANS ARE ENUMERABLE AFTER ALL - EC_LEN is quantised by data-group count (user, 2026-08-04)
+
+*"could we do this in any way synthetically?"* **Yes, and it collapses the problem from a passport
+dependency to a handful of builds.**
+
+**WHY EC_LEN IS NOT FREE-VALUED.** eContent is an `LDSSecurityObject`: a header plus one
+`DataGroupHash` entry per data group. So `EC_LEN = base + n x (hashlen + DER overhead)` - it is
+quantised by HOW MANY DATA GROUPS the document carries. Measured across all 75 published profiles,
+the gaps between consecutive `EC_LEN` values are exactly that:
+
+| DG_HASH_ALGO | dominant gaps | = one DataGroupHash entry |
+|---|---|---|
+| SHA-1 (20B) | 25, 27, 29 | 20 + 5..9 |
+| SHA-256 (32B) | 37, 39, 42 | 32 + 5..10 |
+| SHA-512 (64B) | 126 | two entries |
+
+**SO THE CANDIDATE SET IS TINY.** `EC_BLOCK_NUMBER` bounds `EC_LEN` to one 64- or 128-byte window,
+and only quantised values inside it are physically possible. Intersecting the window with values
+actually observed in real profiles:
+
+| orphan | window | candidates |
+|---|---|---|
+| `1_160_3_4_576_200_NA` | 185-247 | **209 - UNIQUE, fully determined** |
+| `1_256_3_6_336_560_1_2744_4_256` | 313-375 | 336, 338, 375 |
+| `14_256_3_4_336_64_1_1480_5_296` | 185-247 | 217, 219, 233 |
+| `20_160_3_3_736_200_NA` | 121-183 | 126, 153, 155, 180 |
+| `20_256_3_5_336_72_NA` | 249-311 | 256, 258, 297, 299, 311 |
+| `4_160_3_3_336_216_1_1296_3_256` | 121-183 | 126, 153, 155, 180 |
+
+**20 candidate builds, not 6 x 64 = 384** - and one orphan needs no guess at all. `SA_LEN` narrows the
+same way: it is single-valued for `1_160_3` (104), `20_160_3` (92) and `20_256_3` (74).
+
+**AND A WRONG CANDIDATE IS INERT, NOT DANGEROUS** - which is what makes this safe. A verifier built
+for the wrong `EC_LEN` simply never verifies a real proof of that profile; it cannot accept anything
+it should not. **The CLIENT holds the real document and therefore knows the true `EC_LEN`**, so it
+selects the matching verifier. Nothing needs a passport on OUR side.
+
+- [ ] Build the 20 candidates (start with `1_160_3_4_576_200_NA`, which is determined), register them
+      keyed by profile+EC_LEN, and let the client select. Retires the six orphans without a document.
+- [ ] Cheap first check before building: 2.18cy showed `SA_LEN`/`DG1_LEN`/`N` are recoverable from the
+      name, so only `EC_LEN` (and `DG15_LEN` on the two AA profiles) is being enumerated.
+
+### 2.18db KECCAK vs POSEIDON IS PRINCIPLED - but self-proved non-membership breaks the split (user, 2026-08-04)
+
+*"why are you inlining poseidon if we did keccak elsewhere?"* Because the two are used where each is
+CHEAP, and it is not arbitrary:
+
+| root | hash | who verifies it | why |
+|---|---|---|---|
+| `RegistrySourceAnchor` snapshots, `icaoMasterTreeMerkleRoot` | **keccak** | Solidity (`MerkleProof.verify`) | ~30 gas on the EVM |
+| `certificatesSmt`, `IdentityRegistry`, notary tree, PP state | **Poseidon** | circuits (`notary_action` proves `notary_root`) | cheap in-circuit; keccak costs ~34% more gates |
+
+Inlining Poseidon targets the third column's EVM-side cost - **32,549 gas per 2-input hash through a
+DELEGATECALL**, ~90k inlined for a depth-32 insert instead of over 1M. It does not touch the keccak
+roots and does not conflict with them.
+
+**BUT THE NEW DESIGN LANDS EXACTLY ON THE SEAM.** Self-proved non-membership (2.18cu) proves against
+the SANCTIONS root **in-circuit** - and that root is keccak, chosen when only Solidity read it. So one
+of these must give:
+- **circuit pays keccak**: a Merkle path is only ~depth hashes, but keccak is heavy in Noir;
+- **anchor publishes a Poseidon root too**: cheap in-circuit, but computing Poseidon over thousands of
+  leaves ON-CHAIN is enormous - at 32,549 gas per hash it dwarfs the keccak root it accompanies;
+- **switch the sanctions registry to Poseidon**: cheapest in-circuit, but then `TitleLedger`'s
+  Solidity-side `MerkleProof.verify` pays Poseidon on the EVM instead.
+
+**Note the third option gets much cheaper if Poseidon is inlined first** - which is another reason to
+do that before deciding this, rather than after.
+
+- [ ] Decide the sanctions root's hash by measuring both sides, AFTER inlining Poseidon. Do not pick
+      it from the current numbers; inlining moves the very quantity the decision turns on.
+
 ### 2.18cz WHAT FOLDS AND WHAT CANNOT - and 7 profiles we are missing (user, 2026-08-04)
 
 *"are you sure there is no other way... fold as many things together as possible for efficiency

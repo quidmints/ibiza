@@ -7885,7 +7885,22 @@ signature; use the DN only as a hint.** It also settles the pinning question in 
 rather than the certificate or the name: 0368 and 0389 share a key, so pinning the key covers both
 and survives the rollover.
 
-**STILL OPEN:** whether the eContent digest can be tied to the derived root on-chain. The eContent is
+**✅ ICAO'S SIGNATURE IS NOW ENFORCED ON-CHAIN (`test/certificate/IcaoMasterListSignature.t.sol`,
+4 tests).** The obstacle looked like size - 876 KB cannot be hashed in calldata or in-circuit - but
+CMS does not sign the content directly. It signs `signedAttributes`, a **104-BYTE** structure
+CONTAINING `messageDigest = SHA-256(eContent)`. So ONE RSA-2048 verification over 104 bytes yields an
+ICAO-authenticated digest of the entire list for ordinary gas (~233k). Verified on-chain by our own
+`CRSASigner`; tampering the attributes or substituting the key both fail; and a fourth test pins the
+link that makes 104 bytes worth 876 KB - the authenticated attributes really do carry the whole
+list's digest.
+**So the trusted publisher is gone for the authenticity half: a fabricated master list cannot be
+anchored by anyone**, postman, committee or owner.
+
+**STILL OPEN:** whether the eContent digest can be tied to the derived MERKLE ROOT on-chain. This
+authenticates the DIGEST, not the root, so today the root is AUDITABLE - anyone can re-derive it from
+a list whose digest the contract has authenticated - rather than ENFORCED. Closing that needs the
+876 KB: chunked incremental hashing on an L2, or a challenge window over the activation delay
+`RegistrySourceAnchor` already has. Do not describe the root as trustless until one of those exists. The eContent is
 876 KB, so hashing it in calldata or in-circuit is out; chunked incremental hashing on an L2 is the
 only route that keeps the update permissionless AND verified.
 

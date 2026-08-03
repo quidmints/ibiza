@@ -7991,6 +7991,48 @@ left rather than a slower one.
 - [ ] The revoke path is separate: it is the holder revoking their OWN document, so a signer there is
       a different question from enrolment censorship. Decide it explicitly rather than by analogy.
 
+### 2.18df THE SIZE-CLASS QUESTION IS ANSWERED - and the answer is FIVE, measured (user, 2026-08-04)
+
+*"Nobody has measured that ratio, and it's the highest-leverage open question in the repo?? answer
+it!"* Answered - and it needed no proving runs, because the number was already sitting in the
+generated verifiers.
+
+**EVERY VERIFIER DECLARES ITS OWN `circuitSize`.** Read across all 78 live Honk verifiers:
+
+| padded circuit size | profiles |
+|---|---|
+| **2^18** | **58** |
+| 2^19 | 7 |
+| 2^23 | 6 |
+| 2^24 | 5 |
+| 2^25 | 2 |
+
+**78 profiles, FIVE distinct sizes.** Proving cost is set by the padded power-of-two domain, not by
+the exact gate count - two circuits at 2^18 cost the same to prove.
+
+**SO BOTH EXTREMES ARE NOW PRICED, and each answer is decisive in a different direction:**
+
+1. **ONE generic circuit for everything is NOT viable.** The span is 2^18 to 2^25 = **128x**. A common
+   passport (58 of 78 sit at 2^18) would pay the worst case, on a phone. **This vindicates rarimo's
+   refusal to write one circuit** - the instinct that "PP manages with 3, so should the passport side"
+   is wrong for that reason, and 2.18dd should be read with this correction.
+2. **BUT 78 SHAPES IS ~15x MORE THAN THE PHYSICS REQUIRES.** Within the 2^18 class, all 58 profiles
+   already cost the same to prove. Collapsing them toward one padded circuit per class is **free in
+   proving time** provided the merged circuit still fits its class's power of two - the only real
+   question left, and a far smaller one.
+
+**THE PRIZE, IF THE MERGED CIRCUITS FIT:** 78 verifiers -> ~5. That deletes the manifest, the orphan
+problem, the EC_LEN recovery, the per-profile artifact hunt and the degeneracy class that produced
+four quarantines - all of which exist only because each shape is its own circuit.
+
+**AND ONE DEGENERACY CHECK CAME BACK CLEAN, worth recording so it is not re-run:** all 78 verifiers
+have **distinct verification keys**. No two profiles are secretly the same circuit, so the 78 are
+genuinely different - just far more finely divided than proving cost cares about.
+
+- [ ] Prototype ONE 2^18-class circuit with padded arrays + true lengths as witnesses, and check it
+      still fits 2^18. That single experiment decides whether 58 verifiers become 1.
+- [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
+
 ### 2.18de WHICH AXIS DECIDES: SOUNDNESS vs COST, and 1 assumption vs 79 (user, 2026-08-04)
 
 *"but this doesnt need a ceremony? which axis is better? why does it matter?"*

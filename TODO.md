@@ -7950,6 +7950,62 @@ Costs a signature-set check per snapshot and needs the DON's on-chain key set.
       signature. It exists as a pre-Forwarder bootstrap - **delete it once the Forwarder is wired**,
       or it is a permanent fabrication lever that no pin constrains.
 
+### 2.18ct FEWER MOVING PARTS: THE NON-MEMBERSHIP PROOF ALREADY EXISTS - retract 2.18cq's bracketing (user, 2026-08-03)
+
+*"if you reduce moving parts or make existing parts more elegant take that into consideration, look at
+it from all sides"*. Done, and the biggest saving is deleting a design I proposed two sections ago.
+
+**WHAT I PROPOSED (2.18cq):** admission by BRACKETING against the anchored sanctions root - prove
+`leaf[i] < x < leaf[i+1]`, hence "not on the list". It leaned on `_computeRoot`'s strictly-ascending
+invariant and I called it lean because it needed no new tree.
+
+**WHY IT IS THE WRONG SHAPE, ON TWO INDEPENDENT GROUNDS.**
+
+**(a) THE NON-MEMBERSHIP PROOF IS ALREADY BUILT AND ALREADY PAID FOR.** 2.13e's merge encodes status in
+the leaf VALUE, so **an inclusion proof of `commitment -> 0` IS a proof of non-membership of the
+blacklist.** That is exactly why the merge cut 43,772 -> 24,812 opcodes. The withdrawal circuit ALREADY
+carries this term. Bracketing would be a **second** non-membership mechanism, in a second tree, with a
+second proof - to establish what the existing term establishes. Two mechanisms for one property is the
+definition of a moving part that should not exist.
+
+**(b) IT REINTRODUCES THE FAILURE MODE 2.13b EXISTS TO REMOVE.** A bracketing check at ADMISSION is an
+allowlist gate: it must SUCCEED before you may enter. If the anchor is stale, unreachable, or the feed
+stalls, it **fails closed** - which is 2.13b's exact objection, *"an allowlist fails closed by
+omission, so a postman censors you without ever acting"*. The merged tree fails **open**: if nothing
+revokes you, you withdraw. I re-derived the allowlist while believing I was implementing the blacklist.
+
+**THE ELEGANT FORM, WHICH IS ALSO THE SMALLEST:**
+
+    sanctions snapshot ──► revoke(commitment, predicate) ──► existing merged tree
+                                                             ▲
+                                withdrawal already proves ────┘  commitment -> 0
+
+**Nothing is added to the withdrawal path at all.** No admission function, no bracketing, no second
+tree, no dependency on strictly-ascending leaves for screening (that invariant keeps its own job -
+enforcing that a snapshot is canonical and duplicate-free). Screening becomes a FEED into a mechanism
+that is already built, already measured, and already enforced at the only point that matters.
+
+**AND IT CORRECTS 2.18cs's LAST BULLET.** I said the ~8-opcode estimate was a different cost class
+because bracketing costs two inclusion proofs plus two comparisons. That objection dies with the
+bracketing design: with the feed-into-revocation shape the withdrawal term **already exists**, so the
+marginal circuit cost is **zero** and ~8 opcodes was the right order all along.
+
+**WHAT STILL DOES NOT CHANGE:** the direction that needs a circuit is now only ONE - prove a registered
+document's name matches a sanctions leaf, INCLUSION only (2.18cr's easier column). Revocation was
+always the tractable direction; removing admission means it is the only one.
+
+**TWO SMALLER REDUCTIONS, from the same pass:**
+- [ ] **Delete `publishSnapshot`.** It duplicates `onReport` minus the workflow check, and is the one
+      path no pin constrains (2.18ck). Deleting removes a moving part AND closes the bypass - the
+      same act, which is what makes it worth doing rather than gating it harder.
+- [ ] **`ROOT_ACTIVATION_DELAY` is still live** in `latestActiveRoot`, although 2.18br concluded it
+      should be DELETED because verified provenance makes bad data impossible rather than merely
+      detectable. Either act on that conclusion or record why it was reversed; a delay nobody can
+      justify is the clamp standing rule 3 names.
+
+- [ ] Retract the admission-by-bracketing item in 2.18cq. Screening is a feed into `revoke`, not a
+      new gate.
+
 ### 2.18cs EVIDENCE FOR #41, FROM THE SHIPPED CODE - two of its open questions are already answered (2026-08-03)
 
 Read after #41 was booked, so it is additive. Everything here is from `IdentityRegistry.sol`, not from
@@ -8069,9 +8125,10 @@ that is the natural reading, unlike the Ukrainian notary register where 2.18cf m
 Each source needs that answered explicitly, in the `SourceSpec` table where the other per-source
 semantics already live.
 
-- [ ] Wire the pool to the anchor: admission by bracketing proof against the sanctions root, replacing
-      the `_ASP_POSTMAN` signature. Note this is **not** a new capability - it is connecting two
-      finished halves.
+- [x] ~~Wire the pool to the anchor: admission by bracketing proof against the sanctions root~~
+      **RETRACTED by 2.18ct.** The bracketing gate is an allowlist that fails closed, and the merged
+      tree's `commitment -> 0` inclusion proof already IS the non-membership proof. Screening is a
+      FEED into `revoke`, adding nothing to the withdrawal path.
 - [ ] Record per-source whether exclusion is by ABSENCE or by a status field, in `SourceSpec`
       alongside `Authenticity`. Without it a bracketing proof means different things per register.
 

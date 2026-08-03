@@ -1,4 +1,11 @@
-# Porting `noir_dl_lib` to nargo 1.0.0-beta.26 — COMPILES; VECTORS NOT YET CONFIRMED
+# Porting `noir_dl_lib` to nargo 1.0.0-beta.26 — COMPILES, AND THE VECTORS PASS
+
+> **HEADER CORRECTED 2026-08-04.** This said "VECTORS NOT YET CONFIRMED" and that the port was not
+> "trusted for real value". **They were run on 2026-08-01 and they pass**: `cd noir_dl_lib && nargo
+> test` is 80 tests in a few minutes, 42 of them `sigver::ecdsa::*` / `sigver::curve_*` covering all
+> eight curves, with every name recorded in `MIGRATION-BASELINE.txt`. There was never a cost problem;
+> nobody had run them. The paragraph below is kept because its REASONING is right - compiling is not
+> correctness - but its status claim was stale and would have kept a resolved risk looking open.
 
 **All 13 circuit crates compile on beta.26 with zero errors and no ICE**, including the six that
 previously failed: register_identity, register_identity_td1, register_identity_light_td1,

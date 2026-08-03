@@ -8033,7 +8033,18 @@ RUN it are different permissions, and nothing found says third-party capabilitie
 **This is the single question for Chainlink**; confidential HTTP's transcript exposure (2.18bx) and an
 external attestor (2.18bu) are the fallbacks if the answer is no.
 
-**DO NOT START AUTHORING BEFORE THAT ANSWER.** A capability we cannot deploy is a fork of Chainlink's
+**✅ ANSWERED (user, 2026-08-03): the production DON CAN run extensions - researched thoroughly on
+their side, so this gate is lifted and authoring is unblocked.** Recorded here because this section
+was written to stop work until it was settled.
+
+**BUT NOTE WHAT IT DOES AND DOES NOT UNBLOCK.** A TLS-observing capability is only needed for
+UNSIGNED registers (sanctions, notary), where consensus proves agreement rather than correctness.
+**The ICAO path needs no new capability at all** - the list is source-signed, so sec. 2.18bv's design
+works over the existing `http` capability, and `backend/cre/icao_master_list` now implements it.
+Spend the unblocked capability work on the sources that cannot be fixed any other way.
+
+**DO NOT START AUTHORING BEFORE THAT ANSWER.** (Superseded by the line above; kept because the
+reasoning for the gate still applies to any future capability.) A capability we cannot deploy is a fork of Chainlink's
 node software that we would then have to persuade operators to run - a distribution problem, not an
 engineering one, and far larger than the code.
 

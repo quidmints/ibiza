@@ -26,9 +26,10 @@ nostalgia: the same goal, by a route that does not require the part that killed 
 to generate demand for [SPV](https://github.com/quidmints/SPV). Private, permissionless settlement
 with credible identity and screening is what people actually want to use.
 
-What SPV is and does, read in SPV — `spec.md` and `docs/FAQ.md`. This README does not restate it.
-This repo is the demand side, and it should be read and prioritised as such: a decision here is
-right when it brings more real usage to SPV, and merely interesting when it does not.
+This repo is the demand side, and should be read and prioritised as such: a decision here is right
+when it brings more real usage to SPV, and merely interesting when it does not.
+
+What SPV is and does, read in SPV — `spec.md` and `docs/FAQ.md`.
 
 **The second is the metaphor, and it is the reason the name fits this repo specifically.** In
 *It's All Gone Pete Tong*, the protagonist — a DJ — goes deaf, and afterwards produces a track called

@@ -6,11 +6,12 @@ A fork of **Privacy Pools** and **rarimo/rarime**, merged onto one Foundry + Noi
 
 Two sources, and both are load-bearing.
 
-**The first is lineage.** `ibiza` was the name of an iPhone wallet planned for the **lnbtc.io**
-project that never shipped. The name is inherited from work that was designed and not landed —
-which is worth stating plainly rather than quietly reusing. *(Recorded from the project's own
-history: lnbtc.io is today a parked domain listed for sale, with no Wayback snapshot, so the live
-web no longer carries evidence of it either way.)*
+**The first is lineage.** `ibiza` was the name of an iPhone wallet for **lbtc.io** — Lightning
+Bitcoin, a delegated-proof-of-stake chain — which the project still lists as
+*iOS Wallet "Ibiza", iOS (v1.0.5), update date 2019.09.12*, offering "On-chain Wallet & Private Key
+Support & Community Governance". It never reached users. The name is inherited from a wallet that
+was designed, versioned, and never landed, which is worth saying plainly rather than quietly
+reusing.
 
 **The second is the metaphor, and it is the reason the name fits this repo specifically.** In
 *It's All Gone Pete Tong*, the protagonist — a DJ — goes deaf, and afterwards produces a track called

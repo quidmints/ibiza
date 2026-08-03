@@ -149,7 +149,7 @@ func VerifyMasterList(der []byte, pinned [32]byte) (*MasterList, error) {
 		return nil, fmt.Errorf("embedded certificates: %w", err)
 	}
 
-	signer, anchor, err := signerAndAnchor(certs, pinned)
+	signer, err := signerAndAnchor(certs, pinned)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +206,6 @@ func VerifyMasterList(der []byte, pinned [32]byte) (*MasterList, error) {
 		}
 		out.Keys = append(out.Keys, key)
 	}
-	_ = anchor
 	return out, nil
 }
 
@@ -246,7 +245,8 @@ func rawSubjectPublicKey(der []byte) ([]byte, error) {
 
 // signerAndAnchor finds the Master List Signer and the pinned CSCA that certifies it, CHAINING BY
 // SIGNATURE rather than by name - see PinnedUnCscaSha256 for why the name cannot be used.
-func signerAndAnchor(certs []*x509.Certificate, pinned [32]byte) (signer, anchor *x509.Certificate, err error) {
+func signerAndAnchor(certs []*x509.Certificate, pinned [32]byte) (*x509.Certificate, error) {
+	var anchor *x509.Certificate
 	for _, candidate := range certs {
 		key, kerr := leafPreimage(candidate)
 		if kerr != nil {
@@ -258,17 +258,17 @@ func signerAndAnchor(certs []*x509.Certificate, pinned [32]byte) (signer, anchor
 		}
 	}
 	if anchor == nil {
-		return nil, nil, errors.New("the pinned UN CSCA is not among the embedded certificates")
+		return nil, errors.New("the pinned UN CSCA is not among the embedded certificates")
 	}
 	for _, candidate := range certs {
 		if candidate.Equal(anchor) {
 			continue
 		}
 		if err := candidate.CheckSignatureFrom(anchor); err == nil {
-			return candidate, anchor, nil
+			return candidate, nil
 		}
 	}
-	return nil, nil, errors.New("no embedded certificate is signed by the pinned UN CSCA")
+	return nil, errors.New("no embedded certificate is signed by the pinned UN CSCA")
 }
 
 func messageDigestAttr(attrs []byte) ([]byte, error) {

@@ -7950,6 +7950,73 @@ Costs a signature-set check per snapshot and needs the DON's on-chain key set.
       signature. It exists as a pre-Forwarder bootstrap - **delete it once the Forwarder is wired**,
       or it is a permanent fabrication lever that no pin constrains.
 
+### 2.18cn ONE ROLE, THREE POWERS - "why are you conflating the postman and the forwarder?" (user, 2026-08-03)
+
+**I WAS CONFLATING THEM, AND THE CODE SAYS WHY THAT IS WORSE THAN SLOPPY WORDING.** A forwarder is not
+a role, it is a candidate HOLDER of one - so "grant `REGISTRY_POSTMAN` to the Forwarder" (2.18cl,
+2.18cm) is only safe if the role has exactly one job. Enumerated, it has **three, across two
+contracts**:
+
+| holder must be | power | site |
+|---|---|---|
+| a machine (DON relay) | publish register snapshots | `RegistrySourceAnchor.publishSnapshot` / `onReport` |
+| a human/operator | enrol a notary into the SMT | `TitleLedger.registerNotary:304` |
+| a human/operator | **revoke a notary** | `TitleLedger.revokeNotary:334` |
+
+**SO THE "FIX" I PROPOSED WOULD HAND CHAINLINK'S FORWARDER THE POWER TO REVOKE EVERY NOTARY** - and
+`revokeNotary`'s own comment calls that ***"THE ENTIRE FAULT MECHANISM"*** (2.18am). Conversely, any
+operator key kept for notary administration can publish fabricated register snapshots, because **it is
+the same role**. That is not a deployment act. It is a role-splitting problem, and 2.18cl's checkbox
+was wrong to call it operational.
+
+**WHY THE POSTMAN EXISTED AT ALL, since that was the other half of the question.** Not for CRE. The
+role is *declared* in `RegistrySourceAnchor` but its original job is the notary path: someone has to
+assert *"this pseudonymous commitment belongs to a notary who appears in the public register"*, and
+nobody can do that trustlessly while the notary stays anonymous. `TitleLedger` then **reused** it
+deliberately - *"the SAME trust boundary the notary registry itself already rests on, not a separate,
+independently-scrutinized admin key"* - on the sound principle that one auditable boundary beats two.
+**The reuse was right; sharing it with a machine relay is what breaks it.** Task #16 (anonymous
+enrolment) removes the enrolment half by moving the check into the circuit, but not the revocation
+half.
+
+- [ ] **Split the role before wiring any forwarder.** Snapshot publication takes quid's write-once
+      address (2.18cm); notary enrolment/revocation keeps a human-held role. Supersedes 2.18cl's
+      "grant it to the Forwarder and nothing else", which as written is a privilege escalation.
+
+### 2.18co THE 35/6/ADDRESS CLAIM RE-MEASURED - and today's Docker work did not touch it (2026-08-03)
+
+Re-derived rather than re-quoted, because *"6 profiles lack a Noir twin"* had been carried from task
+#10 without deriving it.
+
+| clause | verdict |
+|---|---|
+| 35 Groth16-era per-passport verifiers present | **still true** - `verifiers2/per-passport` has exactly 35 |
+| 6 profiles lack a Noir twin | **still true, now DERIVED** - set-diff of the parameter tuples |
+| nothing wires verifiers by address | **false** - `AQueryProofExecutor._setVerifier(address)`; corrected in the README today |
+
+**THE TUPLE DIFF, which is the part that was never actually computed.** Normalising both directories to
+their 14-parameter tuple (`PPerPassport_<tuple>Verifier2.sol` vs `NoirRegisterIdentity_<tuple>.sol`)
+gives 35 Groth16 and 76 Noir, overlapping in **29**. The six with no Noir twin:
+```
+1_160_3_4_576_200_NA          20_160_3_3_736_200_NA
+1_256_3_6_336_560_1_2744_4_256   20_256_3_5_336_72_NA
+14_256_3_4_336_64_1_1480_5_296   4_160_3_3_336_216_1_1296_3_256
+```
+
+**AND THEY ARE DISJOINT FROM THE THREE RAM-BLOCKED ONES**, which is the question that prompted this.
+`25_384_...`, `27_512_...` and `28_384_...` do not appear in the Groth16 set at all; they have Noir
+`.sol` files that are stale beta.1 UltraPlonk. **So today's Docker regeneration has no bearing on any
+of the three clauses** - it replaced stale verifiers for profiles that ALREADY had twins. Nothing was
+deleted, and no new twin was created. The 35 remain unresolved for the reason 2.18-era work
+established: binding is by ADDRESS at deploy time, so a symbol grep scores a live verifier and an
+unwired one identically.
+
+**METHODOLOGY, worth keeping:** the count needs `ls`, not `find` filtered on `*erifier*` - several of
+the 35 do not carry "verifier" in their filename, and that filter returned 32.
+
+- [ ] Decide the six twinless profiles: generate Noir verifiers or retire the profiles. Not
+      RAM-blocked - unlike the three above, so this is doable on this machine.
+
 ### 2.18cm THE FORWARDER PATTERN, TAKEN FROM `quid` AS REFERENCE ONLY (user, 2026-08-03)
 
 *"the forwarder wiring should be part of the deployment sequence. check out github.com/quidmints/quid"*,

@@ -9410,8 +9410,15 @@ at registration") has no passport equivalent and needs its own home regardless.
   argument for fixing withdrawal gas (§2.4), not against splitting.
 - **ERC-4337 paymaster** so the user never holds ETH. **NOT yield-funded** — see sec. 2.4c: yield
   belongs to depositors, not to a subsidy pool. Fund it from relay fees or protocol revenue.
-- **Stealth-address withdrawals (ERC-5564)** — removes the "withdraw to a fresh address you must
-  fund" problem at the root instead of routing around it via relayers.
+- ~~**Stealth-address withdrawals (ERC-5564)**~~ — **DROPPED, and it was already answered elsewhere
+  in this file (reconciled 2026-08-03).** The leak inventory settled it: 5564 solves "a third party
+  pays me without linking", via announcements the recipient scans. In a WITHDRAWAL the user controls
+  both ends and knows the payout in advance, so plain HIERARCHICAL DETERMINISTIC derivation is
+  strictly simpler and leaks less - no announcement to scan, no extra registry. It would only earn
+  its place if outsiders paid INTO a pool identity. **Not a gap. A non-requirement.** Built instead:
+  `pp/recipient.ts`, HD-derived fresh payout addresses, three levels deep for ~5e-17 collision over a
+  million withdrawals. This bullet survived as "open work" for days after the decision - a stale
+  entry contradicting a settled one, which is how a closed question gets re-opened by the next reader.
 - **Measure mobile proving time** — feeds §2.2.
 - **Wire the stables leg of the SPV adapter.** `ISpvBasket` is declared but `SpvTreasuryAdapter` has
   no `BASKET` immutable — only ETH/Vogue exists. **Confirm the intended stablecoin is in SPV's

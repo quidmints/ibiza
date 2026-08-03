@@ -7991,6 +7991,47 @@ left rather than a slower one.
 - [ ] The revoke path is separate: it is the holder revoking their OWN document, so a signer there is
       a different question from enrolment censorship. Decide it explicitly rather than by analogy.
 
+### 2.18de WHICH AXIS DECIDES: SOUNDNESS vs COST, and 1 assumption vs 79 (user, 2026-08-04)
+
+*"but this doesnt need a ceremony? which axis is better? why does it matter?"*
+
+**FIRST, A CORRECTION: UltraHonk DOES need a ceremony.** It is not transparent. What it does not need
+is a **PER-CIRCUIT** one - it uses a UNIVERSAL SRS (the ~2 GiB CRS the Docker build downloads once and
+caches in a named volume). Saying "no ceremony" would overstate it; the accurate claim is **one shared
+setup instead of one per circuit.**
+
+**THE TWO AXES, measured here:**
+
+| | Groth16 | Honk | ratio |
+|---|---|---|---|
+| verifier runtime size | 1,736 B | 18,430 B | **10.6x** |
+| verification gas | ~200-250k | **~490k** (measured, `WithdrawalHonkVerifier.t.sol`) | **~2x** |
+| trusted setups needed for 79 shapes | **79** | **1, already done** | - |
+
+**WHY THE SETUP AXIS DECIDES IT, and it is not close:**
+
+1. **IT IS A SOUNDNESS AXIS; THE OTHER IS A COST AXIS.** If a ceremony's toxic waste is retained,
+   whoever holds it can FORGE PROOFS for that circuit - fabricate a passport registration, and every
+   downstream check (PP admission, notary enrolment, title) inherits the lie. Gas is money you pay.
+   **A forged-proof capability is neither detectable on-chain nor reversible.**
+2. **79 ASSUMPTIONS versus 1.** Each circuit shape needs its own ceremony, so Groth16 here means 79
+   independent chances for one to be done badly - and a compromise in any single one is enough.
+3. **AND WE COULD NOT RUN THEM.** In practice Groth16 means trusting **rarimo's** 79 ceremonies: a
+   third party whose toxic waste we cannot verify was destroyed. **That is precisely the shape this
+   session has spent itself deleting** - the postman, the controller, the backend signer. Removing
+   four trusted parties and then accepting 79 unverifiable ceremonies would be incoherent.
+4. **The universal SRS is the better assumption even where it is still an assumption**: one public,
+   large multi-party ceremony shared by the whole ecosystem, so it is scrutinised by everyone and its
+   compromise would be a global event rather than a silent local one.
+
+**WHAT THE COST AXIS ACTUALLY COSTS US:** ~2x verification gas per proof, and 10.6x contract size -
+which is one-time at deploy and solvable by splitting verifiers. **Both are payable. The other is
+not.** That is the whole argument.
+
+**AND IT DOES NOT JUSTIFY 79 SHAPES** (2.18dd): the setup argument defends the PROVING SYSTEM, not
+rarimo's per-profile circuit design. Size classes would cut the verifier count without touching this
+trade.
+
 ### 2.18dd IT WAS NEVER THE STACK - it is PER-PROFILE SPECIALISATION (user, 2026-08-04)
 
 *"so the right move was actually to rewrite rarimo to be on the same stack as PP?"* **The instinct is

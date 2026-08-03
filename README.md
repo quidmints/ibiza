@@ -2,6 +2,38 @@
 
 A fork of **Privacy Pools** and **rarimo/rarime**, merged onto one Foundry + Noir/Honk stack.
 
+## Where the name comes from
+
+Two sources, and both are load-bearing.
+
+**The first is lineage.** `ibiza` was the name of an iPhone wallet planned for the **lnbtc.io**
+project that never shipped. The name is inherited from work that was designed and not landed —
+which is worth stating plainly rather than quietly reusing. *(Recorded from the project's own
+history: lnbtc.io is today a parked domain listed for sale, with no Wayback snapshot, so the live
+web no longer carries evidence of it either way.)*
+
+**The second is the metaphor, and it is the reason the name fits this repo specifically.** In
+*It's All Gone Pete Tong*, the protagonist — a DJ — goes deaf, and afterwards produces a track called
+**"Hear No Evil"** made entirely without using his ears. He does not work around the loss by
+approximating what he can no longer hear; he builds by a different sense altogether, and the result
+stands on its own rather than as a lesser substitute.
+
+That is exactly what this system does with **see no evil, hear no evil, speak no evil**:
+
+- **See no evil** — the pool settles a withdrawal without seeing whose it is. Validity is established
+  without the operator observing the depositor.
+- **Hear no evil** — the identity layer proves eligibility without listening to who you are. A
+  passport is checked without the check reporting back which passport it was.
+- **Speak no evil** — nothing on-chain says it. `holderRoot` is stored as a commitment, the notary is
+  a set membership rather than an address, the citizenship check has its own selector bit so it
+  cannot leak a national ID, and a withdrawal names no depositor.
+
+The point of the film's metaphor is not deprivation. **The track was good.** A system that cannot
+see, hear, or speak about its users is not a degraded version of one that can — it is built on a
+different sense, and it has to be judged as its own thing. That is the standard this repo is held
+to, and it is why "privacy" here means the information is never acquired rather than acquired and
+withheld.
+
 `TODO.md` is the canonical tracker and holds current state, traps and open decisions. This file
 answers the questions the tracker cannot: **where the code came from, why the fork was made the way
 it was, and what we changed.**

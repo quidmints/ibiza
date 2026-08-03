@@ -155,8 +155,13 @@ its label is in that set. One authority, one root, one predicate — and the ASP
 root omitting your commitment at any time after you deposited. Your private exit disappears an hour
 later without anyone taking your money. **That retroactive lever is the property we changed.**
 
-**What we changed it to.** Screening became a **closed set of independent predicates**, each with
-its own anchored source, rather than a single curated root:
+**What we are changing it to — and read this before the list.** The design is a **closed set of
+independent predicates**, each with its own anchored source, rather than a single curated root.
+**It is not wired to the pool yet.** The sanctions and notary pipelines are built as far as the
+on-chain anchor and stop there: no deposit or withdrawal reads them, there is no blacklist
+function, tree or root anywhere in the contracts, and admission to the association set is still a
+trusted signature — a postman asserts it. So the retroactive lever described above is **documented
+as designed away, not yet demonstrated away**. Treat this section as the target shape:
 
 - **identity** — holder-rooted registration, proven once at escrow (`escrow_envelope`), with
   revocation as a status in the same tree rather than a separate authority

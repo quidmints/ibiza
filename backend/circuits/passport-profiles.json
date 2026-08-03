@@ -1468,6 +1468,139 @@
         "AA_SHIFT": 0
       },
       "from": "DERIVED, not recovered (TODO sec. 2.18da) - rarimo publishes no Noir artifact for this profile. Identical to 1_160_3_3_576_200_NA except EC_BLOCK_NUMBER 3->4, so every generic is carried over unchanged and only EC_LEN is inferred: 180 -> 209 is exactly +29, one SHA-1 DataGroupHash entry (20-byte hash + 9 DER), i.e. the same document carrying one more data group. 209 is also the ONLY quantised value in the 4-block window (185-247) observed across the 75 published profiles. If a real document of this profile ever contradicts it, the verifier simply never matches - it cannot accept anything it should not."
+    },
+    "14_256_1_4_1752_576_1_1496_3_512": {
+      "generics": {
+        "DG1_LEN": 0,
+        "DG15_LEN": 165,
+        "EC_LEN": 219,
+        "SA_LEN": 104,
+        "N": 26,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 14,
+        "DG1_SHIFT": 219,
+        "DG15_SHIFT": 187,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 64
+      },
+      "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree)."
+    },
+    "1_256_1_5_2376_336_1_2120_4_512": {
+      "generics": {
+        "DG1_LEN": 0,
+        "DG15_LEN": 229,
+        "EC_LEN": 297,
+        "SA_LEN": 74,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 1,
+        "DG1_SHIFT": 297,
+        "DG15_SHIFT": 265,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 64
+      },
+      "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree)."
+    },
+    "20_256_3_5_336_248_25_2120_5_1816": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 283,
+        "EC_LEN": 297,
+        "SA_LEN": 74,
+        "N": 6,
+        "EC_FIELD_SIZE": 256,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 20,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 265,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 25,
+        "AA_SHIFT": 227
+      },
+      "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree)."
+    },
+    "20_256_3_6_336_248_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 313,
+        "SA_LEN": 74,
+        "N": 6,
+        "EC_FIELD_SIZE": 256,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 20,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree)."
+    },
+    "21_160_1_2_560_576_NA": {
+      "generics": {
+        "DG1_LEN": 0,
+        "DG15_LEN": 0,
+        "EC_LEN": 70,
+        "SA_LEN": 92,
+        "N": 6,
+        "EC_FIELD_SIZE": 256,
+        "DG_HASH_ALGO": 20,
+        "HASH_ALGO": 20,
+        "SIG_TYPE": 21,
+        "DG1_SHIFT": 70,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree)."
+    },
+    "25_384_1_3_336_256_NA": {
+      "generics": {
+        "DG1_LEN": 95,
+        "DG15_LEN": 0,
+        "EC_LEN": 261,
+        "SA_LEN": 90,
+        "N": 8,
+        "EC_FIELD_SIZE": 384,
+        "DG_HASH_ALGO": 48,
+        "HASH_ALGO": 48,
+        "SIG_TYPE": 25,
+        "DG1_SHIFT": 32,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree)."
+    },
+    "26_512_3_2_336_248_1_1384_2_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 165,
+        "EC_LEN": 237,
+        "SA_LEN": 106,
+        "N": 10,
+        "EC_FIELD_SIZE": 512,
+        "DG_HASH_ALGO": 64,
+        "HASH_ALGO": 64,
+        "SIG_TYPE": 26,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 173,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree)."
     }
   },
   "quarantined": {

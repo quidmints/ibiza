@@ -68,11 +68,14 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/smartcontractkit/cre-sdk-go/capabilities/blockchain/evm"
 	"github.com/smartcontractkit/cre-sdk-go/capabilities/networking/http"
@@ -203,6 +206,12 @@ func onSchedule(config *Config, runtime cre.Runtime, _ *cron.Payload) (string, e
 	}
 
 	evmClient := &evm.Client{ChainSelector: chainSel}
+
+	// DO NOT PUBLISH AS A WORKFLOW THE CONTRACT HAS NOT PINNED (sec. 2.18cq).
+	if err := assertPinnedWorkflow(runtime, evmClient, config, reportResp, logger, spec.Key); err != nil {
+		return "", err
+	}
+
 	writeResp, err := evmClient.WriteReport(runtime, &evm.WriteCreReportRequest{
 		Receiver:  common.HexToAddress(config.RegistryAnchorAddress).Bytes(),
 		Report:    reportResp,
@@ -214,6 +223,68 @@ func onSchedule(config *Config, runtime cre.Runtime, _ *cron.Payload) (string, e
 	}
 
 	return fmt.Sprintf("%s anchored %d leaves, tx %x", spec.Key, len(leaves), writeResp.TxHash), nil
+}
+
+// activeWorkflowIDSelector is `keccak256("activeWorkflowId()")[:4]` - derived rather than pasted, so
+// a rename on the contract side surfaces as a failing call instead of a silently wrong four bytes.
+var activeWorkflowIDSelector = crypto.Keccak256([]byte("activeWorkflowId()"))[:4]
+
+// assertPinnedWorkflow refuses to publish when the workflow that produced this report is not the one
+// `RegistrySourceAnchor` currently pins.
+//
+// BE EXACT ABOUT WHAT THIS IS, BECAUSE IT IS EASY TO OVERSELL. **It is not a defence against rogue
+// code.** Rogue code deletes this function. A workflow cannot attest to its own integrity - anything
+// it computes about itself, a modified copy computes differently. The ENFORCEMENT lives in the
+// contract, which compares the workflow ID in the report metadata against its pin and rejects a
+// mismatch (sec. 2.18ck); that check is on the other side of the trust boundary and cannot be edited
+// by whoever changed the workflow.
+//
+// WHAT IT IS FOR, then. This workflow runs on a CRON. Without the check, a deployment that is stale or
+// was never pinned discovers the problem only when the transaction reverts - and then repeats that
+// discovery, at gas, on every tick. Failing here converts a recurring on-chain revert into one clear
+// refusal at the source, before anything is spent, and names both IDs so the fix is obvious.
+//
+// SO IT IS AN OPERATIONAL GUARD, NOT A SECURITY ONE, and the distinction is the same one sec. 2.18cp
+// had to make about the postman: what a party can be trusted to do is not the same question as what
+// the system will accept.
+func assertPinnedWorkflow(
+	runtime cre.Runtime,
+	evmClient *evm.Client,
+	config *Config,
+	report *cre.Report,
+	logger *slog.Logger,
+	registryKey string,
+) error {
+	ours := report.WorkflowID()
+
+	reply, err := evmClient.CallContract(runtime, &evm.CallContractRequest{
+		Call: &evm.CallMsg{
+			To:   common.HexToAddress(config.RegistryAnchorAddress).Bytes(),
+			Data: activeWorkflowIDSelector,
+		},
+	}).Await()
+	if err != nil {
+		// FAIL CLOSED. An unreadable pin is not evidence of a good one, and publishing anyway would
+		// make the check decoration in exactly the conditions it exists for.
+		logger.Error(fmt.Sprintf("[%s] could not read activeWorkflowId: %v", registryKey, err))
+		return fmt.Errorf("read activeWorkflowId: %w", err)
+	}
+	if len(reply.Data) < 32 {
+		return fmt.Errorf("activeWorkflowId returned %d bytes, want 32", len(reply.Data))
+	}
+
+	// A bytes32 return is right-padded into a 32-byte word; the ID is the whole word.
+	active := hex.EncodeToString(reply.Data[len(reply.Data)-32:])
+
+	if active == strings.Repeat("0", 64) {
+		return fmt.Errorf("no workflow is pinned yet - refusing to publish %s", registryKey)
+	}
+	if !strings.EqualFold(active, ours) {
+		logger.Error(fmt.Sprintf("[%s] REFUSING TO PUBLISH: this workflow is %s, the anchor pins %s",
+			registryKey, ours, active))
+		return fmt.Errorf("workflow %s is not the pinned workflow %s", ours, active)
+	}
+	return nil
 }
 
 func InitWorkflow(config *Config, logger *slog.Logger, secretsProvider cre.SecretsProvider) (cre.Workflow[*Config], error) {

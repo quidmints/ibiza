@@ -8033,6 +8033,49 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18di WHAT STAYING FULLY NOIR ACTUALLY COSTS (user, 2026-08-04)
+
+Four losses, in descending order of how much they should worry anyone. All numbers measured in this
+repo unless marked.
+
+**1. POST-QUANTUM. The only loss that cannot be undone later.** Honk over BN254 rests on elliptic-curve
+assumptions; a cryptographically relevant quantum computer breaks SOUNDNESS - forged proofs, i.e.
+fabricated passport registrations. STARKs are hash-based and plausibly post-quantum. This is a real
+loss and it is the one nobody can fix by swapping a backend at the last minute, because every proof
+verified on-chain before the switch was verified under the broken assumption. **Not urgent; not
+reversible either.**
+
+**2. A TRUSTED SETUP WE DO NOT NEED TO HAVE.** We keep a universal SRS. STARKs are transparent - zero
+setup, no toxic waste. **But this loss is smaller than it looks on-chain:** Plonky2 has no EVM verifier,
+so the standard practice is to wrap it in a SNARK, which reintroduces a setup. For EVM verification the
+practical difference may be nil; for off-chain verification it is real.
+
+**3. RECURSION IS EXPENSIVE FOR US, AND IT IS MEASURED.** Verifying a Honk proof inside a circuit means
+simulating curve arithmetic: our aggregation circuit is **11,610,552 gates for 16 proofs, ~725k gates
+per inner verification**, and the batcher needs **~28 GB and minutes**. Plonky2 recursion is hash-based
+and materially cheaper. This is an **economic** loss, not a correctness one - it lands on the batcher,
+who is paid from the relay fee - but it sets how decentralised batching can be. A ~28 GB requirement is
+a server, and servers are fewer than laptops.
+
+**4. WE DO NOT LOSE ON EVM GAS - we WIN.** Honk verification is ~490k single, **~68k per withdrawal at
+N=16**. A raw STARK is 1-5M per batch. Staying Noir is the CHEAPER on-chain option, and any claim that
+STARKs would save gas here is backwards.
+
+**AND THE DECISIVE COMPENSATION: THE CHOICE IS REVERSIBLE.** Because `nargo` emits **ACIR**, not a
+barretenberg artifact (2.18dh: 42 MB of it in a single compiled circuit), the circuits are not married
+to Honk. If `acvm-backend-plonky2` or a successor matures, **the same sources retarget it** - the
+exotic crypto is Noir, not blackboxes. A Circom/Groth16 or Halo2 choice would NOT have been reversible:
+those are circuit languages, and switching means rewriting.
+
+**So the honest summary: staying fully Noir costs post-quantum soundness and a cheaper batcher, keeps
+the on-chain cost advantage, and preserves the option to move later at the cost of re-verifying, not
+re-writing.** The one loss to take seriously is #1, and the correct response is to know the date by
+which it matters rather than to switch now on a 14-month-stale backend.
+
+- [ ] Revisit annually, not continuously, and revisit on EVIDENCE: (a) does `acvm-backend-plonky2` or a
+      successor load current ACIR; (b) has a Plonky2 EVM verifier landed that does not need a SNARK
+      wrapper. Both are yes/no questions, cheap to re-ask.
+
 ### 2.18dh TESTING THE STARK PATH AS FAR AS THIS MACHINE ALLOWS - and "no rewrite" is mostly RIGHT (user, 2026-08-04)
 
 *"do the best you can to test STARK right now... we wouldnt have to write circuits from scratch with

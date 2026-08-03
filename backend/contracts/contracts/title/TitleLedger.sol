@@ -38,7 +38,7 @@ import {Constants} from "../pool/lib/Constants.sol";
 /// lending contract integrates this ledger; it is not part of this contract.
 ///
 /// OPEN GAP, not silently assumed solved: binding a real-world notary's identity to an on-chain
-/// signing address. `bindNotaryAddress` is gated by NOTARY_REGISTRY's own REGISTRY_POSTMAN role
+/// signing address. `bindNotaryAddress` is gated by NOTARY_REGISTRY's own NOTARY_REGISTRAR role
 /// (the SAME trust boundary the notary registry itself already rests on, not a separate,
 /// independently-scrutinized admin key) - but the underlying claim "this address really is that
 /// notary" still isn't cryptographically proven. A real binding needs an out-of-band process
@@ -131,7 +131,7 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
     mapping(bytes32 => uint256) public titleOfProperty;
 
     // See the OPEN GAP note above - placeholder trust bootstrap, not a solved binding. Gated by
-    // NOTARY_REGISTRY's OWN REGISTRY_POSTMAN role (checked live via hasRole, not copied into a
+    // NOTARY_REGISTRY's OWN NOTARY_REGISTRAR role (checked live via hasRole, not copied into a
     // separate admin key here) - deliberately the SAME trust boundary the notary registry itself
     // already rests on, not an additional, independently-scrutinized authority. This doesn't
     // solve "how do we know the binding claim is true" (that needs the out-of-band identity
@@ -209,7 +209,9 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
     error ZeroPropertyKey();
     error PropertyAlreadyTitled(bytes32 propertyKey, uint256 existingTitleId);
     error PriorTitleIsForAnotherProperty(uint256 priorTitleId);
-    error OnlyRegistryPostman();
+    /// Notary enrolment and revocation are gated by NOTARY_REGISTRAR, NOT by the publication
+    /// role - see RegistrySourceAnchor (sec. 2.18cn) for why the two were separated.
+    error OnlyNotaryRegistrar();
     error ZeroAddress();
 
     /// @notice Disables initializers on the implementation contract. Using the UUPS
@@ -301,7 +303,7 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
         bytes32 registryId_,
         bytes32[] calldata registryProof_
     ) external {
-        if (!NOTARY_REGISTRY.hasRole(NOTARY_REGISTRY.REGISTRY_POSTMAN(), msg.sender)) revert OnlyRegistryPostman();
+        if (!NOTARY_REGISTRY.hasRole(NOTARY_REGISTRY.NOTARY_REGISTRAR(), msg.sender)) revert OnlyNotaryRegistrar();
         if (notaryCommitment_ == bytes32(0) || notaryDataHash_ == bytes32(0)) revert ZeroNotaryIdentity();
         // TRAP FOR WHOEVER IMPLEMENTS ANONYMOUS ENROLMENT (sec. 2.18bm, task #16): this entire check
         // MOVES INTO THE CIRCUIT, and `notaryDataHash_` and `registryProof_` leave the ABI with it.
@@ -331,7 +333,7 @@ contract TitleLedger is AccessControlUpgradeable, UUPSUpgradeable {
      * question the architecture does not ask.
      */
     function revokeNotary(bytes32 notaryCommitment_, bytes32 predicate_) external {
-        if (!NOTARY_REGISTRY.hasRole(NOTARY_REGISTRY.REGISTRY_POSTMAN(), msg.sender)) revert OnlyRegistryPostman();
+        if (!NOTARY_REGISTRY.hasRole(NOTARY_REGISTRY.NOTARY_REGISTRAR(), msg.sender)) revert OnlyNotaryRegistrar();
         if (predicate_ == bytes32(0)) revert ZeroNotaryIdentity(); // zero IS the clean status
 
         _notaryTree.update(notaryCommitment_, predicate_);

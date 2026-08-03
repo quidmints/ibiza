@@ -99,8 +99,11 @@ contract TitleLedgerTest is Test, CreReportMetadata {
     // Read the role constant BEFORE vm.prank - it's itself an external call and would otherwise
     // consume the single-shot prank before grantRole executes (see RegistrySourceAnchor.t.sol).
     bytes32 postmanRole = registry.REGISTRY_POSTMAN();
+    bytes32 registrarRole = registry.NOTARY_REGISTRAR();
     vm.prank(admin);
     registry.grantRole(postmanRole, postman);
+    vm.prank(admin);
+    registry.grantRole(registrarRole, postman);
 
     // The notary is a REGISTERED IDENTITY, so the ledger needs the state keeper that holds
     // documents - a notary with no current document cannot act, which is what makes them revocable
@@ -309,12 +312,56 @@ contract TitleLedgerTest is Test, CreReportMetadata {
   function test_revokingANotaryMovesTheRootAndIsPostmanGated() public {
     bytes32 before = ledger.notaryRoot();
 
-    vm.expectRevert(TitleLedger.OnlyRegistryPostman.selector);
+    vm.expectRevert(TitleLedger.OnlyNotaryRegistrar.selector);
     ledger.revokeNotary(NOTARY_COMMITMENT, bytes32(uint256(1)));
 
     vm.prank(postman);
     ledger.revokeNotary(NOTARY_COMMITMENT, bytes32(uint256(1)));
     assertTrue(ledger.notaryRoot() != before, 'revocation did not change the root');
+  }
+
+  /*
+   * THE SPLIT IS REAL, NOT COSMETIC (sec. 2.18cn).
+   *
+   * The suite's `postman` holds BOTH roles for convenience, so every test above would pass just as
+   * well if the two were still one role. This is the test that fails if they are.
+   *
+   * WHY IT MATTERS CONCRETELY: `REGISTRY_POSTMAN` is meant to end up held by a CRE Forwarder - a
+   * machine relaying DON reports. While the roles were merged, granting it to that machine handed
+   * it `revokeNotary`, which this contract calls THE ENTIRE FAULT MECHANISM.
+   */
+  function test_aPublicationOnlyHolderCannotTouchTheNotarySet() public {
+    address publisher = address(0xD044);
+    bytes32 publishRole = registry.REGISTRY_POSTMAN();
+    vm.prank(admin);
+    registry.grantRole(publishRole, publisher);
+
+    assertTrue(registry.hasRole(publishRole, publisher), 'publisher lacks the publication role');
+    assertFalse(registry.hasRole(registry.NOTARY_REGISTRAR(), publisher), 'publisher must not be a registrar');
+
+    vm.prank(publisher);
+    vm.expectRevert(TitleLedger.OnlyNotaryRegistrar.selector);
+    ledger.revokeNotary(NOTARY_COMMITMENT, bytes32(uint256(1)));
+
+    vm.prank(publisher);
+    vm.expectRevert(TitleLedger.OnlyNotaryRegistrar.selector);
+    ledger.registerNotary(keccak256('someone-else'), notaryDataHash, REGISTRY_ID, notaryProof);
+  }
+
+  /// The converse, so neither role silently subsumes the other: a registrar cannot publish
+  /// snapshots. Without this the split could be half-done and still look complete.
+  function test_aNotaryRegistrarCannotPublishSnapshots() public {
+    address registrar = address(0xD055);
+    bytes32 registrarRole = registry.NOTARY_REGISTRAR(); // read BEFORE the prank - it is a call too
+    vm.prank(admin);
+    registry.grantRole(registrarRole, registrar);
+
+    bytes32[] memory leaves = new bytes32[](1);
+    leaves[0] = keccak256('a leaf a registrar should not be able to anchor');
+
+    vm.prank(registrar);
+    vm.expectRevert(); // AccessControlUnauthorizedAccount - lacks REGISTRY_POSTMAN
+    registry.onReport(_metadata(keccak256('notary_registry.wasm@test')), abi.encode(REGISTRY_ID, leaves));
   }
 
   /// Zero IS the clean status, so it can never be a revocation predicate - otherwise "revoking"
@@ -339,7 +386,7 @@ contract TitleLedgerTest is Test, CreReportMetadata {
   // ── bindNotaryIdentity ──────────────────────────────────────────────────────────────────
 
   function test_registerNotary_revertsForNonPostman() public {
-    vm.expectRevert(TitleLedger.OnlyRegistryPostman.selector);
+    vm.expectRevert(TitleLedger.OnlyNotaryRegistrar.selector);
     ledger.registerNotary(keccak256('x'), notaryDataHash, REGISTRY_ID, notaryProof);
   }
 

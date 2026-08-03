@@ -34,7 +34,30 @@ import {IEvidenceRegistry} from "@rarimo/evidence-registry/interfaces/IEvidenceR
 /// fund-custody contracts - PrivacyPool/State - are deliberately immutable, a trust-minimization
 /// choice for the vault logic specifically, not something a registry anchor needs).
 contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
+    /**
+     * PUBLICATION ONLY. This role may anchor a snapshot and do nothing else (sec. 2.18cn).
+     *
+     * IT USED TO DO THREE JOBS. `TitleLedger.registerNotary` and `revokeNotary` checked THIS role
+     * too, on the sound-sounding reasoning that one auditable trust boundary beats two. The effect
+     * was that a snapshot-submission role also decided **who is a notary** - and `revokeNotary`'s
+     * own comment calls that "THE ENTIRE FAULT MECHANISM". Granting publication to a machine (a CRE
+     * Forwarder, the intended holder) would therefore have handed that machine the power to revoke
+     * every notary; and any operator key kept for notary administration could publish fabricated
+     * registers. The reuse was not a smaller trust boundary, it was a LARGER one wearing one name.
+     */
     bytes32 public constant REGISTRY_POSTMAN = keccak256("REGISTRY_POSTMAN");
+
+    /**
+     * NOTARY ADMINISTRATION ONLY - enrolment and revocation in `TitleLedger`.
+     *
+     * Declared HERE rather than in `TitleLedger` because that contract already reads its authority
+     * from this registry (`NOTARY_REGISTRY.hasRole(...)`), so the role list stays in one place and
+     * one admin governs both. Separate from `REGISTRY_POSTMAN` because the two powers must be able
+     * to have DIFFERENT HOLDERS: one is a relay, the other is a human decision that ends with
+     * somebody losing their ability to act.
+     */
+    bytes32 public constant NOTARY_REGISTRAR = keccak256("NOTARY_REGISTRAR");
+
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
 
     /**

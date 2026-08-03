@@ -7950,6 +7950,52 @@ Costs a signature-set check per snapshot and needs the DON's on-chain key set.
       signature. It exists as a pre-Forwarder bootstrap - **delete it once the Forwarder is wired**,
       or it is a permanent fabrication lever that no pin constrains.
 
+### 2.18cq THE BLACKLIST IS NOT INTEGRATED WITH THE ASP AT ALL - and the lean way in already exists (user, 2026-08-03)
+
+*"are you sure that we integrated with the original PP label ASP in the most lean and elegant possible
+way these extended capabilities (blacklist, etc)"* **No - because there is no integration to judge.**
+Measured, not recalled:
+
+- **`blacklist` appears in this repo ONLY IN COMMENTS.** `IdentityRegistry.sol:60`,
+  `HolderStateKeeper.sol:82/112/162` describe what blacklisting would act on. Audited by structure
+  rather than by name: **there is no blacklist function, tree or root anywhere.**
+- **`RegistrySourceAnchor` has exactly two referencing files: `TitleLedger` and itself.** The pool
+  never reads it. So the entire sanctions pipeline - four registers, the decoder, consensus, the
+  anchor, the workflow pin - **terminates at the anchor and is consumed only by the notary/title
+  path.** None of it reaches a deposit or a withdrawal.
+- **ASP admission is still a trusted signature.** `_admitIdentity` takes an `_ASP_POSTMAN` EIP-712
+  signature over `(holderRoot, deadline)`. Insert-only, replay-protected - well built - but the
+  criterion for admission is *"the postman decided so"*, with nothing linking it to any register.
+
+**SO THE SANCTIONS WORK AND THE POOL ARE TWO SYSTEMS THAT HAVE NEVER MET.** That is the real state,
+and it is worth more than an opinion about elegance.
+
+**AND THE LEAN INTEGRATION NEEDS NO NEW MACHINERY - the enabling property is already enforced.**
+`_computeRoot` reverts `LeavesNotStrictlySorted` unless `leaves_[i] > leaves_[i-1]`, so every anchored
+snapshot is a **strictly ascending** leaf set. That is exactly what makes **NON-membership provable**:
+show two adjacent leaves bracketing the subject (`leaf[i] < x < leaf[i+1]`) with their inclusion
+proofs, and absence is proven against a plain keccak Merkle root. No second tree, no separate
+blacklist structure, no exclusion registry.
+
+**WHICH ALSO REMOVES ANOTHER POSTMAN, and that is why it is the right shape rather than merely a
+cheaper one.** If admission requires a bracketing proof against the CRE-anchored sanctions root
+instead of an `_ASP_POSTMAN` signature, the criterion stops being *"someone decided"* and becomes
+*"the published list does not contain this subject"*. Same move as 2.18cp: replace an authority with a
+check anyone can perform.
+
+**THE HONEST CAVEAT, so this is not oversold:** 2.18cb's axis 4 applies here too. Bracketing proves
+absence from THE SNAPSHOT. Whether absence from the snapshot means "not sanctioned" depends on the
+register expressing exclusion by absence rather than by a status field - and for the sanctions lists
+that is the natural reading, unlike the Ukrainian notary register where 2.18cf measured the opposite.
+Each source needs that answered explicitly, in the `SourceSpec` table where the other per-source
+semantics already live.
+
+- [ ] Wire the pool to the anchor: admission by bracketing proof against the sanctions root, replacing
+      the `_ASP_POSTMAN` signature. Note this is **not** a new capability - it is connecting two
+      finished halves.
+- [ ] Record per-source whether exclusion is by ABSENCE or by a status field, in `SourceSpec`
+      alongside `Authenticity`. Without it a bracketing proof means different things per register.
+
 ### 2.18cp "WHY CAN'T IT BE REMOVED?" - it can; the claim conflated trust with authority (user, 2026-08-03)
 
 I cited `sources.go:149` - *"the snapshot rests on DON honesty, and the postman CANNOT be removed for

@@ -69,6 +69,21 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
     error ZeroWorkflowId();
     error WorkflowAlreadyPinned(bytes32 workflowId);
     error NoActiveWorkflow();
+    error UnpinnedWorkflow(bytes32 reported, bytes32 active);
+    error MalformedReportMetadata(uint256 length);
+
+    /**
+     * Where the workflow ID sits in the metadata header CRE prepends to every report.
+     *
+     * NOT A GUESSED OFFSET. This is `chainlink-common pkg/capabilities/consensus/ocr3/types.Metadata`
+     * as documented in the SDK this repo actually depends on
+     * (cre-sdk-go v1.15.0, `cre/report_fields.go`): version 1 || executionId 32 || timestamp 4 ||
+     * donId 4 || donConfigVersion 4 || **workflowId 32** || workflowName 10 || workflowOwner 20 ||
+     * reportId 2 = 109. Decoding this wrong would reject VALID reports, so the length is CHECKED
+     * rather than assumed and its failure is named rather than silent.
+     */
+    uint256 public constant REPORT_METADATA_LENGTH = 109;
+    uint256 public constant REPORT_WORKFLOW_ID_OFFSET = 45;
 
     /// Same window Entrypoint.sol uses for ASP roots - gives verifiers/watchers a chance to catch
     /// a bad snapshot before anything can be proven against it.
@@ -79,10 +94,16 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
      *
      * THE ONE THING A TIMELOCK IS ACTUALLY FOR HERE. Once each DON node verifies the register's TLS
      * session inside the workflow, fabricated DATA becomes impossible rather than merely detectable -
-     * so the snapshot path needs no contest window. **A workflow SWAP cannot be prevented
-     * cryptographically, only seen**, so this is where a delay earns its keep: it is the interval in
-     * which a malicious version is visible and contestable BEFORE anything relies on it. Without it
-     * the update mechanism is a same-block censorship lever.
+     * so the snapshot path needs no contest window.
+     *
+     * AND A SWAP IS NOT WHAT THIS DEFENDS AGAINST - an earlier version of this comment claimed "a
+     * workflow SWAP cannot be prevented cryptographically, only seen", which was true only because
+     * `onReport` DISCARDED the metadata naming the workflow. It no longer does: a report is now
+     * checked against the active pin, so a swapped workflow is REJECTED rather than watched. What is
+     * left for a delay is the only thing it was ever suited to - the AUTHORISED RE-PIN. Changing
+     * which code the anchor believes is a governance act, and this is the interval in which that act
+     * is visible and contestable before anything relies on it. Without it the update mechanism is a
+     * same-block censorship lever.
      */
     uint256 public constant WORKFLOW_ACTIVATION_DELAY = 24 hours;
 
@@ -194,9 +215,22 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice CRE report-callback entrypoint: decodes a (bytes32 registryId, bytes32[] leaves)
-    /// payload and publishes it, same as calling `publishSnapshot` directly. `metadata` (CRE's
-    /// report metadata - workflow ID, execution ID) is intentionally unused; nothing here needs
-    /// it, since `onlyRole(REGISTRY_POSTMAN)` already gates who may call this.
+    /// payload and publishes it - but ONLY if the report says it came from the pinned workflow.
+    ///
+    /// @dev THE PIN IS ENFORCED HERE, AND UNTIL IT WAS, IT WAS NOT ENFORCED ANYWHERE. `metadata`
+    /// carries the workflow ID, and this function used to discard it with the note "intentionally
+    /// unused; `onlyRole(REGISTRY_POSTMAN)` already gates who may call this". That reasoning gates
+    /// the CALLER and says nothing about the CODE: the Forwarder relays whatever the DON ran, so
+    /// every report from every workflow arrived from the same authorised address, and
+    /// `_publishSnapshot`'s check that SOME workflow is active is a LIVENESS test, not an IDENTITY
+    /// one. A swapped workflow would have published successfully. Comparing the reported ID to the
+    /// active pin is what makes `pinWorkflow` load-bearing rather than - in this contract's own
+    /// words - decoration.
+    ///
+    /// Note what this does NOT claim: `publishSnapshot` above carries no workflow ID at all and
+    /// stays an operator bootstrap gated only by the role. That is deliberate (it is how the anchor
+    /// runs before a Forwarder is wired), but it means REGISTRY_POSTMAN remains a trusted key until
+    /// the role is held solely by the Forwarder. The pin binds REPORTS, not the role.
     ///
     /// @dev Checks `onlyRole` directly on ITS OWN `msg.sender` (does not route through
     /// `publishSnapshot` via `this.` - an external self-call would make the contract's own
@@ -205,17 +239,24 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
     /// entrypoints share `_publishSnapshot`, which does no authorization of its own by design -
     /// that's each public entrypoint's own job.
     ///
-    /// NOT yet wired to Chainlink's actual KeystoneForwarder/IReceiver trust model - the exact
-    /// selector/interface a CRE Forwarder invokes on a receiver should be confirmed against
-    /// current Chainlink CRE docs before relying on Forwarder-triggered calls in production. Today
-    /// this is safe regardless of how it's invoked, because `onlyRole(REGISTRY_POSTMAN)` is the
-    /// actual trust boundary: grant that role to the Forwarder's on-chain address once confirmed,
-    /// or to an operator key as a manual bootstrap in the meantime - both paths are equally valid
-    /// callers of this same function.
+    /// The metadata LAYOUT is now confirmed (see REPORT_METADATA_LENGTH) against the CRE SDK this
+    /// repo depends on, rather than assumed. What is still unconfirmed is the Forwarder's calling
+    /// convention itself - grant REGISTRY_POSTMAN to the Forwarder's on-chain address once that is
+    /// verified, or to an operator key as a manual bootstrap in the meantime.
     function onReport(
-        bytes calldata /* metadata */,
+        bytes calldata metadata,
         bytes calldata report
     ) external onlyRole(REGISTRY_POSTMAN) returns (uint256 index_, bytes32 root_) {
+        // Length-checked before slicing: a short header would otherwise read whatever follows it,
+        // and an identity check that compares the WRONG 32 bytes fails in exactly the direction
+        // that looks like a healthy rejection.
+        if (metadata.length < REPORT_METADATA_LENGTH) revert MalformedReportMetadata(metadata.length);
+
+        bytes32 reported_ = bytes32(metadata[REPORT_WORKFLOW_ID_OFFSET:REPORT_WORKFLOW_ID_OFFSET + 32]);
+        bytes32 active_ = activeWorkflowId();
+        if (active_ == bytes32(0)) revert NoActiveWorkflow();
+        if (reported_ != active_) revert UnpinnedWorkflow(reported_, active_);
+
         (bytes32 registryId_, bytes32[] memory leavesMem_) = abi.decode(report, (bytes32, bytes32[]));
         return _publishSnapshot(registryId_, leavesMem_);
     }

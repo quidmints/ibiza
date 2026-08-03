@@ -94,6 +94,29 @@ contract RegistrySourceAnchorTest is Test {
     leaves[0] = a;
   }
 
+  /// The workflow `_activateWorkflow` pins - reports must name THIS to be accepted.
+  bytes32 internal constant TEST_WORKFLOW = keccak256('notary_registry.wasm@test');
+
+  /// A CRE report metadata header, byte-for-byte the shape the consensus plugin emits:
+  /// version 1 || executionId 32 || timestamp 4 || donId 4 || donConfigVersion 4 || workflowId 32
+  /// || workflowName 10 || workflowOwner 20 || reportId 2 = 109 bytes. Built from the field list in
+  /// cre-sdk-go v1.15.0 `cre/report_fields.go` so the test and the contract are not simply agreeing
+  /// on the same invented offset.
+  function _metadata(bytes32 workflowId_) internal pure returns (bytes memory) {
+    return
+      abi.encodePacked(
+        uint8(1), // version
+        keccak256('execution-id'), // executionId
+        uint32(1_700_000_000), // timestamp
+        uint32(7), // donId
+        uint32(2), // donConfigVersion
+        workflowId_,
+        bytes10('wf-notary'),
+        bytes20(uint160(0xBEEF)),
+        bytes2(0xAB01)
+      );
+  }
+
   // ── initialization / upgradeability ─────────────────────────────────────────────────────
 
   /// Pin a workflow and warp past its delay, so snapshots can be published (sec. 2.18bs).
@@ -240,11 +263,73 @@ contract RegistrySourceAnchorTest is Test {
     bytes memory report = abi.encode(NOTARY_REGISTRY, _oneLeafSet(leaf));
 
     vm.prank(postman);
-    (uint256 index, bytes32 root) = anchor.onReport('some-metadata', report);
+    (uint256 index, bytes32 root) = anchor.onReport(_metadata(TEST_WORKFLOW), report);
 
     assertEq(index, 0);
     assertEq(root, leaf);
     assertEq(anchor.latestRoot(NOTARY_REGISTRY), leaf);
+  }
+
+  /*
+   * THE SWAP THAT USED TO SUCCEED.
+   *
+   * `onReport` discarded `metadata`, on the reasoning that `onlyRole(REGISTRY_POSTMAN)` already
+   * gated the caller. But the Forwarder relays whatever the DON ran, so a rogue workflow's report
+   * arrives from the SAME authorised address as an honest one, and the only workflow check in the
+   * publish path asked whether ANY pin was active - never whether THIS report came from it. Before
+   * the fix this test published happily; the old `onReport('some-metadata', ...)` above is the
+   * evidence, since arbitrary bytes were an acceptable provenance.
+   */
+  function test_onReport_revertsForAWorkflowThatIsNotThePinnedOne() public {
+    bytes32 rogue = keccak256('notary_registry.wasm@attacker');
+    bytes memory report = abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('c')));
+
+    vm.prank(postman);
+    vm.expectRevert(
+      abi.encodeWithSelector(RegistrySourceAnchor.UnpinnedWorkflow.selector, rogue, TEST_WORKFLOW)
+    );
+    anchor.onReport(_metadata(rogue), report);
+  }
+
+  /*
+   * AND THE CONTRACT READS OFFSET 45, NOT "SOMEWHERE IN THE HEADER".
+   *
+   * Non-vacuity for the offset itself: this metadata CONTAINS the pinned workflow ID, but one byte
+   * off from where the layout puts it. A `contains`-style check - or an off-by-one shared by test
+   * and contract - would accept it. Getting this wrong rejects VALID production reports, which is
+   * the failure that looks like a healthy rejection, so it is worth pinning explicitly.
+   */
+  function test_onReport_readsTheWorkflowIdAtTheDocumentedOffset() public {
+    bytes memory shifted = abi.encodePacked(
+      uint8(1),
+      keccak256('execution-id'),
+      uint32(1_700_000_000),
+      uint32(7),
+      uint32(2),
+      bytes1(0x00), // one byte of padding: the ID now starts at 46, not 45
+      TEST_WORKFLOW,
+      bytes10('wf-notary'),
+      bytes20(uint160(0xBEEF)),
+      bytes1(0xAB)
+    );
+    assertEq(shifted.length, anchor.REPORT_METADATA_LENGTH(), 'header must stay 109 bytes');
+
+    vm.prank(postman);
+    vm.expectRevert(); // UnpinnedWorkflow - the window at 45 is not the pinned ID
+    anchor.onReport(shifted, abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('c'))));
+  }
+
+  /// A truncated header must be REFUSED, not sliced - reading past it would compare whatever
+  /// follows in calldata and fail in a way indistinguishable from an honest rejection.
+  function test_onReport_revertsOnTruncatedMetadata() public {
+    uint256 truncated = anchor.REPORT_METADATA_LENGTH() - 1;
+    bytes memory short = new bytes(truncated);
+
+    vm.prank(postman);
+    vm.expectRevert(
+      abi.encodeWithSelector(RegistrySourceAnchor.MalformedReportMetadata.selector, truncated)
+    );
+    anchor.onReport(short, abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('c'))));
   }
 
   // ── latestRoot / latestActiveRoot / snapshotCount ──────────────────────────────────────

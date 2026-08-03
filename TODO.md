@@ -8038,6 +8038,17 @@ genuinely different - just far more finely divided than proving cost cares about
 Four losses, in descending order of how much they should worry anyone. All numbers measured in this
 repo unless marked.
 
+> **2.18di's LOSS #1 IS LARGELY WRONG - corrected 2026-08-04 on the repo owner's challenge.** Two
+> errors. **(a) A quantum adversary does not need to break Honk.** All **79 of 79** live profiles
+> verify **RSA or ECDSA** - the DOCUMENT's own signature, ICAO's, not ours. Break those and you forge a
+> DSC, mint a passport, and produce an entirely HONEST proof of a forged document - under any proof
+> system, post-quantum ones included. **The binding constraint is ICAO's PKI, not our backend**, and
+> when ICAO migrates to PQ signatures the circuits change anyway (new SIG_TYPEs, new verification), at
+> which point a backend can be chosen fresh. **(b) "Rewrite everything" was never implied by this** -
+> it contradicts 2.18dh: ACIR is portable, so a migration retargets the same Noir sources. What is
+> genuinely sticky is DEPLOYED VERIFIERS and ALREADY-ANCHORED STATE - whether the existing identity
+> tree is re-attested - not source code. Read the paragraph below with both corrections applied.
+
 **1. POST-QUANTUM. The only loss that cannot be undone later.** Honk over BN254 rests on elliptic-curve
 assumptions; a cryptographically relevant quantum computer breaks SOUNDNESS - forged proofs, i.e.
 fabricated passport registrations. STARKs are hash-based and plausibly post-quantum. This is a real

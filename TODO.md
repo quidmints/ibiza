@@ -7950,6 +7950,48 @@ Costs a signature-set check per snapshot and needs the DON's on-chain key set.
       signature. It exists as a pre-Forwarder bootstrap - **delete it once the Forwarder is wired**,
       or it is a permanent fabrication lever that no pin constrains.
 
+### 2.18cs EVIDENCE FOR #41, FROM THE SHIPPED CODE - two of its open questions are already answered (2026-08-03)
+
+Read after #41 was booked, so it is additive. Everything here is from `IdentityRegistry.sol`, not from
+the design sections.
+
+**1. 2.13e's "the blacklist and the revocation registry are the same object" IS ALREADY BUILT.** Not a
+decision waiting to be taken - the header says *"WHY ONE TREE AND NOT TWO"*: status is encoded in the
+leaf VALUE (`0` = clean, non-zero = predicate), so a single inclusion proof of `commitment -> 0` does
+both jobs. **Measured: 43,772 -> 24,812 ACIR opcodes, a 43% cut**, and it removes `sk_identity` from
+the withdrawal entirely. **What is missing is the FEED, not the structure** - nothing populates that
+tree from sanctions data. Whoever opens #41 should not re-derive the merge.
+
+**2. THE TRAP AT LINE 2257 IS ALREADY DOCUMENTED IN THE CONTRACT, AND STILL OPEN.** Trap 6 states it
+outright: *"anyone revoked could escrow a fresh secret against the same passport and come back clean"*.
+The guard that exists - `commitment` is a function of `sk_identity`, so `registered[commitment]` stops
+a literal repeat - does not stop a NEW secret over the SAME document. So the leaf must bind to
+something unregenerable: a **document nullifier**, not a key the user picks. That is the concrete form
+of "the leaf has to bind to something unregenerable".
+
+**3. THE LABEL TERM'S SILENCE PROBLEM IS NOT HYPOTHETICAL - THE LEVER IS LIVE TODAY, UPSTREAM.**
+`IdentityRegistry.register`'s own comment scopes its permissionlessness honestly: *"It is true of THIS
+function and false of the system as it currently stands."* Registering requires the document to already
+sit in `registrationSmt`, and the only writer - `HolderRegistration` - **requires a backend signer's
+signature on every entry point**. *"A key we hold can be ordered to withhold, and the person is
+blocked."* So censorship-by-inaction already exists one layer above the pool, independent of whether
+the predicate set is conjunctive.
+
+**AND THE ANSWER IS ALREADY IN THE REPO, UNUSED:** `Registration2.registerViaNoir` takes no signature
+and is gated only by a proof against a certificates root. **That is the precedent for how a label is
+obtained without an authority** - by proof, so there is nobody to be silent. It collapses the three
+options #41 lists to one: a permissionless label and evidence-bound labelling are the same thing, and
+a default-admit-after-timeout rule is unsound - it admits precisely the people the list names whenever
+the feed stalls.
+
+**4. THE ~8-OPCODE ESTIMATE NEEDS MORE THAN RECHECKING FOR CONJUNCTION.** Non-membership by bracketing
+is **two inclusion proofs plus two ordering comparisons**, not one inclusion proof - a different cost
+class from the merged-tree term it is being added to.
+
+- [ ] For #41: bind the leaf to a document nullifier (trap 6), not to `sk_identity`.
+- [ ] For #41: the label term's answer to silence is `registerViaNoir`'s shape. Also fix the live
+      upstream lever - `HolderRegistration`'s backend signature - or the conjunction inherits it.
+
 ### 2.18cr EVIDENCE-BOUND REVOCATION IS NOT CONTRACT-ONLY - I said it was, and the envelope says otherwise (2026-08-03)
 
 I offered `IdentityRegistry.revoke` as *"contract-only, buildable next"* - the one that removes a real

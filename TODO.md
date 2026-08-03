@@ -1919,6 +1919,20 @@ circuit, the wallet, `pp/src/commitment.nr` and every SMT already agree on.
 `PoseidonSMT`, `StateKeeper`, `IdentityRegistry`, `HolderStateKeeper` and `TitleLedger` currently pays
 the DELEGATECALL price. A depth-32 SMT insert is ~32 hashes: **over 1M gas today, ~90k inlined.**
 
+> **BOTH HALVES OF THAT SENTENCE ARE WRONG - MEASURED 2026-08-04, see
+> `test/libraries/PoseidonInlineGas.t.sol`.**
+> 1. **It is already done.** `libraries/Poseidon.sol` imports the `*Inline` libraries, every
+>    `PoseidonUnit*L` caller (including `PoseidonSMT._hash`) is already `internal`, and the per-arity
+>    differential tests against upstream exist and pass. Nothing pays the DELEGATECALL today.
+> 2. **"~90k inlined" was never achievable.** Inline is **29,043** gas per T3 hash; the DELEGATECALL
+>    form is **33,229**. The saving is **4,186 per hash - 12%, not 91%** - because the cost is
+>    Poseidon's own permutation, not the call. A depth-32 insert is **~929k inlined** vs ~1.06M
+>    external, and the live probe confirms it: ~34.5k per tree level at depth 10-12.
+>
+> So there is no 91% cut waiting to be collected, and prioritising it over the sanctions design was
+> my error. Reducing SMT cost needs FEWER OR CHEAPER HASHES - shallower trees, batching, or a
+> different hash - not a call-convention change that has already been made.
+
 **NEXT (do this before the batch entrypoint):** the copies in `contracts/libraries/inline/` are a
 MEASUREMENT ARTEFACT produced by `sed` from `lib/poseidon-solidity` - they are not a migration.
 Decide deliberately how to land it: vendor the files properly (with provenance + a differential test

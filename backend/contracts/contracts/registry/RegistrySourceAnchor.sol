@@ -207,13 +207,6 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
         return workflowVersions.length;
     }
 
-    function publishSnapshot(
-        bytes32 registryId_,
-        bytes32[] calldata leaves_
-    ) external onlyRole(REGISTRY_POSTMAN) returns (uint256 index_, bytes32 root_) {
-        return _publishSnapshot(registryId_, leaves_);
-    }
-
     /// @notice CRE report-callback entrypoint: decodes a (bytes32 registryId, bytes32[] leaves)
     /// payload and publishes it - but ONLY if the report says it came from the pinned workflow.
     ///
@@ -227,17 +220,14 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
     /// active pin is what makes `pinWorkflow` load-bearing rather than - in this contract's own
     /// words - decoration.
     ///
-    /// Note what this does NOT claim: `publishSnapshot` above carries no workflow ID at all and
-    /// stays an operator bootstrap gated only by the role. That is deliberate (it is how the anchor
-    /// runs before a Forwarder is wired), but it means REGISTRY_POSTMAN remains a trusted key until
-    /// the role is held solely by the Forwarder. The pin binds REPORTS, not the role.
+    /// AND IT IS NOW THE ONLY ENTRYPOINT. `publishSnapshot` was deleted (sec. 2.18ct): it did the
+    /// same job MINUS this check, so it was simultaneously a duplicate mechanism and the one path no
+    /// pin constrained. Removing it deletes a moving part and closes the bypass in one act - which is
+    /// why it was the right answer rather than gating it harder.
     ///
-    /// @dev Checks `onlyRole` directly on ITS OWN `msg.sender` (does not route through
-    /// `publishSnapshot` via `this.` - an external self-call would make the contract's own
-    /// address the effective caller for role-checking purposes, silently requiring the CONTRACT
-    /// ITSELF to hold REGISTRY_POSTMAN instead of whoever actually invoked `onReport`). Both
-    /// entrypoints share `_publishSnapshot`, which does no authorization of its own by design -
-    /// that's each public entrypoint's own job.
+    /// @dev Checks `onlyRole` on ITS OWN `msg.sender`, never via an external self-call - that would
+    /// make the contract's own address the effective caller and silently require the CONTRACT to
+    /// hold REGISTRY_POSTMAN instead of whoever invoked `onReport`.
     ///
     /// The metadata LAYOUT is now confirmed (see REPORT_METADATA_LENGTH) against the CRE SDK this
     /// repo depends on, rather than assumed. What is still unconfirmed is the Forwarder's calling
@@ -261,12 +251,8 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
         return _publishSnapshot(registryId_, leavesMem_);
     }
 
-    /// @dev Shared logic for both entrypoints above - deliberately NOT role-gated itself; each
-    /// caller checks `onlyRole(REGISTRY_POSTMAN)` against its own real `msg.sender` before
-    /// reaching here. Takes `memory` (not `calldata`) so `onReport`'s already-decoded array can be
-    /// passed straight through - `publishSnapshot`'s calldata argument is auto-copied to memory at
-    /// the call site, which is the normal, correct way to bridge the two without a second
-    /// `_computeRoot` implementation or an unnecessary external self-call.
+    /// @dev Kept separate from `onReport` so the authorization and the publication read as distinct
+    /// steps. Takes `memory` because `onReport`'s array is already decoded.
     function _publishSnapshot(
         bytes32 registryId_,
         bytes32[] memory leaves_

@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Test} from 'forge-std/Test.sol';
+import {CreReportMetadata} from '../registry/CreReportMetadata.sol';
 import {ERC1967Proxy} from '@oz/proxy/ERC1967/ERC1967Proxy.sol';
 import {MessageHashUtils} from '@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol';
 import {IEvidenceRegistry} from '@rarimo/evidence-registry/interfaces/IEvidenceRegistry.sol';
@@ -52,7 +53,7 @@ contract UnsafeTestProxy is ERC1967Proxy {
   }
 }
 
-contract TitleLedgerTest is Test {
+contract TitleLedgerTest is Test, CreReportMetadata {
   TitleLedger internal ledger;
   RegistrySourceAnchor internal registry;
   NoirVerifierMock internal titleHolderVerifier;
@@ -142,7 +143,7 @@ contract TitleLedgerTest is Test {
     leaves[1] = leaf1;
 
     vm.prank(postman);
-    registry.publishSnapshot(REGISTRY_ID, leaves);
+    registry.onReport(_metadata(keccak256('notary_registry.wasm@test')), abi.encode(REGISTRY_ID, leaves));
     vm.warp(block.timestamp + registry.ROOT_ACTIVATION_DELAY());
 
     notaryProof = new bytes32[](1);

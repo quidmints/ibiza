@@ -6,6 +6,7 @@ import {ERC1967Proxy} from '@oz/proxy/ERC1967/ERC1967Proxy.sol';
 import {IEvidenceRegistry} from '@rarimo/evidence-registry/interfaces/IEvidenceRegistry.sol';
 
 import {RegistrySourceAnchor} from '../../contracts/registry/RegistrySourceAnchor.sol';
+import {CreReportMetadata} from './CreReportMetadata.sol';
 
 /// Minimal in-test ERC-7812 registry - same pattern as EntrypointAsp.t.sol's MockEvidenceRegistry
 /// (keccak-isolated, sidesteps the real registry's Poseidon-under-Forge linking issue).
@@ -39,7 +40,7 @@ contract MockEvidenceRegistry is IEvidenceRegistry {
   }
 }
 
-contract RegistrySourceAnchorTest is Test {
+contract RegistrySourceAnchorTest is Test, CreReportMetadata {
   RegistrySourceAnchor internal anchor;
   MockEvidenceRegistry internal registry;
 
@@ -97,26 +98,6 @@ contract RegistrySourceAnchorTest is Test {
   /// The workflow `_activateWorkflow` pins - reports must name THIS to be accepted.
   bytes32 internal constant TEST_WORKFLOW = keccak256('notary_registry.wasm@test');
 
-  /// A CRE report metadata header, byte-for-byte the shape the consensus plugin emits:
-  /// version 1 || executionId 32 || timestamp 4 || donId 4 || donConfigVersion 4 || workflowId 32
-  /// || workflowName 10 || workflowOwner 20 || reportId 2 = 109 bytes. Built from the field list in
-  /// cre-sdk-go v1.15.0 `cre/report_fields.go` so the test and the contract are not simply agreeing
-  /// on the same invented offset.
-  function _metadata(bytes32 workflowId_) internal pure returns (bytes memory) {
-    return
-      abi.encodePacked(
-        uint8(1), // version
-        keccak256('execution-id'), // executionId
-        uint32(1_700_000_000), // timestamp
-        uint32(7), // donId
-        uint32(2), // donConfigVersion
-        workflowId_,
-        bytes10('wf-notary'),
-        bytes20(uint160(0xBEEF)),
-        bytes2(0xAB01)
-      );
-  }
-
   // ── initialization / upgradeability ─────────────────────────────────────────────────────
 
   /// Pin a workflow and warp past its delay, so snapshots can be published (sec. 2.18bs).
@@ -156,10 +137,10 @@ contract RegistrySourceAnchorTest is Test {
 
   // ── access control ──────────────────────────────────────────────────────────────────────
 
-  function test_publishSnapshot_revertsForNonPostman() public {
+  function test_onReport_revertsForNonPostmanWithValidMetadata() public {
     vm.prank(stranger);
     vm.expectRevert();
-    anchor.publishSnapshot(NOTARY_REGISTRY, _oneLeafSet(keccak256('leaf')));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('leaf'))));
   }
 
   function test_onReport_revertsForNonPostman() public {
@@ -169,12 +150,12 @@ contract RegistrySourceAnchorTest is Test {
     anchor.onReport('', report);
   }
 
-  // ── publishSnapshot ─────────────────────────────────────────────────────────────────────
+  // ── snapshot publication (via onReport, the only entrypoint) ────────────────────────────
 
-  function test_publishSnapshot_singleLeaf_rootIsTheLeafItself() public {
+  function test_snapshot_singleLeaf_rootIsTheLeafItself() public {
     bytes32 leaf = keccak256('only-notary');
     vm.prank(postman);
-    (uint256 index, bytes32 root) = anchor.publishSnapshot(NOTARY_REGISTRY, _oneLeafSet(leaf));
+    (uint256 index, bytes32 root) = anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(leaf)));
 
     assertEq(index, 0);
     assertEq(root, leaf); // a 1-leaf tree's root IS the leaf - matches MerkleProof.verify(empty proof)
@@ -183,23 +164,23 @@ contract RegistrySourceAnchorTest is Test {
     assertEq(anchor.latestRoot(NOTARY_REGISTRY), root);
   }
 
-  function test_publishSnapshot_twoLeaves_computesSortedPairRoot() public {
+  function test_snapshot_twoLeaves_computesSortedPairRoot() public {
     (bytes32[] memory leaves, bytes32 expectedRoot) = _twoLeafSet(keccak256('a'), keccak256('b'));
 
     vm.prank(postman);
-    (, bytes32 root) = anchor.publishSnapshot(NOTARY_REGISTRY, leaves);
+    (, bytes32 root) = anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, leaves));
 
     assertEq(root, expectedRoot);
     assertEq(registry.statements(_expectedKey(NOTARY_REGISTRY, 0)), expectedRoot);
   }
 
-  function test_publishSnapshot_revertsOnEmptyLeafSet() public {
+  function test_snapshot_revertsOnEmptyLeafSet() public {
     vm.prank(postman);
     vm.expectRevert(RegistrySourceAnchor.EmptyLeafSet.selector);
-    anchor.publishSnapshot(NOTARY_REGISTRY, new bytes32[](0));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, new bytes32[](0)));
   }
 
-  function test_publishSnapshot_revertsOnUnsortedLeaves() public {
+  function test_snapshot_revertsOnUnsortedLeaves() public {
     bytes32 a = keccak256('a');
     bytes32 b = keccak256('b');
     (bytes32 lo, bytes32 hi) = a < b ? (a, b) : (b, a);
@@ -209,10 +190,10 @@ contract RegistrySourceAnchorTest is Test {
 
     vm.prank(postman);
     vm.expectRevert(RegistrySourceAnchor.LeavesNotStrictlySorted.selector);
-    anchor.publishSnapshot(NOTARY_REGISTRY, badOrder);
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, badOrder));
   }
 
-  function test_publishSnapshot_revertsOnDuplicateLeaves() public {
+  function test_snapshot_revertsOnDuplicateLeaves() public {
     bytes32 leaf = keccak256('dup');
     bytes32[] memory duplicated = new bytes32[](2);
     duplicated[0] = leaf;
@@ -220,22 +201,22 @@ contract RegistrySourceAnchorTest is Test {
 
     vm.prank(postman);
     vm.expectRevert(RegistrySourceAnchor.LeavesNotStrictlySorted.selector);
-    anchor.publishSnapshot(NOTARY_REGISTRY, duplicated);
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, duplicated));
   }
 
-  function test_publishSnapshot_emitsFullLeafSet() public {
+  function test_snapshot_emitsFullLeafSet() public {
     (bytes32[] memory leaves, ) = _twoLeafSet(keccak256('a'), keccak256('b'));
 
     vm.expectEmit(true, true, false, true);
     emit RegistrySourceAnchor.SnapshotLeaves(NOTARY_REGISTRY, 0, leaves);
     vm.prank(postman);
-    anchor.publishSnapshot(NOTARY_REGISTRY, leaves);
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, leaves));
   }
 
-  function test_publishSnapshot_neverOverwritesPriorSnapshot() public {
+  function test_snapshot_neverOverwritesPriorSnapshot() public {
     vm.startPrank(postman);
-    (, bytes32 root0) = anchor.publishSnapshot(NOTARY_REGISTRY, _oneLeafSet(keccak256('a')));
-    (, bytes32 root1) = anchor.publishSnapshot(NOTARY_REGISTRY, _oneLeafSet(keccak256('b')));
+    (, bytes32 root0) = anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('a'))));
+    (, bytes32 root1) = anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('b'))));
     vm.stopPrank();
 
     assertEq(anchor.snapshotCount(NOTARY_REGISTRY), 2);
@@ -244,10 +225,10 @@ contract RegistrySourceAnchorTest is Test {
     assertEq(anchor.latestRoot(NOTARY_REGISTRY), root1);
   }
 
-  function test_publishSnapshot_distinctRegistriesDoNotCollide() public {
+  function test_snapshot_distinctRegistriesDoNotCollide() public {
     vm.startPrank(postman);
-    (, bytes32 rootA) = anchor.publishSnapshot(NOTARY_REGISTRY, _oneLeafSet(keccak256('a')));
-    (, bytes32 rootB) = anchor.publishSnapshot(OTHER_REGISTRY, _oneLeafSet(keccak256('b')));
+    (, bytes32 rootA) = anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('a'))));
+    (, bytes32 rootB) = anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(OTHER_REGISTRY, _oneLeafSet(keccak256('b'))));
     vm.stopPrank();
 
     assertEq(anchor.snapshotCount(NOTARY_REGISTRY), 1);
@@ -369,7 +350,7 @@ contract RegistrySourceAnchorTest is Test {
   function test_latestActiveRoot_respectsActivationDelay() public {
     bytes32 leaf = keccak256('a');
     vm.prank(postman);
-    anchor.publishSnapshot(NOTARY_REGISTRY, _oneLeafSet(leaf));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(leaf)));
 
     vm.expectRevert(RegistrySourceAnchor.NoActiveSnapshot.selector);
     anchor.latestActiveRoot(NOTARY_REGISTRY);
@@ -382,11 +363,11 @@ contract RegistrySourceAnchorTest is Test {
     bytes32 leafA = keccak256('a');
     bytes32 leafB = keccak256('b');
     vm.prank(postman);
-    anchor.publishSnapshot(NOTARY_REGISTRY, _oneLeafSet(leafA));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(leafA)));
     vm.warp(block.timestamp + anchor.ROOT_ACTIVATION_DELAY());
 
     vm.prank(postman);
-    anchor.publishSnapshot(NOTARY_REGISTRY, _oneLeafSet(leafB));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(leafB)));
     assertEq(anchor.latestActiveRoot(NOTARY_REGISTRY), leafA); // leafB's snapshot still pending
 
     vm.warp(block.timestamp + anchor.ROOT_ACTIVATION_DELAY());
@@ -422,7 +403,7 @@ contract RegistrySourceAnchorTest is Test {
 
     vm.prank(postman);
     vm.expectRevert(RegistrySourceAnchor.NoActiveWorkflow.selector);
-    fresh_.publishSnapshot(NOTARY_REGISTRY, leaves_);
+    fresh_.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, leaves_));
   }
 
   /// A pinned version is NOT usable until its delay elapses - the interval in which a malicious
@@ -547,7 +528,7 @@ contract RegistrySourceAnchorTest is Test {
     assertEq(leaves.length, 7, 'fixture did not carry the expected leaf count');
 
     vm.prank(postman);
-    (uint256 index, bytes32 onChainRoot) = anchor.publishSnapshot(registryId, leaves);
+    (uint256 index, bytes32 onChainRoot) = anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(registryId, leaves));
 
     assertEq(index, 0, 'first snapshot should be index 0');
     assertEq(onChainRoot, goRoot, 'Go and Solidity disagree about the Merkle root of one leaf set');
@@ -564,6 +545,6 @@ contract RegistrySourceAnchorTest is Test {
 
     vm.prank(postman);
     vm.expectRevert(RegistrySourceAnchor.LeavesNotStrictlySorted.selector);
-    anchor.publishSnapshot(registryId, leaves);
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(registryId, leaves));
   }
 }

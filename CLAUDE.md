@@ -78,18 +78,20 @@ commit that is not yours, do not amend or rebase it.
 
 ## Before closing a thread
 
-**⚠️ IBIZA HAS NO TRANSCRIPT DIRECTORY. IT NEVER WILL.** Sessions are filed by the directory the CLI
-is launched from, not the repo being edited — and the CLI is always launched from the same place. So
-`~/.claude/projects/` contains exactly ONE directory,
-`-Users-ricktobacco-Documents-quidmint-SPV/`, and **every ibiza conversation ever held is in it.**
+**⚠️ IBIZA HAS NO TRANSCRIPT DIRECTORY.** Sessions are filed by the directory the CLI is launched
+from, not the repo being edited, and the CLI is always launched from the SPV checkout. So every ibiza
+conversation ever held sits under `~/.claude/projects/-Users-ricktobacco-Documents-quidmint-SPV*/`.
+Auditing ibiza from inside ibiza returns a clean result for the wrong reason — the same shape as
+`refs=0` on verifiers, a measurement that cannot see what it claims to cover.
 
-This is not "most of it" or "some of it": there is nowhere else for it to be. Anyone auditing ibiza
-from inside ibiza gets a clean result for the wrong reason — the same shape as `refs=0` on verifiers,
-a measurement that cannot see what it claims to cover. Sweep the one directory against ibiza's
-tracker:
+**GLOB ALL PROJECT DIRECTORIES, NOT ONE.** I wrote "exactly one directory" here and committed it
+while the very command that produced it printed `project dirs: 2`. **Worktree-isolated agents get
+their OWN project directory** — `…SPV--claude-worktrees-<branch>/` — so a loop over a single hard-coded
+path silently skips them. There are currently 11 transcripts across 2 directories, and the worktree
+one holds the rover-weeth discussion that `scan_prompts` was written for. Use `*/`:
 
 ```sh
-for t in ~/.claude/projects/-Users-ricktobacco-Documents-quidmint-SPV/*.jsonl; do
+for t in ~/.claude/projects/*/*.jsonl; do   # ALL dirs — worktrees have their own
   python3 tools/scan-loose-ends.py --transcript "$t" --against TODO.md --root .
 done
 ```

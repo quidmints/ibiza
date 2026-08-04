@@ -8043,6 +8043,93 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18do Two withdrawal paths, and what stands between us and them (user, 2026-08-04)
+
+Decision from the repo owner: ship both provers and let the withdrawer choose. Instant via Groth16 at
+~213,882 gas, or batched via Honk at 186,255 for N=16 and roughly 15k if the depth-2 tree ever runs.
+Neither path alone covers the product, because the tree only pays at 256 and 256 will not fill early,
+while someone will always want out now.
+
+**The contract side is close to free.** `WITHDRAWAL_VERIFIER` is a single immutable behind
+`INoirVerifier.verify(bytes, bytes32[])`, so a dispatcher reading a tag on the proof bytes routes to
+either verifier. `PrivacyPool`, `State`, `ProofLib` and every guard stay untouched. Both circuits expose
+the same seven signals because they compile from one Noir source, so nothing is authored twice.
+
+**Coexistence costs a soundness property, and it is bounded by ceremony quality.** A pool accepts a
+withdrawal if any accepted verifier says yes, so its security is that of the weakest one. A broken
+Groth16 setup drains the pool including funds of users who only ever produced Honk proofs, because the
+attacker picks the path. Value caps do not help, since a forger repeats. Note the baseline is not zero:
+the Honk path already rests on Aztec's ignition SRS, which we neither ran nor can audit. So this moves
+us from one ceremony assumption to two, and it breaks if either fails.
+
+**The ceremony is the real obstacle, and it is social rather than technical.** Mechanically it is
+snarkjs and a public powers-of-tau file, and only phase two is ours. Credibility is the hard part. A
+setup is sound if one contributor destroyed their entropy, so the argument rests entirely on
+independence, which needs numbers. Tornado's had over a thousand contributors and pseudonymity was fine
+there because the strength came from the spread. Five anonymous contributors are indistinguishable from
+one person with five machines. Getting to a thousand needs an audience a young protocol may not have,
+and that is a stronger argument for staying on Honk than any gas figure in this file, since on Honk we
+are inheriting a ceremony run by people with the reach to attract participants.
+
+**Three integration seams, and only one of them fails quietly.**
+1. ACIR to R1CS via `noir-gnark`. R1CS has no lookup tables, so range checks expand. **If the
+   translation drops a constraint the circuit still proves and still verifies while accepting witnesses
+   it should reject, and nothing announces it.** This is the one that needs adversarial testing rather
+   than a happy-path check.
+2. Key format. gnark writes its own; rapidsnark, the proven mobile prover, reads snarkjs format. Fails
+   loudly, at parse time.
+3. Witness ordering. Ours comes from Noir's ACVM in Noir's layout; a Groth16 prover wants R1CS order.
+   Fails loudly, as a proof that does not verify.
+
+**On-device proving is unproven.** `noir-gnark` is pure Go with no FFI, and Go runs on both platforms
+through gomobile, but nobody has shown it proving a circuit this size on ARM. The alternative is
+rapidsnark, which reaches us only across seams 2 and 3.
+
+**Sequencing, and the ceremony goes last.**
+- [ ] Prototype the translation and on-device proving with a **throwaway single-contributor key**,
+      treated as insecure and never deployed. This answers whether ACIR translates, the R1CS constraint
+      count against 44,176 gates, proving time on a phone, and zkey size, which drives app size and
+      cannot be derived on device.
+- [ ] Test the translated circuit adversarially. Witnesses that must fail, confirmed failing. Seam 1 is
+      silent otherwise.
+- [ ] Freeze the withdrawal circuit before the real ceremony. Every revision needs a new one, and this
+      repo has moved through four Noir betas with proof formats shifting underneath it. A thousand
+      people contribute once.
+- [ ] Only then the ceremony, with open contribution, published transcript, and a final random beacon.
+- [ ] Dispatcher and wallet path selection last. Worthless without the above.
+- [ ] Keep the batched Honk path as the default, so the yield floor and the timing cohort are what
+      happens unless a user opts out.
+
+**Two things that are not affected.** Deposits verify no proof at all, so Groth16 does nothing for
+them; the ~265k is Poseidon hashing up the tree plus storage, and reducing it is a data-structure
+question. And a second Honk verifier, such as a depth-2 root, adds no new trust assumption, so running
+N=16 and N=256 side by side is safe in a way that Honk beside Groth16 is not.
+
+### 2.18dp The batcher as a standing target (user, 2026-08-04)
+
+The design already answers forgery and censorship. The inner verification key is pinned as a circuit
+constant, batching is permissionless with no registry or stake, and a user refused by every batcher
+self-submits at full gas, so refusal costs money rather than access.
+
+What it does not answer is concentration. A batcher needs ~21.7 GB and minutes of proving per batch,
+which is a rented server with an account behind it. Permissionless in the contract does not produce
+plurality when entry looks like that, and one operator who is replaceable in principle is still one
+operator in practice.
+
+There is metadata exposure too. A batcher receives sixteen proofs and their seven public signals,
+including the nullifier, the withdrawn value, and the context encoding the recipient. The link back to
+a deposit stays hidden, so this is not a break, but an operator who logs builds a withdrawal-pattern
+dataset that a subpoena reaches. An on-chain observer sees the same fields later, so the exposure is
+timing and grouping.
+
+Folding therefore matters for decentralisation and not only for cost. If proving drops to something a
+laptop does in seconds, batching stops being a business and becomes something a participant does
+incidentally while submitting their own withdrawal, which is the state where there is nothing to raid.
+Whether folding reaches that depends on the decider's cost, which is unmeasured.
+
+- [ ] Measure the folding decider against the recursive baseline in 2.18dk. It decides whether the
+      batcher role can be diffuse.
+
 ### 2.18dn COSTING GROTH16 FOR WITHDRAWALS - and it would make the aggregator redundant (user, 2026-08-04)
 
 *"what would be the cost of bringing back groth for withdrawals?"* Costed against the actual code, and

@@ -111,180 +111,157 @@ profiles that still lack a Noir twin — the other 29 had twins and have been de
 Verifiers are bound by address at deploy time rather than by symbol, so a reference count cannot
 distinguish a live verifier from an unwired one. Those 6 are unresolved, not known dead.
 
-### What we took from rarimo, and what we deliberately did not
+### Where the verifier count comes from
 
-We adopted rarimo's **proving system**. We did **not** adopt their **circuit design**, and the
-difference is the single most consequential fact about this repo's shape:
+We use rarimo's proving system. Their circuit design is a separate question, and we did not follow it.
 
 | | stack | verifiers needed |
 |---|---|---|
-| Privacy Pools side | Noir / UltraHonk | **3** |
-| rarimo passport side | Noir / UltraHonk | **79** |
+| Privacy Pools side | Noir / UltraHonk | 3 |
+| rarimo passport side | Noir / UltraHonk | 79 |
 
-Same proving system, **26× the verifiers.** PP's circuits do not change shape per user; rarimo bakes
-each document's array lengths in as compile-time generics, so every combination of
-`DG1_LEN/EC_LEN/SA_LEN/N` becomes a different circuit and therefore a different verifier.
+Same proving system, 26x the verifiers. PP's circuits keep one shape for every user. rarimo bakes each
+document's array lengths in as compile-time generics, so every combination of `DG1_LEN/EC_LEN/SA_LEN/N`
+compiles to its own circuit, and each circuit needs its own verifier.
 
-**Nearly every recurring problem on the passport side descends from that one choice, not from Honk:**
-the six orphan profiles and the `EC_LEN` hunt (`EC_LEN` only matters because it is *compile-time*), 82
-release artifacts to recover with 7 initially missed and one degenerate, and three profiles whose
-verifiers needed ~33 GiB working sets to build. PP is the control: the same stack, three verifiers, no
-manifest, no orphans.
+Most of what goes wrong on the passport side traces back to that one choice. The six orphan profiles
+exist because `EC_LEN` is a compile-time constant. So does the `EC_LEN` hunt recorded in `TODO.md`, the
+82 release artifacts we had to recover, the 7 we missed on the first pass, and the three profiles whose
+verifiers needed roughly 33 GiB to build. PP runs on the same stack with three verifiers and no
+manifest.
 
-The unexamined alternative is **size classes** — 3–5 circuits covering ranges rather than 79 exact
-shapes — paid for in worst-case proving time on a phone. Nobody has measured that ratio; see `TODO.md`
-sec. 2.18dd.
+Size classes would cut this down. `TODO.md` sec. 2.18df has the measurement: 78 profiles compile to
+five distinct circuit sizes, spanning 2^18 to 2^25, with 58 of them sharing 2^18. Merging within a
+class costs nothing in proving time, since cost follows the padded power of two. Merging across
+classes would make a common passport pay the worst case, 128x.
 
-The cost is that we now depend on the Noir toolchain's maturity, which is where several of the
-sharpest problems in `TODO.md` come from (a compiler ICE we patched, a bignum ecosystem that trails
-the compiler, proof formats that shift between `bb` versions).
+Depending on Noir's maturity is what this costs us. We patched a compiler ICE ourselves, and several
+other sharp problems in `TODO.md` come from the same place, including proof formats that shifted
+between `bb` versions.
 
-### Who actually pays what — three different workloads, easily confused
+### Who pays what
 
-An earlier version of this section quoted `write_vk` figures as if a phone paid them. **It does not.**
-Three separate workloads, measured:
+An earlier version of this section quoted `write_vk` figures as though a phone paid them. It does not.
 
 | workload | who runs it | how often | cost |
 |---|---|---|---|
-| **`write_vk`** — generate the verification key and the `.sol` verifier | **us, at build time** | **once per circuit, already done** | 337 MB (2^18) to ~33 GB (2^25) |
-| **prove a withdrawal** | the **user's phone** | every withdrawal | `withdraw_identity`, 44,176 gates — **~1.3 s desktop, 15–40 s on a Samsung A16** |
-| **prove an aggregation batch** | a **batcher**, on a server | per batch | 12.16M gates, ~28 GB, minutes — paid out of PP's relay fee |
+| `write_vk`, which produces the verification key and the `.sol` verifier | us, at build time | once per circuit, already done | 337 MB at 2^18, around 33 GB at 2^25 |
+| proving a withdrawal | the user's phone | every withdrawal | `withdraw_identity`, 44,176 gates, about 1.3 s on a desktop and 15 to 40 s on a Samsung A16 |
+| proving an aggregation batch | a batcher, on a server | per batch | 12.16M gates, roughly 28 GB, minutes, paid from PP's relay fee |
 
-So **the 33 GB is a one-time cost we have already paid**, not something a user or the project repeats.
-It is why the build needed a 32 GB swapfile (see `backend/circuits/build-passport-verifiers-docker.sh`),
-and it is finished for all 79 passport profiles and the 10 light verifiers. It recurs only if a circuit
-changes.
+The 33 GB was a one-time cost and it is already paid. It is why the build needs a 32 GB swapfile, set
+up in `backend/circuits/build-passport-verifiers-docker.sh`. All 79 passport profiles and the 10 light
+verifiers are done. It comes back only when a circuit changes.
 
-**The one real on-device concern is REGISTRATION, not withdrawal.** Withdrawal is 44k gates and
-comfortably fits a budget phone. Registration proves `register_identity`, which spans 2^18 to 2^25 —
-and the two 2^25 profiles are **not** a phone workload in any proving system. That is a property of
-those circuits, not of Honk, and it is one more argument for the size-class work in `TODO.md`.
+Registration is where the on-device question sits. Withdrawal is 44k gates and fits a budget phone.
+Registration proves `register_identity`, spanning 2^18 to 2^25, and the two 2^25 profiles will not run
+on a phone under any proving system. That belongs to those circuits rather than to Honk, and size
+classes would fix it.
 
-**⚠️ STILL NOT MEASURED:** peak memory for `bb prove` (as opposed to `write_vk`) on a 2^18 registration
-circuit, on phone-class hardware. And "STARKs cannot run on a phone" has **never been tested here** —
-see `TODO.md` sec. 2.18dg. The experiment that would settle both: prove one 2^18 registration circuit
-on an A16, on each backend, and record peak RSS and wall-clock.
+Two things here are still unmeasured. Peak memory for `bb prove` on a 2^18 registration circuit, on
+phone-class hardware, has never been recorded; what we measured is `write_vk`, which is a different
+workload. Whether STARKs run on a phone has never been tested here at all. `TODO.md` sec. 2.18dg has
+the detail. One experiment settles both: prove a 2^18 registration circuit on an A16 under each
+backend and record peak RSS and wall clock.
 
-### Why this proving system, and not a "better" one
+### How the proving system was chosen
 
-The setup axis is what decided it, and it is worth stating plainly: **removing four trusted parties
-and then accepting 79 unverifiable ceremonies would be incoherent.** Groth16 needs a ceremony *per
-circuit*; at 79 shapes that is 79 chances for one to be done badly, and in practice it means trusting
-rarimo's. Honk needs **one large public multi-party ceremony shared by the whole ecosystem, so it is
-scrutinised by everyone and a compromise would be a global event, not a silent local one.**
+The trusted setup decided it. Groth16 wants a ceremony for every circuit. At 79 shapes that means 79
+ceremonies, and in practice it means using rarimo's, because we cannot run that many. Honk uses one
+universal ceremony shared across the ecosystem, which many parties have scrutinised, and whose
+compromise would be a public event.
 
-**We did not pick the theoretically strongest option, and should not pretend otherwise.** STARKs and
-Halo2/IPA are *fully transparent* — no ceremony at all, which beats a universal SRS on the very axis
-above. They lost on EVM verification cost (~1–5M gas, against a withdrawal budget already ~3.1M).
-Halo2 **with KZG** is closer — universal SRS like Honk, mature aggregation — and lost on different
-grounds:
+Stronger options exist and we passed on them. STARKs and Halo2 over IPA need no ceremony at all. They
+lose on EVM verification, somewhere around 1 to 5M gas against a withdrawal budget already near 3.1M.
+Halo2 with KZG sits closer to Honk, with a universal SRS and better recursion, and it lost on other
+grounds.
 
-- **No high-level circuit language.** Halo2 circuits are hand-written Rust against a low-level API.
-  Noir is a language, and every `EC_LEN`-class investigation in `TODO.md` was tractable only because
-  the circuit reads like code.
-- **Nothing to inherit.** The migration was a *port* — rarimo publishes Noir circuits, so 79 passport
-  shapes came across mechanically. In Halo2 every one would be written from scratch, with no upstream
-  and no reference implementation to diff against.
-- **Mobile proving is packaged.** Proving happens on a phone; barretenberg ships prebuilt AARs via
-  `@rarimo/rarime-rn-sdk`.
+Halo2 circuits are hand-written Rust against a low-level API. Noir is a language, and the `EC_LEN` work
+in `TODO.md` was tractable because the circuit reads like code. There was also nothing to inherit. Our
+migration was a port; rarimo publishes Noir circuits, and 79 passport shapes came across mechanically.
+In Halo2 someone would author each one with no upstream to diff against. Barretenberg also ships
+prebuilt AARs for on-device proving through `@rarimo/rarime-rn-sdk`.
 
-So the choice was not "which system is best in the abstract" but "which is EVM-affordable, has a real
-language, proves on a phone, and lets us inherit circuits instead of authoring them." Honk is the only
-one meeting all four here. Aggregation (§ below) uses Honk recursion and needs one level, not a deep
-recursive chain — which is where Halo2's accumulation would have paid off most.
+So the question was narrower than which system is strongest. Which one verifies affordably on the EVM,
+has a real language, proves on a phone, and lets us inherit circuits? Honk is the only one here that
+answers all of it. Aggregation uses Honk recursion and needs a single level, which happens to be where
+Halo2's accumulation would have paid off most.
 
-### The size cost is real, but it is not where you would guess
+### Verifier size and EIP-170
 
-A Honk verifier is ~10× a Groth16 one — measured on the same profile family, **18,430 bytes against
-1,736** — and verification is ~2× the gas (~490k against ~200–250k). That is the price of the setup
-property above, and it is payable: gas is money, a compromised ceremony is forged proofs.
+A Honk verifier runs about 10x the size of a Groth16 one. Measured on the same profile family: 18,430
+bytes against 1,736. Verification gas is higher too. That is the price of the setup property above.
 
-**But the contracts currently over the 24,576-byte EIP-170 limit are not the verifiers.** As of
-2026-08-04 there are **18**, and the verifiers are not among them — the largest passport verifier has
-~6,100 bytes of headroom. The over-limit list is `HolderStateKeeper` (53,431), `StateKeeper` (50,044),
-`PoseidonSMT` (38,374), `IdentityRegistry`, the SMT mocks and two dispatchers: **state contracts, not
-proof contracts.**
+For a while 18 contracts sat over the 24,576-byte EIP-170 limit, and no verifier was among them.
+`HolderStateKeeper` measured 53,431 bytes, `StateKeeper` 50,044, `PoseidonSMT` 38,374. State contracts,
+all of them.
 
-The likely cause is our own Poseidon **inlining**. `internal` libraries are copied into every call
-site, and size tracks call-site count closely — `PoseidonSMT` has 2 and is 38 KB, `StateKeeper` 6 at
-50 KB, `HolderStateKeeper` 7 at 53 KB, roughly **+3 KB per call site**. Inlining was adopted to skip
-the DELEGATECALL, which is worth **4,186 gas per hash — 12%, not the ~91% an older note claimed**
-(`test/libraries/PoseidonInlineGas.t.sol` pins both numbers). Whether 12% is worth ~3 KB per call site
-has not been measured against EIP-170, and nothing has been split. See `TODO.md`.
+Our own Poseidon inlining caused it. An `internal` library gets copied into every call site, and size
+tracked call-site count closely: `PoseidonSMT` had 2 and weighed 38 KB, `HolderStateKeeper` had 7 and
+weighed 53 KB, around 3 KB per site. Inlining saves 4,186 gas per hash, which is 12%. An older note in
+`TODO.md` claimed 91%. `test/libraries/PoseidonInlineGas.t.sol` pins both figures.
 
-## Batching, dwell time, and why yield is plugged into the pool
+We reverted the inlining on 2026-08-04. Every contract now fits under the limit. A contract above
+24,576 bytes cannot be deployed at all, so 12% on hashing was never worth it.
 
-These three are usually discussed separately. They are one decision.
+## Batching, dwell time, and yield
 
-**Yield in this system comes from ETH that SITS.** `SpvTreasuryAdapter` routes *"PP's otherwise-idle
-ETH"* into SPV's Vogue LP, and its sweeps are deliberately **timing-decoupled** from user activity —
+These three get discussed apart from each other. They are one decision.
+
+Yield here comes from ETH that sits still. `SpvTreasuryAdapter` routes what its own NatSpec calls "PP's
+otherwise-idle ETH" into SPV's Vogue LP. Its sweeps are timing-decoupled from user activity on purpose,
 because moving funds in lockstep with individual deposits and withdrawals would turn Vogue's public
-event stream into a side-channel reconstructing the very deposit↔withdrawal link the ZK design hides.
-So the yield base is not throughput; it is **balance × time**.
+event stream into a side channel that reconstructs the deposit-to-withdrawal link. The yield base is
+balance multiplied by time.
 
-**Which means fast round trips earn nothing.** If a user deposits and withdraws inside the same cycle,
-there is no idle ETH to lend, the sweep has nothing to sweep, and the yield integration is decoration.
-For a pool whose users mostly round-trip quickly, plugging in yield was never going to pay.
+Fast round trips earn nothing. A user who deposits and withdraws inside one cycle leaves no idle ETH,
+the sweep finds nothing to move, and the integration does no work. For a pool whose users mostly
+round-trip quickly, yield was never going to pay.
 
-**Batching supplies exactly what yield needs: a floor under dwell time.** A batched withdrawal waits
-for the batch to fill, and that wait is not dead latency — it is the interval during which the
-deposit is still in the pool, still idle, still earning. The gas saving and the yield are the *same
-mechanism* seen from two sides.
+Batching puts a floor under dwell time. A batched withdrawal waits for the batch to fill, and through
+that wait the deposit stays in the pool and keeps earning. The gas saving and the yield come out of the
+same mechanism.
 
-**And that reframes the cost comparison.** Batching's latency is normally counted as a pure cost
-against cheaper per-withdrawal gas (~186k batched at N=16 versus 2,528,007 for a Honk single). But if
-the wait accrues yield, the user is compensated for it, and the comparison is no longer gas-versus-
-patience. Conversely, **making withdrawals instant and cheap — the Groth16 hybrid discussed in
-`TODO.md` — removes the dwell floor and shrinks the yield base.** That is a real cost of the hybrid
-which the gas table does not show.
+That shifts the cost comparison. Latency usually counts as a straight loss set against cheaper gas,
+186k per withdrawal batched at N=16 against 2,528,007 for a Honk single. If the wait pays yield, the
+user gets something back for it. Making withdrawals instant and cheap, which is what the Groth16 hybrid
+in `TODO.md` would do, removes the dwell floor and shrinks the yield base. The gas table does not show
+that.
 
-### The third reason, and it is about defaults rather than money
+### Timing
 
-**The ZK proof hides WHICH note is spent; it cannot hide WHEN.** How much that matters depends
-entirely on how busy the pool is, and it is easy to overstate — an earlier draft of this section
-claimed a quick round trip leaves "almost no privacy", which is **not true and not supported by
-anything measured here**. If other people are depositing and withdrawing around the same time, a
-withdrawal shortly after a deposit implies little: someone else could equally have made it, and an
-observer cannot tell.
+The proof hides which note is spent. It cannot hide when. How much that matters depends on how busy the
+pool is, and it is easy to overstate. An earlier draft of this section said a quick round trip leaves
+"almost no privacy". Nothing here measures that, and it is likely false whenever other people are
+transacting in the same window, since any of them could have made the withdrawal.
 
-**The honest statement is conditional.** Timing correlation is a real deanonymisation vector in
-mixers, and its strength scales inversely with concurrent activity: negligible when the pool is busy,
-sharp when a deposit and a withdrawal are the only two events in a quiet window. **We have no data on
-this pool's activity**, so we cannot say which regime it will be in — and a user certainly cannot,
-because the right waiting period depends on what everyone else happens to be doing at that moment.
+The conditional version holds up. Timing correlation is a real deanonymisation vector in mixers, and
+its strength scales inversely with concurrent activity. In a quiet window where a deposit and a
+withdrawal are the only two events, it bites. In a busy one it approaches nothing. We have no data on
+this pool's traffic, and a user has less.
 
-**What batching changes is that the cohort becomes GUARANTEED rather than hoped for.** A batched
-withdrawal settles alongside fifteen others in one transaction, sharing a timestamp and a submitter.
-In a busy pool you might have got that anyway, by luck; in a quiet one you would not. Batching makes
-it independent of ambient traffic. It does not enlarge the anonymity set — that is the deposit tree —
-and it is not a fix for a leak that may not be present; it is a floor that does not depend on other
-people happening to act at a convenient moment.
+Batching makes the cohort deterministic. Sixteen withdrawals settle in one transaction sharing a
+timestamp and a submitter. A busy pool might produce that by chance. Batching stops it depending on
+chance. The anonymity set stays what it always was, which is the deposit tree.
 
-**AND THIS IS THE CONCRETE DIFFERENCE FROM UPSTREAM PRIVACY POOLS.** There, waiting is unenforced and
-unrewarded. The protocol never asks you to wait, never tells you how long, and pays you nothing for it —
-so the only people who wait are the ones sophisticated enough to have worked out on their own that
-withdrawing straight after depositing makes them identifiable. **Privacy becomes a function of how much
-the user already knows**, which is the opposite of what a privacy system should be.
+Upstream Privacy Pools leaves waiting unenforced and unpaid. The protocol never asks, never says how
+long, and gives nothing for it. Users who wait are the ones who worked out on their own that
+withdrawing straight after depositing can identify them, so privacy ends up tracking what the user
+already knows.
 
-Here the wait is **enforced by the batch** (you settle when the batch fills, not when you individually
-ask), **rewarded by the yield** (the deposit is earning in `SpvTreasuryAdapter` while it waits), and
-**chosen up front** rather than discovered afterwards. The expert and the novice get the same outcome.
+Here the batch enforces the wait, the yield pays for it, and the choice happens at deposit time.
+Register interest when you deposit, or leave it open if you do not know yet, and you join a batch when
+one forms. An immediate single withdrawal stays available to anyone who picks it deliberately.
 
-**The mechanism is the same "register interest" flow**: at deposit time you say whether you intend to
-withdraw, or leave it open if you do not know yet. You are then placed in a batch when one forms. The
-safe behaviour is the default, and the unsafe behaviour requires deliberately choosing an immediate
-single withdrawal.
+What this is worth is unknown. In a busy pool the cohort would form anyway and batching adds little. In
+a quiet one it separates sixteen simultaneous withdrawals from whatever happened to occur. Which regime
+applies is a traffic question nobody here has answered.
 
-**How much this is worth is unknown and should not be asserted.** In a busy pool it may be worth
-close to nothing, because the cohort would have formed by itself. In a quiet one it is the difference
-between a deterministic cohort of sixteen and whatever happened to occur. Which regime applies is an
-empirical question about traffic that nobody here has answered.
-
-⚠️ **What is measured and what is not.** The gas figures are measured (`AggregationProofOnChain.t.sol`,
-`VerificationCostComparison.t.sol`). The yield and timing-privacy arguments are **design rationale, not
-measurements**: whether batching increases the yield base depends on how long users would have held
-anyway, and how much timing decorrelation is worth depends on real withdrawal patterns. Nobody here has
-either dataset. **Do not quote them as established.**
+One line on evidence. The gas figures come from `AggregationProofOnChain.t.sol` and
+`VerificationCostComparison.t.sol` and are measured. The yield and timing arguments are rationale.
+Whether batching lifts the yield base depends on how long users would have held anyway, and how much
+timing decorrelation buys depends on real withdrawal patterns. We have neither dataset. Do not quote
+them as established.
 
 ## Why aggregation was the first big piece
 

@@ -8043,6 +8043,47 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18dx Designing the fold to keep its advantages, not just its gate count (user, 2026-08-04)
+
+Three properties of the folded shape are worth more than the 4.65x, and two of them dissolve problems
+this file has spent a lot of words on. Building to reproduce the current design in a new place would
+throw them away.
+
+**1. The wrapper is constant in N, so N stops being a circuit parameter.** Our
+`aggregate_withdrawals` hardcodes `BATCH_N` at compile time and pays ~798k gates per proof, which is
+why 16 and 256 are different circuits with different verifiers. The folded wrapper verifies ONE
+accumulated proof regardless of how many were folded into it. So:
+- **the depth-2 tree is unnecessary.** 2.18ds treated 256 as a second circuit needing its own verifier
+  and its own deployment. With folding you simply fold more times. Same circuit, same verifier, same
+  deployed address.
+- **raising N later costs nothing on-chain.** No redeploy, no second verifier, no migration.
+
+**2. Variable batch size becomes possible, which is the fill problem's actual cure.** Today
+`BatchVerifierLib.verifyBatch` accepts `signals.length < maxBatch` and no proof can satisfy it, because
+the commitment fold is length-binding and the circuit folds exactly `BATCH_N` (2.18ds). A batcher must
+pad to sixteen with dummy withdrawals they prove and pay for. Folding removes the compile-time N
+entirely: you fold whatever is queued, thread the count through the kernels, and the wrapper exposes
+the commitment over exactly that many. **Partial batches work.** Settle four at 3am and sixteen at
+noon. The elect-to-wait queue (2.18ds) stops needing to reach a threshold before anyone gets paid, and
+the padding waste disappears.
+
+**3. Put the keccak in the KERNELS, not the wrapper.** The batch commitment must stay keccak, because
+the choice was decided by the contract side: a Poseidon fold costs ~287,969 gas per withdrawal to
+recompute on-chain against keccak's ~2k for the whole batch. In-circuit that costs ~511k gates. In the
+recursive design that lands in the one expensive circuit. In the folded design it belongs in the
+kernel, folded once per withdrawal, because **work inside a folded step is cheap (measured: ~10 MB and
+a flat 359 MiB across sixteen accumulations) while work in the wrapper is what the on-chain-bound proof
+pays for.** Same total keccak, moved from the expensive side to the cheap side.
+
+**What this means for the contract.** `BatchCommitmentLib.batchCommitment` already folds however many
+signal sets it is given, so it needs no change for variable N. `verifyBatch`'s `maxBatch` check becomes
+a real bound rather than an unreachable branch, and the `BatchTooLarge` guard keeps meaning something
+while `signals.length < maxBatch` starts being satisfiable.
+
+- [ ] Thread the accumulated COUNT through the kernels so the wrapper can expose it, and check it
+      against `signals.length` on-chain. Without it a batcher could present sixteen signal sets against
+      a proof that folded four.
+
 ### 2.18dw The folding number, measured directly (2026-08-04)
 
 The tooling gap closed cheaply. Our `bb` is 5.1.0, the latest RELEASE, but Aztec's master is

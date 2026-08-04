@@ -8043,6 +8043,65 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18eb OFF-CHAIN ATTESTATION IS NOT NEEDED - a recursion TREE is fully on-chain at 2.1 GB (user, 2026-08-04)
+
+*"why is off chain attestation needed? you cant make it fully onchain"* - **the question was right and
+the option table in 2.18ea was wrong.** It priced "on-chain and heavy" against "cheap and trusted" and
+never priced the thing that is both, so it framed a false choice.
+
+**THE 21.7 GB WAS NEVER THE PRICE OF ON-CHAIN VERIFICATION.** It is the price of verifying sixteen
+proofs in ONE circuit. A recursion TREE - each node verifying exactly two proofs - never builds a big
+circuit, and its root is an ordinary UltraHonk proof the EVM verifies with a generated Solidity
+verifier. No chonk anywhere, so no IPA, so no Grumpkin, so no blocked hop.
+
+**MEASURED, not argued (bb 5.1.0, the pin the aggregator already uses):**
+
+| | flat N=16 (2.18dk) | **recursion tree** | chonk fold (2.18ea) |
+|---|---|---|---|
+| fully on-chain | yes | **yes** | **no - blocked** |
+| peak memory | **~21.7 GB** | **2.11 GB** | 572 MB |
+| gates per step | 12,720,801 | **1,544,632** leaf / **1,487,966** internal | n/a |
+| one node, write_vk + prove | - | **10.9 s + 18.1 s, verified** | - |
+| Solidity verifier | 2,491 lines, deployed | **2,491 lines, GENERATED, proof verifies** | impossible |
+| batch size | compile-time | tree depth; one more level DOUBLES capacity | any N |
+| partial batches | impossible | a padded subtree | free |
+
+**THE INTERNAL NODE IS THE ONE THAT COULD HAVE BROKEN IT, and it does not.** A level-2 node verifies
+aggregation proofs rather than withdrawal proofs, so the worry was that it costs more. It costs
+**less** - 1,487,966 against 1,544,632 - because a recursive UltraHonk proof is **458 fields whatever
+circuit produced it** (proof length is fixed by flavour, not by circuit size), and the internal node
+folds one public input per child instead of seven.
+
+**N=16 ARITHMETIC:** 8 + 4 + 2 + 1 = **15 nodes**, each ~1.5M gates / ~18 s / ~2.1 GB. Sequential that
+is ~270 s against the flat circuit's 280,492 ms **for the proving key alone**; the levels are
+independent, so the critical path is 4 x 18 s if they run in parallel. **Same or better wall-clock,
+one tenth the memory, and it stays trustless.**
+
+**WHAT IS NOT YET DONE, so the green is not over-read:**
+- ONE leaf and ONE internal node were proven, not a full 15-node tree.
+- The internal node was fed the SAME child proof twice. That is a valid COST measurement and NOT a
+  correctness test - it is the identical-members trap 2.18ea called out in the old N=16 fixture, and
+  it must not be repeated when the tree is built for real.
+- The 16 inner proofs in `aggregate_withdrawals/Prover.toml` are still sixteen IDENTICAL copies.
+  `tools/build-fold-witnesses.js` now produces 16 DISTINCT withdrawals against one state tree, and
+  `withdraw_identity` takes the same twenty inputs as `withdraw_ivc_app` - so the flat fixture can be
+  upgraded from copies to real members with no new machinery.
+- Under bb 6.0 those existing inner proofs FAIL to verify in-circuit (`UltraVerifier: verification
+  failed at reduction step`). The UltraHonk recursion format moved between 5.1.0 and 6.0. The tree is
+  a 5.1.0 artifact today; folding is a 6.0 one. **Two toolchains in one tree is a standing hazard.**
+
+- [ ] **Build the tree for real.** Four circuits (or one merge circuit with the child VK pinned by
+      hash), 16 distinct withdrawals from the fold generator, full 15-node run, and the root's
+      verifier deployed. Predict first: the root proof should be 440 fields with 1 public input and
+      the tree hash should match what the contract recomputes.
+- [ ] `BatchCommitmentLib` moves from a flat keccak over all members to the TREE hash, and the
+      contract recomputes the tree rather than the flat fold. This is the money-path change; one per
+      run, with the prediction stated first.
+- [ ] Decide what the chonk fold is FOR now that it is not the settlement path. It still holds the
+      memory record (572 MB) and is the only design with free partial batches, so it is not dead -
+      but it needs a stated job or it is 5 circuits nobody runs.
+- [ ] Pin ONE toolchain per path and write down which. bb 5.1.0 inner proofs do not verify under 6.0.
+
 ### 2.18ea THE FOLD RUNS: 16 REAL WITHDRAWALS, ONE PROOF, AND EXACTLY ONE HOP LEFT (2026-08-04)
 
 **The prediction in 2.18dk is settled, and folding won.** That section said the number to read off is
@@ -8136,9 +8195,10 @@ failure 2.18dp already identified. C is not a plan, it is a hope with no date. T
 that the fold is **built, measured and correct, and cannot yet carry a withdrawal to L1** - so it
 does not replace the flat aggregator, it sits beside it until the hop exists.
 
-- [ ] **Decide the EVM hop - this is a call for the repo owner, not a task to work around.** The
-      pricing above is complete on every axis that can be measured today. What cannot be measured is
-      how much the trust change in B costs the product, and that is the whole decision.
+- [x] **Decide the EVM hop.** ~~A call for the repo owner.~~ **SUPERSEDED by 2.18eb: the question
+      "why is off chain attestation needed" dissolved the choice.** A recursion tree is fully
+      on-chain AND fits in 2.11 GB, so neither the 21.7 GB nor the trust change is necessary. The
+      table above priced a false alternative and should not be used.
 - [ ] If A is kept, the fold still earns its place for anything that does NOT need on-chain
       verification, and that list should be written down rather than assumed empty.
 - [ ] Re-test the hop on each bb bump. It is four commands (`write_vk -t evm` on the wrapper, on a

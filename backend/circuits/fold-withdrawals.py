@@ -42,6 +42,28 @@ K_INIT = "withdraw_ivc_kernel_init"
 K_INNER = "withdraw_ivc_kernel_inner"
 HIDING = "withdraw_ivc_hiding"
 
+# `CircuitKind`, a C++ enum msgpacked as a uint32 (bb.js src/cbind/circuit_kind.ts).
+#
+# THIS IS NOT THE SAME AXIS AS `--circuit_kind app|kernel|hiding` on write_vk, even though the words
+# coincide - that one selects the FLAVOUR the key is derived under, this one tells the prover where
+# each circuit sits in the stack. They agree here because a circuit's flavour and its position are
+# the same fact, but a value copied from one to the other will be wrong the moment they are not.
+#
+# bb rejects a stack whose LAST entry is not the hiding kernel, and the only diagnostic for a missing
+# entry is `Missing field kind` with no index - so the table is keyed by circuit name, which makes an
+# unmapped circuit a KeyError here rather than a parse failure inside bb.
+# Must equal vk_hash's MAX_VK_FIELDS, which is MEGA_VK_LENGTH_IN_FIELDS. Shorter keys are padded to
+# it and pass their real length; the padding is never absorbed.
+MAX_VK_FIELDS = 151
+
+KIND_APP, KIND_KERNEL, KIND_HIDING = 0, 1, 2
+CIRCUIT_KIND = {
+    APP: KIND_APP,
+    K_INIT: KIND_KERNEL,
+    K_INNER: KIND_KERNEL,
+    HIDING: KIND_HIDING,
+}
+
 # ── msgpack, written out rather than pulled in ────────────────────────────────────────────────
 # The only shapes needed are str, bin and map/array, so a dependency would cost more than it saves.
 
@@ -57,6 +79,14 @@ def _mbin(b: bytes) -> bytes:
     if len(b) < 65536:
         return b"\xc5" + struct.pack(">H", len(b)) + b
     return b"\xc6" + struct.pack(">I", len(b)) + b
+
+
+def _muint(n: int) -> bytes:
+    if n < 128:
+        return bytes([n])
+    if n < 256:
+        return b"\xcc" + bytes([n])
+    return b"\xce" + struct.pack(">I", n)
 
 
 def _mmap(pairs) -> bytes:
@@ -78,25 +108,34 @@ def artifact(name: str) -> pathlib.Path:
     return HERE / name / "target" / f"{name}.json"
 
 
+_VK_CACHE: dict[str, tuple[list[str], str]] = {}
+
+
 def vk_fields(name: str) -> tuple[list[str], str]:
-    """The chonk VK as the 151 field elements a circuit's `VkData` wants, plus its hash.
+    """Circuit `name`'s chonk VK as field elements, plus the `key_hash` a kernel must be given.
 
-    THE HASH COMES FROM THE JSON FORM, because the binary form has none: `bb write_vk -s chonk`
-    writes a `vk` file and no `vk_hash`, unlike the UltraHonk path.
+    THE FIELDS COME FROM THE JSON FORM because the binary form is bytes, and the HASH is computed
+    here because bb does not supply one: `bb write_vk -s chonk` writes no `vk_hash` file at all, and
+    `--output_format json` writes `"hash": ""`.
 
-    AND IT IS EMPTY EVEN THERE, which is a statement about the scheme rather than a defect to work
-    around. Under chonk the verification key a recursion constraint is checked against does not come
-    from the witness at all - it comes from the `vk` entry of the msgpack stack, which bb reads and
-    enforces itself. `key_hash` is inert for this proof type, so bb has nothing to put there and
-    leaves it blank. Zero is what an inert field carries.
+    Empty is not zero. The recursive verifier checks this value, and passing zero produces
+    `Recursive Ultra Verifier: VK Hash Mismatch` and a fold that fails - so it is computed with
+    Poseidon2 by the `vk_hash` circuit, which compiles against the same poseidon pin the kernels do.
+    See vk_hash/src/main.nr for why it is a circuit and why the kernels must not compute it
+    themselves."""
+    if name in _VK_CACHE:
+        return _VK_CACHE[name]
 
-    This is NOT the UltraHonk situation, where `key_hash` binds the inner key and a zero would let a
-    prover swap in another circuit's key. If a future bb starts populating this, the value below
-    changes with it rather than staying pinned at zero - which is why it is read rather than
-    hardcoded."""
     d = json.loads((SCRATCH / f"vk_{name}" / "vk.json").read_text())
     fields = [hex(int(x, 16) if isinstance(x, str) else int(x)) for x in d["vk"]]
-    return fields, d["hash"] or "0"
+
+    padded = fields + ["0"] * (MAX_VK_FIELDS - len(fields))
+    (HERE / "vk_hash" / "Prover.toml").write_text(
+        f"key = {json.dumps(padded)}\nlen = \"{len(fields)}\"\n"
+    )
+    out = run(["nargo", "execute", f"h_{name}"], HERE / "vk_hash")
+    _VK_CACHE[name] = (fields, circuit_output(out))
+    return _VK_CACHE[name]
 
 
 def run(cmd: list[str], cwd: pathlib.Path) -> str:
@@ -136,7 +175,17 @@ def main() -> int:
 
     SCRATCH.mkdir(parents=True, exist_ok=True)
     app_vk, app_vk_hash = vk_fields(APP)
-    kernel_vk, kernel_vk_hash = vk_fields(K_INNER)
+
+    def vk_toml(section: str, name: str) -> list[str]:
+        """The `VkData` block naming circuit `name`'s key.
+
+        WHICH KEY A KERNEL IS HANDED IS NOT A CONSTANT, and getting it wrong is quiet. The first
+        inner kernel's predecessor is the INIT kernel; every later one's is another inner kernel.
+        Handing the inner key to the first inner kernel produced `HypernovaFoldingVerifier:
+        instance-to-accumulator sumcheck failed` and, because IVC is a chain, that failure repeated
+        at every later step - so the log named four broken folds and not the one that was wrong."""
+        key, key_hash = vk_fields(name)
+        return ["", f"[{section}]", f"key = {json.dumps(key)}", f'hash = "{key_hash}"']
 
     entries = []
 
@@ -149,6 +198,7 @@ def main() -> int:
                     ("witness", _mbin((HERE / name / "target" / witness).read_bytes())),
                     ("vk", _mbin(vk)),
                     ("functionName", _mstr(name)),
+                    ("kind", _muint(CIRCUIT_KIND[name])),
                 ]
             )
         )
@@ -189,24 +239,26 @@ def main() -> int:
         #    kernel before it, which is what stops a batcher re-rooting the accumulator mid-batch.
         if i == 0:
             toml = ["[app_signals]"] + [f'{k} = "{v}"' for k, v in signals.items()]
-            toml += ["", "[app_vk]", f"key = {json.dumps(app_vk)}", f'hash = "{app_vk_hash}"']
+            toml += vk_toml("app_vk", APP)
             (HERE / K_INIT / "Prover.toml").write_text("\n".join(toml) + "\n")
             out = run(["nargo", "execute", f"k{i}"], HERE / K_INIT)
             add(K_INIT, f"k{i}.gz")
         else:
             toml = ["[prev]"] + [f'{k} = "{v}"' for k, v in acc.items()]
-            toml += ["", "[prev_kernel_vk]", f"key = {json.dumps(kernel_vk)}", f'hash = "{kernel_vk_hash}"']
+            toml += vk_toml("prev_kernel_vk", prev_kernel)
             toml += ["", "[app_signals]"] + [f'{k} = "{v}"' for k, v in signals.items()]
-            toml += ["", "[app_vk]", f"key = {json.dumps(app_vk)}", f'hash = "{app_vk_hash}"']
+            toml += vk_toml("app_vk", APP)
             (HERE / K_INNER / "Prover.toml").write_text("\n".join(toml) + "\n")
             out = run(["nargo", "execute", f"k{i}"], HERE / K_INNER)
             add(K_INNER, f"k{i}.gz")
+        prev_kernel = K_INIT if i == 0 else K_INNER
         acc = parse_struct(circuit_output(out))
         print(f"  {i + 1:>3}/{n}  count={int(acc['count'], 16)}  commitment={acc['commitment'][:18]}...")
 
-    # 3. the hiding kernel closes the stack and must be last
+    # 3. the hiding kernel closes the stack and must be last. Its predecessor is whatever ran last,
+    #    which is the init kernel only in the degenerate single-withdrawal case bb rejects anyway.
     toml = ["[prev]"] + [f'{k} = "{v}"' for k, v in acc.items()]
-    toml += ["", "[prev_kernel_vk]", f"key = {json.dumps(kernel_vk)}", f'hash = "{kernel_vk_hash}"']
+    toml += vk_toml("prev_kernel_vk", prev_kernel)
     (HERE / HIDING / "Prover.toml").write_text("\n".join(toml) + "\n")
     run(["nargo", "execute", "hiding"], HERE / HIDING)
     add(HIDING, "hiding.gz")

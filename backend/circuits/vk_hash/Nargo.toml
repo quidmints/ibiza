@@ -1,0 +1,14 @@
+[package]
+name = "vk_hash"
+type = "bin"
+authors = [""]
+
+# Never proven, only executed - `fold-withdrawals.py` runs `nargo execute` and reads the printed
+# output. It is a circuit purely so the hash comes from the same Poseidon2 the kernels compile
+# against; see src/main.nr.
+#
+# The poseidon pin MUST match pp/Nargo.toml. Two pins would mean the value computed here and the
+# value checked in-circuit could come from different implementations of the same hash, which is the
+# one thing this file exists to prevent.
+[dependencies]
+poseidon = { tag = "v0.3.0", git = "https://github.com/noir-lang/poseidon" }

@@ -8043,6 +8043,48 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18dn COSTING GROTH16 FOR WITHDRAWALS - and it would make the aggregator redundant (user, 2026-08-04)
+
+*"what would be the cost of bringing back groth for withdrawals?"* Costed against the actual code, and
+the striking part is not the cost - it is what it DELETES.
+
+**CONTRACT SIDE: ONE ADAPTER, AND NOTHING ELSE CHANGES.** The withdrawal verifier is a
+constructor-injected address behind `INoirVerifier.verify(bytes proof, bytes32[] publicInputs)`
+(`PrivacyPool` ctor -> `State`). `ProofLib.WithdrawProof` already carries the proof as **`bytes`**, not
+as Groth16's `(a, b, c)` tuple - so a small adapter that decodes those bytes and calls a snarkjs/gnark
+verifier satisfies the interface. **`PrivacyPool`, `State`, `ProofLib` and every guard stay untouched.**
+
+**WHAT ACTUALLY COSTS SOMETHING:**
+| piece | cost | risk |
+|---|---|---|
+| Groth16-provable `withdraw_identity` | ACIR -> gnark (`noir-gnark`) keeps ONE Noir source; a Circom rewrite does not | **the real risk** - backend is young/unverified |
+| trusted setup | reuse a public Powers of Tau + phase 2 for ONE circuit (44,176 gates), snarkjs-tooled | low - secure if ANY participant is honest, and **we** run it |
+| verifier contract | generated, ~1,736 bytes | none |
+| adapter | small | none |
+| wallet prover | add rapidsnark/gnark beside barretenberg | moderate - app size, second toolchain |
+
+**"HOW COULD WE TRUST THEIR CEREMONIES" - WE WOULD NOT.** The objection to Groth16 was never that
+ceremonies are untrustworthy; it is that **79 passport profiles means 79 ceremonies**, which we cannot
+run, so we would inherit rarimo's. **One circuit is one ceremony, run publicly by us.** That is the
+whole asymmetry, and it is why the hybrid is coherent where a full port was not.
+
+**AND HERE IS THE PART THAT MATTERS MOST: IT MAKES THE AGGREGATOR REDUNDANT.**
+Groth16 single = **~213,882**. A PERFECTLY FILLED Honk batch of 16 = **186,255**. The aggregator's
+entire apparatus buys **13%** over simply not needing it. So adopting Groth16 for withdrawals would let
+us delete:
+- `aggregate_withdrawals` + `AggregationHonkVerifier` (2^24 circuit, 12.7M gates)
+- `BatchVerifierLib`, `BatchCommitmentLib`, `withdrawBatch` and its guards
+- **the batcher role entirely** - no ~21.7 GB machine, no relay-fee economics, no liveness dependency
+- the fill/latency problem, the "register interest in a batch" UX, and the depth-2 tree question
+
+**That is the largest reduction in moving parts available anywhere in this repo**, and it costs 13%
+against a batch that must be FULL to achieve its number - while a Groth16 single needs no fill at all.
+
+- [ ] Prototype `noir-gnark` on `withdraw_identity` FIRST. Everything else is routine; this is the
+      only step that can fail. If ACIR does not translate, the hybrid dies and the aggregator stays.
+- [ ] Do NOT build the depth-2 tree until this is decided - it is 256-slot fill for a saving the
+      hybrid gets without any fill.
+
 ### 2.18dm AGGREGATION IS A THROUGHPUT WIN, NOT A PER-WITHDRAWAL ONE - and Groth16 wins the thin case (user, 2026-08-04)
 
 *"it's only if there 16 at a time that the cost per one is reduced... we shouldnt have removed groth?"*

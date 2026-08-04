@@ -212,6 +212,38 @@ the DELEGATECALL, which is worth **4,186 gas per hash — 12%, not the ~91% an o
 (`test/libraries/PoseidonInlineGas.t.sol` pins both numbers). Whether 12% is worth ~3 KB per call site
 has not been measured against EIP-170, and nothing has been split. See `TODO.md`.
 
+## Batching, dwell time, and why yield is plugged into the pool
+
+These three are usually discussed separately. They are one decision.
+
+**Yield in this system comes from ETH that SITS.** `SpvTreasuryAdapter` routes *"PP's otherwise-idle
+ETH"* into SPV's Vogue LP, and its sweeps are deliberately **timing-decoupled** from user activity —
+because moving funds in lockstep with individual deposits and withdrawals would turn Vogue's public
+event stream into a side-channel reconstructing the very deposit↔withdrawal link the ZK design hides.
+So the yield base is not throughput; it is **balance × time**.
+
+**Which means fast round trips earn nothing.** If a user deposits and withdraws inside the same cycle,
+there is no idle ETH to lend, the sweep has nothing to sweep, and the yield integration is decoration.
+For a pool whose users mostly round-trip quickly, plugging in yield was never going to pay.
+
+**Batching supplies exactly what yield needs: a floor under dwell time.** A batched withdrawal waits
+for the batch to fill, and that wait is not dead latency — it is the interval during which the
+deposit is still in the pool, still idle, still earning. The gas saving and the yield are the *same
+mechanism* seen from two sides.
+
+**And that reframes the cost comparison.** Batching's latency is normally counted as a pure cost
+against cheaper per-withdrawal gas (~186k batched at N=16 versus 2,528,007 for a Honk single). But if
+the wait accrues yield, the user is compensated for it, and the comparison is no longer gas-versus-
+patience. Conversely, **making withdrawals instant and cheap — the Groth16 hybrid discussed in
+`TODO.md` — removes the dwell floor and shrinks the yield base.** That is a real cost of the hybrid
+which the gas table does not show.
+
+⚠️ **What is measured and what is not.** The gas figures are measured (`AggregationProofOnChain.t.sol`,
+`VerificationCostComparison.t.sol`). The claim that batching materially increases the yield base is
+**not** — it depends on how long users would have left funds in the pool anyway, which nobody here has
+data on. If typical dwell already exceeds batch latency, batching adds no yield at all and only the
+gas argument stands. **Do not quote the yield-from-batching link as established.**
+
 ## Why aggregation was the first big piece
 
 Gas: **a single withdrawal costs roughly 3.1M gas**, dominated by the in-circuit Honk verification.

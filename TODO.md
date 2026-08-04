@@ -8043,6 +8043,42 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18dt Decided: no ceremony, batch stays at 16 (user, 2026-08-04)
+
+Two decisions from the repo owner that reverse what 2.18do and 2.18ds recorded earlier the same day.
+Both rest on measurements from this session rather than preference.
+
+**No Groth16 ceremony, so no second prover.** A ceremony's security comes from contributors who are
+identifiable and reputationally exposed, because nothing in the transcript proves contributors are
+distinct people. One actor with a script produces five hundred pseudonymous contributions that verify
+identically. Bulk therefore hides the problem instead of solving it, and the earlier claim in this file
+that a thousand contributors makes anonymity acceptable was backwards. Aztec's ignition is credible
+because named parties took part, which is not something a young protocol can assemble on demand.
+
+Consequences, stated so nobody re-derives them:
+- withdrawals stay at **2,528,007** immediate and **186,255** batched at N=16;
+- the ~213,882 Groth16 figure and the 11.8x are off the table, along with the second prover, the zkey
+  on the phone, the three integration seams and the frozen-circuit constraint;
+- `noir-gnark` is no longer on the critical path. It stays interesting only if the ceremony question
+  reopens.
+
+**Batch stays at N=16.** The depth-2 tree reaches ~15k per withdrawal and needs 256 in the queue. Fill
+dominates the arithmetic: a queue that takes weeks is a lockup rather than a wait, and the tree's
+advantage only arrives once demand fills it faster than users will tolerate. Sixteen fills sooner and
+saves 13.6x against a single, which is most of the available win.
+
+The depth-2 work is shelved, not deleted. If volume ever makes 256 fill in hours, deploying the root
+verifier alongside the existing one is safe, because both are Honk against the same SRS.
+
+**What this leaves open, and it is the uncomfortable part.** The immediate path is now 2,528,007, which
+is the price someone pays when they cannot wait, or when every batcher refuses them. That is the
+censorship escape hatch, and it is expensive. Groth16 would have made it cheap. Nothing else on the
+table does.
+
+And the batcher still needs ~21.7 GB, so it stays a server and a standing target. Folding was the
+in-stack answer to that and it is blocked on Aztec's hiding kernel (2.18dr). So batcher concentration
+is unresolved, with no route currently open.
+
 ### 2.18dr Folding: accumulation is ~57x cheaper, and the decider needs a circuit we do not have (2026-08-04)
 
 Pushed the chonk prototype to the decider. It gets there, and then names its blocker precisely.

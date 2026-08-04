@@ -2511,7 +2511,7 @@ abstract contract BaseZKHonkVerifier is IVerifier {
     function loadVerificationKey() internal pure virtual returns (Honk.VerificationKey memory);
 }
 
-contract TreeRootHonkVerifier is BaseZKHonkVerifier(N, LOG_N, VK_HASH, NUMBER_OF_PUBLIC_INPUTS) {
+contract TreeRoot16HonkVerifier is BaseZKHonkVerifier(N, LOG_N, VK_HASH, NUMBER_OF_PUBLIC_INPUTS) {
      function loadVerificationKey() internal pure override returns (Honk.VerificationKey memory) {
        return HonkVerificationKey.loadVerificationKey();
     }

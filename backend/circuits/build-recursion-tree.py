@@ -58,9 +58,24 @@ WITNESS_SOURCE = "withdraw_ivc_app"  # where build-fold-witnesses.js writes Prov
 
 # The only two things this writes OUTSIDE its work directory. Everything else is derived and
 # disposable; these two are what the contracts compile and test against.
-VERIFIER_NAME = "TreeRootHonkVerifier"
-VERIFIER_OUT = HERE / ".." / "contracts" / "contracts" / "pool" / "verifiers" / f"{VERIFIER_NAME}.sol"
 CONTRACTS = HERE / ".." / "contracts"
+
+
+def verifier_name(n: int) -> str:
+    """One deployed verifier PER DEPTH, named for the batch size it accepts.
+
+    Not cosmetic. A depth-5 root proof is rejected by a depth-4 verifier with `SumcheckFailed()` -
+    measured, after a tree-of-32 run silently overwrote the tree-of-16 verifier and broke its test.
+    The fixture name already carried N; the verifier did not, so the two could disagree.
+
+    It is also the shape the design wants: batch size is a DEPLOYMENT decision, so deploying 16, 32
+    and 64 together lets a batch settle at the smallest tree that fits rather than waiting to fill a
+    fixed one."""
+    return f"TreeRoot{n}HonkVerifier"
+
+
+def verifier_out(n: int) -> pathlib.Path:
+    return CONTRACTS / "contracts" / "pool" / "verifiers" / f"{verifier_name(n)}.sol"
 
 
 def fixture_out(n: int) -> pathlib.Path:
@@ -342,17 +357,19 @@ def main() -> int:
     # artifact and emits `abstract contract BaseZKHonkVerifier` FIRST, so a regex for `\\w*HonkVerifier`
     # matches the BASE and renames the wrong one, leaving the child inheriting a name that no longer
     # exists. Target the concrete declaration, and refuse to write if it is not there exactly once.
-    sol = WORK / f"{VERIFIER_NAME}.sol"
+    name = verifier_name(n)
+    sol = WORK / f"{name}.sol"
     run([BB, "write_solidity_verifier", "-k", str(child_vk_path), "-o", str(sol)])
     text = sol.read_text()
     marker = "contract HonkVerifier is"
     if text.count(marker) != 1:
         sys.exit(f"expected exactly one '{marker}' in {sol}, found {text.count(marker)}")
-    text = text.replace(marker, f"contract {VERIFIER_NAME} is", 1)
+    text = text.replace(marker, f"contract {name} is", 1)
     if "abstract contract BaseZKHonkVerifier is" not in text:
         sys.exit(f"{sol}: the base contract lost its name - refusing to write")
-    VERIFIER_OUT.parent.mkdir(parents=True, exist_ok=True)
-    VERIFIER_OUT.write_text(text)
+    out = verifier_out(n)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text)
 
     # The fixture, in the shape the Forge test parses. The proof is the raw field bytes; the public
     # input is the tree ROOT, which is the only thing the chain sees of the whole batch.
@@ -367,7 +384,7 @@ def main() -> int:
 
     print(f"\nroot commitment 0x{root['commitment']:064x}")
     print(f"root proof      {len(root['proof'])} fields, 1 public input")
-    print(f"verifier        {VERIFIER_OUT} ({VERIFIER_OUT.stat().st_size:,} bytes)")
+    print(f"verifier        {out} ({out.stat().st_size:,} bytes)")
     print(f"fixture         {fixture}")
     print(f"nodes           {n - 1} ({n // 2} leaves + {n // 2 - 1} internal), depth {depth}")
     print(f"elapsed         {time.time() - started:.0f}s")

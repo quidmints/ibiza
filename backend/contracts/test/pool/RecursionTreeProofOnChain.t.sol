@@ -2,7 +2,9 @@
 pragma solidity 0.8.28;
 
 import {Test, console} from 'forge-std/Test.sol';
-import {TreeRootHonkVerifier} from '../../contracts/pool/verifiers/TreeRootHonkVerifier.sol';
+import {TreeRoot16HonkVerifier} from '../../contracts/pool/verifiers/TreeRoot16HonkVerifier.sol';
+import {TreeRoot32HonkVerifier} from '../../contracts/pool/verifiers/TreeRoot32HonkVerifier.sol';
+import {INoirVerifier} from '../../contracts/interfaces/verifiers/INoirVerifier.sol';
 
 /*
  * A SIXTEEN-WITHDRAWAL BATCH SETTLED FROM A RECURSION TREE, VERIFIED ON-CHAIN (2026-08-04).
@@ -18,14 +20,19 @@ import {TreeRootHonkVerifier} from '../../contracts/pool/verifiers/TreeRootHonkV
  * differ only in what the batcher needs to own.
  *
  * WHAT THE FIXTURE IS. Sixteen GENUINELY DIFFERENT withdrawals - distinct notes, values, leaf
- * indices, change notes and contexts, cycling the three registered identities - all against ONE state
- * root and ONE identity root, from `tools/build-fold-witnesses.js`. This matters more than it sounds:
+ * indices, change notes and contexts, one per GENUINE registered identity (sixteen of them, each a
+ * real `register` with its own escrow proof) - all against ONE state root and ONE identity root,
+ * from `tools/build-fold-witnesses.js`. This matters more than it sounds:
  * the older N=16 aggregation fixture was sixteen IDENTICAL copies of one withdrawal, and a fold over
  * sixteen copies of X cannot be told apart from one that keeps only the last X. Regenerate with:
  *
  *   cd frontend/identity-wallet && npm run build:pp
  *   node tools/build-fold-witnesses.js --build frontend/identity-wallet/build --count 16
  *   cd backend/circuits && python3 build-recursion-tree.py 16
+ *
+ * TWO DEPTHS ARE DEPLOYED, 16 and 32, because verification gas depends on which TREE settled a batch
+ * and not on how full it was. A batch settles at the smallest tree that fits it, so a quiet period
+ * costs a depth-4 verification instead of waiting to fill a depth-5.
  *
  * THE ROOT COMMITMENT IS A TREE HASH, not the flat keccak `BatchCommitmentLib` currently computes.
  * Each leaf commits to its two withdrawals' fourteen signals; each internal node commits to
@@ -34,12 +41,56 @@ import {TreeRootHonkVerifier} from '../../contracts/pool/verifiers/TreeRootHonkV
  * its own run.
  */
 contract RecursionTreeProofOnChainTest is Test {
-  TreeRootHonkVerifier internal verifier;
+  INoirVerifier internal verifier;
+  INoirVerifier internal verifier32;
   string internal fixture;
+  string internal fixture32;
 
   function setUp() public {
     fixture = vm.readFile('test/fixtures/recursion_tree_n16.json');
-    verifier = new TreeRootHonkVerifier();
+    verifier = INoirVerifier(address(new TreeRoot16HonkVerifier()));
+    fixture32 = vm.readFile('test/fixtures/recursion_tree_n32.json');
+    verifier32 = INoirVerifier(address(new TreeRoot32HonkVerifier()));
+  }
+
+  /*
+   * ONE VERIFIER PER DEPTH, AND THEY ARE NOT INTERCHANGEABLE. A depth-5 root proof is refused by the
+   * depth-4 verifier with `SumcheckFailed()` - measured, after a tree-of-32 run overwrote the
+   * tree-of-16 verifier and broke this file. That is why the contract name carries N.
+   *
+   * It is also the shape the design wants. Verification gas does not depend on how FULL a batch is,
+   * only on which tree settled it, so deploying several depths lets a batch settle at the smallest
+   * tree that fits rather than waiting to fill a fixed one.
+   */
+  function test_aDepth5TreeSettlesThirtyTwo() public view {
+    assertTrue(
+      verifier32.verify(
+        vm.parseJsonBytes(fixture32, '.proof'),
+        vm.parseJsonBytes32Array(fixture32, '.publicInputs')
+      ),
+      'the tree-of-32 root proof was rejected by its own verifier'
+    );
+  }
+
+  /// The root proof is the SAME SHAPE at every depth - 334 fields, one public input - which is why
+  /// per-withdrawal gas halves each time the batch doubles at no extra verification cost.
+  function test_theRootShapeDoesNotGrowWithDepth() public view {
+    assertEq(
+      vm.parseJsonBytes(fixture32, '.proof').length,
+      vm.parseJsonBytes(fixture, '.proof').length,
+      'a deeper tree produced a different-sized root proof'
+    );
+    assertEq(vm.parseJsonBytes32Array(fixture32, '.publicInputs').length, 1);
+  }
+
+  /// And a depth-5 proof must NOT verify against the depth-4 verifier. Without this the two could be
+  /// swapped in deployment and the mistake would only surface as a rejected settlement.
+  function test_aDepth5ProofIsRefusedByTheDepth4Verifier() public {
+    vm.expectRevert();
+    verifier.verify(
+      vm.parseJsonBytes(fixture32, '.proof'),
+      vm.parseJsonBytes32Array(fixture32, '.publicInputs')
+    );
   }
 
   function _proof() internal view returns (bytes memory) {

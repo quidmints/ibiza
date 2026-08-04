@@ -8043,6 +8043,51 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18du Folding researched properly: Aztec's is coupled, the general one is unfinished, and its decider needs a ceremony (2026-08-04)
+
+Chased "has anyone done this successfully outside Aztec". Two implementations exist and neither is
+available to us.
+
+**Aztec's chonk is production, and coupled to their transaction shape.** `chonk_tail_circuits.json` is
+literally `["hiding"]`, and `mock-hiding/src/main.nr` verifies the PREVIOUS KERNEL's proof through
+`call_data(0)` with `PROOF_TYPE_HN_FINAL`. So the stack is application, kernel, application, kernel,
+closing with the hiding kernel. Their mock crates spell out the whole architecture: `app-creator`,
+`app-reader`, `mock-private-kernel-init`, `-inner`, `-reset`, `-tail`, `mock-hiding`. Using chonk means
+writing kernel circuits that consume `withdraw_identity`'s outputs in their shape. That is adopting an
+architecture, not swapping an aggregation strategy.
+
+**And do not measure it on their mocks.** `barretenberg/cpp/CLAUDE.md` says so directly: never
+benchmark against test binaries, because test circuits are small mocks whose cost profile does not
+resemble real proving workloads. Their pinned flows are real but they are AZTEC's transactions, and the
+decider is sized by the circuits in the stack, so a number from their flow does not transfer to sixteen
+`withdraw_identity` instances.
+
+**The general-purpose library is `privacy-ethereum/sonobe`, and its support matrix is the answer:**
+
+| | status |
+|---|---|
+| Nova | stable |
+| ProtoGalaxy | to be merged (PR 247) |
+| HyperNova, Ova, Mova | to be merged |
+| **Decider (LegoGroth16)** | **to be merged (PR 259)** |
+| Noir frontend | **WIP, on a branch** |
+
+Only Nova is stable, the Noir frontend is unmerged work, and there is **no merged decider at all**. So
+today sonobe folds without being able to compress the accumulator into something a chain verifies.
+
+**The part that matters more than maturity: the decider is a Groth16-family SNARK.** LegoGroth16 needs a
+trusted setup. So general folding does not avoid the ceremony question, it moves it from the withdrawal
+circuit to the decider circuit. Having just declined a ceremony (2.18dt), we would be walking back into
+one by a longer road, and this time for a circuit that is harder to explain to contributors.
+
+**Where this leaves the batcher.** Folding's accumulation genuinely is ~57x cheaper (2.18dr, measured).
+Both routes to a usable decider are closed for us: Aztec's needs their kernels, sonobe's needs a
+ceremony and is not finished. So the batcher stays at ~21.7 GB and remains a standing target, and
+2.18dp's concentration problem has no open route rather than an unexplored one.
+
+- [ ] Recheck sonobe when ProtoGalaxy (PR 247), the decider (PR 259) and the Noir frontend land. If the
+      decider ever ships without a per-circuit setup, this reopens immediately.
+
 ### 2.18dt Decided: no ceremony, batch stays at 16 (user, 2026-08-04)
 
 Two decisions from the repo owner that reverse what 2.18do and 2.18ds recorded earlier the same day.

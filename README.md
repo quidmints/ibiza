@@ -240,16 +240,25 @@ which the gas table does not show.
 
 ### The third reason, and it is about defaults rather than money
 
-**A user who deposits and withdraws minutes apart has almost no privacy, and will not know it.** The ZK
-proof hides WHICH note is being spent; it cannot hide WHEN. If one deposit is followed shortly by one
-withdrawal and little else happens in between, the two are linkable by timing alone — the cryptography
-is intact and the anonymity is gone. Nothing in the contracts warns anyone, and there is no correct
-waiting period a user could look up, because the right answer depends on what everyone else is doing.
+**The ZK proof hides WHICH note is spent; it cannot hide WHEN.** How much that matters depends
+entirely on how busy the pool is, and it is easy to overstate — an earlier draft of this section
+claimed a quick round trip leaves "almost no privacy", which is **not true and not supported by
+anything measured here**. If other people are depositing and withdrawing around the same time, a
+withdrawal shortly after a deposit implies little: someone else could equally have made it, and an
+observer cannot tell.
 
-**Batching removes that decision from the user.** A batched withdrawal settles alongside fifteen others
-in a single transaction, so every withdrawal in the batch shares one timestamp and one submitter. That
-does not enlarge the anonymity set — that is the deposit tree — but it does destroy the **one-to-one
-timing correlation**, which is the leak an ordinary user is most likely to walk into.
+**The honest statement is conditional.** Timing correlation is a real deanonymisation vector in
+mixers, and its strength scales inversely with concurrent activity: negligible when the pool is busy,
+sharp when a deposit and a withdrawal are the only two events in a quiet window. **We have no data on
+this pool's activity**, so we cannot say which regime it will be in — and a user certainly cannot,
+because the right waiting period depends on what everyone else happens to be doing at that moment.
+
+**What batching changes is that the cohort becomes GUARANTEED rather than hoped for.** A batched
+withdrawal settles alongside fifteen others in one transaction, sharing a timestamp and a submitter.
+In a busy pool you might have got that anyway, by luck; in a quiet one you would not. Batching makes
+it independent of ambient traffic. It does not enlarge the anonymity set — that is the deposit tree —
+and it is not a fix for a leak that may not be present; it is a floor that does not depend on other
+people happening to act at a convenient moment.
 
 **AND THIS IS THE CONCRETE DIFFERENCE FROM UPSTREAM PRIVACY POOLS.** There, waiting is unenforced and
 unrewarded. The protocol never asks you to wait, never tells you how long, and pays you nothing for it —
@@ -266,10 +275,10 @@ withdraw, or leave it open if you do not know yet. You are then placed in a batc
 safe behaviour is the default, and the unsafe behaviour requires deliberately choosing an immediate
 single withdrawal.
 
-**This is the argument that survives even if the other two do not.** If typical dwell already exceeds
-batch latency, batching adds no yield; if gas falls (see the Groth16 hybrid in `TODO.md`), it saves
-little. It still prevents the mistake — and a privacy system whose guarantees depend on users knowing
-to wait is one that will fail quietly for most of them.
+**How much this is worth is unknown and should not be asserted.** In a busy pool it may be worth
+close to nothing, because the cohort would have formed by itself. In a quiet one it is the difference
+between a deterministic cohort of sixteen and whatever happened to occur. Which regime applies is an
+empirical question about traffic that nobody here has answered.
 
 ⚠️ **What is measured and what is not.** The gas figures are measured (`AggregationProofOnChain.t.sol`,
 `VerificationCostComparison.t.sol`). The yield and timing-privacy arguments are **design rationale, not

@@ -1,0 +1,11 @@
+[package]
+name = "withdraw_ivc_app"
+type = "bin"
+authors = [""]
+
+# The APP circuit of the IVC/chonk stack. Same statement as `withdraw_identity` - it calls the same
+# `pp::withdraw::verify_withdrawal` - but returns its signals as `return_data` so a kernel can take
+# them through `call_data` instead of them being public inputs. See TODO.md sec. 2.18dx.
+[dependencies]
+pp = { path = "../pp" }
+poseidon = { tag = "v0.3.0", git = "https://github.com/noir-lang/poseidon" }

@@ -8077,12 +8077,25 @@ references:**
 | **`AggregationHonkVerifier`** | 5.1.0 | **yes, 2 refs** | yes, N=16 fixture | **regenerate** |
 | `verifiers2/noir/*` (79 passport) | 5.1.0 | no | **NONE** | **none needed** |
 
-**THE 79 PASSPORT VERIFIERS NEED NOTHING, and saying otherwise was wrong.** No proof or fixture
-exists for any of them and no test deploys one - checked, not assumed. They are emitted verifiers
-waiting on a real document (task 6). A bb version only starts mattering when a proof is first made
-against a verifier; until then a 5.1.0 verifier with no proofs is not stale, it is idle. When that
-day comes the proof and the verifier must come from the same bb, and the hard part - the Docker swap
-machinery - is already built and committed.
+**THE 79 PASSPORT VERIFIERS NEED NOTHING, and saying otherwise was wrong.** They were BUILT IN THIS
+SESSION with the container swapfile - `6120ec3` "32 GiB of container-made swap builds the verifiers
+that OOM'd", `86a9788` "75 of 75 now built on the current toolchain", plus six recovered profiles.
+No proof or fixture exists for any of them and no test deploys one. They are emitted verifiers
+waiting on a real document (task 6), so a 5.1.0 verifier with no proofs is not stale, it is idle.
+
+**AND THE KEY WAS ALREADY PROVED STABLE, in `27bebcf`:** *"bb write_vk -t evm on withdraw_identity
+produces a byte-identical key under both versions, sha256 366f53d7..., so the 89 verifiers generated
+under 5.1.0 stay valid and nothing needs regenerating."* That still holds.
+
+**SO WHY DID FIFTEEN VERIFIERS CHANGE TODAY? THE TEMPLATE, NOT THE KEY.** Diffed old against
+regenerated: **VK constants differing = 0**, file length **2,491 -> 2,518 lines, 99 lines differing**.
+bb 6.0 emits a different Solidity template. That only matters when the PROOFS move, because a
+5.1.0-template verifier cannot check a 6.0 proof - which is what produced the 17 `SumcheckFailed()`
+tests and the light-verifier rejection.
+
+> **The refinement worth keeping: "the VK is byte-identical" proves nothing needs regenerating only
+> while the proofs stay put. It is the PROOF that decides, not the key.** A verifier with no proofs
+> is never stale; a verifier whose proofs move is stale immediately, and its key will not show it.
 
 **AND THE 21.7 GB IS ALREADY SOLVED**, which I used as a reason to retire the flat aggregator and
 should not have. `build-passport-verifiers-docker.sh` adds a 32 GiB swapfile on a named volume inside

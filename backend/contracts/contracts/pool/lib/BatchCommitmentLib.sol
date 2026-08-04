@@ -2,8 +2,8 @@
 pragma solidity 0.8.28;
 
 /**
- * @notice Recomputes the aggregation batch commitment from calldata, so the contract can check that
- *         a batched proof covers EXACTLY the withdrawals it was handed (TODO.md sec. 2.4).
+ * @notice Recomputes the recursion tree's root from calldata, so the contract can check that a
+ *         batched proof covers EXACTLY the withdrawals it was handed (TODO.md sec. 2.4 / 2.18el).
  *
  * @dev THIS MUST STAY BYTE-IDENTICAL TO `aggregate_withdrawals::batch_commitment`. The aggregation
  *      verifier exposes ONE public input - this commitment - because the verifier has little EIP-170
@@ -39,29 +39,62 @@ library BatchCommitmentLib {
     uint256 internal constant FIELD_MODULUS =
         21888242871839275222246405745257275088548364400416034343698204186575808495617;
 
+    /// @notice A tree settles exactly two withdrawals per leaf.
+    uint256 internal constant PER_LEAF = 2;
+
+    /// @notice The batch does not have a power-of-two size, so no tree could have proved it.
+    error NotAPowerOfTwo(uint256 given);
+    /// @notice A batch must carry at least one leaf's worth.
+    error BatchTooSmall(uint256 given);
+
     /**
-     * @notice The batch commitment over `signals`.
-     * @dev Mirrors `batch_commitment`: keccak256 over every signal as a 32-byte big-endian word, in
-     *      withdrawal order then signal order, reduced into the field.
+     * @notice The recursion tree's root commitment over `signals`.
+     * @dev Mirrors `build-recursion-tree.py`'s two templates EXACTLY, and they are different shapes:
      *
-     *      ORDER- AND LENGTH-BINDING, both structurally. Concatenation makes POSITION part of the
-     *      preimage, so a batcher cannot permute withdrawals relative to the calldata walked here -
-     *      which is what stops them moving one user's recipient context onto another's nullifier.
-     *      Length is bound because a shorter batch hashes a shorter preimage.
+     *      leaf  = keccak(left's 7 signals ++ right's 7 signals)   -- 14 words, 448 bytes
+     *      node  = keccak(left commitment ++ right commitment)     --  2 words,  64 bytes
+     *      root  = the single public input the generated verifier exposes
      *
-     *      `abi.encodePacked` on a `uint256[]` emits exactly 32 bytes per element with no length
-     *      prefix and no padding, which is the circuit's layout. Flattening first and encoding once
-     *      is deliberate: encoding per withdrawal and concatenating would copy the accumulated bytes
-     *      on every iteration.
+     *      WHY NOT ONE FLAT HASH ANY MORE. The flat form matched `aggregate_withdrawals`, which
+     *      hashed all N x 7 signals in one go. The tree cannot: each node only ever sees its own two
+     *      children, so the commitment is necessarily built bottom-up. A contract still folding flat
+     *      recomputes a number the tree never produced, and every batch fails to verify.
+     *
+     *      ORDER- AND LENGTH-BINDING SURVIVE, structurally. Position is part of every preimage at
+     *      every level, so a permutation changes the root; and a batch of a different SIZE is a
+     *      different tree DEPTH, which is a different verifier entirely - see `TreeRoot16` vs
+     *      `TreeRoot32`, which refuse each other's proofs.
+     *
+     *      THE REDUCTION IS PART OF THE COMMITMENT at every level, not just the last. keccak gives
+     *      256 bits and the field is ~254; the circuit folds digest bytes with Field arithmetic,
+     *      which IS mod p, so every intermediate must be reduced here too. Reducing only the root
+     *      would agree for most inputs and disagree for the ~1 in 4 intermediates that exceed p.
      */
-    function batchCommitment(uint256[PUB_LEN][] memory signals) internal pure returns (uint256) {
-        uint256[] memory flat = new uint256[](signals.length * PUB_LEN);
-        uint256 k;
-        for (uint256 i = 0; i < signals.length; ++i) {
+    function treeCommitment(uint256[PUB_LEN][] memory signals) internal pure returns (uint256) {
+        uint256 n = signals.length;
+        if (n < PER_LEAF) revert BatchTooSmall(n);
+        if (n & (n - 1) != 0) revert NotAPowerOfTwo(n);
+
+        // Level 1: one commitment per PAIR of withdrawals.
+        uint256[] memory level = new uint256[](n / PER_LEAF);
+        for (uint256 i = 0; i < level.length; ++i) {
+            uint256[] memory leaf = new uint256[](PER_LEAF * PUB_LEN);
             for (uint256 j = 0; j < PUB_LEN; ++j) {
-                flat[k++] = signals[i][j];
+                leaf[j] = signals[PER_LEAF * i][j];
+                leaf[PUB_LEN + j] = signals[PER_LEAF * i + 1][j];
             }
+            level[i] = uint256(keccak256(abi.encodePacked(leaf))) % FIELD_MODULUS;
         }
-        return uint256(keccak256(abi.encodePacked(flat))) % FIELD_MODULUS;
+
+        // Every level above: pairs of commitments, until one remains.
+        while (level.length > 1) {
+            uint256[] memory next = new uint256[](level.length / 2);
+            for (uint256 i = 0; i < next.length; ++i) {
+                next[i] =
+                    uint256(keccak256(abi.encodePacked(level[2 * i], level[2 * i + 1]))) % FIELD_MODULUS;
+            }
+            level = next;
+        }
+        return level[0];
     }
 }

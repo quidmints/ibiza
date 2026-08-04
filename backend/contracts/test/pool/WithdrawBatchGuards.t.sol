@@ -58,11 +58,17 @@ contract WithdrawBatchGuardsTest is Test {
     this.callVerifyBatch(hex'', none);
   }
 
-  /// ...and the empty commitment is not zero, so it cannot be matched by an uninitialised slot read
-  /// back as a commitment. That is a stronger property than the zero it replaced.
-  function test_TheEmptyCommitmentIsNotZero() public pure {
+  /// ...and an empty batch has no commitment AT ALL now: a tree is built from pairs, so zero
+  /// withdrawals is not a shape the recomputation can express. Stronger than the old behaviour,
+  /// where the empty batch produced an ordinary-looking field element a proof could be made for.
+  function test_AnEmptyBatchHasNoCommitment() public {
     uint256[PUB_LEN][] memory none = new uint256[PUB_LEN][](0);
-    assertTrue(BatchCommitmentLib.batchCommitment(none) != 0);
+    vm.expectRevert(abi.encodeWithSelector(BatchCommitmentLib.BatchTooSmall.selector, 0));
+    this.callTreeCommitment(none);
+  }
+
+  function callTreeCommitment(uint256[PUB_LEN][] memory s) external pure {
+    BatchCommitmentLib.treeCommitment(s);
   }
 
   /// `external` so `vm.expectRevert` sees a call boundary - the library function is `internal` and
@@ -71,12 +77,14 @@ contract WithdrawBatchGuardsTest is Test {
     BatchVerifierLib.verifyBatch(INoirVerifier(address(0)), proof, signals, MAX_BATCH);
   }
 
-  /// The circuit's BATCH_N is a COMPILE-TIME constant, so a longer batch cannot have been proved by
-  /// it. The commitment alone cannot catch this - the fold happily absorbs any length.
+  /// Tree DEPTH is fixed by the deployed verifier, so a batch bigger than this one settles cannot
+  /// have been proved by it. The commitment alone STILL cannot catch that: a batch of 32 is a
+  /// perfectly well-formed tree, just a taller one - which is exactly why `BatchTooLarge` is a
+  /// separate check against the depth this verifier was deployed for.
   function test_TheCommitmentAloneCannotCatchAnOverlongBatch() public pure {
-    uint256[PUB_LEN][] memory big = _signals(MAX_BATCH + 1);
-    // It folds without complaint. That is precisely why `BatchTooLarge` is a separate check.
-    assertTrue(BatchCommitmentLib.batchCommitment(big) != 0);
+    uint256[PUB_LEN][] memory big = _signals(MAX_BATCH * 2);
+    // It commits without complaint; only the deployed depth knows this is the wrong batch.
+    assertTrue(BatchCommitmentLib.treeCommitment(big) != 0);
   }
 
   // ── the properties the guards rest on ─────────────────────────────────────────────────────────
@@ -88,7 +96,7 @@ contract WithdrawBatchGuardsTest is Test {
     uint256[PUB_LEN][] memory b = _signals(MAX_BATCH);
     (b[0], b[1]) = (b[1], b[0]);
     assertTrue(
-      BatchCommitmentLib.batchCommitment(a) != BatchCommitmentLib.batchCommitment(b),
+      BatchCommitmentLib.treeCommitment(a) != BatchCommitmentLib.treeCommitment(b),
       'the fold is commutative - the batch can be permuted'
     );
   }
@@ -97,25 +105,36 @@ contract WithdrawBatchGuardsTest is Test {
   /// per-withdrawal context comparison in `withdrawBatch` load-bearing rather than decorative.
   function test_ChangingAContextChangesTheCommitment() public pure {
     uint256[PUB_LEN][] memory a = _signals(MAX_BATCH);
-    uint256 baseline = BatchCommitmentLib.batchCommitment(a);
+    uint256 baseline = BatchCommitmentLib.treeCommitment(a);
     for (uint256 i = 0; i < MAX_BATCH; ++i) {
       uint256[PUB_LEN][] memory m = _signals(MAX_BATCH);
       m[i][6] ^= 1; // signal 6 is `context`
       assertTrue(
-        BatchCommitmentLib.batchCommitment(m) != baseline,
+        BatchCommitmentLib.treeCommitment(m) != baseline,
         'a withdrawal context does not affect the commitment'
       );
     }
   }
 
   /// LENGTH. Truncating the batch must not collide - the cheapest attack is to drop a withdrawal.
+  /// Halved rather than decremented, because a tree only exists at power-of-two sizes; dropping ONE
+  /// withdrawal is now refused outright by `NotAPowerOfTwo`, which is a stronger answer than a
+  /// different commitment.
   function test_TruncatingTheBatchChangesTheCommitment() public pure {
     uint256[PUB_LEN][] memory full = _signals(MAX_BATCH);
-    uint256[PUB_LEN][] memory short = _signals(MAX_BATCH - 1);
+    uint256[PUB_LEN][] memory short = _signals(MAX_BATCH / 2);
     assertTrue(
-      BatchCommitmentLib.batchCommitment(full) != BatchCommitmentLib.batchCommitment(short),
+      BatchCommitmentLib.treeCommitment(full) != BatchCommitmentLib.treeCommitment(short),
       'a truncated batch produced the same commitment'
     );
+  }
+
+  /// And dropping a single withdrawal is not merely different, it is unprovable.
+  function test_DroppingOneWithdrawalIsRefused() public {
+    vm.expectRevert(
+      abi.encodeWithSelector(BatchCommitmentLib.NotAPowerOfTwo.selector, MAX_BATCH - 1)
+    );
+    this.callTreeCommitment(_signals(MAX_BATCH - 1));
   }
 
   /// THE ROOT MEMO MUST NOT WEAKEN ANYTHING. `withdrawBatch` checks each DISTINCT state/identity root
@@ -128,13 +147,13 @@ contract WithdrawBatchGuardsTest is Test {
     uint256[PUB_LEN][] memory b = _signals(MAX_BATCH);
     b[3][3] ^= 1; // signal 3 is `state_root`, on the 4th withdrawal
     assertTrue(
-      BatchCommitmentLib.batchCommitment(a) != BatchCommitmentLib.batchCommitment(b),
+      BatchCommitmentLib.treeCommitment(a) != BatchCommitmentLib.treeCommitment(b),
       'a state root change is invisible to the commitment'
     );
     uint256[PUB_LEN][] memory c = _signals(MAX_BATCH);
     c[3][5] ^= 1; // signal 5 is `identity_root`
     assertTrue(
-      BatchCommitmentLib.batchCommitment(a) != BatchCommitmentLib.batchCommitment(c),
+      BatchCommitmentLib.treeCommitment(a) != BatchCommitmentLib.treeCommitment(c),
       'an identity root change is invisible to the commitment'
     );
   }

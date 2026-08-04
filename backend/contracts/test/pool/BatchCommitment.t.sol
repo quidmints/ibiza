@@ -5,150 +5,175 @@ import {Test, console} from 'forge-std/Test.sol';
 import {BatchCommitmentLib} from 'contracts/pool/lib/BatchCommitmentLib.sol';
 
 /*
- * THE CIRCUIT AND THE CONTRACT MUST AGREE ABOUT THE BATCH COMMITMENT (TODO.md sec. 2.4).
+ * THE CIRCUITS AND THE CONTRACT MUST AGREE ABOUT THE BATCH COMMITMENT (TODO.md sec. 2.4 / 2.18el).
  *
- * The aggregation verifier exposes ONE public input - the commitment - so this fold is the only
+ * The tree's root verifier exposes ONE public input - the root - so this recomputation is the only
  * thing tying that field back to the individual withdrawals a batch settles. If the two
- * implementations diverge, nothing says so: the circuit proves happily, the contract recomputes
- * happily, and they simply produce different field elements.
+ * implementations diverge, nothing says so: the circuits prove happily, the contract recomputes
+ * happily, and they produce different field elements.
  *
- * Solidity testing Solidity cannot catch that, exactly as Go testing Go could not catch the notary
- * Merkle mismatch (see NotaryRegistryProofTest) - a shared misunderstanding makes a generator and
- * its own checker agree and both be wrong.
+ * THIS TEST ONCE HELD A FROZEN CONSTANT AND SLEPT THROUGH A REAL DIVERGENCE (2.18ec). The circuit
+ * moved to keccak while the library stayed on chained Poseidon v1, and this file kept passing,
+ * because a pinned number only asks whether SOLIDITY changed. The question is whether the two SIDES
+ * agree.
  *
- * THIS TEST ONCE HELD A FROZEN CONSTANT AND SLEPT THROUGH A REAL DIVERGENCE (2026-08-04). The
- * circuit moved to keccak256 while `BatchCommitmentLib` stayed on chained Poseidon v1, and this file
- * kept passing - because a pinned number only asks whether SOLIDITY has changed, and the question is
- * whether the two SIDES agree. The library would have rejected every real batch.
- *
- * SO THE EXPECTATION IS CONSTRUCTED, NOT PASTED. `_circuitCommitment` below is an independent
- * transcription of `aggregate_withdrawals::batch_commitment` - keccak over the signals as 32-byte
- * big-endian words, reduced into the field - written from the circuit rather than from the library.
- * It is a second implementation ON PURPOSE: if the library is edited to match a wrong idea of the
- * circuit, this does not follow it. Moving either side breaks the test.
- *
- * FIXTURE PROVENANCE. `pi[i][j] = i * 100 + j + 1`, the same vector the circuit prints from a
- * `println(batch_commitment(pi))` test in backend/circuits/aggregate_withdrawals/src/main.nr. At
- * N=2 that circuit emits 0x2769ca7e6b0f6b41f45f61a850fb6c3d83b2cf85f4e3658b20b4a83b861a9cda, which
- * `test_TheTranscriptionMatchesTheCircuitAtN2` holds this transcription to.
+ * SO THE ANCHOR IS A REAL PROOF. `recursion_tree_n16.json` carries the sixteen withdrawals' signals
+ * AND the root its genuine proof exposes on-chain. Recomputing the tree from those signals and
+ * requiring the real root back is the strongest form of this check available: it compares the
+ * contract against what the CIRCUITS ACTUALLY PRODUCED, not against a number typed in beside them.
+ * Regenerate with `python3 build-recursion-tree.py 16`.
  */
 contract BatchCommitmentTest is Test {
-  uint256 internal constant N = 16;
   uint256 internal constant PUB_LEN = 7;
-
-  /// BN254's scalar field order. Restated here rather than imported so this transcription does not
-  /// inherit a constant from the library it is checking.
   uint256 internal constant FIELD_MODULUS =
     21888242871839275222246405745257275088548364400416034343698204186575808495617;
 
-  /// The circuit at N=2 on this vector, copied from `nargo test --show-output`. Small enough to run
-  /// in the circuit cheaply, which is why the anchor is taken at N=2 rather than N=16.
-  uint256 internal constant CIRCUIT_AT_N2 =
-    0x2769ca7e6b0f6b41f45f61a850fb6c3d83b2cf85f4e3658b20b4a83b861a9cda;
+  string internal fixture;
 
-  /// `aggregate_withdrawals::batch_commitment`, transcribed from the CIRCUIT. Independent of
-  /// BatchCommitmentLib on purpose - see the header.
-  function _circuitCommitment(uint256[PUB_LEN][] memory signals) internal pure returns (uint256) {
-    bytes memory preimage;
-    for (uint256 i = 0; i < signals.length; ++i) {
-      for (uint256 j = 0; j < PUB_LEN; ++j) {
-        preimage = bytes.concat(preimage, bytes32(signals[i][j]));
-      }
-    }
-    return uint256(keccak256(preimage)) % FIELD_MODULUS;
+  function setUp() public {
+    fixture = vm.readFile('test/fixtures/recursion_tree_n16.json');
   }
 
-  function _signals() internal pure returns (uint256[PUB_LEN][] memory s) {
-    s = new uint256[PUB_LEN][](N);
-    for (uint256 i = 0; i < N; ++i) {
-      for (uint256 j = 0; j < PUB_LEN; ++j) {
-        s[i][j] = i * 100 + j + 1;
-      }
+  /// The sixteen withdrawals the committed proof actually settled.
+  function _fixtureSignals() internal view returns (uint256[PUB_LEN][] memory s) {
+    uint256 n = vm.parseJsonUint(fixture, '.batchSize');
+    s = new uint256[PUB_LEN][](n);
+    for (uint256 i = 0; i < n; ++i) {
+      bytes32[] memory row =
+        vm.parseJsonBytes32Array(fixture, string.concat('.signals[', vm.toString(i), ']'));
+      for (uint256 j = 0; j < PUB_LEN; ++j) s[i][j] = uint256(row[j]);
     }
   }
 
-  /// THE ANCHOR: the transcription reproduces what the circuit actually printed. Without this the
-  /// transcription could drift from the circuit and still agree with the library, which is exactly
-  /// the mutual-agreement failure this file exists to prevent.
-  function test_TheTranscriptionMatchesTheCircuitAtN2() public pure {
-    uint256[PUB_LEN][] memory s = new uint256[PUB_LEN][](2);
-    for (uint256 i = 0; i < 2; ++i) {
-      for (uint256 j = 0; j < PUB_LEN; ++j) {
-        s[i][j] = i * 100 + j + 1;
-      }
-    }
-    assertEq(_circuitCommitment(s), CIRCUIT_AT_N2, 'the transcription no longer matches the circuit');
+  /// The root that proof exposes - the value the on-chain verifier accepted.
+  function _fixtureRoot() internal view returns (uint256) {
+    return uint256(vm.parseJsonBytes32Array(fixture, '.publicInputs')[0]);
   }
 
-  /// THE BASELINE: the library reproduces what the circuit computes.
-  function test_MatchesTheCircuit() public pure {
+  /*
+   * `build-recursion-tree.py`'s two templates, transcribed from the CIRCUITS and deliberately
+   * INDEPENDENT of BatchCommitmentLib. A second implementation on purpose: if the library is edited
+   * to match a wrong idea of the circuits, this does not follow it.
+   */
+  function _circuitTree(uint256[PUB_LEN][] memory signals) internal pure returns (uint256) {
+    uint256[] memory level = new uint256[](signals.length / 2);
+    for (uint256 i = 0; i < level.length; ++i) {
+      bytes memory pre;
+      for (uint256 j = 0; j < PUB_LEN; ++j) pre = bytes.concat(pre, bytes32(signals[2 * i][j]));
+      for (uint256 j = 0; j < PUB_LEN; ++j) pre = bytes.concat(pre, bytes32(signals[2 * i + 1][j]));
+      level[i] = uint256(keccak256(pre)) % FIELD_MODULUS;
+    }
+    while (level.length > 1) {
+      uint256[] memory next = new uint256[](level.length / 2);
+      for (uint256 i = 0; i < next.length; ++i) {
+        next[i] = uint256(
+          keccak256(bytes.concat(bytes32(level[2 * i]), bytes32(level[2 * i + 1])))
+        ) % FIELD_MODULUS;
+      }
+      level = next;
+    }
+    return level[0];
+  }
+
+  /// THE ANCHOR: the transcription reproduces the root a REAL proof exposed. If this fails, the
+  /// transcription has drifted from the circuits - do not "fix" it by pasting in whatever it now
+  /// produces without first establishing which side moved.
+  function test_TheTranscriptionReproducesARealProofsRoot() public view {
+    assertEq(_circuitTree(_fixtureSignals()), _fixtureRoot(), 'the transcription is not the circuit');
+  }
+
+  /// THE BASELINE: the library agrees with the circuits, via the same real proof.
+  function test_MatchesTheCircuit() public view {
     assertEq(
-      BatchCommitmentLib.batchCommitment(_signals()),
-      _circuitCommitment(_signals()),
-      'the circuit and the contract disagree about the batch commitment'
+      BatchCommitmentLib.treeCommitment(_fixtureSignals()),
+      _fixtureRoot(),
+      'the circuits and the contract disagree about the batch commitment'
     );
   }
 
-  /// ...and it is not vacuous: changing any single signal must change the result. Without this, a
-  /// fold that ignored its inputs entirely would pass the test above.
-  function test_EverySignalIsBound() public pure {
-    uint256 baseline = BatchCommitmentLib.batchCommitment(_signals());
-    for (uint256 i = 0; i < N; ++i) {
+  /// ...and it is not vacuous: changing any single signal must change the root. Without this, a
+  /// commitment that ignored its inputs entirely would pass everything above.
+  function test_EverySignalIsBound() public view {
+    uint256 baseline = BatchCommitmentLib.treeCommitment(_fixtureSignals());
+    uint256[PUB_LEN][] memory s = _fixtureSignals();
+    for (uint256 i = 0; i < s.length; ++i) {
       for (uint256 j = 0; j < PUB_LEN; ++j) {
-        uint256[PUB_LEN][] memory m = _signals();
+        uint256[PUB_LEN][] memory m = _fixtureSignals();
         m[i][j] ^= 1;
         assertTrue(
-          BatchCommitmentLib.batchCommitment(m) != baseline,
-          'a signal position does not affect the commitment'
+          BatchCommitmentLib.treeCommitment(m) != baseline,
+          'a signal position does not affect the root'
         );
       }
     }
   }
 
-  /// ORDER-BINDING. Swapping two withdrawals must change the commitment, or a batcher could permute
-  /// the batch relative to the calldata the contract walks - moving one user's recipient context
-  /// onto another's nullifier while still matching.
-  function test_OrderIsBound() public pure {
-    uint256[PUB_LEN][] memory a = _signals();
-    uint256[PUB_LEN][] memory b = _signals();
+  /// ORDER-BINDING. Swapping two withdrawals must change the root, or a batcher could permute the
+  /// batch relative to the calldata the contract walks - moving one user's recipient context onto
+  /// another's nullifier while still matching.
+  function test_OrderIsBound() public view {
+    uint256[PUB_LEN][] memory a = _fixtureSignals();
+    uint256[PUB_LEN][] memory b = _fixtureSignals();
     (b[0], b[1]) = (b[1], b[0]);
     assertTrue(
-      BatchCommitmentLib.batchCommitment(a) != BatchCommitmentLib.batchCommitment(b),
-      'the fold is commutative - withdrawals can be permuted'
+      BatchCommitmentLib.treeCommitment(a) != BatchCommitmentLib.treeCommitment(b),
+      'the tree is commutative - withdrawals can be permuted'
     );
   }
 
-  /// A batch of a different LENGTH must not collide with this one. Truncating the calldata is the
-  /// cheapest thing an attacker can try.
-  function test_LengthIsBound() public pure {
-    uint256[PUB_LEN][] memory full = _signals();
-    uint256[PUB_LEN][] memory short = new uint256[PUB_LEN][](N - 1);
-    for (uint256 i = 0; i < N - 1; ++i) short[i] = full[i];
+  /// SWAPPING ACROSS SUBTREES too, not only within a leaf. A tree hash could in principle bind
+  /// position within a pair while leaving whole subtrees interchangeable.
+  function test_OrderIsBoundAcrossSubtrees() public view {
+    uint256[PUB_LEN][] memory a = _fixtureSignals();
+    uint256[PUB_LEN][] memory b = _fixtureSignals();
+    (b[0], b[8]) = (b[8], b[0]);
     assertTrue(
-      BatchCommitmentLib.batchCommitment(short) != BatchCommitmentLib.batchCommitment(full),
-      'a shorter batch produced the same commitment'
+      BatchCommitmentLib.treeCommitment(a) != BatchCommitmentLib.treeCommitment(b),
+      'whole subtrees are interchangeable'
     );
   }
 
-  /// GAS: what the on-chain recompute actually costs per withdrawal.
-  function test_GasOfTheFold() public view {
-    uint256[PUB_LEN][] memory s = _signals();
-    uint256 g0 = gasleft();
-    BatchCommitmentLib.batchCommitment(s);
-    uint256 used = g0 - gasleft();
-    console.log("fold gas total", used);
-    console.log("per withdrawal ", used / N);
+  /// A batch of a different SIZE settles at a different tree DEPTH, which is a different deployed
+  /// verifier entirely - but the roots must differ regardless, so a truncated batch cannot reuse a
+  /// root it did not produce.
+  function test_LengthIsBound() public view {
+    uint256[PUB_LEN][] memory full = _fixtureSignals();
+    uint256[PUB_LEN][] memory half = new uint256[PUB_LEN][](full.length / 2);
+    for (uint256 i = 0; i < half.length; ++i) half[i] = full[i];
+    assertTrue(
+      BatchCommitmentLib.treeCommitment(half) != BatchCommitmentLib.treeCommitment(full),
+      'a shorter batch produced the same root'
+    );
   }
 
-  /// The empty batch must not collide with any real one. It is keccak256("") reduced into the field,
-  /// NOT zero as it was under the Poseidon chain - which is the better property: zero is what an
-  /// uninitialised slot reads back as, so a commitment that can never be zero cannot be matched by
-  /// one. `BatchVerifierLib` rejects an empty batch before reaching here regardless.
-  function test_EmptyBatchIsDistinct() public pure {
-    uint256[PUB_LEN][] memory none = new uint256[PUB_LEN][](0);
-    uint256 empty = BatchCommitmentLib.batchCommitment(none);
-    assertEq(empty, _circuitCommitment(none), 'the empty batch disagrees with the circuit');
-    assertTrue(empty != 0, 'the empty commitment is zero, which an empty storage slot also reads as');
-    assertTrue(BatchCommitmentLib.batchCommitment(_signals()) != empty, 'a real batch collides with the empty one');
+  /// A tree is built from PAIRS, so a batch that is not a power of two could not have been proved by
+  /// one. The flat fold absorbed any length silently; this cannot, and that is a gain.
+  function test_ANonPowerOfTwoBatchIsRefused() public {
+    uint256[PUB_LEN][] memory odd = new uint256[PUB_LEN][](6);
+    vm.expectRevert(abi.encodeWithSelector(BatchCommitmentLib.NotAPowerOfTwo.selector, 6));
+    this.callTreeCommitment(odd);
+  }
+
+  /// And a batch too small to make a single leaf.
+  function test_ASingleWithdrawalIsRefused() public {
+    uint256[PUB_LEN][] memory one = new uint256[PUB_LEN][](1);
+    vm.expectRevert(abi.encodeWithSelector(BatchCommitmentLib.BatchTooSmall.selector, 1));
+    this.callTreeCommitment(one);
+  }
+
+  /// `external` so `vm.expectRevert` sees a call boundary - the library function is `internal` and
+  /// would otherwise revert inside the test frame.
+  function callTreeCommitment(uint256[PUB_LEN][] memory s) external pure {
+    BatchCommitmentLib.treeCommitment(s);
+  }
+
+  /// GAS: what the on-chain recompute costs per withdrawal.
+  function test_GasOfTheTree() public view {
+    uint256[PUB_LEN][] memory s = _fixtureSignals();
+    uint256 g0 = gasleft();
+    BatchCommitmentLib.treeCommitment(s);
+    uint256 used = g0 - gasleft();
+    console.log('tree recompute gas total', used);
+    console.log('per withdrawal          ', used / s.length);
   }
 }

@@ -208,9 +208,14 @@ contract WithdrawBatchEntrypointTest is Test {
 
   /// The same nullifier across SEPARATE batches must also fail - the first batch marks it spent and
   /// that state has to persist, which is a different code path from the within-batch case above.
+  ///
+  /// TWO WITHDRAWALS, NOT ONE, and that is now structural rather than stylistic: a recursion tree is
+  /// built from PAIRS, so a batch of one is refused by `BatchTooSmall` before any policy check runs.
+  /// These three tests used a batch of one for convenience and would otherwise fail on the wrong
+  /// error, hiding the behaviour they exist to pin.
   function test_RejectsANullifierAlreadySpentByAnEarlierBatch() public {
     (uint256 stateRoot, uint256 identityRoot) = _reachSettlement();
-    IPrivacyPool.Withdrawal[] memory ws = _withdrawals(1);
+    IPrivacyPool.Withdrawal[] memory ws = _withdrawals(2);
     uint256[PUB_LEN][] memory s = _settleableSignals(ws, stateRoot, identityRoot);
     pool.withdrawBatch(ws, s, ''); // settles
 
@@ -222,7 +227,7 @@ contract WithdrawBatchEntrypointTest is Test {
   /// membership argument is decorative.
   function test_RejectsUnknownStateRoot() public {
     (, uint256 identityRoot) = _reachSettlement();
-    IPrivacyPool.Withdrawal[] memory ws = _withdrawals(1);
+    IPrivacyPool.Withdrawal[] memory ws = _withdrawals(2);
     uint256[PUB_LEN][] memory s = _settleableSignals(ws, uint256(keccak256('never-held')), identityRoot);
     vm.expectRevert(IPrivacyPool.UnknownStateRoot.selector);
     pool.withdrawBatch(ws, s, '');
@@ -232,15 +237,17 @@ contract WithdrawBatchEntrypointTest is Test {
   /// is what a revoked identity would present.
   function test_RejectsInvalidIdentityRoot() public {
     (uint256 stateRoot,) = _reachSettlement();
-    IPrivacyPool.Withdrawal[] memory ws = _withdrawals(1);
+    IPrivacyPool.Withdrawal[] memory ws = _withdrawals(2);
     uint256[PUB_LEN][] memory s = _settleableSignals(ws, stateRoot, uint256(keccak256('not-active')));
     vm.expectRevert(IPrivacyPool.InvalidIdentityRoot.selector);
     pool.withdrawBatch(ws, s, '');
   }
 
-  /// MAX_BATCH must equal the circuit's BATCH_N. Pinned here because the two live in different
-  /// languages and nothing else compares them.
-  function test_MaxBatchMatchesTheCircuit() public view {
-    assertEq(pool.MAX_BATCH(), 16, 'MAX_BATCH diverged from aggregate_withdrawals BATCH_N');
+  /// MAX_BATCH must equal the batch size the DEPLOYED tree verifier settles. Pinned here because the
+  /// two live in different languages and nothing else compares them - and since sec. 2.18el the
+  /// depth is a deployment choice (`TreeRoot16` / `TreeRoot32`), so this is the value that says
+  /// which verifier this pool is wired to.
+  function test_MaxBatchMatchesTheDeployedTreeDepth() public view {
+    assertEq(pool.MAX_BATCH(), 16, 'MAX_BATCH diverged from the deployed tree depth');
   }
 }

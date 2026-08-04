@@ -43,11 +43,12 @@ library BatchVerifierLib {
 
     /**
      * @notice Check one aggregation proof against N withdrawals' public signals.
-     * @param verifier  The `AggregationHonkVerifier` generated from the circuit at `maxBatch`.
+     * @param verifier  The `TreeRoot<N>HonkVerifier` for the depth that settles `maxBatch`.
      * @param proof     The aggregation proof bytes.
      * @param signals   Each withdrawal's 7 public signals, IN THE ORDER the batch was proved.
-     * @param maxBatch  The circuit's compile-time `BATCH_N`. Passed in rather than hardcoded so a
-     *                  re-proved circuit at a different N cannot silently disagree with this file.
+     * @param maxBatch  The batch size the deployed verifier's tree depth settles. Passed in rather
+     *                  than hardcoded so a deployment at a different depth cannot silently disagree
+     *                  with this file - each depth is a SEPARATE contract for exactly that reason.
      * @return commitment The recomputed batch commitment, returned so callers can log or re-check it
      *                    without folding twice.
      *
@@ -64,7 +65,7 @@ library BatchVerifierLib {
         if (signals.length == 0) revert EmptyBatch();
         if (signals.length > maxBatch) revert BatchTooLarge(signals.length, maxBatch);
 
-        commitment = BatchCommitmentLib.batchCommitment(signals);
+        commitment = BatchCommitmentLib.treeCommitment(signals);
 
         bytes32[] memory publicInputs = new bytes32[](1);
         publicInputs[0] = bytes32(commitment);

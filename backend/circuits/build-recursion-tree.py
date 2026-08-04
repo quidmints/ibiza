@@ -296,6 +296,9 @@ def main() -> int:
     finally:
         (leaf_pkg / "Prover.toml").write_text(saved)
 
+    # Kept because the fixture must carry them - `level` is rebound at every tree level.
+    leaves = list(level)
+
     # Distinctness, checked here rather than trusted: two members with the same seven signals means
     # the batch has collapsed, and every downstream number would still look healthy.
     seen = {tuple(m["public"]) for m in level}
@@ -375,10 +378,15 @@ def main() -> int:
     # input is the tree ROOT, which is the only thing the chain sees of the whole batch.
     fixture = fixture_out(n)
     fixture.parent.mkdir(parents=True, exist_ok=True)
+    # THE SIGNALS TRAVEL WITH THE PROOF. The contract has to RECOMPUTE the tree from the withdrawals
+    # it is settling and check it equals the root - that recomputation is the only thing tying the
+    # root back to individual withdrawals, exactly as the flat commitment was. A fixture holding the
+    # root alone can only test the verifier, never the settlement.
     fixture.write_text(json.dumps({
         "proof": "0x" + b"".join(v.to_bytes(32, "big") for v in root["proof"]).hex(),
         "publicInputs": [f"0x{root['commitment']:064x}"],
         "batchSize": n,
+        "signals": [[f"0x{v:064x}" for v in m["public"]] for m in leaves],
         "generator": "backend/circuits/build-recursion-tree.py",
     }, indent=2) + "\n")
 

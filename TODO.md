@@ -8043,6 +8043,53 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18el DECIDED: the tree settles, chonk is retired - and nobody waits for 16 (user, 2026-08-05)
+
+Repo owner: *"go with the tree, retire chonk."* Recorded as the decision. What follows is the state
+it has to be handed over in.
+
+**"IS IT STILL 16 PER BATCH?" - TODAY YES, BY DESIGN NO, AND THE GAP IS PADDING.**
+`build-recursion-tree.py` demands a power of two and builds exactly N real leaves, and the deployed
+verifier is depth 4. So right now it is 16 or nothing. That is a builder limitation, not a property
+of the design.
+
+**THE COST DOES NOT DEPEND ON HOW FULL THE BATCH IS.** A tree of 16 verifies for **2,776,678 gas
+whether it holds 2 real withdrawals or 16**, because the root proof is one fixed-size UltraHonk proof
+with one public input. So a batch can settle EARLY and split:
+
+| in batch | gas each | @15 gwei | @30 gwei | @60 gwei |
+|---|---|---|---|---|
+| solo (no batch) | 2,528,007 | $114 | **$228** | $455 |
+| 2 | 1,388,339 | $62 | $125 | $250 |
+| 4 | 694,169 | $31 | $62 | $125 |
+| 8 | 347,084 | $16 | $31 | $62 |
+| 16 | 173,542 | $8 | **$16** | $31 |
+
+*(ETH at $3,000; the ratios are what matter, not the dollar figures.)*
+
+> **TWO people batching already beats going alone.** So the answer to "wait for 16 or pay $200" is
+> neither: settle with whoever is there. Waiting only makes it cheaper, and the curve is steepest at
+> the start - the 2nd person halves it, the 16th shaves $2.
+
+**WHAT PADDING NEEDS, and the trap in it.** Empty slots need a canonical zero-value withdrawal proof,
+made once and reused. **Reusing one proof means reusing its NULLIFIER**, so the settlement half must
+skip padding entries BEFORE the duplicate-nullifier check - otherwise the second padded slot in any
+batch is rejected as a double-spend. Skipping by `withdrawn_value == 0` leaks how many slots were
+padding, which is fine: batch occupancy is public from the calldata anyway.
+
+- [ ] **Padding.** One canonical zero-value proof, `build-recursion-tree.py` accepting any N and
+      padding to the next power of two, and settlement skipping padded entries before the nullifier
+      check. **This is what turns "wait for 16" into "settle whenever".**
+- [ ] **Deploy several depths (16/32/64) rather than one.** With padding, a batch settles at the
+      smallest tree that fits it, so a quiet hour costs a depth-4 verification and a busy one costs a
+      depth-6. One verifier per depth, deployed once.
+- [ ] **Retire chonk**: `withdraw_ivc_{app,kernel_init,kernel_inner,hiding,wrapper}`, `pp/src/ivc.nr`,
+      `fold-withdrawals.py`, `ChonkRootHonkVerifier.sol`, `chonk_root.json`,
+      `ChonkRootProofOnChain.t.sol`. **KEEP** `vk_hash/` (generic), `tools/build-fold-witnesses.js`
+      (the tree's own leaves come from it) and `pp::withdraw::verify_withdrawal` (shared statement).
+      Record the IPA-discharge finding in TODO before deleting the circuit that proved it.
+- [ ] **Retire the flat aggregator** in the same pass, for the same reason.
+
 ### 2.18ek THE FOLD CEILING IS 25, AND IT IS THE FOLD'S ALONE - the tree has none (user, 2026-08-05)
 
 **Bisected, not reasoned. N=25 proves; N=26 fails.** Two distinct limits were hit on the way and the

@@ -133,7 +133,11 @@ contract IdentityRegistryTest is EscrowFixtureBase {
    * witness built off-chain would only ever prove that two of our own implementations agree.
    * Regenerating it inside the suite means it cannot go stale against the contract.
    *
-   * THREE REGISTRATIONS, NOT ONE. A single-leaf SMT has an EMPTY inclusion path, so a withdrawal
+   * EVERY REGISTRATION IN THE FIXTURE, NOT THREE. The count comes from escrow_documents.json, so
+   * growing the identity set is a generator argument rather than an edit here - and the withdrawal
+   * batch stops having to CYCLE a handful of identities across sixteen members.
+   *
+   * SEVERAL REGISTRATIONS, NOT ONE. A single-leaf SMT has an EMPTY inclusion path, so a withdrawal
    * built on it would hash no siblings and prove nothing about the Merkle path - the same
    * degeneracy tools/build-withdrawal-fixture.js already refuses to emit for the state tree. Each
    * one goes through the real `register` with its own genuine escrow proof; there is deliberately
@@ -151,17 +155,20 @@ contract IdentityRegistryTest is EscrowFixtureBase {
    * JSON string is a reader that will eventually be wrong about which layer it is on.
    */
   function test_EmitIdentityWitnessFixture() public {
-    _bindDocuments();
-    for (uint256 i = 0; i < 3; i++) {
+    // The count comes from the BINDER's own return, which is the list of documents actually planted
+    // in the keeper. Reading it from the JSON separately would let the two drift, and a registration
+    // for an unbound document fails as an inclusion error naming neither.
+    uint256 n = _bindDocumentsFromFixture().length;
+    for (uint256 i = 0; i < n; i++) {
       registry.register(_proofAt(i), _publicInputsAt(i));
     }
-    assertEq(registry.registeredCount(), 3, 'expected three genuine registrations');
+    assertEq(registry.registeredCount(), n, 'a genuine registration was lost');
 
-    bytes32[] memory commitments = new bytes32[](3);
+    bytes32[] memory commitments = new bytes32[](n);
     bytes32[] memory siblings;
     bytes32 root;
 
-    for (uint256 i = 0; i < 3; i++) {
+    for (uint256 i = 0; i < n; i++) {
       commitments[i] = _publicInputsAt(i)[PUB_COMMITMENT];
       SparseMerkleTree.Proof memory p = registry.getProof(commitments[i]);
 
@@ -171,14 +178,14 @@ contract IdentityRegistryTest is EscrowFixtureBase {
 
       if (i == 0) {
         root = p.root;
-        siblings = new bytes32[](3 * p.siblings.length);
+        siblings = new bytes32[](n * p.siblings.length);
       } else {
         // The whole point of emitting them together. Three witnesses against three different roots
         // would each verify alone and could never appear in one batch.
         assertEq(p.root, root, 'the three witnesses disagree on the registry root');
       }
       for (uint256 j = 0; j < p.siblings.length; j++) {
-        siblings[i * (siblings.length / 3) + j] = p.siblings[j];
+        siblings[i * (siblings.length / n) + j] = p.siblings[j];
       }
     }
 

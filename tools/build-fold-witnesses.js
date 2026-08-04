@@ -19,15 +19,19 @@
  *
  * WHAT VARIES PER MEMBER, and what deliberately does not:
  *   varies:  note secrets, label, value, withdrawn_value, leaf index, change note, context, and the
- *            identity (cycling the three registered ones, each with its own sibling path)
+ *            identity - one GENUINE registered identity per member, each with its own sibling path
  *   shared:  state_root and identity_root - forced, not chosen. Every member of a batch is settled
  *            against one pool state and one registry state, so a member carrying a different root is
  *            a member that cannot be in this batch.
  *
- * ONLY THREE IDENTITIES EXIST, so at N=16 they cycle. That is not a stand-in for sixteen people: one
- * identity making several withdrawals in a batch is ordinary, and three sibling paths is enough to
- * catch a fold that assumes one. Sixteen would need sixteen genuine escrow proofs, and those come
- * from build-escrow-fixtures.js + a passport proof each.
+ * SIXTEEN GENUINE IDENTITIES, NOT THREE CYCLED. Every one is a real `register` through the real
+ * contract with its own escrow proof - `build-escrow-fixtures.js --documents 16` then `16`, then
+ * prove-escrow-fixtures.sh, then the registry emits all sixteen witnesses against ONE root. So a
+ * batch of sixteen is sixteen different people, and the identity path is exercised sixteen different
+ * ways rather than three.
+ *
+ * Past the number of registered identities they do cycle (`i % IDENTITY_COUNT`), which is ordinary -
+ * one person making two withdrawals in a batch is a normal thing, not a weakened fixture.
  *
  * PREREQUISITES, both of which fail loudly rather than silently:
  *   cd frontend/identity-wallet && npm run build:pp
@@ -47,16 +51,10 @@ const COUNT = Number(arg('--count', '16'));
 const { masterKeysFromMnemonic, depositSecrets, commitment, nullifierHash, StateTree,
   buildWithdrawalWitness } = common.loadWallet(BUILD);
 
-const { MNEMONIC, SK_IDENTITIES, deriveRevocationSecret } = common;
+const { MNEMONIC, skIdentity, deriveRevocationSecret } = common;
 const keys = masterKeysFromMnemonic(MNEMONIC);
 
 const IDENTITY_COUNT = common.identityWitnessCount();
-if (IDENTITY_COUNT > SK_IDENTITIES.length) {
-  throw new Error(
-    `the fixture holds ${IDENTITY_COUNT} identity witnesses but only ${SK_IDENTITIES.length} ` +
-    'identity scalars are known - the two lists come from the same escrow fixtures and must match',
-  );
-}
 
 const OUT_DIR = path.join(__dirname, '..', 'backend', 'circuits', 'withdraw_ivc_app');
 
@@ -105,7 +103,7 @@ let sharedIdentityRoot = null;
 
 for (const m of members) {
   const identity = common.loadIdentityWitness(m.identity);
-  const revocationSecret = deriveRevocationSecret(SK_IDENTITIES[m.identity]);
+  const revocationSecret = deriveRevocationSecret(skIdentity(m.identity));
 
   const w = buildWithdrawalWitness({
     note: m.note,

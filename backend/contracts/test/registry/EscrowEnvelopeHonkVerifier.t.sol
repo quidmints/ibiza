@@ -67,11 +67,19 @@ contract EscrowEnvelopeHonkVerifierTest is Test {
   /// one commitment and a revoked user cannot come back under a fresh one.
   uint256 internal constant COMMITMENT =
     17_650_903_678_720_452_054_381_356_126_183_849_406_023_549_141_052_820_066_135_326_546_653_806_493_741;
-  /// The root of `registrationSmt` this witness proves inclusion against, emitted by
-  /// RegistrationWitnessFixture.t.sol from the REAL contract. Shared by every registered document,
-  /// so unlike the two values it replaced it identifies nobody.
-  uint256 internal constant REGISTRATION_ROOT =
-    7_553_396_750_661_601_236_506_689_713_315_529_231_608_311_828_670_595_460_606_212_574_078_751_161_966;
+  /// The root of `registrationSmt` this witness proves inclusion against, READ FROM THE FILE the
+  /// emitter writes rather than pinned as a constant.
+  ///
+  /// IT WAS A CONSTANT, AND THAT IS A DEFECT NOT A STYLE. The root depends on how many documents are
+  /// bound, so growing the identity set from 3 to 16 made the pinned value stale - and a pinned value
+  /// can only ever tell you that THIS side changed, never that the two sides disagree. That is the
+  /// same shape that let `BatchCommitmentLib` diverge from its circuit unnoticed (2.18ec). Reading it
+  /// means the proof and the emitter are compared to each other, which is the actual question.
+  function _registrationRoot() internal view returns (uint256) {
+    return uint256(
+      vm.parseJsonBytes32(vm.readFile('test/fixtures/registration_witness.json'), '.root')
+    );
+  }
 
   /// First sealed slot. Moved 7 -> 6 with the two removed inputs; named so the distinctness test
   /// below cannot silently start comparing the wrong slots.
@@ -111,7 +119,7 @@ contract EscrowEnvelopeHonkVerifierTest is Test {
     bytes32[] memory _inputs = _publicInputs();
     assertEq(uint256(_inputs[0]), CONTROLLER_X, 'slot 0 is not the controller key');
     assertEq(uint256(_inputs[2]), COMMITMENT, 'slot 2 is not Poseidon(revocation_secret)');
-    assertEq(uint256(_inputs[3]), REGISTRATION_ROOT, 'slot 3 is not the emitted registration root');
+    assertEq(uint256(_inputs[3]), _registrationRoot(), 'slot 3 is not the emitted registration root');
   }
 
   /// Every public input must be load-bearing. If any slot could be altered while the proof still

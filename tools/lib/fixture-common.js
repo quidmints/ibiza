@@ -68,11 +68,25 @@ const REVOCATION_SECRET = deriveRevocationSecret(SK_IDENTITY_0);
  * The order is load-bearing: index i here is the identity whose witness is at index i in
  * identity_witness.json, because both come from escrow_envelope<i>.
  */
-const SK_IDENTITIES = [
+const PINNED_SK_IDENTITIES = [
   SK_IDENTITY_0,
   111222333444555666777888999n,
   999888777666555444333222111n,
 ];
+
+/**
+ * Identity `i`'s scalar. The first three are pinned to published vectors; beyond that they are
+ * DERIVED, so the set can grow to any size without a hand-maintained list.
+ *
+ * ONE FUNCTION, NOT A LIST PLUS A FALLBACK. build-escrow-fixtures.js used to carry
+ * `SK_IDENTITIES[i] ?? BigInt(1000 + i)` privately - so past index 2 the escrow generator invented
+ * scalars the withdrawal generator knew nothing about, and a batch built on identity 3 would have
+ * derived a revocation secret whose commitment is in nobody's tree. That fails as an inclusion error
+ * naming neither generator.
+ */
+function skIdentity(i) {
+  return PINNED_SK_IDENTITIES[i] ?? BigInt(1000 + i);
+}
 
 const IDENTITY_WITNESS_PATH = path.join(
   __dirname, '..', '..', 'backend', 'contracts', 'test', 'fixtures', 'identity_witness.json',
@@ -165,7 +179,7 @@ function logPublicSignals(pubSignals) {
 }
 
 module.exports = {
-  MNEMONIC, REVOCATION_SECRET, REVOCATION_SECRET_DOMAIN, SK_IDENTITY_0, SK_IDENTITIES,
+  MNEMONIC, REVOCATION_SECRET, REVOCATION_SECRET_DOMAIN, SK_IDENTITY_0, skIdentity,
   deriveRevocationSecret, IDENTITY_WITNESS_PATH,
   loadWallet, loadIdentityWitness, identityWitnessCount, writeProverToml, PUBLIC_SIGNAL_NAMES,
   logPublicSignals,

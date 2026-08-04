@@ -72,7 +72,7 @@ const REGISTRATION_TREE_DEPTH = 80;
 // which owns the derivation because the withdrawal and e2e generators need the identical value.
 // SK_IDENTITIES moved there too once the fold generator began spending against these same
 // registrations - it must derive the secret this file escrowed, so there can only be one list.
-const { deriveRevocationSecret, SK_IDENTITIES } = require('./lib/fixture-common');
+const { deriveRevocationSecret, skIdentity } = require('./lib/fixture-common');
 
 // The controller keypair pinned in pp/src/envelope.nr's tests.
 const CONTROLLER_SK = 1234n;
@@ -150,7 +150,7 @@ function dgCommitFromCircuit(dg1, sk, expectedDg1Hash, expectedHolderRoot) {
 
 /** Everything about identity `i` that does not depend on the registration tree. */
 function identity(i) {
-  const sk = SK_IDENTITIES[i] ?? BigInt(1000 + i);
+  const sk = skIdentity(i);
   const r = 55555n + BigInt(i) * 7n; // ephemeral - never 0, see envelope.nr
   const s = deriveRevocationSecret(sk);
 

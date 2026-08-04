@@ -8107,12 +8107,43 @@ bb does have a discharge point - *"Root rollup must accumulate two IPA proofs"* 
 is derived inside bb from proof types Noir cannot emit here. **Verifying two chonk folds in one
 circuit was tried and does not reach it**: two openings are rejected exactly as one is.
 
-- [ ] **Decide the EVM hop.** Three candidates, none free: (a) find whether a later bb exposes the
-      root-rollup path to Noir; (b) keep the fold for the batcher's own economics and verify a
-      conventional UltraHonk proof on-chain, which puts an in-circuit verification back; (c) verify
-      the rollup proof off-chain and post an attestation, which changes the trust model and needs its
-      own argument. **Do not pick one without pricing all three** - this is the axis the whole
-      folding case now turns on.
+**WHY IT IS NOT A PACKAGING GAP, which decides whether waiting is a strategy.** IPA in barretenberg
+runs over **Grumpkin** (`bb::IPA<bb::curve::Grumpkin, 15>` in the binary). Ethereum's precompiles are
+BN254-only - `0x06` ecAdd, `0x07` ecMul, `0x08` ecPairing - and the generated Honk verifier uses
+exactly those. A grep of `AggregationHonkVerifier.sol` for Grumpkin/IPA terms returns two hits and
+both are a scalar constant (`GRUMPKIN_CURVE_B_PARAMETER_NEGATED = 17`), not group arithmetic; the
+control on the same file finds 50 pairing terms and a real `address(0x08).staticcall`. So the grep
+can tell the difference, and there is no Grumpkin EC arithmetic on chain. An on-chain IPA verifier
+would mean writing Grumpkin group operations in pure Solidity. **bb is not withholding this feature;
+the EVM cannot afford it.**
+
+**THE THREE OPTIONS, PRICED. Note first what folding never promised: cheaper gas.** It promised a
+batcher that runs on a laptop, one circuit for any N, and partial batches. On-chain verification cost
+was never the axis it improved.
+
+| | A: flat aggregation (today) | B: fold + off-chain verify | C: wait for bb |
+|---|---|---|---|
+| works now | **yes, measured on-chain** | yes off-chain, measured | **no** |
+| batcher memory | **~21.7 GB** - a server | **572 MB** - a phone could not, a laptop can | 572 MB |
+| on-chain gas, N=16 | **2,980,094 (186,255/withdrawal)** | none - nothing is verified on chain | ~same order; folding does not cut gas |
+| batch size | **compile-time**; 16 and 256 are different circuits AND different deployed verifiers | **any N, same circuit, same proof size** | any N |
+| partial batches | **impossible** | free | free |
+| trust | trustless - the chain checks the proof | **the batcher is trusted**, which is exactly the raid/takedown target already flagged in 2.18dp | trustless |
+| dependency | none | none | **latest published bb is 6.0.0-nightly.20260804 and it does not expose this**; unknown timeline |
+
+**A IS THE ONLY TRUSTLESS OPTION THAT WORKS TODAY**, and B's trust cost lands on the single point of
+failure 2.18dp already identified. C is not a plan, it is a hope with no date. The honest reading is
+that the fold is **built, measured and correct, and cannot yet carry a withdrawal to L1** - so it
+does not replace the flat aggregator, it sits beside it until the hop exists.
+
+- [ ] **Decide the EVM hop - this is a call for the repo owner, not a task to work around.** The
+      pricing above is complete on every axis that can be measured today. What cannot be measured is
+      how much the trust change in B costs the product, and that is the whole decision.
+- [ ] If A is kept, the fold still earns its place for anything that does NOT need on-chain
+      verification, and that list should be written down rather than assumed empty.
+- [ ] Re-test the hop on each bb bump. It is four commands (`write_vk -t evm` on the wrapper, on a
+      two-chonk root, on a rollup root, on a two-rollup root) and all four currently fail the same
+      way, so a single one passing is the signal.
 - [ ] `BatchVerifierLib` still folds flat. It cannot move to the chained fold until the hop above is
       decided, because the on-chain shape depends on which proof the contract ends up verifying.
 - [ ] Only THREE identities exist, so at N=16 they cycle. That is honest for a batch (one identity

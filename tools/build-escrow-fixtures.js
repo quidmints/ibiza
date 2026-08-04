@@ -70,19 +70,13 @@ const REGISTRATION_TREE_DEPTH = 80;
 
 // The revocation secret is DERIVED, no longer chosen (TODO.md sec. 2.18a) - see fixture-common.js,
 // which owns the derivation because the withdrawal and e2e generators need the identical value.
-const { deriveRevocationSecret, SK_IDENTITY_0 } = require('./lib/fixture-common');
+// SK_IDENTITIES moved there too once the fold generator began spending against these same
+// registrations - it must derive the secret this file escrowed, so there can only be one list.
+const { deriveRevocationSecret, SK_IDENTITIES } = require('./lib/fixture-common');
 
 // The controller keypair pinned in pp/src/envelope.nr's tests.
 const CONTROLLER_SK = 1234n;
 const PK = babyJub.mulPointEScalar(G, CONTROLLER_SK);
-
-// Identity 0 reuses pp/src/identity_asp.nr's published sk_identity, so the primary fixture stays
-// the same identity every other test refers to.
-const SK_IDENTITIES = [
-  SK_IDENTITY_0,
-  111222333444555666777888999n,
-  999888777666555444333222111n,
-];
 
 /** The 95-byte TD1 DG1 for identity `i`. */
 function buildDg1(i) {

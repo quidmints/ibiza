@@ -1,6 +1,6 @@
 "use strict";
 // Inclusion witness for the identity registry - the `identity_*` inputs a withdrawal proof needs to
-// show "this identity is registered AND not revoked" (TODO.md sec. 2.13k).
+// show "this identity is registered AND not revoked" (sec. 2.13k).
 //
 // REPLACES revocation.ts. That file fetched a NON-inclusion witness from a separate revocation
 // registry, alongside a LeanIMT ASP membership path from identityAsp.ts. Both collapse into ONE

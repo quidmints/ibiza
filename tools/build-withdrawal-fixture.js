@@ -25,18 +25,13 @@
  *     can produce a withdrawal the chain accepts.
  *
  * USAGE (from the repo root):
- *   cd frontend/identity-wallet && npx tsc src/pp/withdrawWitness.ts --outDir <build> \
- *     --rootDir src --module commonjs --target es2022 --moduleResolution node --esModuleInterop \
- *     --skipLibCheck
+ *   cd frontend/identity-wallet && npm run build:pp
+ *   node tools/build-withdrawal-fixture.js --build frontend/identity-wallet/build
  *
- *   --rootDir src is REQUIRED. With a single input file tsc infers the root as src/pp and emits a
- *   FLAT build, so the pp/ prefix this script requires disappears. It used to be implicit only
- *   because two files from different directories were compiled together.
- *
- *   <build> MUST sit INSIDE frontend/identity-wallet (e.g. ./build), or the compiled modules cannot
- *   resolve @iden3/js-crypto - node walks UP from the file's own directory looking for
- *   node_modules, and tools/build has none above it.
- *   node tools/build-withdrawal-fixture.js --build <build>
+ *   The compiler flags live in frontend/identity-wallet/tsconfig.fixtures.json, which is also why
+ *   the output MUST stay INSIDE frontend/identity-wallet: the compiled modules resolve
+ *   @iden3/js-crypto by walking UP from their own directory looking for node_modules, and
+ *   tools/build has none above it.
  *
  * then, per fixture:
  *   cd backend/circuits/withdraw_identity

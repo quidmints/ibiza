@@ -1,0 +1,38 @@
+// The wallet's pp/ modules compiled to plain CommonJS, so the fixture generators in tools/ can
+// require them from Node. Run it as `npm run build:pp` from this directory.
+//
+// WHY A CONFIG FILE RATHER THAN A COMMAND LINE. The same eight-flag invocation was written out in
+// five places (three generator headers, one runtime error message, one library). It went stale in
+// all five at once the day pp/ moved to .ts-suffixed relative imports: tsc emitted `require("./notes.ts")`
+// and every generator died with MODULE_NOT_FOUND from inside a file it had just successfully built.
+// One config is one place to fix that, and `tsc -p` is what the tool offers for exactly this.
+//
+// THE GENERATORS REQUIRE THE OUTPUT, THEY DO NOT IMPORT IT, which is why this does not extend
+// tsconfig.json - that one is the React Native app's, ESM and bundler-resolved, and its output
+// cannot be loaded by `require`.
+{
+  "compilerOptions": {
+    "outDir": "./build",
+    "rootDir": "./src",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "es2022",
+    "esModuleInterop": true,
+    // The app's own sources use `import { x } from "./y.ts"`. Under commonjs emit that would come
+    // out verbatim and resolve to nothing; this rewrites the extension to .js on the way out.
+    "rewriteRelativeImportExtensions": true,
+    // The generators consume the emitted JS, not the types, and the RN dependency graph does not
+    // typecheck outside Expo's own config.
+    "skipLibCheck": true,
+    "declaration": false,
+    "sourceMap": false
+  },
+  // Entry points, not directories: withdrawWitness pulls in notes, stateTree, identityProof and
+  // discovery transitively, which is the whole set the generators load, and naming the entry keeps
+  // a new file in pp/ from silently joining the fixture build.
+  //
+  // recovery.ts is here because tools/check-recovery.js needs it and it is PURE - no
+  // expo-secure-store, no React Native. If someone imports SecureStore into it, this build breaks
+  // and the only test that code has goes with it.
+  "files": ["./src/pp/withdrawWitness.ts", "./src/identity/recovery.ts"]
+}

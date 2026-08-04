@@ -19,10 +19,12 @@
  *     by a future ethers
  *
  * USAGE (from the repo root):
- *   cd frontend/identity-wallet && npx tsc src/identity/recovery.ts --outDir ./build \
- *     --rootDir src --module commonjs --target es2022 --moduleResolution node \
- *     --esModuleInterop --skipLibCheck
+ *   cd frontend/identity-wallet && npm run build:pp
  *   node tools/check-recovery.js
+ *
+ * The flags live in frontend/identity-wallet/tsconfig.fixtures.json. They were spelled out here, and
+ * in four other places, until the day pp/ moved to .ts-suffixed imports and all five went stale at
+ * once - tsc emitted require("./notes.ts") and every generator died inside a file it had just built.
  *
  * recovery.ts is PURE - no expo-secure-store, no React Native - which is precisely what makes this
  * possible. If someone imports SecureStore into it, this script stops working and the only test
@@ -37,10 +39,7 @@ const BUILD = path.join(WALLET, 'build', 'identity', 'recovery.js');
 if (!fs.existsSync(BUILD)) {
   console.error(
     `No compiled recovery module at ${BUILD}.\n\n` +
-    'cd frontend/identity-wallet && npx tsc src/identity/recovery.ts --outDir ./build \\\n' +
-    '  --rootDir src --module commonjs --target es2022 --moduleResolution node \\\n' +
-    '  --esModuleInterop --skipLibCheck\n\n' +
-    '--rootDir src is REQUIRED, or tsc emits a flat build and the identity/ prefix disappears.',
+    'cd frontend/identity-wallet && npm run build:pp\n',
   );
   process.exit(1);
 }

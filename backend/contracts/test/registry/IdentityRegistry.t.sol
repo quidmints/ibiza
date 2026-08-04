@@ -138,6 +138,17 @@ contract IdentityRegistryTest is EscrowFixtureBase {
    * degeneracy tools/build-withdrawal-fixture.js already refuses to emit for the state tree. Each
    * one goes through the real `register` with its own genuine escrow proof; there is deliberately
    * no privileged insert to shortcut with.
+   *
+   * ALL THREE WITNESSES ARE EMITTED, not just identity 0's. A folded batch is several DIFFERENT
+   * people withdrawing against ONE registry root, and with a single witness on disk every withdrawal
+   * in a batch would be the same person - which would let a fold that only ever works for
+   * self-identical members pass as if it worked for a real batch. The three share `root` by
+   * construction, because they are read out of the same tree at the same moment.
+   *
+   * THE SHAPE IS FLAT ON PURPOSE: one shared `root`, one `commitments` array, and `siblings`
+   * concatenated at a fixed stride of `siblings.length / commitments.length`. Nesting objects
+   * through `vm.serializeString` re-escapes them, and a reader that has to unescape JSON out of a
+   * JSON string is a reader that will eventually be wrong about which layer it is on.
    */
   function test_EmitIdentityWitnessFixture() public {
     _bindDocuments();
@@ -146,17 +157,35 @@ contract IdentityRegistryTest is EscrowFixtureBase {
     }
     assertEq(registry.registeredCount(), 3, 'expected three genuine registrations');
 
-    bytes32 commitment = _publicInputsAt(0)[PUB_COMMITMENT];
-    SparseMerkleTree.Proof memory p = registry.getProof(commitment);
+    bytes32[] memory commitments = new bytes32[](3);
+    bytes32[] memory siblings;
+    bytes32 root;
 
-    assertTrue(p.existence, 'the primary identity is not in the tree');
-    assertEq(p.value, bytes32(0), 'the primary identity is not CLEAN');
-    assertGt(p.siblings.length, 0, 'DEGENERATE witness - no sibling would ever be hashed');
+    for (uint256 i = 0; i < 3; i++) {
+      commitments[i] = _publicInputsAt(i)[PUB_COMMITMENT];
+      SparseMerkleTree.Proof memory p = registry.getProof(commitments[i]);
+
+      assertTrue(p.existence, 'a registered identity is not in the tree');
+      assertEq(p.value, bytes32(0), 'a freshly registered identity is not CLEAN');
+      assertGt(p.siblings.length, 0, 'DEGENERATE witness - no sibling would ever be hashed');
+
+      if (i == 0) {
+        root = p.root;
+        siblings = new bytes32[](3 * p.siblings.length);
+      } else {
+        // The whole point of emitting them together. Three witnesses against three different roots
+        // would each verify alone and could never appear in one batch.
+        assertEq(p.root, root, 'the three witnesses disagree on the registry root');
+      }
+      for (uint256 j = 0; j < p.siblings.length; j++) {
+        siblings[i * (siblings.length / 3) + j] = p.siblings[j];
+      }
+    }
 
     string memory json = 'identityWitness';
-    vm.serializeBytes32(json, 'root', p.root);
-    vm.serializeBytes32(json, 'commitment', commitment);
-    string memory out = vm.serializeBytes32(json, 'siblings', p.siblings);
+    vm.serializeBytes32(json, 'root', root);
+    vm.serializeBytes32(json, 'commitments', commitments);
+    string memory out = vm.serializeBytes32(json, 'siblings', siblings);
     vm.writeJson(out, 'test/fixtures/identity_witness.json');
   }
 

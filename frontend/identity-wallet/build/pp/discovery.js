@@ -17,7 +17,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PRECOMMITMENT_BUCKETS = void 0;
 exports.discoverNotes = discoverNotes;
 const ethers_1 = require("ethers");
-const notes_1 = require("./notes");
+const notes_ts_1 = require("./notes.js");
 // @contract PrivacyPoolSimple
 const POOL_EVENTS_ABI = [
     "event Deposited(address indexed _depositor, uint256 indexed _precommitmentBucket, uint256 _commitment, uint256 _label, uint256 _value, uint256 _precommitmentHash)",
@@ -41,8 +41,8 @@ async function discoverNotes(provider, poolAddress, masterKeys, scope, opts = {}
     const candidates = new Map();
     const buckets = new Set();
     for (let i = 0; i < maxIndex; i++) {
-        const note = (0, notes_1.depositSecrets)(masterKeys, scope, BigInt(i));
-        const pc = (0, notes_1.precommitment)(note);
+        const note = (0, notes_ts_1.depositSecrets)(masterKeys, scope, BigInt(i));
+        const pc = (0, notes_ts_1.precommitment)(note);
         candidates.set(pc.toString(), { index: i, note });
         buckets.add(pc % exports.PRECOMMITMENT_BUCKETS);
     }
@@ -92,7 +92,7 @@ async function discoverNotes(provider, poolAddress, masterKeys, scope, opts = {}
         // Which of our per-label heads does this withdrawal spend?
         let head;
         for (const h of headByLabel.values()) {
-            if (!h.spent && (0, notes_1.nullifierHash)(h.nullifier) === spentNullifier) {
+            if (!h.spent && (0, notes_ts_1.nullifierHash)(h.nullifier) === spentNullifier) {
                 head = h;
                 break;
             }
@@ -103,7 +103,7 @@ async function discoverNotes(provider, poolAddress, masterKeys, scope, opts = {}
         const labelKey = head.label.toString();
         const wi = wIndexByLabel.get(labelKey) ?? 0;
         wIndexByLabel.set(labelKey, wi + 1);
-        const ws = (0, notes_1.withdrawalSecrets)(masterKeys, head.label, BigInt(wi));
+        const ws = (0, notes_ts_1.withdrawalSecrets)(masterKeys, head.label, BigInt(wi));
         const change = {
             scope,
             label: head.label,

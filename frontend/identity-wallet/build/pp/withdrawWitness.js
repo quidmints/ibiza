@@ -8,7 +8,7 @@
 // Proving is `NoirCircuitParams.fromName('withdraw_identity').proveHonk(...)` from
 // @rarimo/rarime-rn-sdk, with the circuit registered by src/sdk/circuits.ts. That path is
 // ANDROID-ONLY: the SDK's Android native module implements proveHonk (RnNoirModule.kt,
-// proofType = "honk") but iOS hardcodes proof_type: "plonk". See TODO.md sec. 2.1a.
+// proofType = "honk") but iOS hardcodes proof_type: "plonk". See sec. 2.1a.
 //
 // Keeping assembly separate from proving is not a workaround, it is the right seam anyway: the
 // witness is backend-agnostic, so it is testable TODAY against a Forge fixture with no device, no
@@ -24,9 +24,9 @@ exports.Poseidon = void 0;
 exports.nextWithdrawalIndex = nextWithdrawalIndex;
 exports.holderRootFromSk = holderRootFromSk;
 exports.buildWithdrawalWitness = buildWithdrawalWitness;
-const notes_1 = require("./notes");
-const stateTree_1 = require("./stateTree");
-const identityProof_1 = require("./identityProof");
+const notes_ts_1 = require("./notes.js");
+const stateTree_ts_1 = require("./stateTree.js");
+const identityProof_ts_1 = require("./identityProof.js");
 const js_crypto_1 = require("@iden3/js-crypto");
 Object.defineProperty(exports, "Poseidon", { enumerable: true, get: function () { return js_crypto_1.Poseidon; } });
 /** The circuit range-checks `value`, `withdrawn_value` and `value - withdrawn_value` to 128 bits
@@ -59,9 +59,9 @@ function holderRootFromSk(skIdentity) {
 /** Assemble (and self-check) the withdraw_identity witness. */
 function buildWithdrawalWitness(params) {
     const { note, stateLeafIndex, stateTree, masterKeys, identity, revocationSecret, withdrawnValue, context, withdrawalIndex, } = params;
-    if (identity.siblings.length !== identityProof_1.IDENTITY_TREE_DEPTH) {
+    if (identity.siblings.length !== identityProof_ts_1.IDENTITY_TREE_DEPTH) {
         throw new Error(`buildWithdrawalWitness: identity witness has ${identity.siblings.length} siblings, ` +
-            `but the circuit is fixed at ${identityProof_1.IDENTITY_TREE_DEPTH}. Pad or regenerate both together.`);
+            `but the circuit is fixed at ${identityProof_ts_1.IDENTITY_TREE_DEPTH}. Pad or regenerate both together.`);
     }
     // ── Value conservation, checked before anything expensive ──────────────────────────────────
     if (note.spent)
@@ -74,16 +74,16 @@ function buildWithdrawalWitness(params) {
     if (note.value >= MAX_VALUE) {
         throw new Error("buildWithdrawalWitness: note value exceeds the circuit's 128-bit range check");
     }
-    if (context <= 0n || context >= stateTree_1.FIELD) {
+    if (context <= 0n || context >= stateTree_ts_1.FIELD) {
         throw new Error("buildWithdrawalWitness: context must be a nonzero BN254 field element");
     }
     // ── Identity: derive the registry key from the escrowed secret ──────────────────────────────
     // The key is Poseidon(revocation_secret) - the SAME value escrow_envelope committed to and
     // IdentityRegistry stored. sk_identity is NOT used here at all any more: identity is proven ONCE,
-    // at escrow. See TODO.md sec. 2.13k.
+    // at escrow. See sec. 2.13k.
     const commitment = js_crypto_1.Poseidon.hash([revocationSecret]);
     // ── State-tree membership ───────────────────────────────────────────────────────────────────
-    const stateProof = stateTree.proof(stateLeafIndex, stateTree_1.MAX_TREE_DEPTH);
+    const stateProof = stateTree.proof(stateLeafIndex, stateTree_ts_1.MAX_TREE_DEPTH);
     const leafAtIndex = stateTree.leaves[Number(stateLeafIndex)];
     if (leafAtIndex !== note.commitment) {
         throw new Error(`buildWithdrawalWitness: state leaf ${stateLeafIndex} holds ${leafAtIndex}, ` +
@@ -91,18 +91,18 @@ function buildWithdrawalWitness(params) {
     }
     // ── Change note ─────────────────────────────────────────────────────────────────────────────
     const newValue = note.value - withdrawnValue;
-    const changeNote = (0, notes_1.withdrawalSecrets)(masterKeys, note.label, withdrawalIndex);
-    const newCommitment = (0, notes_1.commitment)(newValue, note.label, changeNote);
+    const changeNote = (0, notes_ts_1.withdrawalSecrets)(masterKeys, note.label, withdrawalIndex);
+    const newCommitment = (0, notes_ts_1.commitment)(newValue, note.label, changeNote);
     // Reconstruct the SPENT note's commitment exactly as the circuit does (main.nr step 1) rather
     // than trusting discovery's stored value — the circuit asserts this, so a mismatch is a witness
     // that cannot be proven, and it is far cheaper to find it here.
     const existingNote = { nullifier: note.nullifier, secret: note.secret };
-    const recomputed = (0, notes_1.commitment)(note.value, note.label, existingNote);
+    const recomputed = (0, notes_ts_1.commitment)(note.value, note.label, existingNote);
     if (recomputed !== note.commitment) {
         throw new Error(`buildWithdrawalWitness: recomputed commitment ${recomputed} != recorded ${note.commitment}. ` +
             "The note's value/label/secrets disagree with the on-chain commitment.");
     }
-    const existingNullifierHash = (0, notes_1.nullifierHash)(note.nullifier);
+    const existingNullifierHash = (0, notes_ts_1.nullifierHash)(note.nullifier);
     const pubSignals = [
         newCommitment,
         existingNullifierHash,

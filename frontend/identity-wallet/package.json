@@ -8,7 +8,8 @@
     "android": "npx expo run:android --device",
     "ios": "npx expo run:ios --device",
     "prebuild": "npx expo prebuild --clean && npx pod-install",
-    "start": "npx expo start --clear"
+    "start": "npx expo start --clear",
+    "build:pp": "tsc -p tsconfig.fixtures.json"
   },
   "dependencies": {
     "@distributedlab/tools": "^1.0.0-rc.17",

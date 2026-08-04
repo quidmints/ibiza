@@ -56,6 +56,24 @@ const SK_IDENTITY_0 =
 /** escrow0's revocation secret. Its Poseidon commitment IS the identity tree's key. */
 const REVOCATION_SECRET = deriveRevocationSecret(SK_IDENTITY_0);
 
+/**
+ * The identity scalars behind the three registered escrow fixtures, in emitted order.
+ *
+ * LIVES HERE, next to SK_IDENTITY_0, because two generators need it: build-escrow-fixtures.js makes
+ * the registrations and build-fold-witnesses.js spends against them, and the second must derive the
+ * SAME revocation secret the first escrowed. A private copy in either would still produce a witness,
+ * just one whose Poseidon commitment names a leaf that is not in the tree - which surfaces as an
+ * unexplained inclusion failure rather than as the drift it is.
+ *
+ * The order is load-bearing: index i here is the identity whose witness is at index i in
+ * identity_witness.json, because both come from escrow_envelope<i>.
+ */
+const SK_IDENTITIES = [
+  SK_IDENTITY_0,
+  111222333444555666777888999n,
+  999888777666555444333222111n,
+];
+
 const IDENTITY_WITNESS_PATH = path.join(
   __dirname, '..', '..', 'backend', 'contracts', 'test', 'fixtures', 'identity_witness.json',
 );
@@ -70,11 +88,7 @@ function loadWallet(buildDir) {
   if (!fs.existsSync(buildDir)) {
     console.error(
       `No compiled wallet modules at ${buildDir}.\n` +
-      'cd frontend/identity-wallet && npx tsc src/pp/withdrawWitness.ts --outDir ./build \\\n' +
-      '  --rootDir src --module commonjs --target es2022 --moduleResolution node \\\n' +
-      '  --esModuleInterop --skipLibCheck\n\n' +
-      '--rootDir src is REQUIRED: with a single input file tsc infers the root as src/pp and emits a\n' +
-      'FLAT build, so the pp/ prefix these scripts require disappears.',
+      'cd frontend/identity-wallet && npm run build:pp\n',
     );
     process.exit(1);
   }
@@ -86,13 +100,17 @@ function loadWallet(buildDir) {
 }
 
 /**
- * The identity inclusion witness, emitted by the REAL registry.
+ * The identity inclusion witness for identity `index`, emitted by the REAL registry.
  *
  * Never rebuilt off-chain: the identity tree is a @solarity SparseMerkleTree and there is
  * deliberately no JS reimplementation of one (see frontend/identity-wallet/src/pp/identityProof.ts).
  * A witness built here would only prove that two of our own implementations agree.
+ *
+ * The fixture carries all three registered identities against ONE shared root, because a batch of
+ * folded withdrawals is several different people against one registry state. `index` selects which;
+ * it defaults to 0, which is the identity every older fixture was built for.
  */
-function loadIdentityWitness() {
+function loadIdentityWitness(index = 0) {
   if (!fs.existsSync(IDENTITY_WITNESS_PATH)) {
     console.error(
       `No identity witness at ${IDENTITY_WITNESS_PATH}.\n` +
@@ -101,19 +119,30 @@ function loadIdentityWitness() {
     process.exit(1);
   }
   const raw = JSON.parse(fs.readFileSync(IDENTITY_WITNESS_PATH, 'utf8'));
+  const count = raw.commitments.length;
+  if (index >= count) {
+    throw new Error(`identity witness ${index} requested, but the fixture holds ${count}`);
+  }
+  const stride = raw.siblings.length / count;
   const witness = {
     identityRoot: BigInt(raw.root),
-    siblings: raw.siblings.map((x) => BigInt(x)),
+    commitment: BigInt(raw.commitments[index]),
+    siblings: raw.siblings.slice(index * stride, (index + 1) * stride).map((x) => BigInt(x)),
   };
   // A tree with one leaf has an EMPTY path, so nothing would ever be hashed and the fixture would
   // prove nothing about the Merkle path it claims to walk.
   if (witness.siblings.every((x) => x === 0n)) {
     throw new Error(
-      'identity witness is DEGENERATE - every sibling is zero. The emitter must register more than ' +
-      'one identity.',
+      `identity witness ${index} is DEGENERATE - every sibling is zero. The emitter must register ` +
+      'more than one identity.',
     );
   }
   return witness;
+}
+
+/** How many identities the emitted fixture holds. */
+function identityWitnessCount() {
+  return JSON.parse(fs.readFileSync(IDENTITY_WITNESS_PATH, 'utf8')).commitments.length;
 }
 
 /** Write a Noir Prover.toml from an inputs map. */
@@ -136,7 +165,8 @@ function logPublicSignals(pubSignals) {
 }
 
 module.exports = {
-  MNEMONIC, REVOCATION_SECRET, REVOCATION_SECRET_DOMAIN, SK_IDENTITY_0, deriveRevocationSecret,
-  IDENTITY_WITNESS_PATH,
-  loadWallet, loadIdentityWitness, writeProverToml, PUBLIC_SIGNAL_NAMES, logPublicSignals,
+  MNEMONIC, REVOCATION_SECRET, REVOCATION_SECRET_DOMAIN, SK_IDENTITY_0, SK_IDENTITIES,
+  deriveRevocationSecret, IDENTITY_WITNESS_PATH,
+  loadWallet, loadIdentityWitness, identityWitnessCount, writeProverToml, PUBLIC_SIGNAL_NAMES,
+  logPublicSignals,
 };

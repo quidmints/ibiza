@@ -8043,6 +8043,93 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18eg REGENERATING THE 79 PASSPORT VERIFIERS - the recipe, written down before it is needed (user, 2026-08-05)
+
+**NOT NEEDED TODAY.** The 79 in `passport/verifiers2/noir/` have NO proofs and no test deploys one, so
+nothing is stale. They were built in this session with the container swapfile (`6120ec3`, `86a9788`
+"75 of 75 now built on the current toolchain", `8d64f5d` six recovered profiles) and `27bebcf` proved
+their keys stable across bb versions.
+
+**THE TRIGGER IS A PROOF, NOT A VERSION.** Re-emit a verifier when a proof is first made against it
+on a bb whose Solidity template differs - and only that profile, not all 79. Measured: the VK is
+byte-identical between 5.1.0 and 6.0 while the emitted Solidity moved **2,491 -> 2,518 lines, 99
+lines differing**. A verifier with no proofs is never stale; a verifier whose proofs move is stale
+immediately, and its KEY will not show it.
+
+**AND IT SHOULD NOW BE CHEAP.** `codegen-passport-verifiers.sh` keeps every key in
+`backend/circuits/passport-vks/<profile>.vk` as of this session. `write_vk` is the entire cost - it is
+what needs the swap - and `write_solidity_verifier -k <saved vk>` is a seconds-long reformat. **A
+template-only regeneration needs no container, no swap and no CRS.** The recipe below is for the case
+where a key genuinely has to be re-derived: a circuit change, or a bb that alters the key format.
+
+---
+
+**THE SWAP RECIPE, because none of it worked first time.**
+
+**1. The Docker Desktop slider cannot do this.** It caps swap at 4 GB, and
+`~/Library/Group Containers/group.com.docker/settings.json` is TCC-protected - a shell gets
+`Operation not permitted` **even as its owner**, so it cannot be scripted. Do not try again.
+
+**2. Swap is a kernel property of the VM, not a Desktop setting.** A `--privileged` container can add
+a swapfile to that kernel and *every* container then sees it. Measured: 3,071 MB -> 5,119 MB with a
+2 GB file. **The ceiling is disk, not the slider.**
+
+**3. The swapfile MUST live on a NAMED VOLUME.** `/tmp` and the overlay root cannot host one and
+`swapon` rejects them with `Invalid argument`, which names nothing useful.
+
+```
+docker volume create ibiza-swap
+docker run --rm --platform linux/amd64 --privileged \
+  -v "$PWD":/repo -v ibiza-bb-crs:/root/.bb-crs -v ibiza-swap:/swap \
+  -w /repo/backend/circuits <image> bash -lc '
+    if [ ! -f /swap/bb.swap ] || [ "$(stat -c%s /swap/bb.swap)" -lt $((32*1024*1024*1024)) ]; then
+      rm -f /swap/bb.swap
+      fallocate -l 32G /swap/bb.swap && chmod 600 /swap/bb.swap && mkswap /swap/bb.swap
+    fi
+    swapon /swap/bb.swap 2>/dev/null || true
+    free -g | head -3
+    ./codegen-passport-verifiers.sh
+  '
+```
+
+**4. `--privileged` is required for `swapon` and is the whole reason it is there.** Local build
+container over a mounted tree; it signs nothing and holds no key.
+
+**5. The swapfile PERSISTS in the volume** - allocate once, reuse forever. `chmod 600` before
+`mkswap` or `swapon` refuses it.
+
+**6. The CRS goes in its own named volume** (`ibiza-bb-crs`), so the ~2 GiB download happens once and
+survives `--rm`.
+
+**7. `--platform linux/amd64` is not optional on Apple silicon.**
+
+**WHAT DOES NOT HELP, all tried against a known-failing profile and none moved the 11.2 GiB peak:**
+`HARDWARE_CONCURRENCY=2` (bb honours it - "num threads: 2" - peak unchanged), `BB_STORAGE_BUDGET` (no
+effect; the earlier claim that it halved memory was a false positive from comparing two DIFFERENT
+circuits), pre-seeding a 2^25 CRS (bb dies before reaching it), and `--cpus=2` (the container still
+reports 8 cores; `--cpuset-cpus=0-1` does change `nproc`, and still changes nothing that matters).
+**The peak is the circuit's polynomials - 2^25 field elements x 32 bytes - so no scheduling knob
+touches it.**
+
+**AND THE FIVE HEAVIEST PROFILES ARE NOT A MEMORY PROBLEM AT ALL.** They need a 2^25-point CRS, which
+is EXACTLY 2 GiB, and bb reads/writes the CRS whole-file in ONE syscall while macOS caps a single
+write at 2 GiB - so it fails with `EINVAL` no matter how much RAM or swap exists. That is why the
+container is Linux and not merely bigger. The five are listed in the script's `DEFAULT_PROFILES`.
+
+**⚠️ `docker info` MemTotal is the VM's ALLOCATION, not host free RAM.** Closing apps does nothing.
+Raise it at Docker Desktop -> Settings -> Resources -> Memory. Under-memory `rustc`/`bb` is
+OOM-killed with NO diagnostic - it reads exactly like a compile error and is not one.
+
+- [ ] **Regenerate a passport verifier only when its first proof exists**, from the saved key if the
+      key is still valid (seconds, no container), and through the recipe above if it is not.
+- [ ] **Back-fill `passport-vks/` for the 79 already built.** The keys were discarded by the old
+      one-slot build directory, so the saving only helps profiles built from now on. Doing this once
+      is the 32 GiB run - and it is the LAST one, because after it a template bump never needs the
+      container again. **This is the item to schedule when there is a free machine-hour, not when a
+      proof suddenly needs a verifier.**
+- [ ] Nothing wires verifiers by address, so a wrong passport verifier would be caught by nothing.
+      That gap is worth more than any of the above.
+
 ### 2.18ef GETTING RID OF 5.1.0 - one referenced artifact left, and it should be retired not upgraded (user, 2026-08-05)
 
 *"upgrade any proofs we need to work with 6.0.0"* then *"why cant we get rid of 5.1.0 altogether?"* -

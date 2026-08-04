@@ -8050,28 +8050,48 @@ genuinely different - just far more finely divided than proving cost cares about
 fields at N=4 and N=16 alike, measured - so the way to pay less per withdrawal is simply to fold more
 of them.
 
+**⚠️ THE TABLE THAT WAS HERE PROJECTED 128/256/512 WITHDRAWALS PER SETTLEMENT AND WAS WRONG** - see
+the ceiling below. The real range is 32 today to **56 at the cap**, which is 90,717 down to 51,838
+per withdrawal against 186,255 flat and 173,542 tree. Still the cheapest path, by ~3.3x rather than
+the ~8x claimed.
+
+Raising the batch within that range costs nothing - no new levels, no new verifier, no
+redeployment - and a bigger batch is a bigger anonymity set, so cost and privacy still pull the same
+way. They just stop pulling at 56.
+
+**⚠️ "ANY N" IS FALSE. THERE IS A HARD CEILING AT N=28, AND I ASSERTED OTHERWISE TWICE.**
+
+Measured, not reasoned. `bb prove -s chonk` on a 32-withdrawal stack:
+
+```
+Assertion failed: (N <= M)
+  Left: 64   Right: 56
+  Reason: BatchMergeProver: more subtables than max_subtables
+```
+
+A fold of N is `N apps + N kernels + 1 hiding` = **2N+1 circuits**, giving 2N subtables. The cap is
+**56**, compiled in as `NUM_SUBTABLES` with **no flag to raise it** - checked `prove --help-extended`
+and the binary's strings. So:
+
+> **max N per fold = 28. Two folds per root. 56 withdrawals per on-chain settlement, full stop.**
+
+**WHAT THIS KILLS.** The table below that projected 128, 256 and 512 withdrawals per settlement was
+arithmetic on a capability that does not exist. The floor is:
+
 | withdrawals settled | per-withdrawal gas | |
 |---|---|---|
-| 32 (two folds of 16) | 90,717 | today |
-| 64 | 45,358 | |
-| **128 (two folds of 64)** | **22,679** | |
-| 256 | 11,339 | |
-| 512 | 5,669 | |
+| 32 (two folds of 16) | 90,717 | measured today |
+| **56 (two folds of 28)** | **51,838** | **the actual floor** |
+| ~~128~~ | ~~22,679~~ | **impossible** |
 
-against **186,255** flat and **173,542** tree. Nothing about the circuits changes - no new levels, no
-new verifier, no redeployment. **The batch size stops being a proving constraint and becomes a
-product question: how long will a withdrawer wait.** Bigger batches also mean a bigger anonymity set,
-so privacy and cost pull the same way for once.
+51,838 still beats the tree's 173,542 and flat's 186,255 by ~3.3x, so the fold path is still the
+cheapest per withdrawal - but by three times, not eight.
 
-**ANY N IS A CAPABILITY, NOT A HOPE - and the proof size is ENFORCED, not assumed.**
-`withdraw_ivc_wrapper` pins `CHONK_PROOF_LENGTH = 1221`. A fold that produced a longer proof at
-larger N would not be accepted by the wrapper at all; it would fail as a length mismatch before
-anything else. So constant proof size is a property the circuit CHECKS, not one measured twice and
-extrapolated.
-
-**The only open question was ever peak MEMORY**, and it is a performance question rather than a
-capability one - a fold that used more RAM at N=64 would still produce the same proof and settle the
-same way. Measured at N=4 and N=16 (572 MB), and at N=32 below.
+**WHAT SURVIVES.** Constant PROOF SIZE is genuinely enforced: `withdraw_ivc_wrapper` pins
+`CHONK_PROOF_LENGTH = 1221`, so a longer proof is rejected as a length mismatch. And peak memory IS
+flat - the N=32 stack built at **225 MB** and its prove reached 673 MB before hitting the cap, both
+in line with N=16's 572 MB. Memory was never the constraint. **The constraint is a subtable count
+nobody had looked for, and I should have found it by measuring rather than by asserting "any N".**
 
 **THE SECOND CHANGE: TREAT THE ROOT AS A MERGE POINT, NOT A BATCHER.** The expensive step needs two
 children, and each child is an independent fold at **572 MB**. So the two folds can come from two

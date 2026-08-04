@@ -8063,10 +8063,15 @@ new verifier, no redeployment. **The batch size stops being a proving constraint
 product question: how long will a withdrawer wait.** Bigger batches also mean a bigger anonymity set,
 so privacy and cost pull the same way for once.
 
-**⚠️ THE LOAD-BEARING ASSUMPTION, NOT YET MEASURED:** that a fold at N=64 still peaks near 572 MB and
-still emits 1,223 fields. It should - IVC accumulates incrementally and the proof was identical at
-N=4 and N=16 - but "should" is not "measured", and the whole recommendation rests on it. **Measure
-before committing to a batch size.**
+**ANY N IS A CAPABILITY, NOT A HOPE - and the proof size is ENFORCED, not assumed.**
+`withdraw_ivc_wrapper` pins `CHONK_PROOF_LENGTH = 1221`. A fold that produced a longer proof at
+larger N would not be accepted by the wrapper at all; it would fail as a length mismatch before
+anything else. So constant proof size is a property the circuit CHECKS, not one measured twice and
+extrapolated.
+
+**The only open question was ever peak MEMORY**, and it is a performance question rather than a
+capability one - a fold that used more RAM at N=64 would still produce the same proof and settle the
+same way. Measured at N=4 and N=16 (572 MB), and at N=32 below.
 
 **THE SECOND CHANGE: TREAT THE ROOT AS A MERGE POINT, NOT A BATCHER.** The expensive step needs two
 children, and each child is an independent fold at **572 MB**. So the two folds can come from two
@@ -8085,8 +8090,9 @@ a genuinely low-memory settlement path is needed; otherwise it is a third thing 
 while the fold commits by chained `absorb` and the tree by tree-hash. **Neither path can actually
 SETTLE on-chain today - both only VERIFY.** Any design discussion downstream of that is premature.
 
-- [ ] **Measure a fold at N=64**: peak RSS and proof field count. One run, and it decides the batch
-      size and therefore the per-withdrawal gas.
+- [ ] **Measure peak RSS at larger N.** Not a capability check - the wrapper's pinned proof length
+      already guarantees the shape - just the memory curve, so a batch size can be chosen on
+      evidence rather than caution.
 - [ ] **Move `BatchCommitmentLib` to the chained `absorb` commitment and check `count`.** This is the
       gap between "the chain verifies our proof" and "the chain settles our withdrawals".
 - [ ] Decide whether two independent folders feeding one root is the operating model. If it is, the

@@ -167,6 +167,34 @@ contract BatchCommitmentTest is Test {
     BatchCommitmentLib.treeCommitment(s);
   }
 
+  /*
+   * A PADDED BATCH COMMITS EXACTLY AS A FULL ONE DOES. Five real withdrawals settle as a tree of
+   * eight, and the three spare leaves are genuine zero-value spends the contract skips. The
+   * commitment must still reproduce the root that padded tree's REAL proof exposed - otherwise
+   * "settle with whoever is here" does not work and everyone waits for a full batch.
+   */
+  function test_APaddedBatchReproducesItsRoot() public view {
+    string memory f = vm.readFile('test/fixtures/recursion_tree_n8.json');
+    uint256 n = vm.parseJsonUint(f, '.batchSize');
+    uint256[PUB_LEN][] memory sig = new uint256[PUB_LEN][](n);
+    for (uint256 i = 0; i < n; ++i) {
+      bytes32[] memory row = vm.parseJsonBytes32Array(f, string.concat('.signals[', vm.toString(i), ']'));
+      for (uint256 j = 0; j < PUB_LEN; ++j) sig[i][j] = uint256(row[j]);
+    }
+    assertEq(n, 8, 'the padded tree should hold eight leaves');
+    assertEq(vm.parseJsonUint(f, '.realWithdrawals'), 5, 'five of them should be real');
+
+    uint256 padded;
+    for (uint256 i = 0; i < n; ++i) if (sig[i][2] == 0) ++padded;
+    assertEq(padded, 3, 'three leaves should be zero-value padding');
+
+    assertEq(
+      BatchCommitmentLib.treeCommitment(sig),
+      uint256(vm.parseJsonBytes32Array(f, '.publicInputs')[0]),
+      'a padded batch does not reproduce its own root'
+    );
+  }
+
   /// GAS: what the on-chain recompute costs per withdrawal.
   function test_GasOfTheTree() public view {
     uint256[PUB_LEN][] memory s = _fixtureSignals();

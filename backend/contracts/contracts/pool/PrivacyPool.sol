@@ -261,7 +261,25 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     // `_contextFor` hashes `abi.encode(_withdrawal, SCOPE)` - the WHOLE struct - so altering any
     // field of a withdrawal breaks the match. Checked BEFORE verification so a mismatched batch
     // fails on the cheap comparison rather than after paying for the proof.
+    // PADDING SLOTS ARE SKIPPED, and `withdrawn_value == 0` is what marks one. A recursion tree
+    // settles POWER-OF-TWO batches, so a batch of five is proved as a tree of eight with three
+    // padding withdrawals - genuine proofs of zero-value spends, generated for this batch's state
+    // root because every member must share it.
+    //
+    // ⚠️ THE SKIP MUST COME BEFORE `_spend`, WHICH IS WHY IT IS NOT MERELY AN OPTIMISATION. Padding
+    // slots are generated from a dedicated note, so several in one batch carry the SAME nullifier;
+    // settling them would revert `NullifierAlreadySpent` on the second and make any padded batch
+    // unsettleable. It also comes before the context check, because a padding slot has no
+    // withdrawal to be bound to.
+    //
+    // NOTHING IS LOST BY SKIPPING. A zero-value withdrawal pays nobody and frees no note - the
+    // change commitment equals the spent one. It exists only to occupy a leaf. It IS still bound by
+    // the batch commitment, so a batcher cannot swap padding for a real withdrawal after proving.
+    //
+    // A REAL WITHDRAWAL OF ZERO IS NOT A THING THIS DENIES ANYONE: it would pay out nothing while
+    // burning the note's nullifier, so it is strictly worse than not withdrawing.
     for (uint256 i; i < n; ++i) {
+      if (_signals[i][2] == 0) continue; // padding
       if (_signals[i][6] != _contextFor(_withdrawals[i])) revert ContextMismatch();
     }
 
@@ -280,8 +298,11 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     uint256 lastStateRoot;
     uint256 lastIdentityRoot;
 
+    uint256 settled;
     for (uint256 i; i < n; ++i) {
       uint256[7] memory s = _signals[i];
+      if (s[2] == 0) continue; // padding - see the loop above
+      ++settled;
 
       // NO `stateTreeDepth > MAX_TREE_DEPTH` CHECK HERE, and that is not an omission: the
       // AGGREGATION CIRCUIT already constrains it (`assert_depth_in_range`, applied to every
@@ -307,7 +328,9 @@ abstract contract PrivacyPool is State, IPrivacyPool {
       emit Withdrawn(_withdrawals[i].processooor, s[2], s[1], s[0]);
     }
 
-    emit BatchWithdrawn(msg.sender, n);
+    // The count REALLY SETTLED, not the tree's size - a batch of five proved as a tree of eight
+    // emits five. Otherwise the event would overstate activity by however much padding was used.
+    emit BatchWithdrawn(msg.sender, settled);
   }
 
   function withdraw(

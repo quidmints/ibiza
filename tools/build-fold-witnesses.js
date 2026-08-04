@@ -48,6 +48,24 @@ const arg = (name, fallback) => {
 const BUILD = path.resolve(arg('--build', path.join(__dirname, 'build')));
 const COUNT = Number(arg('--count', '16'));
 
+/*
+ * PADDING. A recursion tree settles POWER-OF-TWO batches, so a batch of five is proved as a tree of
+ * eight. The three spare leaves need GENUINE withdrawal proofs - a tree cannot hold an empty slot -
+ * so they are real zero-value spends, marked by `withdrawn_value == 0` and skipped by the contract
+ * before it spends any nullifier.
+ *
+ * THEY CANNOT BE PRECOMPUTED ONCE AND REUSED FOREVER, which is the obvious idea and the wrong one:
+ * every member of a batch must carry the SAME state_root, and that root changes with the pool. So
+ * padding is generated per batch, against this batch's tree, exactly like a real member.
+ *
+ * EACH PADDING SLOT GETS ITS OWN NOTE, so their nullifiers are distinct and nothing collides. The
+ * contract skips them anyway, and that skip is a correctness requirement rather than an
+ * optimisation: a padding slot has NO corresponding `Withdrawal` struct to be bound to, so settling
+ * one would read a fabricated recipient and pay it zero while burning a real note.
+ */
+const padTo = (n) => (n <= 1 ? 1 : 2 ** Math.ceil(Math.log2(n)));
+const PADDED = padTo(COUNT);
+
 const { masterKeysFromMnemonic, depositSecrets, commitment, nullifierHash, StateTree,
   buildWithdrawalWitness } = common.loadWallet(BUILD);
 
@@ -65,13 +83,16 @@ const OUT_DIR = path.join(__dirname, '..', 'backend', 'circuits', 'withdraw_ivc_
  * member. A batch where every member withdrew its note in full would never exercise the change-note
  * branch, and that branch is where the remainder lives.
  */
-const members = Array.from({ length: COUNT }, (_, i) => ({
+const members = Array.from({ length: PADDED }, (_, i) => ({
   index: i,
+  padding: i >= COUNT,
   identity: i % IDENTITY_COUNT,
   scope: 1000n + BigInt(i),
   label: 500_000n + BigInt(i) * 37n,
   value: (10n ** 18n) * BigInt(i + 1),
-  withdrawn: (10n ** 17n) * BigInt(i + 1),
+  // Zero for a padding slot. The circuit permits it - `withdrawn_value` is only range-checked - and
+  // the change note then equals the spent one, so the spend is a no-op even if it were settled.
+  withdrawn: i >= COUNT ? 0n : (10n ** 17n) * BigInt(i + 1),
   // Distinct per member and nonzero. In production this binds the recipient and relayer fee; here it
   // only has to differ, so that two members can never produce the same seven signals.
   context: 42_424_242n + BigInt(i) * 101n,
@@ -106,6 +127,7 @@ for (const m of members) {
   const revocationSecret = deriveRevocationSecret(skIdentity(m.identity));
 
   const w = buildWithdrawalWitness({
+    allowZeroForPadding: m.padding,
     note: m.note,
     stateLeafIndex: m.leafIndex,
     stateTree,
@@ -119,6 +141,7 @@ for (const m of members) {
 
   // Cross-checks against something other than the assembler, member by member.
   const eq = (a, b, msg) => { if (a !== b) throw new Error(`member ${m.index}: ${msg}: ${a} != ${b}`); };
+  if (m.padding) eq(w.pubSignals[2], 0n, 'a padding slot must withdraw zero');
   eq(w.pubSignals[1], nullifierHash(m.note.nullifier), 'nullifier hash');
   eq(w.pubSignals[3], stateTree.root, 'state_root');
   eq(w.pubSignals[5], identity.identityRoot, 'identity_root');
@@ -142,11 +165,17 @@ for (const m of members) {
   // same note spent twice; two sharing a change commitment would collide in the state tree. Either
   // means the members are not actually distinct, which is the exact weakness of the old fixture.
   const nh = w.pubSignals[1].toString();
-  if (seenNullifier.has(nh)) throw new Error(`member ${m.index}: duplicate nullifier hash ${nh}`);
-  seenNullifier.add(nh);
-  const nc = w.pubSignals[0].toString();
-  if (seenCommitment.has(nc)) throw new Error(`member ${m.index}: duplicate change commitment ${nc}`);
-  seenCommitment.add(nc);
+  if (!m.padding) {
+    if (seenNullifier.has(nh)) throw new Error(`member ${m.index}: duplicate nullifier hash ${nh}`);
+    seenNullifier.add(nh);
+  }
+  // Padding slots deliberately share a note, so they share a nullifier and a change commitment.
+  // That is safe ONLY because the contract skips them before spending; see the header.
+  if (!m.padding) {
+    const nc = w.pubSignals[0].toString();
+    if (seenCommitment.has(nc)) throw new Error(`member ${m.index}: duplicate change commitment ${nc}`);
+    seenCommitment.add(nc);
+  }
 
   common.writeProverToml(path.join(OUT_DIR, `Prover.${m.index}.toml`), w.inputs);
   console.log(
@@ -155,8 +184,9 @@ for (const m of members) {
   );
 }
 
-console.log(`\n${COUNT} distinct withdrawals -> ${path.relative(path.join(__dirname, '..'), OUT_DIR)}/Prover.<i>.toml`);
+console.log(`\n${COUNT} distinct withdrawals + ${PADDED - COUNT} padding -> ` +
+  `${path.relative(path.join(__dirname, '..'), OUT_DIR)}/Prover.<i>.toml (tree of ${PADDED})`);
 console.log(`  shared state_root    ${sharedStateRoot}`);
 console.log(`  shared identity_root ${sharedIdentityRoot}`);
 console.log(`  state tree: ${stateTree.leaves.length} leaves, depth ${stateTree.depth}`);
-console.log(`  ${seenNullifier.size} distinct nullifier hashes, ${seenCommitment.size} distinct change commitments`);
+console.log(`  ${seenNullifier.size} distinct nullifier hashes, ${seenCommitment.size} distinct change commitments (real members only)`);

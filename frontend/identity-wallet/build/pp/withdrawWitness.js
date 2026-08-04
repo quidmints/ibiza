@@ -58,7 +58,7 @@ function holderRootFromSk(skIdentity) {
 }
 /** Assemble (and self-check) the withdraw_identity witness. */
 function buildWithdrawalWitness(params) {
-    const { note, stateLeafIndex, stateTree, masterKeys, identity, revocationSecret, withdrawnValue, context, withdrawalIndex, } = params;
+    const { note, stateLeafIndex, stateTree, masterKeys, identity, revocationSecret, withdrawnValue, context, withdrawalIndex, allowZeroForPadding = false, } = params;
     if (identity.siblings.length !== identityProof_ts_1.IDENTITY_TREE_DEPTH) {
         throw new Error(`buildWithdrawalWitness: identity witness has ${identity.siblings.length} siblings, ` +
             `but the circuit is fixed at ${identityProof_ts_1.IDENTITY_TREE_DEPTH}. Pad or regenerate both together.`);
@@ -66,8 +66,9 @@ function buildWithdrawalWitness(params) {
     // ── Value conservation, checked before anything expensive ──────────────────────────────────
     if (note.spent)
         throw new Error("buildWithdrawalWitness: note is already spent");
-    if (withdrawnValue <= 0n)
-        throw new Error("buildWithdrawalWitness: withdrawnValue must be > 0");
+    if (withdrawnValue < 0n || (withdrawnValue === 0n && !allowZeroForPadding)) {
+        throw new Error("buildWithdrawalWitness: withdrawnValue must be > 0 (see allowZeroForPadding)");
+    }
     if (withdrawnValue > note.value) {
         throw new Error(`buildWithdrawalWitness: withdrawing ${withdrawnValue} from a note worth ${note.value}`);
     }

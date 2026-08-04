@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build and run the recursion TREE that settles a batch of withdrawals on-chain.
 
-  python3 build-recursion-tree.py [N]        # N must be a power of two, default 16
+  python3 build-recursion-tree.py [N]        # any N >= 2; padded to the next power of two
 
 WHAT THIS IS FOR. `aggregate_withdrawals` verifies all N withdrawal proofs inside ONE circuit, which
 is 12,720,801 gates and ~21.7 GB at N=16 - a batcher has to be a server. This builds the same
@@ -252,9 +252,18 @@ def toml_array(name: str, values) -> str:
 
 
 def main() -> int:
-    n = int(sys.argv[1]) if len(sys.argv) > 1 else 16
-    if n & (n - 1) or n < 2:
-        sys.exit(f"N must be a power of two and at least 2, got {n}")
+    requested = int(sys.argv[1]) if len(sys.argv) > 1 else 16
+    if requested < 2:
+        sys.exit(f"a tree settles at least two withdrawals, got {requested}")
+
+    # PAD TO THE NEXT POWER OF TWO. A tree cannot hold an empty slot, so a batch of five is proved as
+    # a tree of eight and the spare leaves are genuine zero-value withdrawals that the contract skips
+    # (`withdrawn_value == 0`). That is what turns "wait until sixteen have queued" into "settle with
+    # whoever is here" - verification costs the same either way, so a partial batch simply splits the
+    # same gas among fewer people.
+    n = 1 << (requested - 1).bit_length()
+    if n != requested:
+        print(f"padding {requested} withdrawals to a tree of {n}")
     if not pathlib.Path(BB).exists():
         sys.exit(f"no bb at {BB}. Run `npm install` in backend/circuits, or set BB.")
 
@@ -386,6 +395,7 @@ def main() -> int:
         "proof": "0x" + b"".join(v.to_bytes(32, "big") for v in root["proof"]).hex(),
         "publicInputs": [f"0x{root['commitment']:064x}"],
         "batchSize": n,
+        "realWithdrawals": requested,
         "signals": [[f"0x{v:064x}" for v in m["public"]] for m in leaves],
         "generator": "backend/circuits/build-recursion-tree.py",
     }, indent=2) + "\n")

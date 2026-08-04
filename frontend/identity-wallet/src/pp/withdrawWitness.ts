@@ -50,6 +50,19 @@ export interface WithdrawWitnessParams {
   /** The withdrawer's identity scalar, from the enclave-rooted seed. */
   /** How much to withdraw. The remainder carries into the change note. */
   withdrawnValue: bigint;
+  /**
+   * Permit `withdrawnValue === 0`, which is otherwise refused.
+   *
+   * FOR TREE PADDING ONLY. A recursion tree settles power-of-two batches, so a batch of five is
+   * proved as a tree of eight and the spare leaves need GENUINE proofs - a tree cannot hold an empty
+   * slot. A zero-value spend is the cheapest valid one: the circuit permits it (`withdrawn_value` is
+   * only range-checked) and the change note comes out equal to the spent one.
+   *
+   * IT IS AN OPT-IN RATHER THAN A RELAXED CHECK because for a real user a zero withdrawal is
+   * strictly harmful - it pays out nothing while burning the note's nullifier - so the guard stays
+   * on for every path that is not deliberately building padding.
+   */
+  allowZeroForPadding?: boolean;
   /** From buildRelayedWithdrawal()/buildSelfWithdrawal() in ./relay. */
   context: bigint;
   /**
@@ -120,6 +133,7 @@ export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawW
     withdrawnValue,
     context,
     withdrawalIndex,
+    allowZeroForPadding = false,
   } = params;
 
   if (identity.siblings.length !== IDENTITY_TREE_DEPTH) {
@@ -132,7 +146,9 @@ export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawW
 
   // ── Value conservation, checked before anything expensive ──────────────────────────────────
   if (note.spent) throw new Error("buildWithdrawalWitness: note is already spent");
-  if (withdrawnValue <= 0n) throw new Error("buildWithdrawalWitness: withdrawnValue must be > 0");
+  if (withdrawnValue < 0n || (withdrawnValue === 0n && !allowZeroForPadding)) {
+    throw new Error("buildWithdrawalWitness: withdrawnValue must be > 0 (see allowZeroForPadding)");
+  }
   if (withdrawnValue > note.value) {
     throw new Error(
       `buildWithdrawalWitness: withdrawing ${withdrawnValue} from a note worth ${note.value}`,

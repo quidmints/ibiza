@@ -124,4 +124,4 @@ deliberately: a false candidate costs a glance, a missed one costs a thread.
 as noir-lang/noir#13440). The suffix is load-bearing — an unmarked patched build is indistinguishable
 from the release and would slip past the guard in `codegen-verifiers.sh`. **CI and other machines
 will fail that guard, correctly.** The circuits still build on stock beta.26. Stock binary:
-`~/.nargo/bin/nargo.beta26-release.bak`. `bb` 5.1.0 must be on PATH: `export PATH="$HOME/.bb:$PATH"`.
+`~/.nargo/bin/nargo.beta26-release.bak`. `bb` 6.0.0-nightly is an npm package pinned in `backend/circuits/package.json`: `npm install` there, then `export PATH="$PWD/node_modules/.bin:$PATH"`.

@@ -24,8 +24,8 @@ maps with keys `bytecode`, `witness`, `vk` and `functionName`. `vk` must be the 
 kernel's is derived with `--circuit_kind hiding`, which implies the MegaZK flavour. Fewer than four
 circuits is rejected outright: `num_circuits >= 4`, because `get_queue_type` uses `num_circuits - 3`.
 
-TOOLCHAIN. Needs bb 6.0.0-nightly, installed as a node package rather than on PATH. bb 5.1.0 builds
-the app and kernels but cannot build the wrapper that finally verifies this fold.
+TOOLCHAIN. bb 6.0.0-nightly, pinned in package.json and used by default - `npm install` in
+backend/circuits once. It is not optional: no earlier bb can build the wrapper that verifies this fold.
 """
 import json
 import os
@@ -36,7 +36,7 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 SCRATCH = pathlib.Path(os.environ.get("FOLD_WORKDIR", HERE / ".fold"))
-BB = os.environ.get("BB", "")
+BB = os.environ.get("BB", str(HERE / "node_modules" / ".bin" / "bb"))
 
 APP = "withdraw_ivc_app"
 K_INIT = "withdraw_ivc_kernel_init"
@@ -60,6 +60,13 @@ CIRCUIT_KIND = {
     K_INNER: KIND_KERNEL,
     HIDING: KIND_HIDING,
 }
+
+# The OTHER axis, and the reason the two tables sit next to each other rather than one being derived
+# from the other: this one names the Mega FLAVOUR the key is derived under (`write_vk --circuit_kind`),
+# where `CIRCUIT_KIND` above names the position in the stack. They agree today because a circuit's
+# flavour and its position happen to be the same fact; deriving one from the other would bake that
+# coincidence in.
+WRITE_VK_KIND = {APP: "app", K_INIT: "kernel", K_INNER: "kernel", HIDING: "hiding"}
 
 WRAPPER = "withdraw_ivc_wrapper"
 
@@ -115,6 +122,31 @@ def artifact(name: str) -> pathlib.Path:
     return HERE / name / "target" / f"{name}.json"
 
 
+def ensure_vk(name: str) -> pathlib.Path:
+    """Derive circuit `name`'s chonk VK in BOTH forms if the work directory lacks them.
+
+    Derived on demand rather than assumed to exist: the keys are a pure function of the compiled
+    artifact, so a work directory that lacks them is not an error to report, it is one command. A
+    fresh FOLD_WORKDIR used to die three circuits in on a missing file that named the path and not
+    the command that makes it.
+
+    BOTH FORMS, ALWAYS, because the two are consumed by different things and the caller that needs
+    the binary key is not the caller that needs the fields. Deriving only what the first caller asked
+    for is exactly how the init kernel's binary key went missing while its fields were never
+    requested - the stack wants `vk`, the kernels want the JSON's fields and hash."""
+    keydir = SCRATCH / f"vk_{name}"
+    if (keydir / "vk.json").exists() and (keydir / "vk").exists():
+        return keydir
+    keydir.mkdir(parents=True, exist_ok=True)
+    for fmt in ([], ["--output_format", "json"]):
+        run(
+            [BB, "write_vk", "-s", "chonk", "--circuit_kind", WRITE_VK_KIND[name],
+             *fmt, "-b", str(artifact(name)), "-o", str(keydir)],
+            HERE,
+        )
+    return keydir
+
+
 _VK_CACHE: dict[str, tuple[list[str], str]] = {}
 
 
@@ -133,7 +165,7 @@ def vk_fields(name: str) -> tuple[list[str], str]:
     if name in _VK_CACHE:
         return _VK_CACHE[name]
 
-    d = json.loads((SCRATCH / f"vk_{name}" / "vk.json").read_text())
+    d = json.loads((ensure_vk(name) / "vk.json").read_text())
     fields = [hex(int(x, 16) if isinstance(x, str) else int(x)) for x in d["vk"]]
 
     padded = fields + ["0"] * (MAX_VK_FIELDS - len(fields))
@@ -180,7 +212,17 @@ def main() -> int:
         SCRATCH.mkdir(parents=True, exist_ok=True)
         return wrap(pathlib.Path(sys.argv[2]))
 
-    n = int(sys.argv[1]) if len(sys.argv) > 1 else 16
+    # `--offset K` folds members K..K+N-1 instead of 0..N-1, so a second batch can be built from a
+    # different slice of the SAME state tree. Two folds settled together must agree on the state root,
+    # and they only do if their members came from one generator run.
+    offset = 0
+    argv = sys.argv[1:]
+    if "--offset" in argv:
+        k = argv.index("--offset")
+        offset = int(argv[k + 1])
+        argv = argv[:k] + argv[k + 2 :]
+
+    n = int(argv[0]) if argv else 16
     if n < 4:
         sys.exit("bb rejects fewer than 4 circuits in an IVC stack (get_queue_type uses N-3)")
     if not BB:
@@ -203,7 +245,7 @@ def main() -> int:
     entries = []
 
     def add(name: str, witness: str):
-        vk = (SCRATCH / f"vk_{name}" / "vk").read_bytes()  # the stack wants the BINARY key
+        vk = (ensure_vk(name) / "vk").read_bytes()  # the stack wants the BINARY key
         entries.append(
             _mmap(
                 [
@@ -222,17 +264,19 @@ def main() -> int:
         return base64.b64decode(json.loads(artifact(name).read_text())["bytecode"])
 
     # Fail before the first circuit runs rather than N-1 members in, and name the generator.
-    missing = [i for i in range(n) if not (HERE / APP / f"Prover.{i}.toml").exists()]
+    members = list(range(offset, offset + n))
+    missing = [i for i in members if not (HERE / APP / f"Prover.{i}.toml").exists()]
     if missing:
         sys.exit(
             f"missing witnesses for members {missing}.\n"
             f"  cd frontend/identity-wallet && npm run build:pp\n"
-            f"  node tools/build-fold-witnesses.js --build frontend/identity-wallet/build --count {n}"
+            f"  node tools/build-fold-witnesses.js --build frontend/identity-wallet/build "
+            f"--count {offset + n}"
         )
 
-    print(f"folding {n} withdrawals")
+    print(f"folding {n} withdrawals (members {members[0]}..{members[-1]})")
     seen_signals = set()
-    for i in range(n):
+    for step, i in enumerate(members):
         # 1. the app proves one withdrawal and returns its seven signals. `nargo execute` reads
         #    Prover.toml and nothing else, so member i's witness is moved into place first.
         (HERE / APP / "Prover.toml").write_text((HERE / APP / f"Prover.{i}.toml").read_text())
@@ -250,7 +294,7 @@ def main() -> int:
 
         # 2. the kernel absorbs them. init starts the chain; every later step also verifies the
         #    kernel before it, which is what stops a batcher re-rooting the accumulator mid-batch.
-        if i == 0:
+        if step == 0:
             toml = ["[app_signals]"] + [f'{k} = "{v}"' for k, v in signals.items()]
             toml += vk_toml("app_vk", APP)
             (HERE / K_INIT / "Prover.toml").write_text("\n".join(toml) + "\n")
@@ -264,9 +308,9 @@ def main() -> int:
             (HERE / K_INNER / "Prover.toml").write_text("\n".join(toml) + "\n")
             out = run(["nargo", "execute", f"k{i}"], HERE / K_INNER)
             add(K_INNER, f"k{i}.gz")
-        prev_kernel = K_INIT if i == 0 else K_INNER
+        prev_kernel = K_INIT if step == 0 else K_INNER
         acc = parse_struct(circuit_output(out))
-        print(f"  {i + 1:>3}/{n}  count={int(acc['count'], 16)}  commitment={acc['commitment'][:18]}...")
+        print(f"  {step + 1:>3}/{n}  count={int(acc['count'], 16)}  commitment={acc['commitment'][:18]}...")
 
     # 3. the hiding kernel closes the stack and must be last. Its predecessor is whatever ran last,
     #    which is the init kernel only in the degenerate single-withdrawal case bb rejects anyway.

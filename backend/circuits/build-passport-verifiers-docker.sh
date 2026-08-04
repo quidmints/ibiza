@@ -14,7 +14,8 @@ set -euo pipefail
 
 CIRCUITS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${CIRCUITS_DIR}/../.." && pwd)"
-IMAGE="ibiza-passport-verifiers:beta26-bb5.1.0"
+# No bb version in the tag: bb comes from the mounted repo, so the image only pins nargo.
+IMAGE="ibiza-passport-verifiers:beta26"
 
 # The profiles that need a 2^25-point CRS. Everything else builds natively; there is no reason to
 # pay container startup and a re-download for them.
@@ -111,6 +112,12 @@ docker run --rm --platform linux/amd64 \
   "${IMAGE}" \
   bash -lc '
     set -e
+    # bb from the MOUNTED repo, not the image. The npm package ships a native linux binary; the
+    # .bin/ shim needs node, so the platform binary is symlinked under a name on PATH instead.
+    mkdir -p /tmp/bbbin
+    ln -sf /repo/backend/circuits/node_modules/@aztec/bb.js/build/amd64-linux/bb /tmp/bbbin/bb
+    export PATH=/tmp/bbbin:$PATH
+    bb --version
     if [ ! -f /swap/bb.swap ] || [ "$(stat -c%s /swap/bb.swap)" -lt "$(( '"${BB_SWAP_GB}"' * 1024 * 1024 * 1024 ))" ]; then
       echo "allocating '"${BB_SWAP_GB}"' GiB swapfile (once; it persists in the volume)"
       rm -f /swap/bb.swap

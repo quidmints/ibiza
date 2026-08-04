@@ -16,7 +16,7 @@ re-proposed.
 | | version |
 |---|---|
 | nargo | `1.0.0-beta.26+quid-icefix1` — a **locally patched** build, see §1a |
-| bb | `5.1.0` (`bbup --version 5.1.0`; lands in `~/.bb`, which is **not** on PATH by default) |
+| bb | `6.0.0-nightly.20260804`, pinned in `backend/circuits/package.json`. An **npm package, not bbup**: `npm install` there, then put `node_modules/.bin` on PATH. 5.1.0 is no longer referenced by anything (2.18eh). |
 
 **⚠️ beta.13 + bb 1.2.0 ARE DEAD (corrected 2026-08-02, user: "forget bb 1.2.0 and beta.13, it's
 old").** This table went on naming them long after the beta.26 migration landed, and
@@ -8042,6 +8042,45 @@ genuinely different - just far more finely divided than proving cost cares about
 - [ ] Prototype ONE 2^18-class circuit with padded arrays + true lengths as witnesses, and check it
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
+
+### 2.18eh 5.1.0 DELETED - one pin, in one file, for host and container (user, 2026-08-05)
+
+*"if it has no more references delete it."* Done. **Nothing in this tree references bb 5.1.0 any
+more**, and every committed proof and verifier was regenerated on 6.0 first, so this is a removal and
+not a rename.
+
+| was | now |
+|---|---|
+| `codegen-verifiers.sh` `REQUIRED_BB="5.1.0"` + `ALSO_ACCEPTED_BB` | `REQUIRED_BB="6.0.0-nightly.20260804"`, single value |
+| `codegen-passport-verifiers.sh` same pair | same, single value |
+| `passport-verifiers.Dockerfile` `ARG BB_VERSION=5.1.0`, downloads bb | **ships no bb at all**; pins only nargo |
+| image `ibiza-passport-verifiers:beta26-bb5.1.0` | `:beta26` - no bb in the tag because none is baked in |
+| `build-recursion-tree.py` default `~/.bb/bb` | `node_modules/.bin/bb` |
+| `fold-withdrawals.py` BB required, no default | same default |
+| README / CLAUDE.md / TODO env table | npm install + `node_modules/.bin` on PATH |
+
+**THE CONTAINER TAKES bb FROM THE MOUNTED REPO.** The npm package ships a native
+`build/amd64-linux/bb`; the runner symlinks it onto PATH inside the container. Verified: the image
+has `nargo 1.0.0-beta.26`, `command -v bb` resolves to the symlink, `bb --version` is
+`6.0.0-nightly.20260804`, and `/usr/local/bin/bb` does not exist.
+
+**WHY THAT IS BETTER THAN PINNING IT TWICE.** A version baked into the image can silently disagree
+with the host's, and the image tag then has to carry a version that can go stale on its own. One pin
+in `package.json` covers both, and a bb bump is `npm install` rather than a ten-minute image rebuild.
+
+**WHAT WAS DELETED VS WHAT WAS KEPT.** The historical 5.1.0 mentions in this file and in script
+headers stay - they record measurements (the byte-identical VK, the 2,491 -> 2,518 template move) that
+are the reason the pin is exact. What is gone is every place that would CAUSE 5.1.0 to be used.
+
+**`~/.bb/bb` IS LEFT ALONE AND IS NOW INERT** - nothing here resolves to it. Removing an installed
+toolchain from a home directory is the repo owner's call, not a script's: `rm -rf ~/.bb` if wanted.
+The stale `:beta26-bb5.1.0` image was removed, since it is a build artifact and the Dockerfile that
+made it is in git.
+
+- [ ] The nargo pin is still `1.0.0-beta.26+quid-icefix1` on the host and stock `1.0.0-beta.26` in the
+      container. That split is real and separate from bb - the patched compiler exists because stock
+      beta.26 ICEs on `noir_dl_lib`. Worth checking whether the ICE is fixed upstream, which would
+      collapse that pin too.
 
 ### 2.18eg REGENERATING THE 79 PASSPORT VERIFIERS - the recipe, written down before it is needed (user, 2026-08-05)
 

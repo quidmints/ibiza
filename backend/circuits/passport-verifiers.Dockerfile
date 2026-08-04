@@ -22,7 +22,12 @@
 FROM --platform=linux/amd64 ubuntu:24.04
 
 ARG NARGO_VERSION=1.0.0-beta.26
-ARG BB_VERSION=5.1.0
+
+# bb IS NOT INSTALLED HERE. It is pinned once, in backend/circuits/package.json, and the runner puts
+# the package's own linux binary on PATH from the mounted repo
+# (node_modules/@aztec/bb.js/build/amd64-linux/bb). Baking a second copy in would be a second pin -
+# and the image tag would then have to carry a version that could silently disagree with the host's.
+# It also means a bb bump needs `npm install`, not a 10-minute image rebuild.
 
 # git IS REQUIRED, not incidental: noir_dl_lib pulls its dependencies (poseidon, sort, sha256)
 # from git, and nargo shells out to clone them. Without it nargo PANICS with
@@ -39,19 +44,10 @@ RUN curl -fsSL -o /tmp/nargo.tar.gz \
     && rm /tmp/nargo.tar.gz \
     && nargo --version
 
-# barretenberg, pinned. The archive holds a BARE `bb` with no directory prefix, so it extracts into
-# bin/ directly - extracting to /usr/local would leave it at /usr/local/bb, off PATH.
-RUN curl -fsSL -o /tmp/bb.tar.gz \
-      "https://github.com/AztecProtocol/aztec-packages/releases/download/v${BB_VERSION}/barretenberg-amd64-linux.tar.gz" \
-    && tar -xzf /tmp/bb.tar.gz -C /usr/local/bin \
-    && rm /tmp/bb.tar.gz \
-    && chmod +x /usr/local/bin/bb \
-    && bb --version
-
-# Fail the BUILD, not some later run, if either pin drifted. An image that quietly carries the wrong
-# bb would emit verifiers that disagree with every other one in the repo.
+# Fail the BUILD, not some later run, if the nargo pin drifted. An image that quietly carries the
+# wrong nargo would emit verifiers that disagree with every other one in the repo. bb is checked by
+# the runner instead, because it arrives at run time from the mount.
 RUN test "$(nargo --version | sed -n 's/^nargo version = //p' | head -1)" = "${NARGO_VERSION}" \
-    && test "$(bb --version | head -1)" = "${BB_VERSION}" \
-    && echo "toolchain pinned: nargo ${NARGO_VERSION}, bb ${BB_VERSION}"
+    && echo "toolchain pinned: nargo ${NARGO_VERSION}; bb comes from the mounted repo"
 
 WORKDIR /repo/backend/circuits

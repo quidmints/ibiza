@@ -48,8 +48,9 @@
 # 2026-08-02). Both times, following the header got you rejected by the guard fifty lines later.
 # **Read REQUIRED_NARGO/REQUIRED_BB, not prose** - the constants are what runs.
 #   nargo 1.0.0-beta.26+quid-icefix1   locally patched; see the WHY PATCHED note below.
-#   bb    5.1.0          `bbup --version 5.1.0`, installed to ~/.bb - which is NOT on PATH by
-#                        default, so `export PATH="$HOME/.bb:$PATH"` or the guard reports it missing.
+#   bb    6.0.0-nightly  an npm package, NOT bbup. `npm install` in this directory, then
+#                        `export PATH="$PWD/node_modules/.bin:$PATH"` or the guard reports it missing.
+#                        Pinned in package.json; 5.1.0 is gone from this tree entirely.
 #                        Do NOT use bb < 0.82.0: bbup's own installer warns of a critical UltraHonk
 #                        soundness vulnerability below that version, requiring verifier regeneration.
 #                        Do NOT assume `bb` on PATH is the right one - several versions are commonly
@@ -109,18 +110,17 @@ REQUIRED_NARGO="1.0.0-beta.26+quid-icefix1"
 # circuit containing HN recursion constraints and fails with "not supported with UltraBuilder".
 # It is installed as a node package, so it is NOT on PATH:
 #   npm install @aztec/bb.js@6.0.0-nightly.20260804 && ./node_modules/.bin/bb --version
-REQUIRED_BB="5.1.0"
-ALSO_ACCEPTED_BB="6.0.0-nightly.20260804"
+REQUIRED_BB="6.0.0-nightly.20260804"
 
 actual_nargo="$(nargo --version 2>/dev/null | sed -n 's/^nargo version = //p' | head -1)"
 actual_bb="$(bb --version 2>/dev/null | tail -1 | sed 's/^v//')"
 
-if [ "${actual_nargo}" != "${REQUIRED_NARGO}" ] || { [ "${actual_bb}" != "${REQUIRED_BB}" ] && [ "${actual_bb}" != "${ALSO_ACCEPTED_BB}" ]; }; then
+if [ "${actual_nargo}" != "${REQUIRED_NARGO}" ] || [ "${actual_bb}" != "${REQUIRED_BB}" ]; then
   cat >&2 <<EOF
 ERROR: wrong toolchain. Refusing to generate verifiers.
 
   nargo  required ${REQUIRED_NARGO}   found '${actual_nargo:-<not on PATH>}'
-  bb     required ${REQUIRED_BB} (or ${ALSO_ACCEPTED_BB})  found '${actual_bb:-<not on PATH>}'
+  bb     required ${REQUIRED_BB}  found '${actual_bb:-<not on PATH>}'
 
 Install exactly these:
   noirup --version ${REQUIRED_NARGO}

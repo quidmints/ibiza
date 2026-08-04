@@ -27,9 +27,8 @@ constrain its hash - but then the batch depth stops being structural, and a wron
 becomes a thing the circuit must catch rather than a thing it cannot express. A fixed depth with one
 circuit per level cannot express it at all.
 
-TOOLCHAIN: bb 6.0.0-nightly, pinned in package.json, so this and the chonk fold are ONE toolchain.
-It defaults to `~/.bb/bb` only because that is where bbup puts things; set BB to the pinned 6.0
-binary (`backend/circuits/node_modules/.bin/bb`) and everything below is 6.0 end to end.
+TOOLCHAIN: bb 6.0.0-nightly, pinned in package.json and used by default - run `npm install` in
+backend/circuits once. Set BB to override. 5.1.0 is no longer referenced anywhere in this tree.
 
 THE TWO VERSIONS ARE NOT INTERCHANGEABLE AND YOU CANNOT TELL BY LOOKING AT THE KEYS. Measured:
 `withdraw_identity`'s recursion VK is BYTE-IDENTICAL under 5.1.0 and 6.0 - same 115 fields, same
@@ -52,7 +51,7 @@ import time
 
 HERE = pathlib.Path(__file__).resolve().parent
 WORK = pathlib.Path(os.environ.get("TREE_WORKDIR", HERE / ".tree"))
-BB = os.environ.get("BB", str(pathlib.Path.home() / ".bb" / "bb"))
+BB = os.environ.get("BB", str(HERE / "node_modules" / ".bin" / "bb"))
 
 LEAF_CIRCUIT = "withdraw_identity"
 WITNESS_SOURCE = "withdraw_ivc_app"  # where build-fold-witnesses.js writes Prover.<i>.toml
@@ -242,7 +241,7 @@ def main() -> int:
     if n & (n - 1) or n < 2:
         sys.exit(f"N must be a power of two and at least 2, got {n}")
     if not pathlib.Path(BB).exists():
-        sys.exit(f"no bb at {BB} - the tree is built on 5.1.0, not the 6.0 nightly. Set BB.")
+        sys.exit(f"no bb at {BB}. Run `npm install` in backend/circuits, or set BB.")
 
     WORK.mkdir(parents=True, exist_ok=True)
     started = time.time()

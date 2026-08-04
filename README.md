@@ -283,7 +283,7 @@ verification cost is paid once per batch instead of once per withdrawal:
 
 That is a ~45× improvement at N=16, and it is why `aggregate_withdrawals`, `BatchVerifierLib` and
 `PrivacyPool.withdrawBatch` exist. It also forced the toolchain question: recursive ZK proofs need a
-Noir/bb combination that produces them correctly, which is what drove the beta.26 + bb 5.1.0 pin.
+Noir/bb combination that produces them correctly, which is what drove the beta.26 + bb pin.
 
 Other measured gas work along the way:
 - **keccak batch commitment instead of Poseidon** — the N=16 aggregation circuit fell from
@@ -436,7 +436,7 @@ load-bearing: an unmarked patched build is indistinguishable from the release an
 circuits still build on stock beta.26, which is why the accommodation above was kept.
 
 - stock binary: `~/.nargo/bin/nargo.beta26-release.bak`, or `noirup --version 1.0.0-beta.26`
-- **`bb` 5.1.0 must be on PATH**: `export PATH="$HOME/.bb:$PATH"`
+- **`bb` 6.0.0-nightly must be on PATH**: `cd backend/circuits && npm install && export PATH="$PWD/node_modules/.bin:$PATH"` (pinned in `backend/circuits/package.json`; it is an npm package, not `bbup`)
 - artifact generation is a **5-step pipeline**; `codegen-verifiers.sh` is step 4 and
   `tools/prove-escrow-fixtures.sh` is step 5. Skipping step 5 produces `SumcheckFailed()` far from
   the cause.

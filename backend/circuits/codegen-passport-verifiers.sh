@@ -23,7 +23,7 @@
 # profile). Regenerating those from their artifacts would emit a verifier that rejects every proof
 # for that profile, silently, so they are held back rather than guessed at.
 #
-# TOOLCHAIN: the same guard as codegen-verifiers.sh - nargo 1.0.0-beta.26+quid-icefix1 and bb 5.1.0,
+# TOOLCHAIN: the same guard as codegen-verifiers.sh - nargo 1.0.0-beta.26+quid-icefix1 and the bb
 # with `~/.bb` on PATH. Stock beta.26 ICEs on this dependency tree; that is what the patch is for.
 #
 #   ./codegen-passport-verifiers.sh              # every clean profile
@@ -53,15 +53,14 @@ STOCK_NARGO="1.0.0-beta.26"
 # See codegen-verifiers.sh for why two versions are accepted: their EVM verification keys are
 # byte-identical, so nothing already generated needs regenerating, and 6.0.0-nightly is needed only
 # for the IVC/chonk path, which 5.1.0 cannot build at all.
-REQUIRED_BB="5.1.0"
-ALSO_ACCEPTED_BB="6.0.0-nightly.20260804"
+REQUIRED_BB="6.0.0-nightly.20260804"
 actual_nargo="$(nargo --version 2>/dev/null | sed -n 's/^nargo version = //p' | head -1)"
 actual_bb="$(bb --version 2>/dev/null | head -1)"
 if { [ "${actual_nargo}" != "${REQUIRED_NARGO}" ] && [ "${actual_nargo}" != "${STOCK_NARGO}" ]; } \
-   || { [ "${actual_bb}" != "${REQUIRED_BB}" ] && [ "${actual_bb}" != "${ALSO_ACCEPTED_BB}" ]; }; then
+   || [ "${actual_bb}" != "${REQUIRED_BB}" ]; then
   echo "TOOLCHAIN MISMATCH - refusing to emit verifiers." >&2
   echo "  nargo required ${REQUIRED_NARGO} (or stock ${STOCK_NARGO})  found '${actual_nargo:-<not on PATH>}'" >&2
-  echo "  bb    required ${REQUIRED_BB} (or ${ALSO_ACCEPTED_BB})  found '${actual_bb:-<not on PATH>}'" >&2
+  echo "  bb    required ${REQUIRED_BB}  found '${actual_bb:-<not on PATH>}'" >&2
   echo "  (bb lives in ~/.bb, which is not on PATH by default)" >&2
   exit 1
 fi

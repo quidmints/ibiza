@@ -8043,6 +8043,47 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18ei THE ROOT'S 8.87 GB, SWEPT - 24% off, and ZK is not the reason (user, 2026-08-05)
+
+*"can we improve the 8gb at root situation in any way at all"* - yes, by about a quarter, and the
+lever is one flag. Everything below is measured on the same witness and key.
+
+**WHERE THE 8.87 GB COMES FROM:** the root circuit is **8,388,352 gates (2^23)**. Two rollup
+verifications are only ~1.5M of that; the rest is the IPA discharge, which is the thing that makes
+the proof EVM-verifiable at all. It is not incidental cost, it is the feature.
+
+| run | peak RSS | wall | proof |
+|---|---|---|---|
+| baseline (`-t evm`) | **8.87 GB** | 100 s | 358 fields |
+| **`--slow_low_memory`** | **6.77 GB** | 158 s | 358 fields |
+| `--slow_low_memory --storage_budget 24g` | 7.08 GB | 146 s | 358 fields |
+| `-t evm-no-zk --slow_low_memory` | **7.44 GB** | 172 s | 320 fields |
+
+**`--slow_low_memory` IS THE WIN: -24% for +58% time.** `--storage_budget` did nothing here - within
+noise of the flag alone, so file-backed paging is evidently already doing what it can.
+
+**AND DROPPING ZK MAKES IT WORSE, which is the opposite of the intuition.** 7.44 GB against 6.77, and
+slower. So there is no memory argument for a non-ZK root.
+
+**ZK COSTS NO TRUST AND NO WEIGHT HERE.** Honk's zero-knowledge is masking polynomials; it does not
+touch the SRS. The trusted setup that exists - the KZG/ignition CRS in `~/.bb-crs` - is **universal
+and pre-existing**, one ceremony for every circuit rather than Groth16's per-circuit ceremony, and it
+is identical with ZK on or off. Turning ZK off removes nothing from the trust model and buys only
+**38 proof fields** (358 -> 320) of calldata, at more memory and more time. **Keep ZK.**
+
+**WHAT CANNOT BE REDUCED, checked rather than assumed:**
+- The wrapper cannot be skipped. A root verifying chonk proofs directly (type 8) fails at EVM target
+  with `TripleIPA openings present when not expected` - chonk verification needs the rollup IO, so
+  the wrapper hop is structural.
+- The root cannot take ONE child: `Root rollup must accumulate two IPA proofs`.
+- Both children need discharging regardless, so pairing a real fold with a trivial one saves nothing.
+
+- [ ] Make `--slow_low_memory` the default for the root step once it is scripted, and record the
+      time cost next to it so nobody "optimises" it back out.
+- [ ] 6.77 GB still exceeds what a phone or small VM can do, and the container+swap path SHIFTS that
+      cost rather than removing it. If the root has to run somewhere constrained, that is a hosting
+      decision, not a further tuning one.
+
 ### 2.18eh 5.1.0 DELETED - one pin, in one file, for host and container (user, 2026-08-05)
 
 *"if it has no more references delete it."* Done. **Nothing in this tree references bb 5.1.0 any

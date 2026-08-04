@@ -8051,10 +8051,24 @@ available to us.
 **Aztec's chonk is production, and coupled to their transaction shape.** `chonk_tail_circuits.json` is
 literally `["hiding"]`, and `mock-hiding/src/main.nr` verifies the PREVIOUS KERNEL's proof through
 `call_data(0)` with `PROOF_TYPE_HN_FINAL`. So the stack is application, kernel, application, kernel,
-closing with the hiding kernel. Their mock crates spell out the whole architecture: `app-creator`,
-`app-reader`, `mock-private-kernel-init`, `-inner`, `-reset`, `-tail`, `mock-hiding`. Using chonk means
-writing kernel circuits that consume `withdraw_identity`'s outputs in their shape. That is adopting an
-architecture, not swapping an aggregation strategy.
+closing with the hiding kernel.
+
+> **CORRECTED after reading the circuits: the kernels are TINY, and the real blocker is elsewhere.**
+> `mock-private-kernel-init` is twelve lines - verify the app's proof with `PROOF_TYPE_OINK`, take its
+> outputs via `call_data(1)`, thread them into kernel public inputs. `app-creator` is six. The coupling
+> is a CALLING CONVENTION (`return_data` / `call_data`, which is the Goblin op queue and where the 331
+> ultra ops come from), not an architecture, and those crates compile on OUR nargo. Restructuring
+> `withdraw_identity` for it is changing its return attribute plus two small circuits.
+>
+> **The blocker is that a chonk proof cannot be verified on the EVM.**
+> `bb write_solidity_verifier -s chonk` answers `API function contract not implemented`. The symbol
+> `ChonkAPI::write_solidity_verifier` exists and does nothing. Aztec verify theirs through their own
+> rollup path (`ROLLUP_HONK` / `ROOT_ROLLUP_HONK`, with IPA), which is their L1 contract architecture.
+> And `create_honk_recursion_constraints` accepts only HONK, HONK_ZK, ROLLUP_HONK and ROOT_ROLLUP_HONK,
+> so wrapping a chonk proof in an EVM-verifiable Honk proof is not a supported path either.
+>
+> So the cost is not writing kernels. It is that folding currently has no route to an Ethereum
+> verifier, in either implementation, and no amount of restructuring on our side changes that.
 
 **And do not measure it on their mocks.** `barretenberg/cpp/CLAUDE.md` says so directly: never
 benchmark against test binaries, because test circuits are small mocks whose cost profile does not

@@ -8043,6 +8043,61 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18ek THE FOLD CEILING IS 25, AND IT IS THE FOLD'S ALONE - the tree has none (user, 2026-08-05)
+
+**Bisected, not reasoned. N=25 proves; N=26 fails.** Two distinct limits were hit on the way and the
+tighter one wins:
+
+| N | result |
+|---|---|
+| 16, 20, 24, **25** | proof, 1,223 fields every time |
+| **26** | `Merged table size exceeds fixed append offset... the last subtable doesn't fit at the end of the op queue` |
+| 32 | `BatchMergeProver: more subtables than max_subtables` (64 > 56) |
+
+The subtable-count cap implies N<=28; the op-queue cap bites first at 26. Ultra ops grow ~148 per
+withdrawal (3,235 at N=20, 3,827 at N=24, 3,975 at N=25), so **the real ceiling depends on our
+circuits' size, not on a universal constant** - a smaller app circuit would raise it.
+
+**⚠️ THIS LIMIT IS CHONK'S. THE TREE DOES NOT HAVE IT.** They are unrelated mechanisms: the ceiling is
+the Goblin op queue inside ClientIVC, and the recursion tree is plain UltraHonk recursion. Conflating
+them - "24 works, so can we do tree at 24" - is natural and wrong in a way that matters, because it
+makes the tree look constrained when it is the one that is not.
+
+**AND THE TREE SCALES ON GAS EXACTLY AS THE FOLD DOES.** Its root proof is **334 fields with ONE
+public input at every depth** (measured at N=4 and N=16), so verification gas is FIXED per settlement
+and per-withdrawal cost halves each time the batch doubles - the same property the fold has, without
+the ceiling:
+
+| batch | nodes | per-withdrawal gas | peak | sequential |
+|---|---|---|---|---|
+| tree 16 | 15 | 173,542 | **2.11 GB** | ~4 min |
+| tree 32 | 31 | 86,771 | **2.11 GB** | ~9 min |
+| **tree 64** | 63 | **43,385** | **2.11 GB** | ~18 min |
+| tree 128 | 127 | 21,692 | **2.11 GB** | ~38 min |
+| fold+root 32 | - | 90,717 | 6.77 GB | ~5 min |
+| **fold+root 50 (the cap)** | - | **58,059** | 6.77 GB | ~5 min |
+
+> **Past a batch of 32 the tree beats the fold on gas, at a third of the peak memory, with no
+> ceiling at all.** The fold's best possible number - 50 withdrawals, 58,059 each - is worse than a
+> tree of 64.
+
+**SO THE FOLD'S REMAINING ADVANTAGES ARE TWO, AND BOTH ARE REAL BUT NARROW:**
+1. **Batch size is not baked into a deployed verifier.** A deeper tree needs one more level circuit
+   AND a newly deployed root verifier; the fold takes any N<=25 against the same deployment.
+2. **Time.** ~5 minutes against ~18 for a tree of 64, sequentially. The tree's levels are
+   independent, so with parallelism its critical path is ~6x18s, but that needs the cores.
+
+**AND THE TREE'S COST IS THE ONE THAT MATTERS FOR A BATCHER:** 2.11 GB is a laptop, 6.77 GB is not.
+Combined with 2.18dp's raid-target concern, a settlement path many parties can run beats one that is
+3x cheaper per withdrawal only up to a batch of 32.
+
+- [ ] **Build a tree at 32 and 64** and confirm the gas is really flat per settlement. The claim
+      rests on the root proof being 334 fields at every depth, which is measured at depths 2 and 4
+      but not 5 or 6.
+- [ ] If the tree wins, the batch size becomes a DEPLOYMENT decision - one root verifier per depth.
+      Decide whether to deploy several depths at once (16/32/64) so a batch can settle at whatever
+      size it reached, rather than waiting to fill a fixed one.
+
 ### 2.18ej HOW I WOULD CHANGE THE DESIGN - stop treating 16 as the batch size (user, 2026-08-05)
 
 **THE ROOT'S COST IS PER-SETTLEMENT, NOT PER-WITHDRAWAL, AND THAT IS THE WHOLE LEVER.** 6.77 GB and

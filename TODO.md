@@ -8043,6 +8043,50 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18dk THE N=16 BASELINE, MEASURED END-TO-END ON THE CURRENT PIN (2026-08-04)
+
+**The recursive aggregator works on beta.26 + bb 5.1.0.** TODO recorded the end-to-end run only on
+beta.13 + bb 1.2.0; it has now been reproduced on the current toolchain, with 16 REAL inner proofs.
+
+| step | measured |
+|---|---|
+| inner proof (`withdraw_identity`, `-t noir-recursive`) | 458 proof fields, 7 public inputs - **exactly `PROOF_LEN`/`PUB_LEN`** |
+| **pinned inner VK** | **all 115 fields match a freshly generated VK** - the pin is CURRENT, not stale |
+| aggregation witness | solved with 16 real proofs; batch commitment matched |
+| `write_vk` | peak **12,214 MiB** |
+| `bb prove -t evm` | proving key **280,492 ms**, peak **12,465 MiB** resident + ~9.2 GB swap = **~21.7 GB** |
+| `bb verify -t evm` | **Proof verified successfully** |
+| circuit size | **12,720,801 gates** (the recorded 11.6M is stale - it grew) |
+| outer proof | 370 fields, 1 public input |
+
+**WHERE THE COST ACTUALLY SITS - the differential, because it decides the folding question.**
+Compiling the same circuit at `BATCH_N=2` gives **1,546,283** gates. So:
+
+> **(12,720,801 - 1,546,283) / 14 = ~798,180 gates per additional in-circuit verification**
+
+**~91% of the circuit is the sixteen recursive UltraHonk verifications.** That is precisely the
+non-native curve arithmetic that STARK/FRI recursion avoids, and it confirms the diagnosis rather than
+assuming it.
+
+**WHAT THIS MEANS FOR FOLDING (2.18dj), stated as a falsifiable prediction BEFORE the run:**
+folding relocates this cost rather than deleting it - the accumulator still has to be discharged by a
+**decider**, and the decider is where the commitment openings are finally checked. So the honest claim
+is *"folding replaces N in-circuit verifications with ONE, and makes the incremental step nearly
+free"*, not *"folding removes recursion cost"*.
+
+> **THE NUMBER TO READ OFF THE FOLDING RUN IS THE DECIDER'S GATE COUNT AND PEAK MEMORY, NOT THE
+> FOLDING STEPS.** Prediction: if the decider lands near **~800k gates** (one verification's worth),
+> folding wins by ~16x and the batcher stops needing a server. **If it lands near 12.7M, the problem
+> has been MOVED, not solved** - and then the STARK argument returns with a measurement behind it,
+> because FRI verification is hash-based and avoids exactly this term.
+
+- [ ] Run `bb prove -s chonk --ivc_inputs_path <16-instance stack>` and record **decider gate count and
+      peak RSS**. Compare against 12,720,801 / ~21.7 GB. That single comparison decides both the
+      batcher question AND whether the retired STARK argument comes back.
+- [ ] Minor: `BATCH_N=1` fails to compile (N=2 and N=16 are fine) - unexamined, and it would make the
+      slope measurement cleaner.
+- [ ] Minor: `inner_vk.nr`'s header says "112 field elements"; it is **115**. Stale comment.
+
 ### 2.18dj FOLDING ATTACKS THE 28 GB WITHOUT LEAVING THE STACK - and `bb` already ships it (user, 2026-08-04)
 
 *"Aztec built ProtoGalaxy and ClientIVC precisely so a client folds many proofs without a full

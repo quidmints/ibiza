@@ -8043,6 +8043,41 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18ed 572 MB vs 2.11 GB IS NOT A REGRESSION - it is the price of EVM-verifiability (user, 2026-08-04)
+
+*"i thought you reported 578mb earlier? why did we grow to 2.11"* - **fair question, and the two
+numbers belong to two different designs.** Nothing grew.
+
+| | measured peak | reaches the EVM |
+|---|---|---|
+| chonk fold, N=16 | **572 MB** (546 MiB) | **no** - blocked on IPA/Grumpkin, see 2.18ea |
+| recursion tree, N=16 | **2.11 GB** (2,015 MiB) | **yes** - verifier deployed, proof accepted |
+| flat aggregation, N=16 | ~21.7 GB | yes |
+
+**WHY THE TREE COSTS MORE, structurally.** A fold step does not verify a proof at all - it folds an
+instance into an accumulator - so its circuits are tiny: app **70,003** gates, kernels 49,177-62,138,
+hiding **36,587**. A tree node performs **TWO complete in-circuit UltraHonk verifications**, which is
+the ~798k-gates-each term 2.18dk isolated, hence **1,544,632** (leaf) and **1,487,966** (internal).
+
+**~22x the gates for 3.7x the memory**, because the fold's 546 MiB is mostly fixed overhead - SRS and
+thread pools - rather than its circuits. So the fold is not 22x more efficient; it is small enough
+that the constant term dominates.
+
+**2.11 GB IS THE FLOOR FOR THIS APPROACH, and both ways out were checked:**
+- **Drop ZK.** The non-ZK pair (410 fields, `PROOF_TYPE_HONK = 0`) gives **1,444,442** gates against
+  1,487,966 - a **2.9%** saving. Not worth asking whether a non-ZK inner proof leaks witness material
+  to the batcher on a privacy pool. **Rejected on measurement, not on principle.**
+- **Change the arity.** Wider nodes (verify 4 per node) cut depth but roughly double per-node gates,
+  which moves memory the wrong way. Narrower is impossible: a node must verify the node below it
+  PLUS one new proof, so two verifications is the minimum any recursion step can do. Arity-2 is both
+  the floor and the shape that parallelises best (4 independent levels at N=16).
+
+**SO THE REAL COMPARISON IS 2.11 GB AGAINST 21.7 GB**, not against 572 MB. The fold's number is real
+and is the record, but it buys a proof nothing on Ethereum can check.
+
+- [ ] The fold still has no stated job (carried from 2.18eb). Its 572 MB and free partial batches are
+      real; what they are FOR now that the tree settles on-chain is not written down anywhere.
+
 ### 2.18ec THE BATCH COMMITMENT HAD SILENTLY DIVERGED, and its guard could not fire (2026-08-04)
 
 **`BatchCommitmentLib` folded with chained Poseidon v1 while `aggregate_withdrawals::batch_commitment`

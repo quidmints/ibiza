@@ -8043,6 +8043,69 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18ee THE FOLD REACHES THE CHAIN - I was wrong, and the fix is one constant (user, 2026-08-04)
+
+*"are you sure there is no way to unblock IPA/Grumpkin"* - **no, and it was not blocked.** 2.18ea
+called this path impossible on five failing experiments. Every one of those experiments was real; the
+conclusion drawn from them was not. They showed IPA cannot be ACCUMULATED into an EVM proof. They did
+not show it cannot be DISCHARGED, and I never asked.
+
+**`PROOF_TYPE_ROOT_ROLLUP_HONK = 5` IS THE DISCHARGE POINT.** Type 4 (`ROLLUP_HONK`) accumulates the
+child's IPA claim and leaves it nested, which is why `-t evm` kept refusing. Type 5 verifies the
+inner product argument NATIVELY IN-CIRCUIT and leaves nothing nested - so what comes out is an
+ordinary UltraHonk proof and `write_solidity_verifier` generates from it normally. The cost of that
+discharge is visible in the numbers: the same circuit costs **1.7 GB at type 4 and 7.1 GB at type 5**.
+
+**THE FULL CHAIN, RUN END TO END WITH REAL WITNESSES:**
+
+| step | peak | out |
+|---|---|---|
+| 16 withdrawals -> chonk fold | **572 MB** | 1,223-field chonk proof |
+| -> `withdraw_ivc_wrapper` (`-t noir-rollup`) | **1.9 GB** | 480-field rollup proof, IPA accumulated |
+| -> root circuit (type 5, `-t evm`) | **8.87 GB** | **358-field proof, IPA discharged** |
+| -> `ChonkRootHonkVerifier.sol` | 18,762 B deployed, 5,814 B margin | **6/6 on-chain tests pass** |
+
+**EXACTLY TWO CHILDREN, NOT ONE.** A single-child root is refused outright: *"Root rollup must
+accumulate two IPA proofs"*. So one on-chain proof settles TWO folds, and a partial batch pads the
+second child rather than omitting it.
+
+**AND THE GAS IS THE REAL RESULT:**
+
+| | total | per withdrawal |
+|---|---|---|
+| flat aggregation, 16 | 2,980,094 | 186,255 |
+| recursion tree, 16 | 2,776,678 | 173,542 |
+| **fold + root, 32** | **2,902,966** | **90,717** |
+
+Roughly half, because one verification covers 32 rather than 16. **And it keeps falling**, because
+the chonk proof is CONSTANT SIZE in N (1,223 fields at both N=4 and N=16, measured) and the wrapper
+and root circuits are fixed. Two folds of 64 would be the same ~2.9M gas across 128 withdrawals -
+**~22.7k each, with no new circuits and no new verifier**. The tree cannot do that: a bigger batch
+needs another level and a new deployed verifier.
+
+**WHAT THIS FIXTURE IS NOT.** Both children are the SAME fold, so the four public inputs are two
+identical `(commitment, count)` pairs. It tests the MECHANISM and does not show that two DISTINCT
+batches compose. Settling it would be settling the same sixteen withdrawals twice - nullifiers would
+refuse it, but the proof verifies, so this is not evidence the root binds two different batches.
+
+**THE LESSON, since it is the second time this has happened today.** 2.18ea's五 experiments all
+agreed with each other and all pointed the same way, and that felt like proof. It was five instances
+of the same question. The one that mattered - "can the claim be discharged rather than carried?" -
+was never asked, and the answer was one constant away.
+
+- [ ] **Prove two DISTINCT folds under one root.** Needs a second batch of 16 witnesses
+      (`build-fold-witnesses.js --count 32`, members 16..31). Until then the root is unproven on the
+      only property that makes it useful.
+- [ ] **Decide between the tree and the fold+root**, now that both settle on-chain. Tree: 2.11 GB
+      peak, batch size is compile-time, 173,542 gas each. Fold+root: 8.87 GB peak for the discharge
+      but 572 MB for the folds themselves, ANY batch size with one circuit set, 90,717 each at 32 and
+      falling. **The axis is whether an 8.87 GB step once per settlement is acceptable** - it is under
+      this machine's 16 GB, but it is not a phone and not a small VM.
+- [ ] Re-price the "wait for a later bb" option in 2.18eb, which was retired on the belief that this
+      was structurally impossible.
+- [ ] `2.18ea`'s Grumpkin/precompile analysis is still CORRECT and still the reason there is no
+      on-chain IPA verifier. It just was not the reason the path was blocked.
+
 ### 2.18ed 572 MB vs 2.11 GB IS NOT A REGRESSION - it is the price of EVM-verifiability (user, 2026-08-04)
 
 *"i thought you reported 578mb earlier? why did we grow to 2.11"* - **fair question, and the two
@@ -8242,7 +8305,14 @@ unchanged. This is the first time the chonk recursion has been exercised with re
 than the dummy ones `write_vk` uses.
 
 **AND HERE IS THE HOP THAT IS MISSING - stated as a blocked path, not a to-do that can be worked
-around.** No nargo-built circuit that recursively verifies a chonk proof can produce an
+around.** ⚠️ **THIS CONCLUSION WAS WRONG. See 2.18ee: the path exists and now verifies on-chain.**
+The checks below are all real; what they establish is that IPA cannot be ACCUMULATED into an EVM
+proof, and I read that as "cannot reach the EVM" without asking whether it could be DISCHARGED.
+`PROOF_TYPE_ROOT_ROLLUP_HONK = 5` discharges it. Kept as written because the reasoning error is the
+useful part: five failing experiments agreeing with each other is not the same as a proof of
+impossibility, and I treated it as one.
+
+No nargo-built circuit that recursively verifies a chonk proof can produce an
 EVM-verifiable proof on bb 6.0.0-nightly. Five checks, each run rather than reasoned:
 
 - `write_vk -t evm` on the wrapper: `TripleIPA openings present when not expected. Actual: 1`.

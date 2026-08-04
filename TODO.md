@@ -8043,6 +8043,46 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18dy The folded stack, built and measured (2026-08-04)
+
+Five circuits, all compiling, all measured. The wrapper is the only one bb 5.1.0 cannot build, exactly
+as predicted.
+
+| circuit | gates | in the fold? |
+|---|---|---|
+| `withdraw_ivc_app` | 70,003 | yes, cheap |
+| `withdraw_ivc_kernel_init` | 49,177 | yes |
+| `withdraw_ivc_kernel_inner` | 62,138 | yes, x15 |
+| `withdraw_ivc_hiding` | 36,587 | yes |
+| **`withdraw_ivc_wrapper`** | **1,410,177** | **NO - this is what gets proven conventionally and verified on-chain** |
+
+**Against `aggregate_withdrawals` at N=16: 12,707,593 gates. The wrapper is 9.01x smaller.**
+
+And it is smaller than Aztec's own `rollup_tx_base_private` (2,732,848) because ours does less: theirs
+carries 66 public inputs and rollup logic, ours verifies the fold and exposes two fields.
+
+**The size does not grow with the batch.** Ours pays ~798k gates per withdrawal because it verifies
+each proof in-circuit. This verifies one accumulated proof, so folding four costs what folding four
+hundred costs. Extrapolating memory from our own 12.7M-gate run at ~21.7 GB puts 1.41M near **2.4 GB**,
+plus the 377 MB the accumulation measured. **The batcher stops being a server.**
+
+**What the app circuit costs, honestly.** 70,003 gates under chonk against `withdraw_identity`'s 44,176
+under UltraHonk - the Mega arithmetization is wider. That cost is paid inside the fold, where a step is
+~10 MB, rather than in the wrapper. Same for the keccak: the chained commitment absorbs one withdrawal
+per kernel instead of all sixteen in the expensive circuit.
+
+**Two errors worth keeping, both from inferring instead of reading.** `PROOF_TYPE_HN` is 2; I carried
+over 6 from `aggregate_withdrawals`' `HONK_PROOF_TYPE`, a different enumeration, and the failure named
+the proof size rather than the constant. And the inner kernel must use `PROOF_TYPE_HN` for BOTH
+verifications - mixing it with `OINK` fails with "both honk and HN recursion constraints present";
+`OINK` belongs only to init, where the app it verifies is first in the stack.
+
+- [ ] Fold a real sixteen-withdrawal stack end to end. Needs witnesses threaded through the chain
+      (each kernel's input is the previous kernel's output), not the sixteen identical copies used for
+      the memory measurement in 2.18dr.
+- [ ] Generate the wrapper's EVM verifier and check it against `BatchVerifierLib`, which must move from
+      the flat fold to the chained one and start checking `count` against `signals.length`.
+
 ### 2.18dx Designing the fold to keep its advantages, not just its gate count (user, 2026-08-04)
 
 Three properties of the folded shape are worth more than the 4.65x, and two of them dissolve problems

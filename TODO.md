@@ -8043,6 +8043,84 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18ea THE FOLD RUNS: 16 REAL WITHDRAWALS, ONE PROOF, AND EXACTLY ONE HOP LEFT (2026-08-04)
+
+**The prediction in 2.18dk is settled, and folding won.** That section said the number to read off is
+the decider's cost, and set the bar: *"if the decider lands near ~800k gates folding wins by ~16x; if
+it lands near 12.7M the problem has been MOVED, not solved."*
+
+| | flat aggregation (2.18dk) | folded (this run) |
+|---|---|---|
+| N=16 proof | 370 fields | **1,223 fields (39,136 bytes)** |
+| **peak memory** | **~21.7 GB** (12.5 GB resident + 9.2 GB swap) | **572 MB** |
+| proving | 280,492 ms for the proving key alone | whole stack in well under a minute |
+| circuit | 12,720,801 gates, **recompiled per N** | 5 fixed circuits, **same for any N** |
+| N=4 vs N=16 proof size | different circuits entirely | **byte-identical, 39,136 both** |
+
+**Constant size is measured, not argued.** The N=4 and N=16 proofs are the same length to the byte.
+The first two fields of the proof are the public inputs: the batch commitment, and `count` = 0x10.
+
+**THE WITNESSES ARE SIXTEEN DIFFERENT PEOPLE NOW.** The old N=16 aggregation fixture was sixteen
+IDENTICAL copies of one withdrawal - same 458 proof fields, same seven signals, repeated. It could
+never have caught a fold that collapses its members, because an accumulator over sixteen copies of X
+is indistinguishable from one that keeps only the last X. `tools/build-fold-witnesses.js` builds N
+distinct spends against ONE state tree; `IdentityRegistry.t.sol` now emits all three registered
+identities against one shared root. Duplicate nullifier hashes, duplicate change commitments, and
+duplicate seven-signal sets are all refused, in both the generator and the orchestrator.
+
+**THREE THINGS WERE WRONG AND ONLY ONE ANNOUNCED ITSELF.**
+
+1. **bb leaves the chonk `key_hash` EMPTY and checks it anyway.** No `vk_hash` file from the binary
+   form, `"hash": ""` from the JSON form. Zero gives `Recursive Ultra Verifier: VK Hash Mismatch`. The
+   value is Poseidon2 over the key's fields - now computed by `circuits/vk_hash`, which compiles
+   against the same poseidon pin the kernels do. It must NOT be computed inside the kernel: a kernel
+   hashing the key it was handed checks `hash(key) == hash(key)`, which holds for any key and still
+   prints "folding verified".
+2. **The first inner kernel was handed the wrong predecessor VK.** Its predecessor is the INIT kernel,
+   not another inner kernel. IVC is a chain, so one wrong key failed every fold after it - the log
+   named four broken steps and not the one that was actually wrong.
+3. **`kind` is now a required msgpack field** (App=0/Kernel=1/HidingKernel=2, uint32). This was the
+   only honest failure of the three: `Missing field kind`, before anything ran.
+
+**THE WRAPPER PROVES AGAINST THE REAL FOLD.** `bb prove --verifier_target noir-rollup` on
+`withdraw_ivc_wrapper` with the genuine N=16 chonk proof: **Proof verified successfully**, 9.4 s,
+1.9 GB peak, 480 proof fields, and its public inputs carry the batch commitment and `count` = 16
+unchanged. This is the first time the chonk recursion has been exercised with real witnesses rather
+than the dummy ones `write_vk` uses.
+
+**AND HERE IS THE HOP THAT IS MISSING - stated as a blocked path, not a to-do that can be worked
+around.** No nargo-built circuit that recursively verifies a chonk proof can produce an
+EVM-verifiable proof on bb 6.0.0-nightly. Five checks, each run rather than reasoned:
+
+- `write_vk -t evm` on the wrapper: `TripleIPA openings present when not expected. Actual: 1`.
+- Only rollup IO carries them: *"ROLLUP_HONK and ROOT_ROLLUP_HONK must be recursively verified using
+  an IO type with HasIPA=true."*
+- Rollup circuits cannot use the EVM hash: *"Rollup circuits (ipa_accumulation=true) must use
+  oracle_hash_type='poseidon2', got 'keccak'"*, and `--verifier_target` is refused alongside
+  `--ipa_accumulation` outright.
+- `write_solidity_verifier` on the rollup key: `verification key has wrong size: expected 1888, got
+  3680`. There is no `noir-rollup` target for Solidity, only `evm` / `evm-no-zk`.
+- A further circuit verifying the wrapper's ROLLUP_HONK proof at EVM target fails identically:
+  `IPA proofs present when not expected`.
+
+bb does have a discharge point - *"Root rollup must accumulate two IPA proofs"* - but `is_root_rollup`
+is derived inside bb from proof types Noir cannot emit here. **Verifying two chonk folds in one
+circuit was tried and does not reach it**: two openings are rejected exactly as one is.
+
+- [ ] **Decide the EVM hop.** Three candidates, none free: (a) find whether a later bb exposes the
+      root-rollup path to Noir; (b) keep the fold for the batcher's own economics and verify a
+      conventional UltraHonk proof on-chain, which puts an in-circuit verification back; (c) verify
+      the rollup proof off-chain and post an attestation, which changes the trust model and needs its
+      own argument. **Do not pick one without pricing all three** - this is the axis the whole
+      folding case now turns on.
+- [ ] `BatchVerifierLib` still folds flat. It cannot move to the chained fold until the hop above is
+      decided, because the on-chain shape depends on which proof the contract ends up verifying.
+- [ ] Only THREE identities exist, so at N=16 they cycle. That is honest for a batch (one identity
+      making several withdrawals is ordinary) but sixteen genuine escrow proofs would be better.
+- [ ] The `tsc` recipe was written out in five places and went stale in all five at once when `pp/`
+      moved to `.ts`-suffixed imports. It is one `tsconfig.fixtures.json` now, run as
+      `npm run build:pp`. Check nothing else in the tree still spells the flags out.
+
 ### 2.18dy The folded stack, built and measured (2026-08-04)
 
 Five circuits, all compiling, all measured. The wrapper is the only one bb 5.1.0 cannot build, exactly
@@ -8682,9 +8760,10 @@ free"*, not *"folding removes recursion cost"*.
 > has been MOVED, not solved** - and then the STARK argument returns with a measurement behind it,
 > because FRI verification is hash-based and avoids exactly this term.
 
-- [ ] Run `bb prove -s chonk --ivc_inputs_path <16-instance stack>` and record **decider gate count and
-      peak RSS**. Compare against 12,720,801 / ~21.7 GB. That single comparison decides both the
-      batcher question AND whether the retired STARK argument comes back.
+- [x] Run `bb prove -s chonk --ivc_inputs_path <16-instance stack>` and record **decider gate count and
+      peak RSS**. Compare against 12,720,801 / ~21.7 GB. **Done, see 2.18ea: 572 MB peak against
+      ~21.7 GB, and the proof is the same size at N=4 and N=16.** The STARK argument does not come
+      back on cost; what remains is the EVM hop, which is a different axis entirely.
 - [ ] Minor: `BATCH_N=1` fails to compile (N=2 and N=16 are fine) - unexamined, and it would make the
       slope measurement cleaner.
 - [ ] Minor: `inner_vk.nr`'s header says "112 field elements"; it is **115**. Stale comment.

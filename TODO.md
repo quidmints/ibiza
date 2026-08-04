@@ -8067,8 +8067,27 @@ closing with the hiding kernel.
 > And `create_honk_recursion_constraints` accepts only HONK, HONK_ZK, ROLLUP_HONK and ROOT_ROLLUP_HONK,
 > so wrapping a chonk proof in an EVM-verifiable Honk proof is not a supported path either.
 >
-> So the cost is not writing kernels. It is that folding currently has no route to an Ethereum
-> verifier, in either implementation, and no amount of restructuring on our side changes that.
+> **AND THE ROUTE TO ETHEREUM DOES EXIST, corrected again after finding it.**
+> `mock-rollup-tx-base-private` is four lines: `chonk_proof_data.verify()` then return ordinary public
+> inputs. `ChonkProofData::verify()` calls `std::verify_proof_with_type(..., PROOF_TYPE_CHONK)`. So a
+> Noir circuit CAN verify a folded proof in-circuit, and a circuit returning ordinary public inputs
+> gets a normal EVM verifier. My "no route" claim was wrong.
+>
+> **What is actually missing is the tooling to build that circuit.** Every builder bb's CLI exposes
+> refuses it:
+> - `bb gates` on it, under `-t evm`, `-t noir-rollup`, `-t noir-rollup-no-zk` and
+>   `--ipa_accumulation`, all fail with `create_recursion_constraints: HN recursion constraints not
+>   supported with UltraBuilder`;
+> - `bb gates -s chonk` on it fails on an internal size assertion instead;
+> - `bb write_solidity_verifier -s chonk` is a stub returning `API function contract not implemented`.
+>
+> So the chonk-verifying wrapper is compiled inside Aztec's own orchestration, not through bb's public
+> commands. The primitive exists, the circuit exists, and the path is not reachable from the CLI we
+> have. Using it means working inside barretenberg's C++ and Aztec's pipeline rather than writing three
+> small Noir circuits, which is a different order of commitment.
+>
+> The number that would decide everything is still the wrapper's gate count, because that is what
+> replaces our 12.7M-gate aggregation circuit. It cannot be measured until that circuit can be built.
 
 **And do not measure it on their mocks.** `barretenberg/cpp/CLAUDE.md` says so directly: never
 benchmark against test binaries, because test circuits are small mocks whose cost profile does not

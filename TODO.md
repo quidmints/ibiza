@@ -8043,6 +8043,62 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18dm AGGREGATION IS A THROUGHPUT WIN, NOT A PER-WITHDRAWAL ONE - and Groth16 wins the thin case (user, 2026-08-04)
+
+*"it's only if there 16 at a time that the cost per one is reduced... we shouldnt have removed groth?"*
+**Both halves are right, and the second is the more interesting one.**
+
+**THE BATCH COST IS FIXED, SO FILL DECIDES EVERYTHING.** `BATCH_N` is compile-time, so a batch proof
+costs **2,980,094 gas whether it carries 1 real withdrawal or 16**:
+
+| real withdrawals in the batch | gas each | vs settling singly (2,528,007) |
+|---|---|---|
+| 1 | 2,980,094 | **WORSE** |
+| 2 | 1,490,047 | better |
+| 16 | 186,255 | 13.6x better |
+
+**Break-even is TWO.** One-at-a-time aggregation is a net loss, and nothing in the system currently
+decides between the two paths.
+
+**AND PARTIAL BATCHES CANNOT ACTUALLY WORK.** `BatchVerifierLib.verifyBatch` permits
+`signals.length < maxBatch`, but no proof can satisfy it: the commitment fold is LENGTH-BINDING and
+the circuit folds exactly 16, so a 5-signal call computes a commitment no proof carries. **The guard
+implies a capability that does not exist.** A batcher must always pad to 16 - generating real
+`withdraw_identity` proofs for empty slots - and pays the same ~21.7 GB either way, so cost per PAYING
+withdrawal explodes at low fill. The gas saving converts into LATENCY.
+
+**WHICH IS EXACTLY WHERE GROTH16 WINS, AND THE NUMBERS ARE NOW MEASURED:**
+
+| | gas |
+|---|---|
+| **Groth16 verification** (ecPairing 4 pairs 181,132 + 5x ecMul 6,130 + overhead) | **~213,882** |
+| Honk **single** withdrawal | 2,528,007 - **11.8x more** |
+| Honk **batch of 16**, per withdrawal | 186,255 - only **13% cheaper than a Groth16 single** |
+
+**READ THAT LAST ROW AGAIN.** A FULL 16-batch on Honk barely beats a plain Groth16 single. So the
+hybrid the user proposes is strong: **Groth16 for the withdrawal (ONE circuit, ONE ceremony, ~214k
+always, no fill requirement), Honk for passport registration (79 profiles, zero ceremonies)** - which
+is where the ceremony argument actually bites. The withdrawal circuit is 44,176 gates; a ceremony for
+one small circuit is not the 79 we refused.
+
+**AND IT NEED NOT MEAN TWO CIRCUIT LANGUAGES.** `YaniXIV/noir-gnark` translates ACIR to gnark, which
+does Groth16 - so ONE Noir source could emit both. Unverified and young, but the shape is right and it
+is the same ACIR-portability argument as 2.18dh.
+
+**A MEASUREMENT FAILURE WORTH KEEPING.** The first attempt called a real Groth16 verifier with a fake
+proof and read **1,040,429,520 gas** - because snarkjs verifiers answer an invalid proof with
+`invalid()`, which burns all remaining gas. "Constant-time verification" is true of the ALGORITHM and
+false of the CONTRACT. The figure above is priced from the precompiles instead (EIP-1108 prices by
+input size, not by result).
+
+- [ ] Fix `verifyBatch`'s unreachable `signals.length < maxBatch` branch - require a full batch, or
+      make padding explicit. A guard that cannot pass misleads whoever reads it next.
+- [ ] Decide the FILL POLICY: settle singly below 2 pending, batch above. Nothing does this today.
+- [ ] Price the hybrid seriously: Groth16 withdrawal (one ceremony) + Honk registration. On the thin
+      case it is ~11.8x, and even a full batch only beats it by 13%.
+- [ ] Note the tension with the depth-2 tree (2.18dl): 256 slots make fill HARDER, so the tree pays
+      only at high steady volume - exactly when Groth16's advantage is smallest.
+
 ### 2.18dl THE AGGREGATION ECONOMICS, MEASURED ON-CHAIN AT LAST (2026-08-04)
 
 Every gas figure for aggregation in this file was an ESTIMATE. With a real proof in hand they are now

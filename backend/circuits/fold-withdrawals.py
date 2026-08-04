@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Fold N withdrawals into one proof, and emit the IVC input stack `bb prove -s chonk` consumes.
 
-  python3 fold-withdrawals.py [N]        # default 16
+  python3 fold-withdrawals.py [N]           # default 16 - build the IVC stack
+  python3 fold-withdrawals.py --wrap <proof> # after `bb prove -s chonk`, witness the EVM wrapper
 
 WHAT THIS IS. The batcher, in miniature and in one file. It runs the app circuit once per withdrawal,
 threads each result through a kernel so the batch commitment accumulates, closes the stack with the
@@ -52,10 +53,6 @@ HIDING = "withdraw_ivc_hiding"
 # bb rejects a stack whose LAST entry is not the hiding kernel, and the only diagnostic for a missing
 # entry is `Missing field kind` with no index - so the table is keyed by circuit name, which makes an
 # unmapped circuit a KeyError here rather than a parse failure inside bb.
-# Must equal vk_hash's MAX_VK_FIELDS, which is MEGA_VK_LENGTH_IN_FIELDS. Shorter keys are padded to
-# it and pass their real length; the padding is never absorbed.
-MAX_VK_FIELDS = 151
-
 KIND_APP, KIND_KERNEL, KIND_HIDING = 0, 1, 2
 CIRCUIT_KIND = {
     APP: KIND_APP,
@@ -63,6 +60,16 @@ CIRCUIT_KIND = {
     K_INNER: KIND_KERNEL,
     HIDING: KIND_HIDING,
 }
+
+WRAPPER = "withdraw_ivc_wrapper"
+
+# Must equal vk_hash's MAX_VK_FIELDS, which is MEGA_VK_LENGTH_IN_FIELDS. Shorter keys are padded to
+# it and pass their real length; the padding is never absorbed.
+MAX_VK_FIELDS = 151
+
+# The wrapper's own globals, restated so a drift is caught here rather than inside bb's verifier.
+CHONK_PROOF_LENGTH = 1221
+WRAPPER_PUBLIC_INPUTS = 2  # BatchAccumulator: commitment, count
 
 # ── msgpack, written out rather than pulled in ────────────────────────────────────────────────
 # The only shapes needed are str, bin and map/array, so a dependency would cost more than it saves.
@@ -167,6 +174,12 @@ def parse_struct(text: str) -> dict:
 
 
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "--wrap":
+        if not BB:
+            sys.exit("set BB to the 6.0.0-nightly bb, e.g. BB=./node_modules/.bin/bb")
+        SCRATCH.mkdir(parents=True, exist_ok=True)
+        return wrap(pathlib.Path(sys.argv[2]))
+
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 16
     if n < 4:
         sys.exit("bb rejects fewer than 4 circuits in an IVC stack (get_queue_type uses N-3)")
@@ -268,6 +281,40 @@ def main() -> int:
     print(f"\n{len(entries)} circuits -> {out_path} ({out_path.stat().st_size / 1e6:.1f} MB)")
     print(f"final commitment {acc['commitment']}  count {int(acc['count'], 16)}")
     print(f"\nnext: {BB} prove -s chonk --ivc_inputs_path {out_path} -o <dir>")
+    print(f"then: python3 {__file__} --wrap <proof>")
+    return 0
+
+
+def wrap(proof_path: pathlib.Path) -> int:
+    """Turn a proven fold into the wrapper's witness - the last hop before the EVM.
+
+    THE PUBLIC INPUTS ARE PREPENDED TO THE PROOF FILE, not stored beside it. A chonk proof on disk is
+    `[commitment, count] ++ 1221 proof fields`, and the wrapper wants those two groups as separate
+    arguments. Splitting it by the pinned lengths rather than by 'whatever is left over' means a
+    format shift shows up as a length assertion here instead of as an unexplained rejection two
+    circuits later."""
+    raw = proof_path.read_bytes()
+    fields = ["0x" + raw[i : i + 32].hex() for i in range(0, len(raw), 32)]
+    expected = WRAPPER_PUBLIC_INPUTS + CHONK_PROOF_LENGTH
+    if len(fields) != expected:
+        sys.exit(f"{proof_path} is {len(fields)} fields, expected {expected}")
+    public, proof = fields[:WRAPPER_PUBLIC_INPUTS], fields[WRAPPER_PUBLIC_INPUTS:]
+
+    vk, vk_hash = vk_fields(HIDING)
+    toml = [
+        f"proof = {json.dumps(proof)}",
+        f"vk = {json.dumps(vk)}",
+        f'vk_hash = "{vk_hash}"',
+        "",
+        "[accumulator]",
+        f'commitment = "{public[0]}"',
+        f'count = "{public[1]}"',
+    ]
+    (HERE / WRAPPER / "Prover.toml").write_text("\n".join(toml) + "\n")
+    run(["nargo", "execute", "wrap"], HERE / WRAPPER)
+
+    print(f"wrapper witness solved for batch {public[0]}, count {int(public[1], 16)}")
+    print(f"\nnext: {BB} write_vk -t evm -b {WRAPPER}/target/{WRAPPER}.json -o <dir>")
     return 0
 
 

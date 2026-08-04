@@ -1,5 +1,31 @@
 {
+  "//": [
+    "bb 6.0.0-nightly IS THE TOOLCHAIN. Resolved as ./node_modules/.bin/bb, pinned below.",
+    "",
+    "It has to be: bb 5.1.0 builds the chonk fold's app and kernels but REJECTS the wrapper's HN",
+    "recursion constraints outright, so the fold path does not exist without 6.0. The recursion tree",
+    "runs on either and is built on 6.0 too, so there is ONE toolchain rather than two.",
+    "",
+    "bb 5.1.0 still exists at ~/.bb/bb (installed by bbup, not an npm package, so not pinnable here).",
+    "Anything still built with it is listed in TODO sec. 2.18ef.",
+    "",
+    "THE TWO VERSIONS CANNOT VERIFY EACH OTHER'S PROOFS, AND YOU CANNOT TELL BY COMPARING KEYS.",
+    "Measured, both directions, with the same-toolchain control run first:",
+    "  - withdraw_identity's recursion VK is BYTE-IDENTICAL under 5.1.0 and 6.0. Same 115 fields,",
+    "    same values. A pinned-VK check - which is exactly what inner_vk.nr is - sees nothing wrong.",
+    "  - Its proofs are mutually unverifiable anyway. Each verifies against its own bb; each fails",
+    "    against the other at `UltraVerifier: verification failed at reduction step`.",
+    "So the incompatibility lives in the proof TRANSCRIPT, not the key, and the usual guard against",
+    "toolchain drift cannot see it. Every proof in one recursion tree must come from one bb.",
+    "",
+    "A NIGHTLY IS PINNED DELIBERATELY. There is no 6.0.0 release; the nightly is what exists. Pinned",
+    "to an exact date rather than a range because a nightly is free to change proof formats between",
+    "builds, and a silently different format is the failure mode this file exists to prevent - see",
+    "above for how invisible it is. Bump on purpose, then regenerate BOTH on-chain fixtures",
+    "(ChonkRootProofOnChain, RecursionTreeProofOnChain) before trusting anything."
+  ],
   "devDependencies": {
+    "@aztec/bb.js": "6.0.0-nightly.20260804",
     "prettier": "^3.6.1"
   }
 }

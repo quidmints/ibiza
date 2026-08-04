@@ -8101,8 +8101,11 @@ was never asked, and the answer was one constant away.
       but 572 MB for the folds themselves, ANY batch size with one circuit set, 90,717 each at 32 and
       falling. **The axis is whether an 8.87 GB step once per settlement is acceptable** - it is under
       this machine's 16 GB, but it is not a phone and not a small VM.
-- [ ] Re-price the "wait for a later bb" option in 2.18eb, which was retired on the belief that this
-      was structurally impossible.
+- [x] ~~Re-price the "wait for a later bb" option in 2.18eb.~~ **CLOSED by the repo owner: "we cannot
+      wait for a later bb".** It is also moot - nothing on either settlement path needs one. The tree
+      runs on 5.1.0 and the fold+root runs on the 6.0 nightly already installed. The version is now
+      PINNED in `backend/circuits/package.json` rather than living in a scratchpad, because a path
+      that only works on one machine's node_modules is not a path.
 - [ ] `2.18ea`'s Grumpkin/precompile analysis is still CORRECT and still the reason there is no
       on-chain IPA verifier. It just was not the reason the path was blocked.
 

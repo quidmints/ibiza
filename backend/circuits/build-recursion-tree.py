@@ -27,9 +27,16 @@ constrain its hash - but then the batch depth stops being structural, and a wron
 becomes a thing the circuit must catch rather than a thing it cannot express. A fixed depth with one
 circuit per level cannot express it at all.
 
-TOOLCHAIN: bb 5.1.0 (`~/.bb/bb`), NOT the 6.0 nightly used by the chonk fold. The UltraHonk recursion
-format moved between them: 5.1.0 inner proofs fail under 6.0 with `UltraVerifier: verification failed
-at reduction step`. Set BB to override.
+TOOLCHAIN: bb 6.0.0-nightly, pinned in package.json, so this and the chonk fold are ONE toolchain.
+It defaults to `~/.bb/bb` only because that is where bbup puts things; set BB to the pinned 6.0
+binary (`backend/circuits/node_modules/.bin/bb`) and everything below is 6.0 end to end.
+
+THE TWO VERSIONS ARE NOT INTERCHANGEABLE AND YOU CANNOT TELL BY LOOKING AT THE KEYS. Measured:
+`withdraw_identity`'s recursion VK is BYTE-IDENTICAL under 5.1.0 and 6.0 - same 115 fields, same
+values - and its proofs are still mutually unverifiable, failing at `UltraVerifier: verification
+failed at reduction step` in BOTH directions while each verifies fine against its own toolchain. So
+the incompatibility lives in the proof transcript, not the key, and comparing pinned VKs would say
+everything is fine. Every proof in a tree must come from one bb.
 
 PREREQUISITE - the withdrawals themselves:
   cd frontend/identity-wallet && npm run build:pp
@@ -54,7 +61,16 @@ WITNESS_SOURCE = "withdraw_ivc_app"  # where build-fold-witnesses.js writes Prov
 # disposable; these two are what the contracts compile and test against.
 VERIFIER_NAME = "TreeRootHonkVerifier"
 VERIFIER_OUT = HERE / ".." / "contracts" / "contracts" / "pool" / "verifiers" / f"{VERIFIER_NAME}.sol"
-FIXTURE_OUT = HERE / ".." / "contracts" / "test" / "fixtures" / "recursion_tree_n16.json"
+CONTRACTS = HERE / ".." / "contracts"
+
+
+def fixture_out(n: int) -> pathlib.Path:
+    """Named for the batch size it holds.
+
+    A fixed name here is not a detail: a smoke run at N=4 silently overwrote the committed N=16
+    fixture AND its verifier, and the test suite went on passing because a self-consistent N=4 pair
+    verifies perfectly well. The batch size only survives in the file name, so it has to be in it."""
+    return CONTRACTS / "test" / "fixtures" / f"recursion_tree_n{n}.json"
 
 # `withdraw_identity`'s shape, measured rather than assumed. PROOF_LEN pairs with PROOF_TYPE: 458 is
 # the ZK length and pairs with 6; the non-ZK pair is 410 with 0. Mixing them gives
@@ -341,8 +357,9 @@ def main() -> int:
 
     # The fixture, in the shape the Forge test parses. The proof is the raw field bytes; the public
     # input is the tree ROOT, which is the only thing the chain sees of the whole batch.
-    FIXTURE_OUT.parent.mkdir(parents=True, exist_ok=True)
-    FIXTURE_OUT.write_text(json.dumps({
+    fixture = fixture_out(n)
+    fixture.parent.mkdir(parents=True, exist_ok=True)
+    fixture.write_text(json.dumps({
         "proof": "0x" + b"".join(v.to_bytes(32, "big") for v in root["proof"]).hex(),
         "publicInputs": [f"0x{root['commitment']:064x}"],
         "batchSize": n,
@@ -352,7 +369,7 @@ def main() -> int:
     print(f"\nroot commitment 0x{root['commitment']:064x}")
     print(f"root proof      {len(root['proof'])} fields, 1 public input")
     print(f"verifier        {VERIFIER_OUT} ({VERIFIER_OUT.stat().st_size:,} bytes)")
-    print(f"fixture         {FIXTURE_OUT}")
+    print(f"fixture         {fixture}")
     print(f"nodes           {n - 1} ({n // 2} leaves + {n // 2 - 1} internal), depth {depth}")
     print(f"elapsed         {time.time() - started:.0f}s")
     return 0

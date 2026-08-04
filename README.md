@@ -238,11 +238,34 @@ patience. Conversely, **making withdrawals instant and cheap — the Groth16 hyb
 `TODO.md` — removes the dwell floor and shrinks the yield base.** That is a real cost of the hybrid
 which the gas table does not show.
 
+### The third reason, and it is about defaults rather than money
+
+**A user who deposits and withdraws minutes apart has almost no privacy, and will not know it.** The ZK
+proof hides WHICH note is being spent; it cannot hide WHEN. If one deposit is followed shortly by one
+withdrawal and little else happens in between, the two are linkable by timing alone — the cryptography
+is intact and the anonymity is gone. Nothing in the contracts warns anyone, and there is no correct
+waiting period a user could look up, because the right answer depends on what everyone else is doing.
+
+**Batching removes that decision from the user.** A batched withdrawal settles alongside fifteen others
+in a single transaction, so every withdrawal in the batch shares one timestamp and one submitter. That
+does not enlarge the anonymity set — that is the deposit tree — but it does destroy the **one-to-one
+timing correlation**, which is the leak an ordinary user is most likely to walk into.
+
+**The mechanism is the same "register interest" flow**: at deposit time you say whether you intend to
+withdraw, or leave it open if you do not know yet. You are then placed in a batch when one forms. The
+safe behaviour is the default, and the unsafe behaviour requires deliberately choosing an immediate
+single withdrawal.
+
+**This is the argument that survives even if the other two do not.** If typical dwell already exceeds
+batch latency, batching adds no yield; if gas falls (see the Groth16 hybrid in `TODO.md`), it saves
+little. It still prevents the mistake — and a privacy system whose guarantees depend on users knowing
+to wait is one that will fail quietly for most of them.
+
 ⚠️ **What is measured and what is not.** The gas figures are measured (`AggregationProofOnChain.t.sol`,
-`VerificationCostComparison.t.sol`). The claim that batching materially increases the yield base is
-**not** — it depends on how long users would have left funds in the pool anyway, which nobody here has
-data on. If typical dwell already exceeds batch latency, batching adds no yield at all and only the
-gas argument stands. **Do not quote the yield-from-batching link as established.**
+`VerificationCostComparison.t.sol`). The yield and timing-privacy arguments are **design rationale, not
+measurements**: whether batching increases the yield base depends on how long users would have held
+anyway, and how much timing decorrelation is worth depends on real withdrawal patterns. Nobody here has
+either dataset. **Do not quote them as established.**
 
 ## Why aggregation was the first big piece
 

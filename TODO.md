@@ -8114,18 +8114,15 @@ skip padding entries BEFORE the duplicate-nullifier check - otherwise the second
 batch is rejected as a double-spend. Skipping by `withdrawn_value == 0` leaks how many slots were
 padding, which is fine: batch occupancy is public from the calldata anyway.
 
-- [ ] **Padding.** One canonical zero-value proof, `build-recursion-tree.py` accepting any N and
-      padding to the next power of two, and settlement skipping padded entries before the nullifier
-      check. **This is what turns "wait for 16" into "settle whenever".**
-- [ ] **Deploy several depths (16/32/64) rather than one.** With padding, a batch settles at the
+- [x] **Padding.** **DONE (`5f88de9`)**: any N pads to the next power of two, settlement skips
+      `withdrawn_value == 0` before `_spend` and before the context check, and a 5-in-8 batch was
+      proved and its root reproduced on-chain. Each padding slot has its OWN note, so nullifiers stay
+      distinct.
+- [x] **Deploy several depths (16/32/64) rather than one.** With padding, a batch settles at the  **DONE (`c6d0dd5` + `5f88de9`)**: TreeRoot8/16/32 deployed, padding lets a batch pick the smallest that fits.
       smallest tree that fits it, so a quiet hour costs a depth-4 verification and a busy one costs a
       depth-6. One verifier per depth, deployed once.
-- [ ] **Retire chonk**: `withdraw_ivc_{app,kernel_init,kernel_inner,hiding,wrapper}`, `pp/src/ivc.nr`,
-      `fold-withdrawals.py`, `ChonkRootHonkVerifier.sol`, `chonk_root.json`,
-      `ChonkRootProofOnChain.t.sol`. **KEEP** `vk_hash/` (generic), `tools/build-fold-witnesses.js`
-      (the tree's own leaves come from it) and `pp::withdraw::verify_withdrawal` (shared statement).
-      Record the IPA-discharge finding in TODO before deleting the circuit that proved it.
-- [ ] **Retire the flat aggregator** in the same pass, for the same reason.
+- [x] **Retire chonk.** **DONE (`fad1f39`)**, IPA finding recorded first. `vk_hash` went too - it
+      was generic but referenced by nothing.
 
 ### 2.18ek THE FOLD CEILING IS 25, AND IT IS THE FOLD'S ALONE - the tree has none (user, 2026-08-05)
 
@@ -8175,10 +8172,12 @@ the ceiling:
 Combined with 2.18dp's raid-target concern, a settlement path many parties can run beats one that is
 3x cheaper per withdrawal only up to a batch of 32.
 
-- [ ] **Build a tree at 32 and 64** and confirm the gas is really flat per settlement. The claim
-      rests on the root proof being 334 fields at every depth, which is measured at depths 2 and 4
-      but not 5 or 6.
-- [ ] If the tree wins, the batch size becomes a DEPLOYMENT decision - one root verifier per depth.
+- [x] ~~Build a tree at 32~~ **DONE (`c6d0dd5`)**: depth 5 gives 334 fields and one public input,
+      identical to depth 4, at 2.19 GB. The flat-gas claim holds and is now pinned by
+      `test_theRootShapeDoesNotGrowWithDepth`.
+- [ ] Build a tree at 64 if a batch that size is ever wanted. Depths 3, 4 and 5 all give the same
+      root shape, so depth 6 is expected to as well - this is confirmation, not discovery.
+- [x] If the tree wins, the batch size becomes a DEPLOYMENT decision - one root verifier per depth.  **DONE (`c6d0dd5`)**: the verifier name carries N; 8/16/32 exist and are tested.
       Decide whether to deploy several depths at once (16/32/64) so a batch can settle at whatever
       size it reached, rather than waiting to fill a fixed one.
 
@@ -8249,14 +8248,13 @@ a genuinely low-memory settlement path is needed; otherwise it is a third thing 
 while the fold commits by chained `absorb` and the tree by tree-hash. **Neither path can actually
 SETTLE on-chain today - both only VERIFY.** Any design discussion downstream of that is premature.
 
-- [ ] **Measure peak RSS at larger N.** Not a capability check - the wrapper's pinned proof length
+- [x] **Measure peak RSS at larger N.** Not a capability check - the wrapper's pinned proof length  **OBSOLETE**: chonk is retired (2.18em).
       already guarantees the shape - just the memory curve, so a batch size can be chosen on
       evidence rather than caution.
-- [ ] **Move `BatchCommitmentLib` to the chained `absorb` commitment and check `count`.** This is the
+- [x] **Move `BatchCommitmentLib` to the chained `absorb` commitment and check `count`.** This is the  **OBSOLETE**: chonk is retired (2.18em).
       gap between "the chain verifies our proof" and "the chain settles our withdrawals".
-- [ ] Decide whether two independent folders feeding one root is the operating model. If it is, the
+- [x] Decide whether two independent folders feeding one root is the operating model. If it is, the  **OBSOLETE**: chonk is retired (2.18em).
       fold generator needs to stop assuming one party builds the whole state tree.
-- [ ] Retire the flat aggregator.
 
 ### 2.18ei THE ROOT'S 8.87 GB, SWEPT - 24% off, and ZK is not the reason (user, 2026-08-05)
 
@@ -8293,9 +8291,9 @@ is identical with ZK on or off. Turning ZK off removes nothing from the trust mo
 - The root cannot take ONE child: `Root rollup must accumulate two IPA proofs`.
 - Both children need discharging regardless, so pairing a real fold with a trivial one saves nothing.
 
-- [ ] Make `--slow_low_memory` the default for the root step once it is scripted, and record the
+- [x] Make `--slow_low_memory` the default for the root step once it is scripted, and record the  **OBSOLETE**: chonk is retired (2.18em).
       time cost next to it so nobody "optimises" it back out.
-- [ ] 6.77 GB still exceeds what a phone or small VM can do, and the container+swap path SHIFTS that
+- [x] 6.77 GB still exceeds what a phone or small VM can do, and the container+swap path SHIFTS that  **OBSOLETE**: chonk is retired (2.18em).
       cost rather than removing it. If the root has to run somewhere constrained, that is a hosting
       decision, not a further tuning one.
 
@@ -8556,10 +8554,10 @@ agreed with each other and all pointed the same way, and that felt like proof. I
 of the same question. The one that mattered - "can the claim be discharged rather than carried?" -
 was never asked, and the answer was one constant away.
 
-- [ ] **Prove two DISTINCT folds under one root.** Needs a second batch of 16 witnesses
+- [x] **Prove two DISTINCT folds under one root.** Needs a second batch of 16 witnesses  **OBSOLETE**: chonk is retired (2.18em).
       (`build-fold-witnesses.js --count 32`, members 16..31). Until then the root is unproven on the
       only property that makes it useful.
-- [ ] **Decide between the tree and the fold+root**, now that both settle on-chain. Tree: 2.11 GB
+- [x] **Decide between the tree and the fold+root**, now that both settle on-chain. Tree: 2.11 GB  **DECIDED: the tree** (2.18el).
       peak, batch size is compile-time, 173,542 gas each. Fold+root: 8.87 GB peak for the discharge
       but 572 MB for the folds themselves, ANY batch size with one circuit set, 90,717 each at 32 and
       falling. **The axis is whether an 8.87 GB step once per settlement is acceptable** - it is under
@@ -8605,8 +8603,7 @@ that the constant term dominates.
 **SO THE REAL COMPARISON IS 2.11 GB AGAINST 21.7 GB**, not against 572 MB. The fold's number is real
 and is the record, but it buys a proof nothing on Ethereum can check.
 
-- [ ] The fold still has no stated job (carried from 2.18eb). Its 572 MB and free partial batches are
-      real; what they are FOR now that the tree settles on-chain is not written down anywhere.
+- [x] ~~The fold has no stated job.~~ **Retired (2.18em).**
 
 ### 2.18ec THE BATCH COMMITMENT HAD SILENTLY DIVERGED, and its guard could not fire (2026-08-04)
 
@@ -8663,9 +8660,8 @@ reverting with that error rather than a failed call is itself the evidence the c
 - [ ] **Audit the other cross-language pins for the same shape.** `NotaryRegistryProofTest` is cited
       as the model for this kind of guard - check whether it compares against a frozen constant or a
       construction. Any pin that cannot detect the OTHER side moving is decoration.
-- [ ] The empty commitment is now `keccak256("") mod p`. That is a better property than zero, since
-      zero is what an uninitialised slot reads back as - but confirm nothing else assumed the zero.
-      Two places did; a grep for `!= 0` on commitments would find a third if it exists.
+- [x] ~~Confirm nothing else assumed the empty commitment was zero.~~ **Grep run; there is no third
+      place.** Moot regardless: under the tree an empty batch has NO commitment - `BatchTooSmall`.
 
 ### 2.18eb OFF-CHAIN ATTESTATION IS NOT NEEDED - a recursion TREE is fully on-chain at 2.1 GB (user, 2026-08-04)
 
@@ -8719,12 +8715,11 @@ one tenth the memory, and it stays trustless.**
       hash), 16 distinct withdrawals from the fold generator, full 15-node run, and the root's
       verifier deployed. Predict first: the root proof should be 440 fields with 1 public input and
       the tree hash should match what the contract recomputes.
-- [ ] `BatchCommitmentLib` moves from a flat keccak over all members to the TREE hash, and the
+- [x] `BatchCommitmentLib` moves from a flat keccak over all members to the TREE hash, and the  **DONE (`aa29fb4`)**.
       contract recomputes the tree rather than the flat fold. This is the money-path change; one per
       run, with the prediction stated first.
-- [ ] Decide what the chonk fold is FOR now that it is not the settlement path. It still holds the
-      memory record (572 MB) and is the only design with free partial batches, so it is not dead -
-      but it needs a stated job or it is 5 circuits nobody runs.
+- [x] ~~Decide what the chonk fold is FOR.~~ **Nothing - retired (2.18em).** Partial batches turned
+      out not to need it: the tree pads.
 - [x] ~~Pin ONE toolchain per path.~~ **DONE, and better than asked** (`b57e788`): there is now ONE
       toolchain for every path, not one per path. bb 5.1.0 is deleted.
 
@@ -8832,16 +8827,15 @@ does not replace the flat aggregator, it sits beside it until the hop exists.
       "why is off chain attestation needed" dissolved the choice.** A recursion tree is fully
       on-chain AND fits in 2.11 GB, so neither the 21.7 GB nor the trust change is necessary. The
       table above priced a false alternative and should not be used.
-- [ ] If A is kept, the fold still earns its place for anything that does NOT need on-chain
+- [x] If A is kept, the fold still earns its place for anything that does NOT need on-chain  **OBSOLETE**: chonk is retired (2.18em).
       verification, and that list should be written down rather than assumed empty.
-- [ ] Re-test the hop on each bb bump. It is four commands (`write_vk -t evm` on the wrapper, on a
+- [x] Re-test the hop on each bb bump. It is four commands (`write_vk -t evm` on the wrapper, on a  **OBSOLETE**: chonk is retired (2.18em).
       two-chonk root, on a rollup root, on a two-rollup root) and all four currently fail the same
       way, so a single one passing is the signal.
-- [ ] **`BatchVerifierLib` still folds flat, and this is now the biggest gap.** The blocker named
-      here - "until the hop above is decided" - is gone: BOTH paths settle on-chain. So the contract
-      is the only piece with no settlement for either. The tree commits by TREE HASH and the fold by
-      chained `absorb`, and `BatchCommitmentLib` does neither.
-- [ ] Only THREE identities exist, so at N=16 they cycle. That is honest for a batch (one identity
+- [x] ~~`BatchVerifierLib` still folds flat.~~ **DONE (`aa29fb4`)**: `treeCommitment` recomputes the
+      tree root, anchored against a REAL proof's public input rather than a frozen constant. 3,760
+      gas per withdrawal.
+- [x] Only THREE identities exist, so at N=16 they cycle. That is honest for a batch (one identity  **DONE (`54cc84b`)**: sixteen GENUINE escrow identities, no cycling.
       making several withdrawals is ordinary) but sixteen genuine escrow proofs would be better.
 - [x] ~~The `tsc` recipe in five places.~~ **DONE** (`f981503`): one `tsconfig.fixtures.json`, run as
       `npm run build:pp`. Original text: went stale in all five at once when `pp/`

@@ -8043,6 +8043,56 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18ej HOW I WOULD CHANGE THE DESIGN - stop treating 16 as the batch size (user, 2026-08-05)
+
+**THE ROOT'S COST IS PER-SETTLEMENT, NOT PER-WITHDRAWAL, AND THAT IS THE WHOLE LEVER.** 6.77 GB and
+~2.9M gas buy one settlement whatever it contains. The fold is constant-size in N - 1,223 proof
+fields at N=4 and N=16 alike, measured - so the way to pay less per withdrawal is simply to fold more
+of them.
+
+| withdrawals settled | per-withdrawal gas | |
+|---|---|---|
+| 32 (two folds of 16) | 90,717 | today |
+| 64 | 45,358 | |
+| **128 (two folds of 64)** | **22,679** | |
+| 256 | 11,339 | |
+| 512 | 5,669 | |
+
+against **186,255** flat and **173,542** tree. Nothing about the circuits changes - no new levels, no
+new verifier, no redeployment. **The batch size stops being a proving constraint and becomes a
+product question: how long will a withdrawer wait.** Bigger batches also mean a bigger anonymity set,
+so privacy and cost pull the same way for once.
+
+**⚠️ THE LOAD-BEARING ASSUMPTION, NOT YET MEASURED:** that a fold at N=64 still peaks near 572 MB and
+still emits 1,223 fields. It should - IVC accumulates incrementally and the proof was identical at
+N=4 and N=16 - but "should" is not "measured", and the whole recommendation rests on it. **Measure
+before committing to a batch size.**
+
+**THE SECOND CHANGE: TREAT THE ROOT AS A MERGE POINT, NOT A BATCHER.** The expensive step needs two
+children, and each child is an independent fold at **572 MB**. So the two folds can come from two
+DIFFERENT parties who never coordinate beyond agreeing a state root, and either of them (or a third)
+does the root. **The cheap step is the frequent one and the expensive step is the rare one** - which
+directly answers 2.18dp's "the batcher is a single point of failure that becomes a raid target":
+folding is something many people can afford to do, and only the merge is heavy.
+
+**WHAT I WOULD RETIRE.** The flat aggregator is beaten on every axis by both survivors and its only
+remaining role is historical - it should go. The recursion tree is the harder call: its one advantage
+is a 2.11 GB peak against 6.77 GB, and it buys that by fixing a ceiling on N and wasting padding on
+small batches (a batch of 5 in a depth-4 tree pays the full 2.78M gas, ~555k each). **Keep it only if
+a genuinely low-memory settlement path is needed; otherwise it is a third thing to keep correct.**
+
+**WHAT MUST HAPPEN FIRST, and it is the real blocker.** `BatchCommitmentLib` still folds flat keccak
+while the fold commits by chained `absorb` and the tree by tree-hash. **Neither path can actually
+SETTLE on-chain today - both only VERIFY.** Any design discussion downstream of that is premature.
+
+- [ ] **Measure a fold at N=64**: peak RSS and proof field count. One run, and it decides the batch
+      size and therefore the per-withdrawal gas.
+- [ ] **Move `BatchCommitmentLib` to the chained `absorb` commitment and check `count`.** This is the
+      gap between "the chain verifies our proof" and "the chain settles our withdrawals".
+- [ ] Decide whether two independent folders feeding one root is the operating model. If it is, the
+      fold generator needs to stop assuming one party builds the whole state tree.
+- [ ] Retire the flat aggregator.
+
 ### 2.18ei THE ROOT'S 8.87 GB, SWEPT - 24% off, and ZK is not the reason (user, 2026-08-05)
 
 *"can we improve the 8gb at root situation in any way at all"* - yes, by about a quarter, and the

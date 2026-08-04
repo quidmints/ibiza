@@ -8237,14 +8237,17 @@ superseded - deleted. And the light test read `register_identity_light.proof` wh
 writes `register_identity_light_td1.proof` for the SAME circuit (DG1_LEN 95, hash 32 IS the ID256
 config) - two names for one artifact, now one.
 
-- [ ] **Regenerate `AggregationHonkVerifier` and its N=16 fixture on 6.0** through the container
+- [x] **Regenerate `AggregationHonkVerifier` and its N=16 fixture on 6.0.** **DONE** (`f206f89`):
+      write_vk 12.1 GB / 141 s, prove verified at 12.4 GB, and the fixture's sixteen members are now
+      DISTINCT rather than sixteen copies. Original text: through the container
       swapfile. That removes the last referenced 5.1.0 artifact without deleting anything, and
       whether to then RETIRE the flat aggregator becomes a clean question about whether two settling
       paths plus a third is one too many.
 - [x] ~~The 79 passport verifiers.~~ **Nothing to do.** No proofs, no fixtures, no test deploys one.
       Idle, not stale. Their real gap is that nothing wires verifiers by address, which is a separate
       item and not a toolchain one.
-- [ ] `codegen-verifiers.sh`'s `REQUIRED_BB` still names 5.1.0 with 6.0 as "also accepted". Now that
+- [x] ~~`codegen-verifiers.sh`'s `REQUIRED_BB`.~~ **DONE** (`b57e788`): both guards take a single
+      value and 5.1.0 is deleted tree-wide - see 2.18eh. Original text: Now that
       6.0 is the toolchain, invert it - and the moment nothing needs 5.1.0, make it the only value.
 
 ### 2.18ee THE FOLD REACHES THE CHAIN - I was wrong, and the fix is one constant (user, 2026-08-04)
@@ -8310,7 +8313,8 @@ was never asked, and the answer was one constant away.
       runs on 5.1.0 and the fold+root runs on the 6.0 nightly already installed. The version is now
       PINNED in `backend/circuits/package.json` rather than living in a scratchpad, because a path
       that only works on one machine's node_modules is not a path.
-- [ ] `2.18ea`'s Grumpkin/precompile analysis is still CORRECT and still the reason there is no
+- [x] ~~Grumpkin/precompile analysis.~~ Not a task - a correction, kept for the record. It is still
+      CORRECT and still the reason there is no
       on-chain IPA verifier. It just was not the reason the path was blocked.
 
 ### 2.18ed 572 MB vs 2.11 GB IS NOT A REGRESSION - it is the price of EVM-verifiability (user, 2026-08-04)
@@ -8454,7 +8458,8 @@ one tenth the memory, and it stays trustless.**
   failed at reduction step`). The UltraHonk recursion format moved between 5.1.0 and 6.0. The tree is
   a 5.1.0 artifact today; folding is a 6.0 one. **Two toolchains in one tree is a standing hazard.**
 
-- [ ] **Build the tree for real.** Four circuits (or one merge circuit with the child VK pinned by
+- [x] **Build the tree for real.** **DONE** (`fa9b97a`, rebuilt on 6.0 in `0619aa8`): 15 nodes,
+      depth 4, 301 s, 2.19 GB, verifier deployed and 5/5 on-chain tests pass. Original text: Four circuits (or one merge circuit with the child VK pinned by
       hash), 16 distinct withdrawals from the fold generator, full 15-node run, and the root's
       verifier deployed. Predict first: the root proof should be 440 fields with 1 public input and
       the tree hash should match what the contract recomputes.
@@ -8464,7 +8469,8 @@ one tenth the memory, and it stays trustless.**
 - [ ] Decide what the chonk fold is FOR now that it is not the settlement path. It still holds the
       memory record (572 MB) and is the only design with free partial batches, so it is not dead -
       but it needs a stated job or it is 5 circuits nobody runs.
-- [ ] Pin ONE toolchain per path and write down which. bb 5.1.0 inner proofs do not verify under 6.0.
+- [x] ~~Pin ONE toolchain per path.~~ **DONE, and better than asked** (`b57e788`): there is now ONE
+      toolchain for every path, not one per path. bb 5.1.0 is deleted.
 
 ### 2.18ea THE FOLD RUNS: 16 REAL WITHDRAWALS, ONE PROOF, AND EXACTLY ONE HOP LEFT (2026-08-04)
 
@@ -8575,11 +8581,14 @@ does not replace the flat aggregator, it sits beside it until the hop exists.
 - [ ] Re-test the hop on each bb bump. It is four commands (`write_vk -t evm` on the wrapper, on a
       two-chonk root, on a rollup root, on a two-rollup root) and all four currently fail the same
       way, so a single one passing is the signal.
-- [ ] `BatchVerifierLib` still folds flat. It cannot move to the chained fold until the hop above is
-      decided, because the on-chain shape depends on which proof the contract ends up verifying.
+- [ ] **`BatchVerifierLib` still folds flat, and this is now the biggest gap.** The blocker named
+      here - "until the hop above is decided" - is gone: BOTH paths settle on-chain. So the contract
+      is the only piece with no settlement for either. The tree commits by TREE HASH and the fold by
+      chained `absorb`, and `BatchCommitmentLib` does neither.
 - [ ] Only THREE identities exist, so at N=16 they cycle. That is honest for a batch (one identity
       making several withdrawals is ordinary) but sixteen genuine escrow proofs would be better.
-- [ ] The `tsc` recipe was written out in five places and went stale in all five at once when `pp/`
+- [x] ~~The `tsc` recipe in five places.~~ **DONE** (`f981503`): one `tsconfig.fixtures.json`, run as
+      `npm run build:pp`. Original text: went stale in all five at once when `pp/`
       moved to `.ts`-suffixed imports. It is one `tsconfig.fixtures.json` now, run as
       `npm run build:pp`. Check nothing else in the tree still spells the flags out.
 

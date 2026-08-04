@@ -8043,6 +8043,45 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18dv The decider number, found (2026-08-04)
+
+I said twice that this was out of reach. It was not. Aztec publish their compiled circuits to npm as
+`@aztec/protocol-circuits-artifacts`, and every artifact carries a precomputed `verificationKey` whose
+first field is log2 of the padded circuit size.
+
+**Verified the reading against a circuit we already know**: our aggregation vk is `[24, 9, 5]`, and its
+generated Solidity says `circuitSize: 16777216` = 2^24. Field 0 is the log, field 1 the public input
+count.
+
+| circuit | padded size | public inputs | grows with N? |
+|---|---|---|---|
+| our `aggregate_withdrawals`, N=16 | **2^24** (12,720,801 actual gates) | 9 | **yes**, ~798k gates per added proof |
+| Aztec `rollup_tx_base_private`, which verifies a FOLDED proof | **2^22** | 66 | **no** |
+| Aztec `hiding_kernel_to_rollup` | 2^16 | 1309 | no |
+
+**So the decider-equivalent is 4x smaller than our N=16 aggregator, and constant in N.** Ours grows by
+~798k gates per withdrawal because it verifies each proof in-circuit. The chonk route verifies ONE
+folded proof, so batching 256 costs the same 2^22 as batching 16. That is the whole argument for
+folding, now with numbers rather than expectation.
+
+Extrapolating memory from our own 2^24 run at ~21.7 GB, a 2^22 circuit lands near 5-6 GB, plus 377 MB
+for the accumulation itself (2.18dr, measured). A batcher stops being a server and becomes a laptop,
+which is exactly what 2.18dp needed to stop the role concentrating.
+
+**The remaining blocker is unchanged and is purely tooling.** Our `bb` cannot build a circuit
+containing HN recursion constraints - it fails with `not supported with UltraBuilder` under every
+target, including on Aztec's own published artifact. Their gate script uses `bb-avm`, a different
+binary built from barretenberg source. So the figures above are read from published VKs rather than
+measured here, and building the wrapper ourselves needs that binary.
+
+**Caveat on transferability, stated because it is easy to overclaim.** 2^22 is AZTEC's wrapper, with
+their 66 public inputs and their kernel public-input structure. Ours would differ at the margins. What
+transfers is the shape: verifying one folded proof is a fixed cost that does not scale with the number
+folded, and it lands two powers of two below our current aggregator.
+
+- [ ] Build `bb-avm` from barretenberg source to compile and measure our own wrapper. That is now the
+      only thing between us and a folded batcher, and it is a C++ build rather than an unknown.
+
 ### 2.18du Folding researched properly: Aztec's is coupled, the general one is unfinished, and its decider needs a ceremony (2026-08-04)
 
 Chased "has anyone done this successfully outside Aztec". Two implementations exist and neither is

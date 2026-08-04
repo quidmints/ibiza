@@ -8043,6 +8043,73 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18dr Folding: accumulation is ~57x cheaper, and the decider needs a circuit we do not have (2026-08-04)
+
+Pushed the chonk prototype to the decider. It gets there, and then names its blocker precisely.
+
+**Accumulation works and scales gently.** Peak memory folding real `withdraw_identity` instances:
+
+| instances | peak |
+|---|---|
+| 4 | 257 MB |
+| 8 | 304 MB |
+| 12 | 356 MB |
+| 16 | 377 MB |
+
+Roughly a 200 MB base plus about 10 MB per instance. The recursive aggregator needs ~21.7 GB for the
+same sixteen, so accumulation is around 57x cheaper and scales at ~10 MB per proof against ~1.35 GB.
+This is the ProtoGalaxy property doing what it claims: no in-circuit curve simulation per proof.
+
+**The decider is reachable and refuses.** With the tail entry carrying the UltraHonk recursion vk
+(3,680 bytes) rather than the chonk vk (5,216), the run advances to
+`ChonkProve - generating proof for 4 accumulated circuits` and then asserts:
+
+```
+op_queue->get_current_subtable_size() == HIDING_KERNEL_ULTRA_OPS
+Actual: 0   Expected: 331
+Number of ultra ops in the hiding kernel doesn't match the expected value.
+```
+
+So the scheme requires a **hiding kernel** as the final circuit in the stack, with a specific op count.
+That is an Aztec protocol circuit, part of their transaction structure, and we do not have it.
+`withdraw_identity` cannot stand in for it.
+
+**What this settles and what it does not.** Chonk is not a general accumulator for an arbitrary stack
+of one application circuit; it expects Aztec's kernel shape. The decider's cost, which is the figure
+that decides whether folding solves the batcher problem or relocates it, is therefore still
+unmeasured. Everything cheap has been measured; the expensive half has not.
+
+**Round budget, worth recording.** Stacks of 8 and above hit `round_number < 256U`, exactly 256 with
+16 circuits, so the transcript budgets 16 rounds per circuit. Four circuits stay inside it. That caps
+a naive stack at fewer than 16 regardless of anything else.
+
+- [ ] To measure the decider we need either Aztec's hiding kernel circuit, or a folding implementation
+      that does not assume their transaction structure. Until one of those exists this line of work
+      cannot be finished, and the batcher's 21.7 GB stands.
+
+### 2.18ds Batch sizes are fixed per circuit, and the multi-prover choice (user, 2026-08-04)
+
+**A batch is always exactly the circuit's N.** `BatchVerifierLib.verifyBatch` permits
+`signals.length < maxBatch`, but no proof can satisfy it: the commitment fold is length-binding and the
+circuit folds exactly `BATCH_N`. A depth-2 tree means 256 exactly. Anything short requires the batcher
+to pad with dummy withdrawals they prove themselves, paying full proving cost for empty slots.
+
+**Two sizes can coexist safely.** Deploy the depth-1 verifier and the depth-2 root verifier and choose
+per batch. Both are Honk against the same SRS, so the second adds no trust assumption. This is the
+difference from putting Groth16 beside Honk, where the pool drops to the weaker verifier for everyone.
+
+**The user-facing shape.** At deposit the user either registers interest in a batch or leaves it open.
+Choosing to wait buys cheaper gas and a guaranteed timing cohort. Choosing not to wait means an
+immediate single withdrawal at full price. The default should be waiting, so the yield floor and the
+cohort are what happens unless someone opts out.
+
+- [ ] Wire elect-to-wait at deposit: a queue the batcher serves, with the immediate path as the
+      deliberate alternative rather than the default.
+- [ ] Decide which fixed sizes to run. 16 fills sooner and saves less; 256 saves 12x more and will not
+      fill early. Running both is allowed and costs one extra verifier deployment.
+- [ ] The multi-prover choice (2.18do) sits on top of this, and its blocker is the ceremony rather than
+      the plumbing.
+
 ### 2.18dq Folding measured as far as it goes: accumulation is ~57x cheaper, the decider is still unmeasured (2026-08-04)
 
 Ran `bb prove -s chonk` over sixteen real `withdraw_identity` instances. The accumulation phase works

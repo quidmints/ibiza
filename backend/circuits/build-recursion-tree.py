@@ -54,7 +54,7 @@ WORK = pathlib.Path(os.environ.get("TREE_WORKDIR", HERE / ".tree"))
 BB = os.environ.get("BB", str(HERE / "node_modules" / ".bin" / "bb"))
 
 LEAF_CIRCUIT = "withdraw_identity"
-WITNESS_SOURCE = "withdraw_ivc_app"  # where build-fold-witnesses.js writes Prover.<i>.toml
+WITNESS_SOURCE = "batch-witnesses"  # where build-fold-witnesses.js writes Prover.<i>.toml
 
 # The only two things this writes OUTSIDE its work directory. Everything else is derived and
 # disposable; these two are what the contracts compile and test against.
@@ -282,10 +282,10 @@ def main() -> int:
             f"  node tools/build-fold-witnesses.js --build frontend/identity-wallet/build --count {n}"
         )
 
-    # `withdraw_identity` and `withdraw_ivc_app` take the SAME twenty inputs under the same names -
-    # they prove one statement through `pp::withdraw::verify_withdrawal` and differ only in whether
-    # the signals leave as public inputs or as return_data. So one witness drives both, and the tree's
-    # leaves are the very withdrawals the fold uses.
+    # The witnesses are plain `withdraw_identity` inputs. They live in their own directory rather
+    # than a circuit's, because they belong to the BATCH and not to any one circuit - they used to
+    # sit inside the chonk app's package, which made them look like its property and broke the tree
+    # when that package was retired.
     saved = (leaf_pkg / "Prover.toml").read_text()
     key_hash = int.from_bytes((leaf_pkg / "rec" / "vk_hash").read_bytes(), "big")
     level = []

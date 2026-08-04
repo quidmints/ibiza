@@ -1,21 +1,20 @@
 #!/usr/bin/env node
 /*
- * Builds N DISTINCT withdrawal witnesses for the folded batch, into withdraw_ivc_app/Prover.<i>.toml.
+ * Builds N DISTINCT withdrawal witnesses for a batch, into batch-witnesses/Prover.<i>.toml.
  *
  *   node tools/build-fold-witnesses.js --build <walletBuild> [--count 16]
  *
  * WHY THIS EXISTS RATHER THAN A LOOP OVER build-withdrawal-fixture.js. That script emits two
  * standalone fixtures, each against its OWN state tree. A batch is not two standalone withdrawals -
- * it is N spends against ONE tree at ONE root, and the shared root is the part that makes folding
- * them together mean anything. So the tree is built once here, filled with every note in the batch,
+ * it is N spends against ONE tree at ONE root, and the shared root is the part that makes batching
+ * them mean anything. So the tree is built once here, filled with every note in the batch,
  * and only then are the N witnesses read out of it.
  *
  * WHAT THE OLD N=16 AGGREGATION FIXTURE ACTUALLY WAS, since it is easy to over-read: sixteen
- * IDENTICAL copies of one withdrawal (aggregate_withdrawals/Prover.toml holds the same 458 fields
- * and the same seven public signals sixteen times). It proved the aggregation circuit accepts
- * sixteen valid proofs. It could not have caught a fold that silently collapses its members - the
- * accumulator over sixteen copies of X is indistinguishable from one that keeps only the last X.
- * These witnesses differ in every signal that can differ, so that failure mode is visible.
+ * IDENTICAL copies of one withdrawal. It proved the aggregation circuit accepts sixteen valid
+ * proofs. It could not have caught a batch that silently collapses its members - a commitment over
+ * sixteen copies of X is indistinguishable from one that keeps only the last X. These witnesses
+ * differ in every signal that can differ, so that failure mode is visible.
  *
  * WHAT VARIES PER MEMBER, and what deliberately does not:
  *   varies:  note secrets, label, value, withdrawn_value, leaf index, change note, context, and the
@@ -74,7 +73,7 @@ const keys = masterKeysFromMnemonic(MNEMONIC);
 
 const IDENTITY_COUNT = common.identityWitnessCount();
 
-const OUT_DIR = path.join(__dirname, '..', 'backend', 'circuits', 'withdraw_ivc_app');
+const OUT_DIR = path.join(__dirname, '..', 'backend', 'circuits', 'batch-witnesses');
 
 /*
  * The batch, described before anything is derived.

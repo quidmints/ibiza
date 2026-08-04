@@ -8043,6 +8043,43 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18em CHONK RETIRED - and the one thing worth keeping from it (2026-08-05)
+
+Deleted: `withdraw_ivc_{app,kernel_init,kernel_inner,hiding,wrapper}`, `pp/src/ivc.nr`,
+`fold-withdrawals.py`, `vk_hash/`, `ChonkRootHonkVerifier.sol`, `chonk_root.json`,
+`ChonkRootProofOnChain.t.sol`. `pp` 87/87, forge 478/478, and the tree still builds.
+
+**⚠️ THE FINDING THE DELETED CIRCUITS PROVED, recorded because nothing else now demonstrates it.**
+A ClientIVC/chonk proof CAN be verified on Ethereum. The hop is not a missing precompile, it is a
+PROOF TYPE: `PROOF_TYPE_ROLLUP_HONK = 4` ACCUMULATES the child's IPA claim and leaves it nested, so
+`-t evm` refuses it; **`PROOF_TYPE_ROOT_ROLLUP_HONK = 5` DISCHARGES it**, verifying the inner product
+argument natively in-circuit and leaving an ordinary UltraHonk proof a Solidity verifier accepts. The
+same circuit costs 1.7 GB at type 4 and 7.1 GB at type 5 - that gap IS the discharge. bb refuses a
+single-child root (`Root rollup must accumulate two IPA proofs`), and the whole chain was measured
+end to end: 16 withdrawals -> fold (572 MB) -> wrapper (1.9 GB) -> root (6.77 GB) -> 6/6 on-chain
+tests. **If chonk is ever revisited, that is the map.**
+
+**WHY IT LOST ANYWAY.** A hard ceiling of **25 per fold** (op-queue, bisected: 25 proves, 26 fails),
+so 50 per settlement at best. The tree has no ceiling, runs at 2.11 GB against 6.77, and past a batch
+of 32 is cheaper per withdrawal too.
+
+**WHAT WAS KEPT AND WHY.**
+- `tools/build-fold-witnesses.js` - the tree's own leaves come from it. Renamed nothing; it was never
+  chonk-specific, it builds N distinct withdrawals against ONE state tree.
+- The witnesses moved to `backend/circuits/batch-witnesses/`. They had been living inside the chonk
+  app's package, which made them look like its property **and broke the tree the moment that package
+  was deleted** - caught immediately, but it is the kind of coupling that is invisible until removal.
+- `pp::withdraw::verify_withdrawal` - the shared statement, untouched.
+
+**WHAT WENT WITH IT, found by control-checked greps rather than assumed.** `vk_hash/` existed only
+for chonk's empty `key_hash` (bb emits one for ultra_honk), referenced by 0 files against a control
+of 7 for `build-recursion-tree`. And `pp`'s `keccak256` dependency died with `ivc.nr`: 0 files in
+`pp/src` use keccak, against a control of 8 that use poseidon.
+
+- [ ] Retire the flat aggregator too - `aggregate_withdrawals`, `AggregationHonkVerifier`,
+      `aggregation_n16.json`, `AggregationProofOnChain.t.sol`. It is now beaten on every axis by the
+      tree and nothing depends on it. Left standing only because one deletion per run is enough.
+
 ### 2.18el DECIDED: the tree settles, chonk is retired - and nobody waits for 16 (user, 2026-08-05)
 
 Repo owner: *"go with the tree, retire chonk."* Recorded as the decision. What follows is the state

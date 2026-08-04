@@ -25,7 +25,7 @@
     "A NIGHTLY IS PINNED DELIBERATELY. There is no 6.0.0 release. Pinned to an exact date rather",
     "than a range because a nightly may change proof formats between builds, and that change is",
     "invisible to every guard in this repo. Bump on purpose, then regenerate BOTH on-chain fixtures",
-    "(ChonkRootProofOnChain, RecursionTreeProofOnChain) and re-run codegen-verifiers.sh."
+    "(RecursionTreeProofOnChain at each deployed depth) and re-run codegen-verifiers.sh."
   ],
   "devDependencies": {
     "@aztec/bb.js": "6.0.0-nightly.20260804",

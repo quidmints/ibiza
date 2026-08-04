@@ -8043,6 +8043,65 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18ec THE BATCH COMMITMENT HAD SILENTLY DIVERGED, and its guard could not fire (2026-08-04)
+
+**`BatchCommitmentLib` folded with chained Poseidon v1 while `aggregate_withdrawals::batch_commitment`
+had moved to a single keccak256.** They are the two halves of the only thing tying the aggregation
+verifier's ONE public input back to the withdrawals a batch settles. Nothing failed, because nothing
+was asking the right question.
+
+**HOW IT SURVIVED.** `BatchCommitmentTest.test_MatchesTheCircuit` compared Solidity against a FROZEN
+CONSTANT (`0x10b1c1fb...`). A pinned number asks "has Solidity changed", and the question is "do the
+two SIDES agree". The circuit moved; the constant did not; the test stayed green. Its own header
+warned that *"the divergence is SILENT in both directions and neither side can detect it alone"* -
+which was right, and then the test was built so that it could not detect it either.
+
+**MEASURED, with the control run before concluding.** For the vector `pi[i][j] = i*100+j+1`:
+
+| | value |
+|---|---|
+| circuit at N=16 (keccak) | `0x1f69398f18eef4e530393f48db2c7187ceda1da1ead0c3cfa7c0752ba3169693` |
+| contract at N=16 (Poseidon) | `0x10b1c1fb68f9667a893d791c0b18afe571ac415a0377e9bff7a1d2c9224d9349` |
+
+The reproduction was validated against the REAL circuit before either number was trusted:
+`nargo test --show-output` at N=2 emits
+`0x2769ca7e6b0f6b41f45f61a850fb6c3d83b2cf85f4e3658b20b4a83b861a9cda`, and an independent keccak fold
+of the same vector reproduces it exactly. Without that control the N=16 figure would have rested on
+my own transcription of the circuit.
+
+**WHICH SIDE MOVED, established before touching anything.** The circuit. `aggregate_withdrawals`
+carries **no poseidon dependency at all**, the `fold_signals` this library claimed to mirror **no
+longer exists**, and the circuit's own comment describes the contract taking
+`uint256(keccak256(...)) % SNARK_SCALAR_FIELD`. Keccak on both sides was the intended design and only
+the Solidity was left behind.
+
+**BLAST RADIUS.** `BatchVerifierLib.verifyBatch` is the only caller, and it is not yet wired into
+settlement - it *"DELIBERATELY DOES NOT SETTLE"*. So no funds were reachable. But it is the
+aggregation entrypoint, and every real batch would have reverted `InvalidBatchProof`. Fail-closed,
+which is the safe direction and is exactly why it went unnoticed for as long as it did.
+
+**FIXED, one money-path change, prediction stated first and all four held:** the library reproduces
+the circuit's construction; order, length and per-signal binding all still hold (concatenation is
+binding in all three); the empty batch stops being `0`; gas drops sharply - **42,825 total, 2,676 per
+withdrawal**, against two Poseidon permutations per withdrawal before.
+
+**THE TEST NO LONGER HOLDS A FROZEN NUMBER.** It transcribes the circuit independently of the library
+and anchors that transcription to a value the circuit actually printed, so moving either side breaks
+it. A second implementation on purpose: if the library is edited to match a wrong idea of the
+circuit, the transcription does not follow.
+
+**AND A SECOND TEST WAS ASLEEP THE SAME WAY.** `WithdrawBatchGuards.test_EmptyBatchIsRejected`
+asserted only that the empty fold was zero and **never exercised the guard its name promises**. It
+now calls `verifyBatch` and requires `EmptyBatch`, with `address(0)` as the verifier so that
+reverting with that error rather than a failed call is itself the evidence the check short-circuits.
+
+- [ ] **Audit the other cross-language pins for the same shape.** `NotaryRegistryProofTest` is cited
+      as the model for this kind of guard - check whether it compares against a frozen constant or a
+      construction. Any pin that cannot detect the OTHER side moving is decoration.
+- [ ] The empty commitment is now `keccak256("") mod p`. That is a better property than zero, since
+      zero is what an uninitialised slot reads back as - but confirm nothing else assumed the zero.
+      Two places did; a grep for `!= 0` on commitments would find a third if it exists.
+
 ### 2.18eb OFF-CHAIN ATTESTATION IS NOT NEEDED - a recursion TREE is fully on-chain at 2.1 GB (user, 2026-08-04)
 
 *"why is off chain attestation needed? you cant make it fully onchain"* - **the question was right and

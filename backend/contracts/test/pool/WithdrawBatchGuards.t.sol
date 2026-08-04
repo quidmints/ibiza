@@ -3,6 +3,8 @@ pragma solidity 0.8.28;
 
 import {Test} from 'forge-std/Test.sol';
 import {BatchCommitmentLib} from 'contracts/pool/lib/BatchCommitmentLib.sol';
+import {BatchVerifierLib} from 'contracts/pool/lib/BatchVerifierLib.sol';
+import {INoirVerifier} from 'contracts/interfaces/verifiers/INoirVerifier.sol';
 
 /*
  * THE PROPERTIES `withdrawBatch`'s GUARDS REST ON.
@@ -41,12 +43,32 @@ contract WithdrawBatchGuardsTest is Test {
 
   // ── the two guards inside BatchVerifierLib, which run before the verifier is ever called ──────
 
-  /// An empty batch folds to the ZERO accumulator. Without this guard a batch settling nothing would
-  /// present a commitment that a proof could, in principle, be made for.
+  /// An empty batch is REFUSED, which is what the name has always claimed and what the body did not
+  /// check. It previously asserted only that the empty fold was zero - true under the Poseidon chain
+  /// this library used to be, false since it moved to keccak, and never the point either way: the
+  /// commitment of an empty batch is a perfectly ordinary field element that a proof could in
+  /// principle be made for, so the guard is what stops a batch settling nothing.
+  ///
+  /// THE VERIFIER IS address(0) ON PURPOSE, and this is not a mock. `EmptyBatch` is checked before
+  /// any external call, so reverting with THAT error rather than a failed call to an empty address is
+  /// itself the evidence that the guard short-circuits.
   function test_EmptyBatchIsRejected() public {
     uint256[PUB_LEN][] memory none = new uint256[PUB_LEN][](0);
-    assertEq(BatchCommitmentLib.batchCommitment(none), 0, 'empty batch must fold to zero');
-    // The guard exists because that zero is otherwise a perfectly ordinary commitment value.
+    vm.expectRevert(BatchVerifierLib.EmptyBatch.selector);
+    this.callVerifyBatch(hex'', none);
+  }
+
+  /// ...and the empty commitment is not zero, so it cannot be matched by an uninitialised slot read
+  /// back as a commitment. That is a stronger property than the zero it replaced.
+  function test_TheEmptyCommitmentIsNotZero() public pure {
+    uint256[PUB_LEN][] memory none = new uint256[PUB_LEN][](0);
+    assertTrue(BatchCommitmentLib.batchCommitment(none) != 0);
+  }
+
+  /// `external` so `vm.expectRevert` sees a call boundary - the library function is `internal` and
+  /// would otherwise revert inside the test frame.
+  function callVerifyBatch(bytes calldata proof, uint256[PUB_LEN][] memory signals) external view {
+    BatchVerifierLib.verifyBatch(INoirVerifier(address(0)), proof, signals, MAX_BATCH);
   }
 
   /// The circuit's BATCH_N is a COMPILE-TIME constant, so a longer batch cannot have been proved by

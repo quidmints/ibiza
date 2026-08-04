@@ -1,63 +1,67 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.28;
 
-import {PoseidonT5} from "poseidon-solidity/PoseidonT5.sol";
-import {PoseidonT6} from "poseidon-solidity/PoseidonT6.sol";
-
 /**
  * @notice Recomputes the aggregation batch commitment from calldata, so the contract can check that
  *         a batched proof covers EXACTLY the withdrawals it was handed (TODO.md sec. 2.4).
  *
  * @dev THIS MUST STAY BYTE-IDENTICAL TO `aggregate_withdrawals::batch_commitment`. The aggregation
- *      verifier exposes ONE public input - this commitment - because the verifier has 84 bytes of
- *      EIP-170 margin and N x 7 signals would not fit. So this function is the ONLY thing tying that
- *      single field back to the individual withdrawals; if it diverges from the circuit, every batch
- *      fails to verify (the benign case) or, worse, a commitment computed a different way could be
- *      matched by a different set of withdrawals.
+ *      verifier exposes ONE public input - this commitment - because the verifier has little EIP-170
+ *      margin and N x 7 signals would not fit. So this function is the ONLY thing tying that single
+ *      field back to the individual withdrawals; if it diverges from the circuit, every batch fails
+ *      to verify.
  *
- *      The divergence is SILENT in both directions and neither side can detect it alone, which is
- *      why `BatchCommitmentTest` pins a fixture emitted by the CIRCUIT and recomputed here. That is
- *      the same cross-language guard `NotaryRegistryProofTest` applies to the Go/Solidity Merkle
- *      trees, and for the same reason: a shared misunderstanding makes a generator and its own
- *      checker agree and both be wrong.
+ *      IT HAD DIVERGED, AND THE GUARD THAT EXISTS TO CATCH THAT COULD NOT FIRE (2026-08-04). This
+ *      library folded with chained Poseidon v1 while the circuit had moved to a single keccak256
+ *      over the concatenated signals - `aggregate_withdrawals` does not depend on poseidon at all,
+ *      and the `fold_signals` this file claimed to mirror no longer exists. Nothing failed, because
+ *      `BatchCommitmentTest` compared Solidity against a FROZEN CONSTANT rather than against the
+ *      circuit: a pinned number tests that Solidity has not changed, which is not the question. The
+ *      test now derives its expectation from the circuit's construction, so moving either side
+ *      breaks it.
  *
- *      POSEIDON v1, NOT POSEIDON2. `poseidon-solidity` implements v1, and the circuit uses
- *      `poseidon::poseidon::bn254::hash_N` to match it - as `pp/src/commitment.nr` already does.
- *      Poseidon2 in the circuit would compile, prove, and produce a commitment no contract could
- *      ever reproduce.
+ *      WHICH SIDE MOVED, established before changing anything: the circuit. It carries no poseidon
+ *      dependency, and its own comment describes the contract taking
+ *      `uint256(keccak256(...)) % SNARK_SCALAR_FIELD` - the design intended keccak on both sides and
+ *      only this file was left behind. Keccak is also far cheaper here: one hash for the whole batch
+ *      against two Poseidon permutations per withdrawal.
  *
- *      THE ARITY SPLIT IS FORCED BY SOLIDITY, not chosen. There are 8 values to absorb per
- *      withdrawal (the accumulator plus 7 signals) and `poseidon-solidity` tops out at PoseidonT6 =
- *      5 inputs, hence hash_5 then hash_4.
+ *      THE REDUCTION IS PART OF THE COMMITMENT, not a detail. keccak256 gives 256 bits and the field
+ *      is ~254, so the circuit folds the digest bytes with Field arithmetic - which IS mod p - and
+ *      the contract must reduce explicitly to land on the same element. Omitting `% FIELD_MODULUS`
+ *      would agree for most inputs and disagree for the roughly one in 2^-2 that exceed p.
  */
 library BatchCommitmentLib {
     /// @notice Public signals per withdrawal - `ProofLib.WithdrawProof.pubSignals` is `uint256[7]`.
     uint256 internal constant PUB_LEN = 7;
 
-    /**
-     * @notice Fold one withdrawal's signals into the running accumulator.
-     * @dev Mirrors `fold_signals`. ORDER-BINDING: chaining the accumulator through each hash makes
-     *      POSITION part of the preimage, so a batcher cannot permute withdrawals relative to the
-     *      calldata walked here. A commutative combiner would let them swap one user's recipient
-     *      context onto another's nullifier and still match.
-     */
-    function foldSignals(uint256 acc, uint256[PUB_LEN] memory signals)
-        internal
-        pure
-        returns (uint256)
-    {
-        uint256 a = PoseidonT6.hash([acc, signals[0], signals[1], signals[2], signals[3]]);
-        return PoseidonT5.hash([a, signals[4], signals[5], signals[6]]);
-    }
+    /// @notice BN254's scalar field order, the modulus every public input lives in.
+    uint256 internal constant FIELD_MODULUS =
+        21888242871839275222246405745257275088548364400416034343698204186575808495617;
 
     /**
-     * @notice The batch commitment over `signals`, from a zero accumulator.
-     * @dev Mirrors `batch_commitment`. The caller supplies the per-withdrawal signals it is about to
-     *      settle; the result must equal the aggregation proof's single public input.
+     * @notice The batch commitment over `signals`.
+     * @dev Mirrors `batch_commitment`: keccak256 over every signal as a 32-byte big-endian word, in
+     *      withdrawal order then signal order, reduced into the field.
+     *
+     *      ORDER- AND LENGTH-BINDING, both structurally. Concatenation makes POSITION part of the
+     *      preimage, so a batcher cannot permute withdrawals relative to the calldata walked here -
+     *      which is what stops them moving one user's recipient context onto another's nullifier.
+     *      Length is bound because a shorter batch hashes a shorter preimage.
+     *
+     *      `abi.encodePacked` on a `uint256[]` emits exactly 32 bytes per element with no length
+     *      prefix and no padding, which is the circuit's layout. Flattening first and encoding once
+     *      is deliberate: encoding per withdrawal and concatenating would copy the accumulated bytes
+     *      on every iteration.
      */
-    function batchCommitment(uint256[PUB_LEN][] memory signals) internal pure returns (uint256 acc) {
+    function batchCommitment(uint256[PUB_LEN][] memory signals) internal pure returns (uint256) {
+        uint256[] memory flat = new uint256[](signals.length * PUB_LEN);
+        uint256 k;
         for (uint256 i = 0; i < signals.length; ++i) {
-            acc = foldSignals(acc, signals[i]);
+            for (uint256 j = 0; j < PUB_LEN; ++j) {
+                flat[k++] = signals[i][j];
+            }
         }
+        return uint256(keccak256(abi.encodePacked(flat))) % FIELD_MODULUS;
     }
 }

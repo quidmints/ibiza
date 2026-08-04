@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.28;
 
-import {Test} from 'forge-std/Test.sol';
+import {Test, console} from 'forge-std/Test.sol';
 import {AggregationHonkVerifier} from '../../contracts/pool/verifiers/AggregationHonkVerifier.sol';
 
 /*
@@ -58,6 +58,25 @@ contract AggregationProofOnChainTest is Test {
     function test_theProofShapeMatchesTheCircuit() public view {
         assertEq(_proof().length, 370 * 32, 'proof is not 370 field elements');
         assertEq(_publicInputs().length, 1, 'aggregation exposes exactly one public input');
+    }
+
+    /*
+     * THE ECONOMICS, ISOLATED. The claim aggregation rests on is that verifying N withdrawals in one
+     * proof is far cheaper per withdrawal than verifying them singly. TODO sec. 2.4 says ~68k each at
+     * N=16 against ~200k+ single; the circuit's own header says ~152k. Neither was ever measured
+     * on-chain, so this measures ONLY the `verify` call - no fixture parsing, no settlement.
+     */
+    function test_MeasureAggregatedVerificationGas() public view {
+        bytes memory p = _proof();
+        bytes32[] memory pubs = _publicInputs();
+
+        uint256 g0 = gasleft();
+        bool ok = verifier.verify(p, pubs);
+        uint256 used = g0 - gasleft();
+
+        assertTrue(ok);
+        console.log('aggregated verify() gas (batch of 16):', used);
+        console.log('  per withdrawal:', used / 16);
     }
 
     /*

@@ -8043,6 +8043,47 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18dl THE AGGREGATION ECONOMICS, MEASURED ON-CHAIN AT LAST (2026-08-04)
+
+Every gas figure for aggregation in this file was an ESTIMATE. With a real proof in hand they are now
+measured, with `verify()` isolated - no fixture parsing, no settlement:
+
+| | measured |
+|---|---|
+| single withdrawal `verify()` | **2,528,007** |
+| aggregated batch of 16, whole call | **2,980,094** |
+| **per withdrawal at N=16** | **186,255** |
+| **saving** | **13.6x** |
+
+**CORRECTIONS TO THIS FILE'S OWN NUMBERS:**
+- sec. 2.4's *"~68k gas/withdrawal at N=16"* is **wrong by 2.7x** - it is 186k.
+- The circuit header's *"~152,846"* is close: measured is **22% higher**.
+- sec. 2.4's *"~200k+ single-proof verification"* understates by **12x** - a single verify is 2.53M,
+  which is what makes the ~3.1M whole-withdrawal figure add up.
+
+**THE SCALABILITY LEVER, AND IT IS ALREADY DESIGNED (sec. 2.4b's 16-wide tree).** Honk verification
+cost depends on the circuit's shape, not on N, and a depth-2 tree keeps every node at N=16 - so the
+TOP proof stays the same 2.98M call while covering **256** withdrawals:
+
+| batching | verify gas / withdrawal | + signal calldata | total |
+|---|---|---|---|
+| none | 2,528,007 | 3,584 | ~2.53M |
+| N=16 (built, proven, verified on-chain) | 186,255 | 3,584 | ~190k |
+| **N=256 (tree depth 2, UNBUILT)** | **~11,641** | 3,584 | **~15k** |
+
+**That is a further 12x, and it needs no new cryptography** - only the tree the design already
+specifies. It is the single largest efficiency item left.
+
+**AND ONE CALLDATA CORRECTION.** sec. 2.4 says *"N=256 means keccak over ~57 KB of calldata = ~11k gas
+for the whole batch"*. The **keccak** is ~11k; the **CALLDATA ITSELF** is ~57 KB at 16 gas/non-zero
+byte = **~917k gas**, ~80x the figure quoted beside it. Still only ~3.6k per withdrawal, so the
+conclusion survives - but the number as written is not the cost of the calldata, and someone sizing a
+batch from it would be badly wrong.
+
+- [ ] Build the depth-2 tree (N=256). Largest measured efficiency win available, no new primitives.
+- [ ] Consider EIP-4844 blobs for the signal calldata at large N - at N=256 signals are ~917k gas, the
+      dominant term once verification is amortised.
+
 ### 2.18dk THE N=16 BASELINE, MEASURED END-TO-END ON THE CURRENT PIN (2026-08-04)
 
 **The recursive aggregator works on beta.26 + bb 5.1.0.** TODO recorded the end-to-end run only on

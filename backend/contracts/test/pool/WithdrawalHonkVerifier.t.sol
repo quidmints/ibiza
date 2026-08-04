@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.28;
 
-import {Test} from 'forge-std/Test.sol';
+import {Test, console} from 'forge-std/Test.sol';
 import {WithdrawalHonkVerifier} from '../../contracts/pool/verifiers/WithdrawalHonkVerifier.sol';
 import {INoirVerifier} from '../../contracts/interfaces/verifiers/INoirVerifier.sol';
 import {ProofLib} from '../../contracts/pool/lib/ProofLib.sol';
@@ -87,6 +87,15 @@ contract WithdrawalHonkVerifierTest is Test {
   function test_VerifiesRealProof() public view {
     ProofLib.WithdrawProof memory _p = _withdrawProof();
     assertTrue(verifier.verify(_p.proof, _p.publicInputsBytes32(_p.context())));
+
+    // ISOLATED GAS, for the aggregation comparison (sec. 2.4). Measures ONLY the verify call, so it
+    // is directly comparable to AggregationProofOnChain's per-withdrawal figure.
+    {
+      bytes32[] memory _pubs = _p.publicInputsBytes32(_p.context());
+      uint256 _g0 = gasleft();
+      verifier.verify(_p.proof, _pubs);
+      console.log('single withdrawal verify() gas:', _g0 - gasleft());
+    }
   }
 
   /// @notice ProofLib's accessors must agree with the fixture's slot ordering. If an accessor were

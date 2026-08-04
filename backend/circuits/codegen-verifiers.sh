@@ -102,17 +102,25 @@ set -euo pipefail
 # `BigNumParams::new` accommodation in noir_dl_lib was kept precisely so they do.
 # WHEN THE FIX SHIPS UPSTREAM: drop the suffix, go back to the release, revert the accommodation.
 REQUIRED_NARGO="1.0.0-beta.26+quid-icefix1"
+# Two versions are accepted, and ONLY because they were proved equivalent rather than assumed to be.
+# `bb write_vk -t evm` on `withdraw_identity` produces a BYTE-IDENTICAL key under both
+# (sha256 366f53d7...), so the 89 verifiers already generated under 5.1.0 stay valid and nothing
+# needs regenerating. 6.0.0-nightly is required for the IVC/chonk path only: 5.1.0 cannot build a
+# circuit containing HN recursion constraints and fails with "not supported with UltraBuilder".
+# It is installed as a node package, so it is NOT on PATH:
+#   npm install @aztec/bb.js@6.0.0-nightly.20260804 && ./node_modules/.bin/bb --version
 REQUIRED_BB="5.1.0"
+ALSO_ACCEPTED_BB="6.0.0-nightly.20260804"
 
 actual_nargo="$(nargo --version 2>/dev/null | sed -n 's/^nargo version = //p' | head -1)"
 actual_bb="$(bb --version 2>/dev/null | tail -1 | sed 's/^v//')"
 
-if [ "${actual_nargo}" != "${REQUIRED_NARGO}" ] || [ "${actual_bb}" != "${REQUIRED_BB}" ]; then
+if [ "${actual_nargo}" != "${REQUIRED_NARGO}" ] || { [ "${actual_bb}" != "${REQUIRED_BB}" ] && [ "${actual_bb}" != "${ALSO_ACCEPTED_BB}" ]; }; then
   cat >&2 <<EOF
 ERROR: wrong toolchain. Refusing to generate verifiers.
 
   nargo  required ${REQUIRED_NARGO}   found '${actual_nargo:-<not on PATH>}'
-  bb     required ${REQUIRED_BB}      found '${actual_bb:-<not on PATH>}'
+  bb     required ${REQUIRED_BB} (or ${ALSO_ACCEPTED_BB})  found '${actual_bb:-<not on PATH>}'
 
 Install exactly these:
   noirup --version ${REQUIRED_NARGO}

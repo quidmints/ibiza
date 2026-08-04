@@ -8088,7 +8088,7 @@ identical `(commitment, count)` pairs. It tests the MECHANISM and does not show 
 batches compose. Settling it would be settling the same sixteen withdrawals twice - nullifiers would
 refuse it, but the proof verifies, so this is not evidence the root binds two different batches.
 
-**THE LESSON, since it is the second time this has happened today.** 2.18ea's五 experiments all
+**THE LESSON, since it is the second time this has happened today.** 2.18ea's five experiments all
 agreed with each other and all pointed the same way, and that felt like proof. It was five instances
 of the same question. The one that mattered - "can the claim be discharged rather than carried?" -
 was never asked, and the answer was one constant away.

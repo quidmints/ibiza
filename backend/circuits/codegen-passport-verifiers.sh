@@ -34,6 +34,10 @@ CIRCUITS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MANIFEST="${CIRCUITS_DIR}/passport-profiles.json"
 DEST="${CIRCUITS_DIR}/../contracts/contracts/passport/verifiers2/noir"
 WORK="${CIRCUITS_DIR}/.passport-build"
+# Where each profile's verification key is kept, so a template-only regeneration never pays for
+# write_vk twice. Committed: they are small, they are the expensive artifact, and they are stable
+# across bb versions in a way the generated Solidity is not.
+VK_DEST="${CIRCUITS_DIR}/passport-vks"
 FILTER="${1:-}"
 
 # BOTH COMPILERS ARE ACCEPTED HERE, AND ONLY HERE, BECAUSE IT WAS MEASURED. The passport profile
@@ -158,6 +162,18 @@ PY
   fi
   out="${DEST}/NoirRegisterIdentity_${name}.sol"
   ( cd "${WORK}" && bb write_solidity_verifier -t evm -k target/vk -o "${out}" )
+
+  # KEEP THE KEY. `write_vk` is the entire cost of this script - it is what needs 32 GiB of container
+  # swap for the heavy profiles - and `write_solidity_verifier` is a seconds-long reformat of it.
+  # ${WORK} holds ONE key slot that every profile overwrites, so before this the keys were discarded
+  # and re-emitting a verifier meant paying the 32 GiB again.
+  #
+  # THE KEY IS WHAT SURVIVES A bb BUMP AND THE VERIFIER IS NOT. Measured: `write_vk -t evm` gives a
+  # BYTE-IDENTICAL key under 5.1.0 and 6.0 (2.18ef), while the emitted Solidity moved 2,491 -> 2,518
+  # lines with 99 lines differing. So a future toolchain bump only needs the templates re-emitted
+  # from these keys, and that is seconds per profile with no swap and no container.
+  mkdir -p "${VK_DEST}"
+  cp "${WORK}/target/vk" "${VK_DEST}/${name}.vk"
 
   # bb emits every verifier as `HonkVerifier`; both flavours are handled, and an unrenamed file is a
   # hard failure rather than a silent collision with every other verifier in the project.

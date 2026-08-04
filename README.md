@@ -251,6 +251,16 @@ in a single transaction, so every withdrawal in the batch shares one timestamp a
 does not enlarge the anonymity set — that is the deposit tree — but it does destroy the **one-to-one
 timing correlation**, which is the leak an ordinary user is most likely to walk into.
 
+**AND THIS IS THE CONCRETE DIFFERENCE FROM UPSTREAM PRIVACY POOLS.** There, waiting is unenforced and
+unrewarded. The protocol never asks you to wait, never tells you how long, and pays you nothing for it —
+so the only people who wait are the ones sophisticated enough to have worked out on their own that
+withdrawing straight after depositing makes them identifiable. **Privacy becomes a function of how much
+the user already knows**, which is the opposite of what a privacy system should be.
+
+Here the wait is **enforced by the batch** (you settle when the batch fills, not when you individually
+ask), **rewarded by the yield** (the deposit is earning in `SpvTreasuryAdapter` while it waits), and
+**chosen up front** rather than discovered afterwards. The expert and the novice get the same outcome.
+
 **The mechanism is the same "register interest" flow**: at deposit time you say whether you intend to
 withdraw, or leave it open if you do not know yet. You are then placed in a batch when one forms. The
 safe behaviour is the default, and the unsafe behaviour requires deliberately choosing an immediate

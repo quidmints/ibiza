@@ -50,6 +50,12 @@ BB = os.environ.get("BB", str(pathlib.Path.home() / ".bb" / "bb"))
 LEAF_CIRCUIT = "withdraw_identity"
 WITNESS_SOURCE = "withdraw_ivc_app"  # where build-fold-witnesses.js writes Prover.<i>.toml
 
+# The only two things this writes OUTSIDE its work directory. Everything else is derived and
+# disposable; these two are what the contracts compile and test against.
+VERIFIER_NAME = "TreeRootHonkVerifier"
+VERIFIER_OUT = HERE / ".." / "contracts" / "contracts" / "pool" / "verifiers" / f"{VERIFIER_NAME}.sol"
+FIXTURE_OUT = HERE / ".." / "contracts" / "test" / "fixtures" / "recursion_tree_n16.json"
+
 # `withdraw_identity`'s shape, measured rather than assumed. PROOF_LEN pairs with PROOF_TYPE: 458 is
 # the ZK length and pairs with 6; the non-ZK pair is 410 with 0. Mixing them gives
 # `ACIR proof size mismatch. Expected: 410`, which names the length and not the constant that is wrong.
@@ -316,13 +322,37 @@ def main() -> int:
     assert len(level) == 1
     root = level[0]
 
-    # The root's Solidity verifier - the whole point, and the thing the flat design also produces.
-    sol = WORK / "TreeRootHonkVerifier.sol"
+    # ── what the chain needs ──────────────────────────────────────────────────────────────────
+    # The root's Solidity verifier, renamed to the file it lives in. bb names the contract after the
+    # artifact and emits `abstract contract BaseZKHonkVerifier` FIRST, so a regex for `\\w*HonkVerifier`
+    # matches the BASE and renames the wrong one, leaving the child inheriting a name that no longer
+    # exists. Target the concrete declaration, and refuse to write if it is not there exactly once.
+    sol = WORK / f"{VERIFIER_NAME}.sol"
     run([BB, "write_solidity_verifier", "-k", str(child_vk_path), "-o", str(sol)])
+    text = sol.read_text()
+    marker = "contract HonkVerifier is"
+    if text.count(marker) != 1:
+        sys.exit(f"expected exactly one '{marker}' in {sol}, found {text.count(marker)}")
+    text = text.replace(marker, f"contract {VERIFIER_NAME} is", 1)
+    if "abstract contract BaseZKHonkVerifier is" not in text:
+        sys.exit(f"{sol}: the base contract lost its name - refusing to write")
+    VERIFIER_OUT.parent.mkdir(parents=True, exist_ok=True)
+    VERIFIER_OUT.write_text(text)
+
+    # The fixture, in the shape the Forge test parses. The proof is the raw field bytes; the public
+    # input is the tree ROOT, which is the only thing the chain sees of the whole batch.
+    FIXTURE_OUT.parent.mkdir(parents=True, exist_ok=True)
+    FIXTURE_OUT.write_text(json.dumps({
+        "proof": "0x" + b"".join(v.to_bytes(32, "big") for v in root["proof"]).hex(),
+        "publicInputs": [f"0x{root['commitment']:064x}"],
+        "batchSize": n,
+        "generator": "backend/circuits/build-recursion-tree.py",
+    }, indent=2) + "\n")
 
     print(f"\nroot commitment 0x{root['commitment']:064x}")
     print(f"root proof      {len(root['proof'])} fields, 1 public input")
-    print(f"verifier        {sol} ({sol.stat().st_size:,} bytes)")
+    print(f"verifier        {VERIFIER_OUT} ({VERIFIER_OUT.stat().st_size:,} bytes)")
+    print(f"fixture         {FIXTURE_OUT}")
     print(f"nodes           {n - 1} ({n // 2} leaves + {n // 2 - 1} internal), depth {depth}")
     print(f"elapsed         {time.time() - started:.0f}s")
     return 0

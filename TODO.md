@@ -8043,6 +8043,43 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18dw The folding number, measured directly (2026-08-04)
+
+The tooling gap closed cheaply. Our `bb` is 5.1.0, the latest RELEASE, but Aztec's master is
+`6.0.0-nightly` and it is published on npm as `@aztec/bb.js`. That package ships a working CLI. It
+builds the circuits ours refuses, so no C++ build was needed.
+
+**Measured on the same binary, same command:**
+
+| circuit | gates | acir opcodes | grows with N? |
+|---|---|---|---|
+| our `aggregate_withdrawals`, N=16 | **12,707,593** | 51,762 | **yes**, ~798k per proof |
+| Aztec `rollup_tx_base_private`, verifies a FOLDED proof | **2,732,848** | 269,913 | **no** |
+| Aztec `hiding_kernel_to_rollup` | 40,234 | 1,419 | no |
+
+**Folding's final circuit is 4.65x smaller than our aggregator at N=16, and it does not grow.** Ours
+verifies sixteen proofs in-circuit and pays ~798k gates for each. The folded route verifies one
+accumulated proof, so N=256 costs the same 2.7M as N=16. At N=256 ours would be roughly 204M gates,
+which is not buildable; folding stays flat.
+
+Extrapolating memory from our own 12.7M-gate run at ~21.7 GB puts 2.7M near 4.6 GB, plus the 377 MB
+the accumulation itself measured (2.18dr). A batcher becomes a laptop, which is what 2.18dp's
+concentration problem needed.
+
+**A stale artifact caught in passing.** `aggregate_withdrawals/target` still held the `BATCH_N=2` build
+from the differential in 2.18dk; the source said 16 and the compiled artifact said 2. Recompiled. The
+committed N=16 proof and its fixture are unaffected, since they were produced from the N=16 build
+before the differential. Worth noting because `bb gates` reads the ARTIFACT, so a stale target silently
+reports the wrong circuit.
+
+**What is still needed to actually use this**, and it is now a list of engineering rather than unknowns:
+- [ ] Restructure `withdraw_identity` to `return_data`, and write the kernel and hiding circuits.
+      Aztec's equivalents are twelve and ten lines (2.18du), and their crates compile on our nargo.
+- [ ] Write our own chonk-verifying wrapper, the analogue of `rollup_tx_base_private`, and emit its EVM
+      verifier. Build it with `@aztec/bb.js@6.0.0-nightly` rather than our pinned 5.1.0.
+- [ ] Decide whether to move the whole repo to a 6.0 toolchain or keep 5.1.0 for everything except this
+      path. Two bb versions in one repo is its own hazard.
+
 ### 2.18dv The decider number, found (2026-08-04)
 
 I said twice that this was out of reach. It was not. Aztec publish their compiled circuits to npm as

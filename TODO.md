@@ -8043,6 +8043,44 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18dq Folding measured as far as it goes: accumulation is ~57x cheaper, the decider is still unmeasured (2026-08-04)
+
+Ran `bb prove -s chonk` over sixteen real `withdraw_identity` instances. The accumulation phase works
+and is dramatically cheaper than our recursive aggregator. The run then fails before the decider, so
+the number that actually decides the question is still missing.
+
+| | recursive aggregator (2.18dk) | chonk folding |
+|---|---|---|
+| peak memory, 16 instances | ~21.7 GB (12,465 MiB resident + ~9.2 GB swap) | **377 MB** |
+| wall clock to that point | 280,492 ms for the proving key alone | 3.56 s |
+| result | proof, verified on-chain | assertion failure before completion |
+
+The log shows it loading and accumulating all sixteen at a flat 359 MiB, so the fold itself is doing
+what ProtoGalaxy promises: each incremental step is cheap, with no in-circuit curve simulation per
+proof.
+
+**Where it stops.** `Assertion failed: (round_number < 256U)`, hit after the sixteenth accumulation.
+The likely cause is structural rather than a size limit. ClientIVC is built for Aztec's transaction
+shape, which alternates application circuits with kernel circuits, and we handed it sixteen identical
+application circuits and nothing else. So chonk is not a drop-in accumulator for an arbitrary stack of
+the same circuit.
+
+**What this does and does not tell us.** It establishes that the per-instance cost collapses, which is
+the part that makes a batcher a server. It does not establish the decider's cost, and the decider is
+where the commitment openings finally get checked, so it is the number that decides whether folding
+solves the problem or relocates it. If the decider lands near one verification's worth (~800k gates)
+folding wins outright. If it lands near 12.7M, the cost has moved rather than gone.
+
+**Format notes, since they cost an hour and are not documented anywhere obvious.** The input is
+msgpack, an array of maps with keys `bytecode`, `witness`, `vk` and `functionName`. The vk must be the
+**chonk flavour** (5,216 bytes via `bb write_vk -s chonk`), not the UltraHonk recursion vk (3,680
+bytes) the aggregator pins. Fewer than four circuits is rejected outright:
+`num_circuits >= 4` because `get_queue_type` uses `num_circuits - 3`.
+
+- [ ] Work out the app/kernel structure chonk expects, or find whether a plain stack is supported at
+      all, then reach the decider and measure it. That single figure decides the batcher question and
+      whether the retired STARK argument returns.
+
 ### 2.18do Two withdrawal paths, and what stands between us and them (user, 2026-08-04)
 
 Decision from the repo owner: ship both provers and let the withdrawer choose. Instant via Groth16 at

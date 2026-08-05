@@ -8043,6 +8043,69 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18eq MEASURED: Poseidon on-chain is dead, keccak in-circuit is fine, and coverage is 27.7% (2026-08-05)
+
+Both numbers 2.18ep said to take before building. One settles a question open since 2.18db; the other
+says the design cannot be the whole control.
+
+**1. THE HASH. `test/registry/SanctionsRootHashCost.t.sol`, measured not estimated:**
+
+| | per sorted pair-hash | tree over 17,000 leaves |
+|---|---|---|
+| keccak | **239 gas** | **4,062,761** (~14% of a block) |
+| Poseidon, INLINED | **29,113 gas** | **494,891,887** - **16.5 blocks** |
+
+**Poseidon is 121x keccak on the EVM, and `_computeRoot` hashes the whole leaf set every refresh.**
+Even at N=1,000 a Poseidon root costs 29.1M gas - a whole block for a thousand names. **So 2.18db's
+option "anchor publishes a Poseidon root too" is DEAD**, and so is "switch the registry to Poseidon".
+(2.18db's own 32,549 figure was for a DELEGATECALL; inlining saves 12% and changes nothing.)
+
+**AND THE REMAINING OPTION IS THE CHEAP ONE, which is why this is a resolution rather than a
+setback.** The in-circuit cost of keccak is derivable from today's tree measurements: the leaf circuit
+hashes 448 bytes (4 keccak blocks) at 1,544,632 gates and the internal node hashes 64 bytes (1 block)
+at 1,487,966, so **at most ~18,900 gates per keccak block** - and that is an upper bound, since the
+leaf also carries 12 more public inputs.
+
+| bracketing proof | hashes | gates |
+|---|---|---|
+| N=1,000 (depth 10) | 20 | ~378k |
+| **N=17,000 (depth 14)** | 28 | **~529k** |
+| N=100,000 (depth 17) | 34 | ~642k |
+
+Against **~798,000 gates for a single in-circuit UltraHonk verification**, a full bracketing proof
+costs less than two thirds of one recursion. **The circuit can pay keccak comfortably. Keep keccak on
+both sides; there is no seam to resolve.**
+
+**2. THE COVERAGE, and it is the number that matters.** Parsed the real OFAC SDN export
+(`SDN.XML`, 28.8 MB, 19,178 rows):
+
+| | count | |
+|---|---|---|
+| individuals | **7,473** | entities 9,839 · vessels 1,524 · aircraft 342 |
+| with ANY id record | 6,919 | 92.6% |
+| **with a PASSPORT id** | **2,069** | **27.7%** |
+
+Other id types are numerous - National ID 1,368, C.U.R.P. 599, Tax ID 543, Cedula 492 - but **none is
+in an ICAO MRZ**, so none is matchable from the document our registration actually proves.
+
+> **⚠️ 27.7% MEANS DOCUMENT-BINDING CANNOT BE THE SANCTIONS CONTROL.** Roughly seven in ten listed
+> individuals publish no passport number, so a check built on it clears them. It is SOUND - a listed
+> passport always matches, and country+number is unique - but it is nowhere near complete, and
+> describing it as "we screen against OFAC" would be false.
+
+**WHAT THAT LEAVES.** Document-binding is a cheap, exact, trustless component that removes the
+controller **for the cases it covers**, and it is worth having on those grounds. It does not retire
+the OPRF, which 2.18cu named as the dependency for the other ~72%. **2.18ep's claim that it
+"supersedes the OPRF dependency for this predicate" is withdrawn on the measurement.**
+
+- [ ] Decide whether a sound-but-27.7% check is worth shipping on its own, or only alongside the
+      OPRF path. **This is a product call, not a technical one** - the technical side is now settled
+      in its favour and the coverage is the whole objection.
+- [ ] If shipped, the claim must be stated exactly: *"not listed under a published passport number"*,
+      never "not sanctioned".
+- [ ] Re-take coverage against UN and OFSI before deciding - OFAC is one source of several and its
+      27.7% may not be representative.
+
 ### 2.18ep BIND ON THE DOCUMENT NUMBER, NOT THE NAME - simpler, cheaper, and removes the controller (user, 2026-08-05)
 
 *"there may be some way to simplify this while increasing the efficiency and trustlessness of it"* -
@@ -8119,9 +8182,8 @@ going to propose proving non-membership once and caching it in the registry. `st
 un-revoke and no refresh. The expensive proof therefore sits on the withdrawal path, which makes the
 Poseidon question above load-bearing rather than cosmetic.
 
-- [ ] **Measure the coverage before building anything**: what fraction of SDN/UN/OFSI individual rows
-      carry a passport `idNumber`? If it is small the claim may be too narrow to be worth the
-      machinery, and that is a number, not an opinion.
+- [x] **Measure coverage.** **DONE (2.18eq): 27.7%** of OFAC SDN individuals publish a passport
+      number. Too low to be the whole control.
 - [ ] Extend `sources.go` to parse `idList` (OFAC), the UN's `INDIVIDUAL_DOCUMENT`, and OFSI's
       passport fields, and emit the document tree alongside the existing one under its own
       `registryId`.
@@ -8130,13 +8192,14 @@ Poseidon question above load-bearing rather than cosmetic.
 - [ ] Emit number variants as separate leaves rather than normalising, and pin the exact-match rule
       with a Go/Noir differential test - the same two-implementations-must-agree hazard as
       `BatchCommitmentLib` (2.18ec), so a construction rather than a frozen constant.
-- [ ] **Measure Poseidon-over-N-leaves on-chain before choosing the document tree's hash.** 2.18db
-      asked for exactly this measurement and it is now decidable, because the tree has one consumer.
+- [x] **Measure Poseidon-over-N-leaves on-chain.** **DONE (2.18eq): 494M gas at N=17,000, 121x
+      keccak.** Poseidon is dead on-chain; keccak costs ~529k gates in-circuit, which is affordable.
+      **Keep keccak on both sides.**
 - [ ] Then the non-membership circuit: extract issuing state + document number from the MRZ at their
       ICAO offsets (`query_identity` already does selective MRZ disclosure), hash, and bracket
       against the anchored root.
-- [ ] Supersedes the OPRF dependency in 2.18cu **for this predicate only** - re-read that item once
-      coverage is measured, because if coverage is poor the OPRF comes back.
+- [x] ~~Supersedes the OPRF dependency.~~ **WITHDRAWN on the measurement**: at 27.7% coverage the
+      OPRF is still needed for the other ~72%.
 
 ### 2.18eo THE NAME-BINDING CIRCUIT CANNOT BE BUILT AGAINST THESE LEAVES - and the reason is in our own code (2026-08-05)
 

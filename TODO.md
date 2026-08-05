@@ -8057,28 +8057,39 @@ verify DON signatures in-contract or accept the Forwarder as the relay, and 2.18
 
 So 2.18cp preferred something this interface does not offer.
 
-**⚠️ BUT I THEN OVER-ASCRIBED TO THE FORWARDER, and the repo owner caught it.** I wrote that "the
-Forwarder verifies the DON quorum and then calls this" and that a write-once address "removes the
-human key BY CONSTRUCTION". **Neither is supported by anything in this repository**: there is no
-Chainlink Forwarder contract, interface or ABI anywhere in it - the only matches are OpenZeppelin's
-ERC2771 meta-tx forwarder and a Permit2 test, both unrelated.
+**⚠️ I THEN RETRACTED A CORRECT CLAIM, WHICH IS THE WORSE ERROR.** Told I had over-ascribed, I
+searched THIS REPOSITORY for a Forwarder, found none, and concluded the claim was unsupported and the
+address "might be a plain EOA". The repo was the wrong place to look. **Read the docs instead**
+(docs.chain.link/cre), and the original claim was right:
 
-| claim | status |
+| | per Chainlink's docs |
 |---|---|
-| `onReport` receives no signatures; the 109-byte header has no room | **verified** against the SDK-cited layout |
-| in-contract DON signature verification is therefore impossible | **follows** |
-| "the Forwarder verifies the DON quorum" | **asserted; no artifact here supports it** |
-| "removes the human key by construction" | **overstated** |
+| what it is | **`KeystoneForwarder`, a Chainlink-managed CONTRACT**, deployed per network |
+| what it does | *"validates the report's signatures"* - the DON signature check happens THERE, before our call |
+| the address | published per-network in the **Forwarder Directory**; `cre workflow supported-chains` lists them |
+| the interface | `IReceiver is IERC165` with `onReport(bytes,bytes) external` - **returning nothing** |
+| Chainlink's own base | `ReceiverTemplate` checks forwarder address (required), workflow ID, workflow owner, workflow name (only with owner, guarding a 40-bit collision) |
 
-**THE HONEST CLAIM IS NARROW.** Fixing the caller bounds WHO may publish to one address chosen once.
-It does not bound WHAT they may publish, and it is not a consensus proof. Whether a report reflects
-DON consensus depends entirely on what that address IS and what it checks first - unverified here.
-**If it is a plain EOA, this contract accepts whatever it says.**
+**So gating on the Forwarder address IS meaningful** - it is delegation to a documented signature
+check, not to an unknown key. What I should have done at the first challenge is read the docs, not
+grep our own tree and then hedge in the opposite direction.
 
-**AND WRITE-ONCE IS NOT A PURE WIN.** It removes rotation: a compromised or mistaken address cannot
-be replaced except by a contract UPGRADE, far heavier than re-granting a role. That trade is worth
-taking only if the address is itself a contract with its own guarantees - **for an EOA it is strictly
-worse than a revocable role**, because a leaked key becomes permanent.
+**THREE CONCRETE PROBLEMS THIS SURFACES, none of them speculative:**
+
+1. **⚠️ WRITE-ONCE IS WRONG, AND THE DOCS SAY SO OUTRIGHT:** *"Update the address when deploying from
+   simulation to production, as they differ between environments."* A one-time setter makes the
+   documented simulation-to-production path impossible without a contract upgrade, and would also
+   strand us if Chainlink ever redeploys. **This is a defect in what I built, not a trade-off.**
+2. **We implement neither `IReceiver` nor `IERC165`.** The selector still dispatches, so a call would
+   work, but `IReceiver` extends `IERC165` - if the Forwarder or the tooling checks
+   `supportsInterface`, our contract is not a valid receiver.
+3. **Our `onReport` returns `(uint256, bytes32)`; the interface returns nothing.** Harmless to a
+   caller that ignores returndata, but it means we are not interface-conformant and cannot simply
+   declare `is IReceiver`.
+
+**WHAT WE DO THAT `ReceiverTemplate` WOULD NOT.** We pin the full 32-byte workflow ID, which is
+strictly stronger than its optional name check - the docs flag name-only validation as vulnerable to
+a 40-bit collision. That part of the design stands.
 
 **WHAT WAS DONE INSTEAD, and it removes the human key anyway.** `REGISTRY_POSTMAN` is deleted.
 Publication is gated on `forwarder`, an **ADDRESS set once**:
@@ -8104,13 +8115,15 @@ which is also the real deployment shape.
 
 476 tests pass, ABI check green.
 
-- [ ] **VERIFY WHAT THE CRE FORWARDER ACTUALLY IS before calling `setForwarder`.** Does it check DON
-      signatures? Who may cause it to call us? Is it upgradeable, and by whom? None of that is known
-      here, and the write-once choice is only correct if the answers are good. **This is now the
-      gating question for the whole anchor, and it is the one I answered from assumption.**
-- [ ] **If the Forwarder turns out not to verify signatures**, reconsider write-once: against an EOA
-      a revocable role is strictly better, and the right shape may be write-once plus a timelocked
-      escape rather than either extreme.
+- [ ] **UNDO WRITE-ONCE.** It blocks the documented simulation-to-production migration. Make it
+      owner-settable with an activation delay - the same shape `pinWorkflow` already uses, so a swap
+      is visible and contestable before it takes effect, rather than either silently repointable or
+      permanently frozen.
+- [ ] **Implement `IReceiver` and `IERC165`.** `IReceiver is IERC165`, so `supportsInterface` may be
+      checked; and conforming means dropping `onReport`'s return values, which nothing on-chain reads
+      anyway - the tests read the emitted events.
+- [ ] Take the forwarder address from the Forwarder Directory for the target network rather than
+      inventing one, and record WHICH network's address is set.
 - [ ] **Set the Forwarder at deployment.** A one-time step with no default; an anchor without it
       accepts no reports at all, which is the right failure but must be in the deployment sequence
       rather than remembered.

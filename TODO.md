@@ -8085,15 +8085,39 @@ NARROWER claim than a name match would be. It is however SOUND - it never clears
 passport matches - whereas fuzzy name matching is neither sound nor complete. **A narrower claim
 honestly labelled beats a broader one that cannot be made.**
 
-**THE RESIDUAL CANONICALISATION IS THE THING TO PROVE OUT FIRST**, and it is small enough to be
-testable, which is the whole difference from names:
-- `idCountry` is free text ("colombia") while the MRZ carries an ICAO 3-letter code ("COL"). That is
-  a finite, enumerable mapping over a closed set - unlike transliteration, which is open.
-- `idNumber` casing and punctuation vary ("j287011"); uppercase-and-strip-non-alphanumeric is a
-  total function, and both sides can apply it.
-- Both normalisations must be applied IDENTICALLY in Go and in Noir. That is the same
-  two-implementations-must-agree hazard as `BatchCommitmentLib` (2.18ec), so it needs a differential
-  test pinned against the circuit, not a frozen constant.
+**NO FUZZINESS ANYWHERE - the repo owner's constraint, and it rules out my first version.** I proposed
+normalising `idCountry` ("colombia") to an ICAO code and stripping punctuation from `idNumber`. Both
+are guesses wearing the word "normalisation", and a guess on a sanctions check is the error-prone
+thing. **Three rules replace them:**
+
+**1. THE COUNTRY MAP IS ENUMERATED AND FAIL-CLOSED, never inferred.** A pinned table maps each
+source's published country string to ISO 3166 alpha-3. **An unmapped string fails the WORKFLOW** - it
+does not get guessed, and it does not get silently dropped, because a dropped row is a sanctioned
+person who becomes withdrawable. The table's hash is anchored beside the root, so a change is visible
+rather than ambient.
+
+**2. THE NUMBER IS MATCHED EXACTLY, and variants are emitted as SEPARATE LEAVES.** No stripping. If a
+source publishes a number in more than one form, the workflow emits a leaf for each form as
+published, plus its uppercase form. More leaves is cheap; a lossy transform is not, because two
+distinct numbers collapsing to one string is a false hit and one number failing to collapse is a
+MISS.
+
+**3. EVERY AMBIGUITY RESOLVES TOWARD EXCLUSION.** On a blacklist the two errors are not symmetric: a
+miss admits a sanctioned person, a false hit inconveniences an innocent one who can be handled out of
+band. So anything the workflow cannot resolve exactly becomes a leaf (blocking), never an omission.
+
+**AND THE HASH IS DECIDED BY THIS, which 2.18db left open pending exactly such a consumer.** That
+section lists three options and asks for measurement. The document tree has ONE consumer - a circuit -
+so it should be **Poseidon**, while the existing name/reference tree keeps **keccak** because its
+consumer is Solidity and on-chain data availability. Two trees, two hashes, each matched to its
+reader. The cost 2.18db warns about - Poseidon over thousands of leaves on-chain at 32,549 gas per
+hash - is the thing to measure before committing, and it may be what decides the whole shape.
+
+**⚠️ AND A REFRESHABLE "CLEAN" ATTESTATION IS NOT AVAILABLE, so this must be per-withdrawal.** I was
+going to propose proving non-membership once and caching it in the registry. `statusOf` is
+**MONOTONE** by deliberate design - *"moves 0 -> predicate once and never back"* - so there is no
+un-revoke and no refresh. The expensive proof therefore sits on the withdrawal path, which makes the
+Poseidon question above load-bearing rather than cosmetic.
 
 - [ ] **Measure the coverage before building anything**: what fraction of SDN/UN/OFSI individual rows
       carry a passport `idNumber`? If it is small the claim may be too narrow to be worth the
@@ -8101,8 +8125,13 @@ testable, which is the whole difference from names:
 - [ ] Extend `sources.go` to parse `idList` (OFAC), the UN's `INDIVIDUAL_DOCUMENT`, and OFSI's
       passport fields, and emit the document tree alongside the existing one under its own
       `registryId`.
-- [ ] Pin the country-code mapping and the number normalisation with a Go/Noir differential test
-      before either side is relied on.
+- [ ] Build the country map as an ENUMERATED table with an unmapped-string FAILURE, and anchor its
+      hash beside the root. No inference, no defaults.
+- [ ] Emit number variants as separate leaves rather than normalising, and pin the exact-match rule
+      with a Go/Noir differential test - the same two-implementations-must-agree hazard as
+      `BatchCommitmentLib` (2.18ec), so a construction rather than a frozen constant.
+- [ ] **Measure Poseidon-over-N-leaves on-chain before choosing the document tree's hash.** 2.18db
+      asked for exactly this measurement and it is now decidable, because the tree has one consumer.
 - [ ] Then the non-membership circuit: extract issuing state + document number from the MRZ at their
       ICAO offsets (`query_identity` already does selective MRZ disclosure), hash, and bracket
       against the anchored root.

@@ -44,9 +44,10 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
      * `revokeNotary`'s own comment calls "THE ENTIRE FAULT MECHANISM". That was split out into
      * `NOTARY_REGISTRAR` below (sec. 2.18cn).
      *
-     * SPLITTING IT WAS NOT ENOUGH. Even alone, the role was still GRANTABLE: its whole security
-     * rested on an operator granting it to a Forwarder and to nothing else, forever. An address that
-     * can be set once and never re-pointed removes the key instead of documenting how to hold it.
+     * SPLITTING IT WAS NOT ENOUGH. Even alone, the role was still GRANTABLE by any admin, to anyone,
+     * at any time. Fixing publication to a single address chosen once narrows that to one decision
+     * made once - see `forwarder` for what this does and does not buy, because it is less than it
+     * first appears.
      */
 
     /**
@@ -166,14 +167,22 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
      *      or to several, or re-granted later. The guarantee was "remember not to". An address that
      *      can be set once removes the human key BY CONSTRUCTION.
      *
-     *      WHY NOT VERIFY DON SIGNATURES HERE INSTEAD, which sec. 2.18cp called the stronger option
-     *      and "the only one that removes the key rather than relocating it": THE SIGNATURES NEVER
-     *      ARRIVE. `onReport(bytes metadata, bytes report)` is the entire surface, and the metadata
-     *      is a fixed 109-byte header - version, executionId, timestamp, donId, donConfigVersion,
-     *      workflowId, workflowName, workflowOwner, reportId - with no room for a signature set. The
-     *      Forwarder verifies the DON quorum and then calls this. A contract cannot check what it is
-     *      not given, so trusting the Forwarder is not a choice made here; it is the shape of the
-     *      interface, and 2.18cp's preference was for something unavailable.
+     *      WHY NOT VERIFY DON SIGNATURES HERE INSTEAD, which sec. 2.18cp called the stronger option:
+     *      THE SIGNATURES NEVER ARRIVE. `onReport(bytes metadata, bytes report)` is the entire
+     *      surface, and the metadata is a fixed 109-byte header - version, executionId, timestamp,
+     *      donId, donConfigVersion, workflowId, workflowName, workflowOwner, reportId - with no room
+     *      for a signature set. A contract cannot check what it is not given, so 2.18cp preferred
+     *      something this interface does not offer.
+     *
+     *      ⚠️ WHAT THIS DOES **NOT** ESTABLISH, and an earlier version of this comment claimed it
+     *      did. Fixing the caller does NOT make the DATA trustworthy. Whether a report reflects DON
+     *      consensus depends entirely on what the address set here actually is and what it checks
+     *      before calling - **and no Forwarder contract, interface or ABI exists anywhere in this
+     *      repository**, so that is unverified here. If the address is a plain EOA, this contract
+     *      accepts whatever it says.
+     *
+     *      SO THE HONEST CLAIM IS NARROW: this bounds WHO may publish to exactly one address chosen
+     *      once. It does not bound WHAT they may publish, and it is not a consensus proof.
      *
      *      APPENDED, NOT INSERTED. This contract is UUPS-upgradeable and has no storage gap, so a new
      *      variable may only go at the END - inserting one would shift every slot after it and
@@ -251,10 +260,15 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
     /**
      * @notice Set the CRE Forwarder. Once only.
      *
-     * @dev WRITE-ONCE IS THE MECHANISM, not caution. If this could be changed, the owner could point
-     *      the report path at any address at any time and the guarantee would be back to trusting a
-     *      key-holder - which is what replacing the role was for. Setting it wrong is recoverable by
-     *      upgrading the implementation, a visible and governed act; re-pointing it silently is not.
+     * @dev WRITE-ONCE IS THE MECHANISM, not caution: if the owner could re-point the report path at
+     *      will, the guarantee would be back to trusting a key-holder.
+     *
+     *      ⚠️ IT ALSO REMOVES ROTATION, WHICH IS A REAL COST AND NOT A PURE WIN. A compromised or
+     *      mistaken address cannot be replaced - the only remedy is a contract UPGRADE, which is far
+     *      heavier than re-granting a role. That trade is only worth taking if the address is itself
+     *      a contract with its own guarantees; **for an EOA it is strictly worse than a revocable
+     *      role**, because a leaked key becomes permanent. Whoever calls `setForwarder` is choosing
+     *      between those two situations, so verify what the address IS before calling it.
      */
     function setForwarder(address forwarder_) external onlyRole(OWNER_ROLE) {
         if (forwarder != address(0)) revert ForwarderAlreadySet(forwarder);

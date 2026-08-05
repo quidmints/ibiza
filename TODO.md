@@ -8055,8 +8055,30 @@ verify DON signatures in-contract or accept the Forwarder as the relay, and 2.18
 > `cre-sdk-go v1.15.0`. There is no room for a signature set anywhere in it. **The Forwarder verifies
 > the DON quorum and then calls this.** A contract cannot check what it is not given.
 
-So 2.18cp preferred something unavailable, and trusting the Forwarder is not a choice made in this
-contract - it is the shape of the interface.
+So 2.18cp preferred something this interface does not offer.
+
+**⚠️ BUT I THEN OVER-ASCRIBED TO THE FORWARDER, and the repo owner caught it.** I wrote that "the
+Forwarder verifies the DON quorum and then calls this" and that a write-once address "removes the
+human key BY CONSTRUCTION". **Neither is supported by anything in this repository**: there is no
+Chainlink Forwarder contract, interface or ABI anywhere in it - the only matches are OpenZeppelin's
+ERC2771 meta-tx forwarder and a Permit2 test, both unrelated.
+
+| claim | status |
+|---|---|
+| `onReport` receives no signatures; the 109-byte header has no room | **verified** against the SDK-cited layout |
+| in-contract DON signature verification is therefore impossible | **follows** |
+| "the Forwarder verifies the DON quorum" | **asserted; no artifact here supports it** |
+| "removes the human key by construction" | **overstated** |
+
+**THE HONEST CLAIM IS NARROW.** Fixing the caller bounds WHO may publish to one address chosen once.
+It does not bound WHAT they may publish, and it is not a consensus proof. Whether a report reflects
+DON consensus depends entirely on what that address IS and what it checks first - unverified here.
+**If it is a plain EOA, this contract accepts whatever it says.**
+
+**AND WRITE-ONCE IS NOT A PURE WIN.** It removes rotation: a compromised or mistaken address cannot
+be replaced except by a contract UPGRADE, far heavier than re-granting a role. That trade is worth
+taking only if the address is itself a contract with its own guarantees - **for an EOA it is strictly
+worse than a revocable role**, because a leaked key becomes permanent.
 
 **WHAT WAS DONE INSTEAD, and it removes the human key anyway.** `REGISTRY_POSTMAN` is deleted.
 Publication is gated on `forwarder`, an **ADDRESS set once**:
@@ -8082,9 +8104,16 @@ which is also the real deployment shape.
 
 476 tests pass, ABI check green.
 
-- [ ] **Set the Forwarder at deployment.** `setForwarder` is a one-time step with no default; an
-      anchor without it accepts no reports at all, which is the right failure but must be in the
-      deployment sequence rather than remembered.
+- [ ] **VERIFY WHAT THE CRE FORWARDER ACTUALLY IS before calling `setForwarder`.** Does it check DON
+      signatures? Who may cause it to call us? Is it upgradeable, and by whom? None of that is known
+      here, and the write-once choice is only correct if the answers are good. **This is now the
+      gating question for the whole anchor, and it is the one I answered from assumption.**
+- [ ] **If the Forwarder turns out not to verify signatures**, reconsider write-once: against an EOA
+      a revocable role is strictly better, and the right shape may be write-once plus a timelocked
+      escape rather than either extreme.
+- [ ] **Set the Forwarder at deployment.** A one-time step with no default; an anchor without it
+      accepts no reports at all, which is the right failure but must be in the deployment sequence
+      rather than remembered.
 - [ ] 2.18cm's "replace REGISTRY_POSTMAN with quid's write-once forwarder address" is DONE in
       substance. Its remaining question - whether a pre-Forwarder bootstrap is needed - is answered
       NO: the anchor simply publishes nothing until the address is set.

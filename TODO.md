@@ -8043,6 +8043,59 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18eo THE NAME-BINDING CIRCUIT CANNOT BE BUILT AGAINST THESE LEAVES - and the reason is in our own code (2026-08-05)
+
+Asked to build it, since 2.18cw says land the proofs first and 2.18cr calls it *"the highest-leverage
+unbuilt item in this area"*. **Checked the mechanism before building around it, and it does not hold -
+for two independent reasons, both stated by the code that produces the leaves.**
+
+The circuit is specified as: prove `hash(document name fields) == leaf` for a leaf in an anchored
+registry root. Here is what a sanctions leaf actually commits to (`sanctions_lists/sources.go:605`):
+
+```
+leafHash = keccak( keccak(registryKey) ‖ keccak(Reference) ‖ keccak(Kind)
+                   ‖ uint32(len(NameParts)) ‖ keccak(NameParts[0]) ‖ ... )
+```
+
+**1. THE LEAF COMMITS TO `Reference`, WHICH NO PASSPORT CONTAINS.** It is *"the source's OWN
+identifier for the listing, as published"* - an OFAC/UN/OFSI listing number. A holder cannot compute
+their own leaf from their own document under any name scheme, because a required preimage component
+is a value only the publisher assigns. **This alone is fatal**, independent of names.
+
+**2. NAMES ARE NOT CANONICAL, AND THE CODE SAYS SO IN THE SAME COMMENT:** *"a name is not stable at
+all (transliteration and alias ordering both vary)"*, and `NameParts` are stored *"IN ITS OWN ORDER
+AND ARITY, uncombined"* because *"joining is what makes a leaf ambiguous"*. There is **no name
+canonicalisation anywhere in the sanctions workflow** - the only `normalize` in the family is
+`normalizeStatus` in the NOTARY workflow, and it normalises a status string, not a name. An ICAO MRZ
+carries one Latin transliteration (Doc 9303); OFAC carries its own. Equality of
+`keccak(name_part)` between the two is not a thing that happens.
+
+**AND FUZZY MATCHING IS NOT AN ESCAPE.** `hash(x) == leaf` is exact by construction. A circuit that
+approximated a name match would be constraining the wrong half - the false-safety shape standing rule
+3 refuses, and precisely the shape 2.18cr already rejected for the citation-only version of `revoke`.
+
+**WHY THE TODO ALREADY CONTAINS THE ANSWER.** 2.18cu lists *"treat the OPRF as a DEPENDENCY of
+self-proved non-membership, not a separate nicety"*. That is exactly this problem: an OPRF gives both
+sides a canonical, blinded identifier derived the same way, which is what a name cannot be. **The
+name-binding circuit is downstream of the OPRF, not parallel to it** - and 2.18cr's "one circuit
+unblocks three paths" is true only once a canonical identifier exists to bind.
+
+**THE NOTARY CASE IS DIFFERENT AND MAY STILL BE BUILDABLE**, which is worth separating rather than
+lumping. `notary_registry/registry.go:122` gives
+`leaf = keccak(keccak(License) ‖ keccak(FullName) ‖ keccak(Region) ‖ keccak(normalizeStatus(Info)))`.
+Every component except `FullName` is something a notary KNOWS - licence number, region, status - so
+the missing piece there is only the name representation, not an unavailable publisher identifier.
+That is a smaller problem than the sanctions one and should be assessed on its own.
+
+- [ ] **Do the OPRF first.** It is the dependency, not an enhancement, and nothing downstream of a
+      canonical identifier can be built until it exists.
+- [ ] **Assess the NOTARY name-binding separately** - its leaf lacks the fatal `Reference` component,
+      so the only question there is whether a Ukrainian register's `FullName` can be reconciled with
+      an MRZ, or whether the licence number alone should be the binding instead.
+- [ ] **Do NOT build sanctions name-binding as specified.** If it is wanted anyway, the CRE workflow
+      must first emit a SECOND index keyed on a canonical identifier - and what that identifier is,
+      is the OPRF question.
+
 ### 2.18en THE POSTMAN ROLE IS GONE - and 2.18cp's preferred option does not exist (2026-08-05)
 
 **THE BLOCKING DECISION IN 2.18cl RESOLVES ITSELF ON A FACT, not a trade.** It asked whether to

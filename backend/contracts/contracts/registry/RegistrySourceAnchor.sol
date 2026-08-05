@@ -35,26 +35,28 @@ import {IEvidenceRegistry} from "@rarimo/evidence-registry/interfaces/IEvidenceR
 /// choice for the vault logic specifically, not something a registry anchor needs).
 contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
     /**
-     * PUBLICATION ONLY. This role may anchor a snapshot and do nothing else (sec. 2.18cn).
+     * THERE IS NO PUBLICATION ROLE. The gate is `forwarder` - an ADDRESS, set once - and this note
+     * records what it replaced, because the history is the argument for it.
      *
-     * IT USED TO DO THREE JOBS. `TitleLedger.registerNotary` and `revokeNotary` checked THIS role
-     * too, on the sound-sounding reasoning that one auditable trust boundary beats two. The effect
-     * was that a snapshot-submission role also decided **who is a notary** - and `revokeNotary`'s
-     * own comment calls that "THE ENTIRE FAULT MECHANISM". Granting publication to a machine (a CRE
-     * Forwarder, the intended holder) would therefore have handed that machine the power to revoke
-     * every notary; and any operator key kept for notary administration could publish fabricated
-     * registers. The reuse was not a smaller trust boundary, it was a LARGER one wearing one name.
+     * `REGISTRY_POSTMAN` ONCE DID THREE JOBS. `TitleLedger.registerNotary` and `revokeNotary`
+     * checked it too, on the sound-sounding reasoning that one auditable trust boundary beats two.
+     * The effect was that a snapshot-submission role also decided **who is a notary** - which
+     * `revokeNotary`'s own comment calls "THE ENTIRE FAULT MECHANISM". That was split out into
+     * `NOTARY_REGISTRAR` below (sec. 2.18cn).
+     *
+     * SPLITTING IT WAS NOT ENOUGH. Even alone, the role was still GRANTABLE: its whole security
+     * rested on an operator granting it to a Forwarder and to nothing else, forever. An address that
+     * can be set once and never re-pointed removes the key instead of documenting how to hold it.
      */
-    bytes32 public constant REGISTRY_POSTMAN = keccak256("REGISTRY_POSTMAN");
 
     /**
      * NOTARY ADMINISTRATION ONLY - enrolment and revocation in `TitleLedger`.
      *
      * Declared HERE rather than in `TitleLedger` because that contract already reads its authority
      * from this registry (`NOTARY_REGISTRY.hasRole(...)`), so the role list stays in one place and
-     * one admin governs both. Separate from `REGISTRY_POSTMAN` because the two powers must be able
-     * to have DIFFERENT HOLDERS: one is a relay, the other is a human decision that ends with
-     * somebody losing their ability to act.
+     * one admin governs both. It is a ROLE where publication is an ADDRESS because the two powers
+     * differ in kind: publication is a machine relaying consensus, while revoking a notary is a
+     * human decision that ends with somebody losing their ability to act.
      */
     bytes32 public constant NOTARY_REGISTRAR = keccak256("NOTARY_REGISTRAR");
 
@@ -88,12 +90,17 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
     WorkflowVersion[] public workflowVersions;
 
     event WorkflowPinned(bytes32 indexed workflowId, uint256 index, uint64 activeFrom);
+    event ForwarderSet(address indexed forwarder);
 
     error ZeroWorkflowId();
     error WorkflowAlreadyPinned(bytes32 workflowId);
     error NoActiveWorkflow();
     error UnpinnedWorkflow(bytes32 reported, bytes32 active);
     error MalformedReportMetadata(uint256 length);
+    /// @notice Only the Forwarder may deliver reports.
+    error NotForwarder(address caller);
+    /// @notice The Forwarder is write-once and has already been set.
+    error ForwarderAlreadySet(address current);
 
     /**
      * Where the workflow ID sits in the metadata header CRE prepends to every report.
@@ -150,6 +157,29 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
     IEvidenceRegistry public EVIDENCE_REGISTRY;
 
     mapping(bytes32 => RegistrySnapshot[]) public snapshots;
+
+    /**
+     * @notice The CRE Forwarder, and the ONLY address `onReport` accepts. Write-once.
+     *
+     * @dev THIS REPLACES A GRANTABLE ROLE, and the difference is the whole point. `REGISTRY_POSTMAN`
+     *      was meant to end up held by a Forwarder, but nothing STOPPED it being granted to a person,
+     *      or to several, or re-granted later. The guarantee was "remember not to". An address that
+     *      can be set once removes the human key BY CONSTRUCTION.
+     *
+     *      WHY NOT VERIFY DON SIGNATURES HERE INSTEAD, which sec. 2.18cp called the stronger option
+     *      and "the only one that removes the key rather than relocating it": THE SIGNATURES NEVER
+     *      ARRIVE. `onReport(bytes metadata, bytes report)` is the entire surface, and the metadata
+     *      is a fixed 109-byte header - version, executionId, timestamp, donId, donConfigVersion,
+     *      workflowId, workflowName, workflowOwner, reportId - with no room for a signature set. The
+     *      Forwarder verifies the DON quorum and then calls this. A contract cannot check what it is
+     *      not given, so trusting the Forwarder is not a choice made here; it is the shape of the
+     *      interface, and 2.18cp's preference was for something unavailable.
+     *
+     *      APPENDED, NOT INSERTED. This contract is UUPS-upgradeable and has no storage gap, so a new
+     *      variable may only go at the END - inserting one would shift every slot after it and
+     *      silently reinterpret existing state.
+     */
+    address public forwarder;
 
     /// Full leaf set for every published snapshot - the on-chain data-availability layer
     /// `_computeRoot`'s output is checked against. Anyone can rebuild and independently re-verify
@@ -218,6 +248,21 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
      *      predecessor until its delay elapses, so a swap cannot silence the registry in the
      *      meantime - inaction and a contested update both leave the previous version working.
      */
+    /**
+     * @notice Set the CRE Forwarder. Once only.
+     *
+     * @dev WRITE-ONCE IS THE MECHANISM, not caution. If this could be changed, the owner could point
+     *      the report path at any address at any time and the guarantee would be back to trusting a
+     *      key-holder - which is what replacing the role was for. Setting it wrong is recoverable by
+     *      upgrading the implementation, a visible and governed act; re-pointing it silently is not.
+     */
+    function setForwarder(address forwarder_) external onlyRole(OWNER_ROLE) {
+        if (forwarder != address(0)) revert ForwarderAlreadySet(forwarder);
+        if (forwarder_ == address(0)) revert ZeroAddress();
+        forwarder = forwarder_;
+        emit ForwarderSet(forwarder_);
+    }
+
     function activeWorkflowId() public view returns (bytes32) {
         for (uint256 i = workflowVersions.length; i > 0; --i) {
             WorkflowVersion storage v_ = workflowVersions[i - 1];
@@ -259,7 +304,9 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
     function onReport(
         bytes calldata metadata,
         bytes calldata report
-    ) external onlyRole(REGISTRY_POSTMAN) returns (uint256 index_, bytes32 root_) {
+    ) external returns (uint256 index_, bytes32 root_) {
+        if (msg.sender != forwarder) revert NotForwarder(msg.sender);
+
         // Length-checked before slicing: a short header would otherwise read whatever follows it,
         // and an identity check that compares the WRONG 32 bytes fails in exactly the direction
         // that looks like a healthy rejection.

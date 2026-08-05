@@ -63,13 +63,10 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     anchor = RegistrySourceAnchor(address(proxy));
     _activateWorkflow(anchor, admin);
 
-    // anchor.REGISTRY_POSTMAN() must be read BEFORE vm.prank: it's itself an external call, and
-    // vm.prank only overrides msg.sender for the single next call - reading it inline as an
-    // argument would consume the prank before grantRole executes, leaving grantRole to run as
-    // this test contract (no DEFAULT_ADMIN_ROLE) instead of admin.
-    bytes32 postmanRole = anchor.REGISTRY_POSTMAN();
+    // The publication gate is an ADDRESS now, not a role: `postman` is simply the Forwarder this
+    // anchor accepts, set once and never re-pointed.
     vm.prank(admin);
-    anchor.grantRole(postmanRole, postman);
+    anchor.setForwarder(postman);
   }
 
   function _expectedKey(bytes32 registryId_, uint256 index_) internal view returns (bytes32) {
@@ -385,6 +382,44 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
    * than the pinned one from setUp, because a test that could not fail is the thing this suite is
    * least allowed to contain.
    */
+  /*
+   * THE FORWARDER IS WRITE-ONCE, AND THAT IS THE WHOLE SECURITY ARGUMENT (sec. 2.18cp/2.18cm).
+   *
+   * A grantable role's guarantee is "the operator granted it to the Forwarder and to nothing else,
+   * and will not grant it again". These three tests are what make that a property of the CODE:
+   * publication is one address, chosen once, and no key-holder can move it afterwards.
+   */
+  function test_theForwarderCannotBeChangedOnceSet() public {
+    vm.prank(admin);
+    vm.expectRevert(
+      abi.encodeWithSelector(RegistrySourceAnchor.ForwarderAlreadySet.selector, postman)
+    );
+    anchor.setForwarder(address(0xBEEF));
+  }
+
+  /// ...and not even by the owner, which is the point: this is not an access-control decision the
+  /// owner gets to revisit, it is a one-time construction step.
+  function test_theOwnerCannotRepointTheForwarder() public {
+    assertTrue(anchor.hasRole(anchor.OWNER_ROLE(), admin), 'admin should be the owner');
+    vm.prank(admin);
+    vm.expectRevert(
+      abi.encodeWithSelector(RegistrySourceAnchor.ForwarderAlreadySet.selector, postman)
+    );
+    anchor.setForwarder(admin);
+  }
+
+  /// Nobody else may deliver a report - and the rejection names the caller rather than failing as a
+  /// generic access-control error, so a misconfigured Forwarder address is diagnosable.
+  function test_onlyTheForwarderMayDeliverAReport() public {
+    address stranger = address(0xDEAD);
+    bytes32[] memory leaves_ = new bytes32[](1);
+    leaves_[0] = keccak256('a');
+
+    vm.prank(stranger);
+    vm.expectRevert(abi.encodeWithSelector(RegistrySourceAnchor.NotForwarder.selector, stranger));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, leaves_));
+  }
+
   function test_publishingIsImpossibleWithNoActiveWorkflow() public {
     RegistrySourceAnchor fresh_ = RegistrySourceAnchor(
       address(
@@ -394,9 +429,8 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
         )
       )
     );
-    bytes32 role_ = fresh_.REGISTRY_POSTMAN();
     vm.prank(admin);
-    fresh_.grantRole(role_, postman);
+    fresh_.setForwarder(postman);
 
     bytes32[] memory leaves_ = new bytes32[](1);
     leaves_[0] = keccak256('a');

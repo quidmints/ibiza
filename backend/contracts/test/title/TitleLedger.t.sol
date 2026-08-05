@@ -98,10 +98,9 @@ contract TitleLedgerTest is Test, CreReportMetadata {
     _activateWorkflow(registry, admin);
     // Read the role constant BEFORE vm.prank - it's itself an external call and would otherwise
     // consume the single-shot prank before grantRole executes (see RegistrySourceAnchor.t.sol).
-    bytes32 postmanRole = registry.REGISTRY_POSTMAN();
     bytes32 registrarRole = registry.NOTARY_REGISTRAR();
     vm.prank(admin);
-    registry.grantRole(postmanRole, postman);
+    registry.setForwarder(postman); // publication is an ADDRESS, not a grantable role
     vm.prank(admin);
     registry.grantRole(registrarRole, postman);
 
@@ -326,19 +325,37 @@ contract TitleLedgerTest is Test, CreReportMetadata {
    * The suite's `postman` holds BOTH roles for convenience, so every test above would pass just as
    * well if the two were still one role. This is the test that fails if they are.
    *
-   * WHY IT MATTERS CONCRETELY: `REGISTRY_POSTMAN` is meant to end up held by a CRE Forwarder - a
-   * machine relaying DON reports. While the roles were merged, granting it to that machine handed
-   * it `revokeNotary`, which this contract calls THE ENTIRE FAULT MECHANISM.
+   * WHY IT MATTERS CONCRETELY: publication ends up held by a CRE Forwarder - a machine relaying DON
+   * reports. While the roles were merged, granting it to that machine handed it `revokeNotary`,
+   * which this contract calls THE ENTIRE FAULT MECHANISM. Publication is now an ADDRESS rather than
+   * a role, so it cannot be granted to anyone at all - but the registrar role still can be, and this
+   * test is what keeps the two from being conflated again.
    */
   function test_aPublicationOnlyHolderCannotTouchTheNotarySet() public {
+    // A FRESH anchor, because the suite's `postman` deliberately holds both powers for convenience
+    // and would make this test compare an address against itself. The forwarder is write-once, so
+    // the only way to have a publication-only address is to set it on an anchor that has none yet -
+    // which is also the real deployment shape.
+    RegistrySourceAnchor freshRegistry = RegistrySourceAnchor(
+      address(
+        new ERC1967Proxy(
+          address(new RegistrySourceAnchor()),
+          abi.encodeCall(RegistrySourceAnchor.initialize, (address(new MockEvidenceRegistry()), admin))
+        )
+      )
+    );
     address publisher = address(0xD044);
-    bytes32 publishRole = registry.REGISTRY_POSTMAN();
     vm.prank(admin);
-    registry.grantRole(publishRole, publisher);
+    freshRegistry.setForwarder(publisher);
 
-    assertTrue(registry.hasRole(publishRole, publisher), 'publisher lacks the publication role');
-    assertFalse(registry.hasRole(registry.NOTARY_REGISTRAR(), publisher), 'publisher must not be a registrar');
+    assertEq(freshRegistry.forwarder(), publisher, 'the forwarder is not the publisher');
+    assertFalse(
+      freshRegistry.hasRole(freshRegistry.NOTARY_REGISTRAR(), publisher),
+      'a publication-only address must not be a registrar'
+    );
 
+    // And it cannot become one by being the forwarder - the two are different KINDS of authority
+    // now, not two roles that happen to be held apart.
     vm.prank(publisher);
     vm.expectRevert(TitleLedger.OnlyNotaryRegistrar.selector);
     ledger.revokeNotary(NOTARY_COMMITMENT, bytes32(uint256(1)));
@@ -360,7 +377,7 @@ contract TitleLedgerTest is Test, CreReportMetadata {
     leaves[0] = keccak256('a leaf a registrar should not be able to anchor');
 
     vm.prank(registrar);
-    vm.expectRevert(); // AccessControlUnauthorizedAccount - lacks REGISTRY_POSTMAN
+    vm.expectRevert(); // NotForwarder - publication is an address, not a role
     registry.onReport(_metadata(keccak256('notary_registry.wasm@test')), abi.encode(REGISTRY_ID, leaves));
   }
 

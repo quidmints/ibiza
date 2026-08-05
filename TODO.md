@@ -8043,6 +8043,52 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18en THE POSTMAN ROLE IS GONE - and 2.18cp's preferred option does not exist (2026-08-05)
+
+**THE BLOCKING DECISION IN 2.18cl RESOLVES ITSELF ON A FACT, not a trade.** It asked whether to
+verify DON signatures in-contract or accept the Forwarder as the relay, and 2.18cp called the first
+*"the STRONGER option, and the only one that removes the key rather than relocating it"*.
+
+> **The signatures never arrive.** `onReport(bytes metadata, bytes report)` is the entire surface,
+> and `metadata` is a fixed **109-byte** header - version, executionId, timestamp, donId,
+> donConfigVersion, workflowId, workflowName, workflowOwner, reportId - already confirmed against
+> `cre-sdk-go v1.15.0`. There is no room for a signature set anywhere in it. **The Forwarder verifies
+> the DON quorum and then calls this.** A contract cannot check what it is not given.
+
+So 2.18cp preferred something unavailable, and trusting the Forwarder is not a choice made in this
+contract - it is the shape of the interface.
+
+**WHAT WAS DONE INSTEAD, and it removes the human key anyway.** `REGISTRY_POSTMAN` is deleted.
+Publication is gated on `forwarder`, an **ADDRESS set once**:
+
+| | grantable role | write-once address |
+|---|---|---|
+| guarantee | "the operator granted it to the Forwarder and will not grant it again" | one address, chosen once |
+| can it be re-pointed | yes, silently, by any admin | **no** - `ForwarderAlreadySet` |
+| can a person hold it | yes | only if deliberately set to one, once, visibly |
+
+**Splitting it off `NOTARY_REGISTRAR` (2.18cn) was necessary and not sufficient.** Even alone the
+role was grantable, so its security rested on an operator remembering. An address that cannot be
+moved removes the key rather than documenting how to hold it.
+
+**Three tests make it a property of the code**: the forwarder cannot be changed once set, not even
+by the owner, and a non-forwarder caller is refused by name (`NotForwarder(caller)`) rather than as a
+generic access-control error, so a misconfigured address is diagnosable.
+
+`test_aPublicationOnlyHolderCannotTouchTheNotarySet` had to move to a FRESH anchor - the suite's
+`postman` deliberately holds both powers, so after the change it was comparing an address with
+itself. Write-once means a publication-only address only exists on an anchor that has none yet,
+which is also the real deployment shape.
+
+476 tests pass, ABI check green.
+
+- [ ] **Set the Forwarder at deployment.** `setForwarder` is a one-time step with no default; an
+      anchor without it accepts no reports at all, which is the right failure but must be in the
+      deployment sequence rather than remembered.
+- [ ] 2.18cm's "replace REGISTRY_POSTMAN with quid's write-once forwarder address" is DONE in
+      substance. Its remaining question - whether a pre-Forwarder bootstrap is needed - is answered
+      NO: the anchor simply publishes nothing until the address is set.
+
 ### 2.18em CHONK RETIRED - and the one thing worth keeping from it (2026-08-05)
 
 Deleted: `withdraw_ivc_{app,kernel_init,kernel_inner,hiding,wrapper}`, `pp/src/ivc.nr`,

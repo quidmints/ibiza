@@ -8098,13 +8098,33 @@ controller **for the cases it covers**, and it is worth having on those grounds.
 the OPRF, which 2.18cu named as the dependency for the other ~72%. **2.18ep's claim that it
 "supersedes the OPRF dependency for this predicate" is withdrawn on the measurement.**
 
-- [ ] Decide whether a sound-but-27.7% check is worth shipping on its own, or only alongside the
-      OPRF path. **This is a product call, not a technical one** - the technical side is now settled
-      in its favour and the coverage is the whole objection.
+- [x] ~~Decide whether a sound-but-27.7% check is worth shipping.~~ **NO, on the full measurement:
+      23.3% across all three sources, and the UN's document TYPE field is itself localised.** Not
+      built. Revisit only as a free rider on the OPRF.
 - [ ] If shipped, the claim must be stated exactly: *"not listed under a published passport number"*,
       never "not sanctioned".
-- [ ] Re-take coverage against UN and OFSI before deciding - OFAC is one source of several and its
-      27.7% may not be representative.
+- [x] **Re-take coverage against UN and OFSI.** **DONE - and it is worse, not better:**
+
+| source | individuals | with a passport | |
+|---|---|---|---|
+| OFAC SDN | 7,473 | 2,069 | 27.7% |
+| UN SC consolidated | 736 | 260 | 35.3% |
+| UK OFSI consolidated | 13,863 | 2,803 | **20.2%** |
+| **all three** | **22,072** | **5,132** | **23.3%** |
+
+OFSI is the LARGEST individual list and has the WORST coverage, so weighting by size pulls the
+figure DOWN to 23.3%. **More than three quarters of listed individuals publish no passport number.**
+
+**AND THE UN DATA CARRIES THE EXACT FUZZINESS THE REPO OWNER RULED OUT.** Its
+`TYPE_OF_DOCUMENT` field is LOCALISED - `Passport` (350), `Numéro de passeport` (3), `Número de
+pasaporte` (3) - and 434 of 736 individual documents carry an EMPTY type. So even deciding *"is this
+row a passport"* needs a mapping over an open set of strings, before any number is compared. That is
+the same open-set problem that killed name-binding, reappearing one field earlier.
+
+**VERDICT: document-binding is not worth building as a sanctions control.** It is sound, cheap and
+trustless, and it covers under a quarter of the population while requiring a fail-closed mapping for
+the document TYPE as well as the country. The OPRF (2.18cu) remains the dependency, and this should
+be revisited only if it can ride along at near-zero cost once that exists.
 
 ### 2.18ep BIND ON THE DOCUMENT NUMBER, NOT THE NAME - simpler, cheaper, and removes the controller (user, 2026-08-05)
 

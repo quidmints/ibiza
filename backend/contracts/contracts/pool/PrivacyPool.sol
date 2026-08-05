@@ -36,13 +36,18 @@ import {State} from './State.sol';
  */
 abstract contract PrivacyPool is State, IPrivacyPool {
 
-  /// @notice The aggregation verifier, generated from `aggregate_withdrawals` at MAX_BATCH.
+  /// @notice The batch verifier: `TreeRoot<MAX_BATCH>HonkVerifier`, generated from the recursion
+  ///         tree that settles MAX_BATCH withdrawals.
+  ///
+  /// @dev ONE VERIFIER PER TREE DEPTH, and they are not interchangeable - a depth-5 root proof is
+  ///      refused by the depth-4 verifier. So this address is what says which batch size this pool
+  ///      settles, and MAX_BATCH must agree with it.
   /// @dev MAY be the zero address: a pool that does not offer batching is a legitimate deployment,
   ///      and PP upstream has no such verifier at all. `withdrawBatch` refuses explicitly in that
-  ///      case rather than calling into an empty address - see AggregationNotConfigured.
+  ///      case rather than calling into an empty address - see BatchVerifierNotConfigured.
   ///      Immutable, like every other verifier here: a mutable one would let whoever can set it
   ///      swap in a verifier that accepts anything, which is the whole security of the batch path.
-  INoirVerifier public immutable AGGREGATION_VERIFIER;
+  INoirVerifier public immutable BATCH_VERIFIER;
 
   /// @notice The circuit's compile-time BATCH_N. A batch longer than this cannot have been proved
   ///         by it, and the commitment alone would not catch that since it folds any length.
@@ -53,7 +58,7 @@ abstract contract PrivacyPool is State, IPrivacyPool {
   /// @notice This pool was deployed without an aggregation verifier, so batching is unavailable.
   ///         Without this, `withdrawBatch` would call into address(0) - which returns empty
   ///         returndata that fails to decode as `bool`, producing a bare revert that says nothing.
-  error AggregationNotConfigured();
+  error BatchVerifierNotConfigured();
 
   /// @notice One aggregated batch settled. Per-withdrawal `Withdrawn` events are emitted too, so
   ///         existing indexers keep working unchanged.
@@ -158,13 +163,13 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     address _ragequitVerifier,
     address _asset,
     address _identityRegistry,
-    address _aggregationVerifier
+    address _batchVerifier
   ) State(_asset, _entrypoint, _withdrawalVerifier, _ragequitVerifier) {
     if (_identityRegistry == address(0)) revert ZeroIdentityRegistry();
     IDENTITY_REGISTRY = IIdentityRegistry(_identityRegistry);
-    // Deliberately NOT rejected when zero - see AGGREGATION_VERIFIER. It was previously never
+    // Deliberately NOT rejected when zero - see BATCH_VERIFIER. It was previously never
     // assigned at all, which left `withdrawBatch` permanently unreachable.
-    AGGREGATION_VERIFIER = INoirVerifier(_aggregationVerifier);
+    BATCH_VERIFIER = INoirVerifier(_batchVerifier);
   }
 
   /*///////////////////////////////////////////////////////////////
@@ -237,9 +242,9 @@ abstract contract PrivacyPool is State, IPrivacyPool {
   function withdrawBatch(
     Withdrawal[] calldata _withdrawals,
     uint256[7][] memory _signals,
-    bytes calldata _aggregationProof
+    bytes calldata _batchProof
   ) external {
-    if (address(AGGREGATION_VERIFIER) == address(0)) revert AggregationNotConfigured();
+    if (address(BATCH_VERIFIER) == address(0)) revert BatchVerifierNotConfigured();
 
     uint256 n = _withdrawals.length;
     if (n != _signals.length) revert BatchLengthMismatch(n, _signals.length);
@@ -284,7 +289,7 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     }
 
     BatchVerifierLib.verifyBatch(
-      AGGREGATION_VERIFIER, _aggregationProof, _signals, MAX_BATCH
+      BATCH_VERIFIER, _batchProof, _signals, MAX_BATCH
     );
 
     // ROOT MEMO. `_isKnownRoot` walks the root HISTORY and `isValidRoot` is an external call; both

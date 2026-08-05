@@ -8076,9 +8076,11 @@ for chonk's empty `key_hash` (bb emits one for ultra_honk), referenced by 0 file
 of 7 for `build-recursion-tree`. And `pp`'s `keccak256` dependency died with `ivc.nr`: 0 files in
 `pp/src` use keccak, against a control of 8 that use poseidon.
 
-- [ ] Retire the flat aggregator too - `aggregate_withdrawals`, `AggregationHonkVerifier`,
-      `aggregation_n16.json`, `AggregationProofOnChain.t.sol`. It is now beaten on every axis by the
-      tree and nothing depends on it. Left standing only because one deletion per run is enough.
+- [x] **Retire the flat aggregator.** **DONE**: circuit, verifier, fixture and test deleted. The
+      pool's slot is `BATCH_VERIFIER` now, not `AGGREGATION_VERIFIER` - it holds a
+      `TreeRoot<N>HonkVerifier` and the depths are not interchangeable, so the address is what says
+      which batch size a pool settles. `foundry.toml`'s optimizer restriction became a glob over
+      `TreeRoot*HonkVerifier.sol`, which also brought all three depths to 17,744 bytes / 6,832 margin.
 
 ### 2.18el DECIDED: the tree settles, chonk is retired - and nobody waits for 16 (user, 2026-08-05)
 

@@ -18,7 +18,7 @@ import {MockEntrypoint} from './PrivacyPoolSimple.t.sol';
  * paths are UNEXERCISED - it pins BatchCommitmentLib's properties instead. So until this file, the
  * entrypoint had no caller anywhere: not a test, not a contract. Every guard in it was unverified.
  *
- * AND THE FIRST THING CALLING IT FOUND: `AGGREGATION_VERIFIER` was declared and read but NEVER
+ * AND THE FIRST THING CALLING IT FOUND: `BATCH_VERIFIER` was declared and read but NEVER
  * ASSIGNED - no constructor argument, no setter, no deploy script. It was permanently address(0),
  * so `withdrawBatch` could not succeed for any input. A call into an empty address returns empty
  * returndata, which fails to decode as `bool` and reverts bare, saying nothing about the cause.
@@ -43,19 +43,19 @@ contract WithdrawBatchEntrypointTest is Test {
     21888242871839275222246405745257275088548364400416034343698204186575808495617;
 
   MockEntrypoint internal entrypoint;
-  NoirVerifierMock internal aggregationVerifier;
+  NoirVerifierMock internal batchVerifier;
   PrivacyPoolSimple internal pool;
   PrivacyPoolSimple internal poolWithoutAggregation;
 
   function setUp() public {
     entrypoint = new MockEntrypoint();
-    aggregationVerifier = new NoirVerifierMock();
+    batchVerifier = new NoirVerifierMock();
     pool = new PrivacyPoolSimple(
       address(entrypoint),
       address(new NoirVerifierMock()),
       address(new NoirVerifierMock()),
       address(entrypoint),
-      address(aggregationVerifier)
+      address(batchVerifier)
     );
     poolWithoutAggregation = new PrivacyPoolSimple(
       address(entrypoint),
@@ -101,7 +101,7 @@ contract WithdrawBatchEntrypointTest is Test {
   function test_RefusesWhenNoAggregationVerifierIsConfigured() public {
     IPrivacyPool.Withdrawal[] memory ws = _withdrawals(1);
     uint256[PUB_LEN][] memory s = _matchingSignals(ws);
-    vm.expectRevert(PrivacyPool.AggregationNotConfigured.selector);
+    vm.expectRevert(PrivacyPool.BatchVerifierNotConfigured.selector);
     poolWithoutAggregation.withdrawBatch(ws, s, '');
   }
 
@@ -157,7 +157,7 @@ contract WithdrawBatchEntrypointTest is Test {
   }
 
   function test_RejectsABatchWhoseProofDoesNotVerify() public {
-    aggregationVerifier.setShouldVerify(false);
+    batchVerifier.setShouldVerify(false);
     IPrivacyPool.Withdrawal[] memory ws = _withdrawals(2);
     uint256[PUB_LEN][] memory s = _matchingSignals(ws);
     vm.expectRevert(BatchVerifierLib.InvalidBatchProof.selector);

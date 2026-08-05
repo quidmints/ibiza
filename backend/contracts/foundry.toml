@@ -40,11 +40,12 @@ optimizer_runs = 1
 paths = "contracts/registry/verifiers/EscrowEnvelopeHonkVerifier.sol"
 optimizer_runs = 1
 
-# The N=16 recursive aggregation verifier (TODO.md sec. 2.4). Same knife-edge as the others: the
-# generated verifier is ~90 KB of source, and only optimizer_runs = 1 brings the runtime code under
-# EIP-170. Its size is INDEPENDENT of N (Honk's verifier is a fixed algorithm; N grows the circuit,
-# not the contract), so this entry does not need revisiting if the batch size changes.
+# The recursion-tree root verifiers, one per batch size (TODO.md sec. 2.4 / 2.18el). Same knife-edge
+# as the others: each is ~100 KB of source and only optimizer_runs = 1 brings the runtime code under
+# EIP-170. Their size is INDEPENDENT of the batch (Honk's verifier is a fixed algorithm; a deeper
+# tree grows the circuit, not the contract), so a new depth needs a new PATH here but no new
+# reasoning - the glob covers them all.
 [[profile.default.compilation_restrictions]]
-paths = "contracts/pool/verifiers/AggregationHonkVerifier.sol"
+paths = "contracts/pool/verifiers/TreeRoot*HonkVerifier.sol"
 optimizer_runs = 1
 

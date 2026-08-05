@@ -3,8 +3,8 @@
 
   python3 build-recursion-tree.py [N]        # any N >= 2; padded to the next power of two
 
-WHAT THIS IS FOR. `aggregate_withdrawals` verifies all N withdrawal proofs inside ONE circuit, which
-is 12,720,801 gates and ~21.7 GB at N=16 - a batcher has to be a server. This builds the same
+WHAT THIS IS FOR. The retired flat aggregator verified all N withdrawal proofs inside ONE circuit,
+which was 12,720,801 gates and ~21.7 GB at N=16 - a batcher had to be a server. This builds the same
 guarantee as a TREE of two-proof nodes instead. No node is ever large: a leaf is ~1.54M gates and an
 internal node ~1.49M, so peak memory is ~2.1 GB no matter how big the batch is. The root is an
 ordinary UltraHonk proof, so it gets a generated Solidity verifier exactly as the flat aggregator

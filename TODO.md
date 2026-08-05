@@ -8043,6 +8043,72 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18ep BIND ON THE DOCUMENT NUMBER, NOT THE NAME - simpler, cheaper, and removes the controller (user, 2026-08-05)
+
+*"there may be some way to simplify this while increasing the efficiency and trustlessness of it"* -
+there is, and it drops the two things that made 2.18eo impossible.
+
+**THE OBSERVATION.** A name is not canonical. A **passport number is**, and it is in the MRZ at a
+fixed offset. And the sanctions sources publish it: OFAC's SDN XML carries an `idList` of
+`{idType, idNumber, idCountry}` with real rows like `idType: "passport", idNumber: "j287011",
+idCountry: "colombia"`. **Our parser simply never reads them** - `sources.go` extracts
+`ReferenceField` and `NameFields` and nothing else.
+
+**THE PROPOSAL.** Emit a SECOND tree per source, keyed on the document rather than the listing:
+
+```
+leaf = keccak( normalizedCountry ‖ normalizedNumber )     for rows where idType == passport
+```
+
+A holder then proves NON-membership by bracketing two adjacent leaves - and
+`RegistrySourceAnchor._computeRoot` **already enforces strictly-ascending leaves**
+(`LeavesNotStrictlySorted`), so the anchored structure supports bracketing today with no change.
+
+**WHY IT IS BETTER ON ALL THREE AXES, not a trade:**
+
+| | name-binding (2.18eo) | document-binding |
+|---|---|---|
+| preimage available to the holder | **no** - leaf commits to the publisher's `Reference` | **yes** - country + number are both in the MRZ |
+| canonicalisation needed | unbounded: transliteration, alias order, arity | **bounded**: ~250 ICAO country codes + uppercase/strip |
+| circuit cost | hash a variable-arity name set | **one keccak of ~20 bytes** |
+| who learns the identity | the CONTROLLER, by opening an envelope | **nobody** |
+| needs an OPRF | yes, as a dependency (2.18cu) | **no** |
+
+**THE TRUSTLESSNESS GAIN IS THE POINT.** The holder proves their own non-membership from their own
+document. No envelope is opened, no matcher runs, nobody is told who anyone is - which is what
+2.18cr identified as the blocker on evidence-bound revocation, and what the OPRF was being brought in
+to solve.
+
+**⚠️ WHAT IT DOES NOT CLAIM, and this must be stated wherever it is used.** It only catches listed
+subjects **whose passport is published**. Not every SDN row has a document number, so this is a
+NARROWER claim than a name match would be. It is however SOUND - it never clears someone whose listed
+passport matches - whereas fuzzy name matching is neither sound nor complete. **A narrower claim
+honestly labelled beats a broader one that cannot be made.**
+
+**THE RESIDUAL CANONICALISATION IS THE THING TO PROVE OUT FIRST**, and it is small enough to be
+testable, which is the whole difference from names:
+- `idCountry` is free text ("colombia") while the MRZ carries an ICAO 3-letter code ("COL"). That is
+  a finite, enumerable mapping over a closed set - unlike transliteration, which is open.
+- `idNumber` casing and punctuation vary ("j287011"); uppercase-and-strip-non-alphanumeric is a
+  total function, and both sides can apply it.
+- Both normalisations must be applied IDENTICALLY in Go and in Noir. That is the same
+  two-implementations-must-agree hazard as `BatchCommitmentLib` (2.18ec), so it needs a differential
+  test pinned against the circuit, not a frozen constant.
+
+- [ ] **Measure the coverage before building anything**: what fraction of SDN/UN/OFSI individual rows
+      carry a passport `idNumber`? If it is small the claim may be too narrow to be worth the
+      machinery, and that is a number, not an opinion.
+- [ ] Extend `sources.go` to parse `idList` (OFAC), the UN's `INDIVIDUAL_DOCUMENT`, and OFSI's
+      passport fields, and emit the document tree alongside the existing one under its own
+      `registryId`.
+- [ ] Pin the country-code mapping and the number normalisation with a Go/Noir differential test
+      before either side is relied on.
+- [ ] Then the non-membership circuit: extract issuing state + document number from the MRZ at their
+      ICAO offsets (`query_identity` already does selective MRZ disclosure), hash, and bracket
+      against the anchored root.
+- [ ] Supersedes the OPRF dependency in 2.18cu **for this predicate only** - re-read that item once
+      coverage is measured, because if coverage is poor the OPRF comes back.
+
 ### 2.18eo THE NAME-BINDING CIRCUIT CANNOT BE BUILT AGAINST THESE LEAVES - and the reason is in our own code (2026-08-05)
 
 Asked to build it, since 2.18cw says land the proofs first and 2.18cr calls it *"the highest-leverage

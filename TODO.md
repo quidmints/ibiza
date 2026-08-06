@@ -13602,3 +13602,66 @@ would be caught.
 **RELEVANT TO §2.18fe/§2.18ff:** `backend/cre/sanctions_lists/main.go` already exists, so the
 exclusion set's ingestion workflow is written. It could not have delivered until this change. Whether
 it has an on-chain write path is NOT verified here and remains open.
+
+### 2.18fh ⚠ THE SANCTIONS TREE IS NAME-KEYED — a dg1Hash check against it is VACUOUS (2026-08-07)
+
+**This CORRECTS §2.18fe constraint 2, which said the identity half inherits "23.3% MRZ coverage".
+That understated it and got the kind of failure wrong. It is not partial coverage. It is a type
+mismatch that FAILS OPEN.**
+
+`sanctions_lists/sources.go:605` — `leafHash(registryKey, s)` keccaks exactly four things:
+`registryKey`, the source's own `Reference`, `Kind`, and `NameParts`. **No passport number, no DOB,
+no MRZ.** `ListedSubject` carries nothing else (`sources.go:88-99`), and `Reference` exists precisely
+because "a name is not stable at all (transliteration and alias ordering both vary)".
+
+So the two key spaces are:
+  - sanctions tree: `keccak(registryKey, Reference, Kind, NameParts...)`
+  - identity side:  `dg1Hash = passport_hash(MRZ)`
+
+**A proof of `dg1Hash NOT IN sanctionsTree` is therefore TRUE FOR EVERY POSSIBLE HOLDER**, sanctioned
+or not, because no `dg1Hash` is ever a member of a tree of name-hashes. The check passes, costs
+~11,856 opcodes, and constrains nothing. Nothing reverts; no test fails. Same shape as §2.18fg's
+ERC-165 hole - a handshake against a counterparty that was never there.
+
+**CONSEQUENCE FOR §2.18fe:** the unified exclusion set works for `label` (chain-derived, canonical)
+and **does not work for identities at all** as currently keyed. Do NOT wire a `dg1Hash`
+non-membership check against this tree. Options, none chosen:
+  a. Give up identity-side sanctions screening; screen FUNDS only. Honest, and §2.18ff's measurement
+     already says the fund side is the automatable one.
+  b. Add a second, MRZ-keyed leaf per listing, populated only where a source publishes passport
+     numbers - a genuinely different tree, and THAT is where a coverage fraction like 23.3% would
+     apply. It does not apply to the tree that exists.
+  c. Match on names off-chain and revoke via `IdentityRegistry.revoke`. Keeps the judgement off-chain
+     and out of the circuit, which is where an unstable identifier belongs.
+
+**RULE 3 NOTE:** if any `dg1Hash` predicate is ever added, it must be impossible to point it at a
+name-keyed root. A non-membership proof against the wrong tree is the exact "silent, plausible-looking
+failure" a guard earns its place against.
+
+### 2.18fi Source authenticity is TLS-only, and nobody has joined TLSNotary to CRE (2026-08-07)
+
+**Already conceded in-repo:** `sources.go:147` labels the posture `authenticityTransportOnly: the
+publisher signs nothing. The only authenticity is the TLS` connection. Sources are the real public
+exports - OFAC `SDN.XML`, UK OFSI `ConList.xml`, UN `consolidated.xml`.
+
+**What CRE gives today:** `http.SendRequest` + `cre.ConsensusIdenticalAggregation`, i.e. N DON nodes
+each perform their OWN TLS validation and must agree BYTE-IDENTICALLY. That defeats a single
+tampering relayer. It does NOT survive an origin, CDN, CA or DNS compromise that every node sees
+identically.
+
+**SEARCHED, NOT FOUND:** no published TLSNotary-to-CRE capability. TLSNotary exists (`tlsnotary/tlsn`,
+Rust; proofs of HTTPS content needing nothing installed on the server) and Chainlink publishes how to
+author capabilities, but nothing appears to join them. ⚠️ **That is a SEARCH RESULT, not proof of
+absence** - the same error this thread made twice about upstream PP and the KeystoneForwarder.
+
+**AND BE PRECISE ABOUT WHAT IT WOULD BUY, because it is not source integrity.** TLSNotary proves THE
+SERVER SENT THESE BYTES. Against a poisoned origin it would faithfully prove the poisoned bytes. It
+upgrades "the DON asserts it fetched this" to "anyone can verify these bytes came from that host at
+that time" - a real gain in AUDITABILITY, none in integrity. The primitive that would give integrity
+is the publisher SIGNING its export, and OFAC does not.
+
+**NAME COLLISION, recorded so it does not cost anything later:** `backend/cre/notary_registry` is
+UKRAINE'S MINISTRY OF JUSTICE NOTARY REGISTRY - legal notaries - and has nothing to do with TLSNotary.
+"We already did it for the notary stuff" refers to that. No TLS attestation capability exists here.
+
+Both OPEN. Neither blocks §2.18ff's fund-side conclusion.

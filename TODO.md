@@ -13394,9 +13394,9 @@ ASPRootChecker.siblings <== ASPSiblings;
 ASPRootChecker.actualDepth <== ASPTreeDepth;
 ASPRoot === ASPRootChecker.out;
 ```
-So the ASP leaf **is the label** - a DEPOSIT, not a person - and the component is
-`LeanIMTInclusionProof`, i.e. genuinely an ALLOWLIST. §2.13b's "invert" was aimed at a real
-allowlist, now confirmed from source rather than from the paper.
+So the ASP leaf **is the label** - a DEPOSIT, not a person - confirmed from source rather than from
+the paper. (An earlier draft of this line called the `LeanIMTInclusionProof` "genuinely an
+ALLOWLIST". Struck - that conflated the data structure with the policy. See §2.18fd.)
 
 `label` is PRIVATE: upstream's own `ProofLib` enumerates 8 pubSignals (2 circuit outputs +
 6 public inputs) and `label` is not among them. Two independent artifacts agree, which is the control.
@@ -13423,3 +13423,37 @@ takes `ProofLib` from 7 to 8 slots, which regenerates every withdrawal verifier 
 `PUB_LEN` is baked into the recursion-tree leaf commitment - so `BatchCommitmentLib`, both tree
 circuits and both `TreeRoot{16,32}HonkVerifier`s move with it. That is a money-path change and gets
 its own run with a falsifiable prediction (rule 10). Not started. OPEN.
+
+### 2.18fd The allowlist/blacklist distinction is a LATENCY property, not a predicate one (user, 2026-08-07)
+
+**The user's original claim was right and I twice drifted off it.** "Isn't approved-set membership the
+same as taint non-membership" - yes, and 0xbow's own policy makes it so.
+
+**EVIDENCE, from 0xbow's description of how the set is built:** they "monitor deposits into Privacy
+Pools, conducting Know Your Transaction and **adding them to the Association Set if they pass
+vetting**", and "previously approved deposits can be revoked". Vetting = screening for illicit funds.
+So the RULE is exclusion; only the DATA STRUCTURE is inclusion. Calling the circuit "genuinely an
+allowlist" because it uses `LeanIMTInclusionProof` conflated the two. §2.18fc corrected in place.
+
+**THE ONE REAL DIFFERENCE - which side of the review window the funds sit on:**
+
+| | approve-then-add (upstream) | list-then-exclude |
+|---|---|---|
+| unreviewed deposit | OUT, cannot withdraw | IN, can withdraw |
+| operator must act to | let you out | stop you |
+| who waits | the honest user | nobody |
+| the race | none | tainted funds spendable until listed |
+
+**`ragequit` IS THE PROOF OF THIS, and it is in our tree too** (`PrivacyPool.sol:371`, upstream at
+the fork `:132`). A ragequit path only needs to exist if an unvetted deposit is STUCK - it is the
+escape hatch for funds pending review. Its presence is direct evidence that upstream's operational
+default is "out".
+
+**WHY THIS ARGUES FOR THE EXCLUSION FORM IN OUR CASE SPECIFICALLY,** rather than being a wash: our
+screening candidate is taint propagation over public transfer data (canonical, reproducible - see
+§2.18ez), so our race window is bounded by how fast propagation RUNS. 0xbow's is bounded by a
+vendor's human review queue, which is why the allowlist form is necessary for them and not for us.
+
+**Therefore the cost of the exclusion form is the RACE WINDOW, and that is the number to measure
+before building** - not "is a blacklist philosophically better". Nothing here is decided; §2.18fc's
+signal-count price still applies. OPEN.

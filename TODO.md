@@ -13512,3 +13512,42 @@ non-membership check into a false DENIAL. Collision is ~2^-254 by chance, but th
 a domain tag at insertion and the failure would be silent, so the check earns its place (rule 3).
 
 Nothing built. Decide constraint 1 first - it is the design decision the rest hangs off. OPEN.
+
+### 2.18ff MEASURED: constraint 1 of §2.18fe is settled by gas, not by governance (2026-08-07)
+
+§2.18fe left "one literal tree vs two trees under a composite root" as a design decision about WRITE
+AUTHORITY. It is not a judgement call - **the merge is infeasible at list scale**, so the authority
+question never arises.
+
+**MEASURED** (`test/pool/AspTreeGasProbe.t.sol`, `forge test -vv`, LeanIMT `_insert`):
+
+| inserts | gas | depth |
+|---|---|---|
+| 1 | 69,221 | 0 |
+| 2 | 98,029 | 1 |
+| 16 | 144,423 | 4 |
+| 128 | 235,277 | 7 |
+| 1,024 | 327,717 | 10 |
+| 4,096 | 396,785 | 12 |
+
+~+30k gas per additional level. The OFAC SDN is ~17,000 entries (`SanctionsRootHashCost.t.sol`), so
+bulk on-chain insertion costs **~17,000 x ~450,000 = ~7.65 BILLION gas, i.e. ~255 full 30M blocks**,
+per refresh - and OFAC refreshes often.
+
+**AND THAT IS A LOWER BOUND FOR THE TREE THAT ACTUALLY GATES IDENTITY.** `IdentityRegistry` uses a
+fixed-depth-32 Poseidon SMT, ~32 hashes per insert against LeanIMT's ~14 at n=17k, so the real figure
+is roughly 2x higher. The measurement kills the variant with margin to spare either way.
+
+**CONCLUSION, and it removes a decision rather than making one:** flagged-list data must stay a
+ROOT-ANCHORED SNAPSHOT - published once, leaves emitted for rebuild - which is exactly what
+`RegistrySourceAnchor._publishSnapshot` + `SnapshotLeaves` already do. It cannot be an
+on-chain-inserted tree. Therefore:
+
+  - the exclusion set and the identity tree stay SEPARATE trees, so `CONTROLLER` and the CRE
+    forwarder keep their separate write authority by construction, not by policy;
+  - **the composite-root variant is the ONLY way to keep one public signal**: public signal becomes
+    `hash(identityRoot, exclusionRoot)`, recomputed in-circuit from two witness fields. Signals stay
+    at 7, so §2.18fc's verifier/`PUB_LEN` regeneration cost still does not apply.
+
+§2.18fe constraints 2 (populatability: labels automatable, identities only via `dg1Hash` at
+registration, 23.3% coverage) and 3 (domain separation) are UNAFFECTED and still open. Nothing built.

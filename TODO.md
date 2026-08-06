@@ -8043,6 +8043,56 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18ev A REVOKED-BUT-UNEXPIRED CERTIFICATE CANNOT BE REMOVED AT ALL - and the fix needs no circuit (2026-08-06)
+
+Went to build CRL non-membership as 2.18eu's highest-value item. **Checked the mechanism, and the
+finding is better than the plan: there is a real gap, and closing it is far smaller than a circuit.**
+
+**1. THE CIRCUIT NEVER SEES A SERIAL, so serial-keyed non-membership is not the shape.** Grepped
+`noir_dl_lib`: the only "serial" hits are bignum serialisation helpers. What the passport circuit
+binds is `pk_passport_hash` - a PUBLIC KEY. And `Registration2.registerCertificate` stores
+certificates under `getCertificateKey(publicKey)`, not under a serial. **The whole system is keyed on
+keys; CRLs list serials.** A naive CRL design repeats the sanctions mistake with different fields.
+
+**2. BUT THE MASTER LIST BRIDGES THEM, which sanctions had nothing equivalent to.** The ICAO master
+list contains the CSCA certificates themselves, so `(issuer, serial) -> certificate -> public key` is
+a lookup we can already perform - `masterlist.go` parses both. **The identifier problem is solved by
+data we already fetch**, which is exactly what 2.18et said sanctions lacks.
+
+**3. AND HERE IS THE ACTUAL GAP.** `StateKeeper.removeCertificate` requires:
+```solidity
+require(_info.expirationTimestamp > 0 && _info.expirationTimestamp < block.timestamp,
+        "StateKeeper: certificate is not expired");
+```
+> **Only EXPIRED certificates can be removed. A certificate REVOKED before its expiry cannot be
+> removed by anyone - not the owner, not a controller, nobody.** Passports it signed keep verifying
+> until the certificate would have expired on its own, which for a CSCA is years.
+
+That is not a missing feature, it is a live hole: certificate revocation is the mechanism by which a
+compromised signing key is contained, and containment currently waits for the calendar.
+
+**THE FIX, and it needs NO circuit change and NO authority:**
+1. CRE workflow: fetch CSCA CRLs, resolve each `(issuer, serial)` to its public key via the master
+   list, emit a tree of revoked CERTIFICATE KEYS - the same `getCertificateKey` form the registry
+   stores.
+2. Anchor it through `RegistrySourceAnchor` - already built, already keyed by `registryId`.
+3. Add a path that removes a certificate on an INCLUSION proof against that anchored root, instead of
+   on expiry. **Permissionless**, like `revokeCertificate` already is.
+
+**WHY THIS IS TRUSTLESS WHERE SANCTIONS IS NOT**, stated so the distinction does not blur: the key is
+the certificate's own public key, published by ICAO and carried by the document. Nobody transliterates
+anything, nobody blinds anything, and no party's participation is required - a revocation is a fact
+anyone can prove from public data.
+
+- [ ] **Extend the ICAO workflow to emit the revoked-key tree.** `CRLs` is already a parsed field of
+      the CMS `signedData` and `issuerAndSerial` is already a declared type - but **neither is read**,
+      so this is real work rather than plumbing. Check first whether the master list's CRL slot is
+      even populated, or whether CRLs must come from the PKD separately.
+- [ ] Add the inclusion-proof removal path. Small, self-contained, and testable against a synthetic
+      anchored root exactly as `RegistrySourceAnchor.t.sol` already does.
+- [ ] **Do not gate it on the workflow.** The contract half closes the hole for any anchored revoked
+      set; the workflow decides what goes in it.
+
 ### 2.18eu NO THRESHOLDS: reduce the CLAIM to what has a canonical key, and every one of those is trustless (user, 2026-08-06)
 
 *"i dont want any thresholds"* - then 2.18es is out, and with it the only design that was both
@@ -8082,9 +8132,10 @@ external register keep an authority, and named that one - but a CRL **is** an ex
 it is keyed on issuer+serial, which is canonical. So it belongs in row 2, not with sanctions. **The
 authority-free set is larger than 2.18cu allowed.**
 
-- [ ] **Build CRL non-membership** - keyed on issuer+serial, self-proved, no authority, no threshold.
-      This is the item 2.18cw listed as "CRL anchoring" and it is now the highest-value one, because
-      it is the last predicate that both matters and CAN be made trustless.
+- [ ] **Build CRL revocation** - and 2.18ev refines the shape: NOT keyed on issuer+serial, because
+      the circuit and the registry are both keyed on the certificate's PUBLIC KEY. The master list
+      bridges serial to key. It also found the real gap: a revoked-but-unexpired certificate cannot
+      be removed by anyone today.
 - [ ] **State the scope reduction explicitly**: the protocol does not screen persons against
       sanctions lists, and the reason is that those lists publish no field a passport holder can
       also produce. Anything vaguer invites the assumption that it does.

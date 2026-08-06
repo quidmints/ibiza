@@ -13457,3 +13457,58 @@ vendor's human review queue, which is why the allowlist form is necessary for th
 **Therefore the cost of the exclusion form is the RACE WINDOW, and that is the number to measure
 before building** - not "is a blacklist philosophically better". Nothing here is decided; §2.18fc's
 signal-count price still applies. OPEN.
+
+### 2.18fe One exclusion set for deposits AND identities — the primitive already exists (user, 2026-08-07)
+
+**The instruction:** use the SAME set for identities as for labels (dedup). Same rule - if they pass
+unflagged by OFAC, Interpol, and every list we can find, they are in.
+
+**THE ENABLER, verified in code: `smt_verifier_full` ALREADY SUPPORTS EXCLUSION.** `pp/src/smt.nr:192-199`
+takes `fnc: bool` alongside `old_key`/`old_value` - the circomlib bracketing-leaf signature, where the
+adjacent leaf proves absence. `withdraw.nr:33` already names this: "passing 1 here would prove the
+OPPOSITE". No new circuit primitive is needed.
+
+**THE CONSEQUENCE THAT MATTERS: §2.18fc's PRICE DISAPPEARS.** If flagged entries live in the tree the
+identity check already reads, a withdrawal adds
+`smt_verifier_full(label, ..., fnc = EXCLUSION)` against the SAME `identityRoot` public signal.
+Signals stay at **7, not 8** - so no verifier regeneration, no `PUB_LEN` change, `BatchCommitmentLib`
+untouched, both `TreeRoot{16,32}HonkVerifier`s untouched. In-circuit cost is one more depth-32 SMT
+verify, ~+11,856 opcodes (`withdraw.nr:26`), against tree nodes already running ~1.54M gates.
+
+**THE CONTAINERS BOTH EXIST ALREADY:**
+  - `IdentityRegistry.isPredicate` (`:128`) - typed exclusion reasons, registered up front, and the
+    predicate BECOMES the leaf value, so the tree records WHICH list flagged an entry. "OFAC",
+    "INTERPOL" are predicates, not new machinery.
+  - `RegistrySourceAnchor` - already multi-list by `registryId` (`:160` `mapping(bytes32 => RegistrySnapshot[])`),
+    already CRE-fed via `onReport` (`:334`), already emits `SnapshotLeaves` so anyone can rebuild and
+    audit the tree. This is the ingestion path for "every list we can find".
+
+**⚠ CONSTRAINT 1 - MERGING THE TREES MERGES THE WRITE AUTHORITY.** `IdentityRegistry`'s tree is
+`CONTROLLER`-gated; `RegistrySourceAnchor` is CRE/forwarder-gated. Literally one tree hands the CRE
+workflow write access to the tree that gates identity. That is a blast-radius change, not a refactor.
+**Variant that keeps ONE signal AND the authority split:** two trees, public signal becomes
+`hash(identityRoot, exclusionRoot)` recomputed in-circuit from two witness fields. Still zero new
+public signals, still one check point, authority unchanged. NOT YET CHOSEN - and until it is,
+everything downstream is ⏸️, not ✅.
+
+**⚠ CONSTRAINT 2 - THE TWO SUBJECTS ARE NOT EQUALLY POPULATABLE, and this bounds the whole idea:**
+  - `label` is chain-derived and canonical, so list -> label works by taint propagation. Automatable.
+  - the identity tree's key is a commitment to `sk_identity`. **No sanctions list can produce it**, so
+    a PERSON cannot be flagged from a list entry at all. The only document-side value that is both
+    list-derivable and in-circuit is `dg1Hash`, and it is in-circuit at REGISTRATION, not withdrawal
+    (`withdraw.nr` has no DG1).
+
+**So it is ONE SET, ONE ANCHOR, ONE INGESTION - the dedup - but TWO CONSUMPTION POINTS:**
+  - registration: prove `dg1Hash NOT IN set` (MRZ is in-circuit here)
+  - withdrawal:   prove `label NOT IN set` + the existing identity-clean inclusion check
+  - post-registration flagging of a known person: still needs `revoke` via CONTROLLER, because the
+    list->commitment map does not exist and by design cannot.
+The identity half therefore inherits the measured **23.3% MRZ coverage** and must never be described
+as full sanctions screening of people.
+
+**⚠ CONSTRAINT 3 - DOMAIN SEPARATION IS MANDATORY IF THE KEY SPACES MERGE.** Identity commitments and
+labels would share one key space; a label colliding with a registered identity commitment turns a
+non-membership check into a false DENIAL. Collision is ~2^-254 by chance, but the fix is one hash with
+a domain tag at insertion and the failure would be silent, so the check earns its place (rule 3).
+
+Nothing built. Decide constraint 1 first - it is the design decision the rest hangs off. OPEN.

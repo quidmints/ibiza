@@ -4,6 +4,8 @@ pragma solidity 0.8.28;
 import {AccessControlUpgradeable} from "@oz-upgradeable/access/AccessControlUpgradeable.sol";
 import {UUPSUpgradeable} from "@oz-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IEvidenceRegistry} from "@rarimo/evidence-registry/interfaces/IEvidenceRegistry.sol";
+import {IReceiver} from "../interfaces/registry/IReceiver.sol";
+import {IERC165} from "@oz/utils/introspection/IERC165.sol";
 
 /// @notice Anchors periodically-refreshed roots of external authoritative-source lists (e.g.
 /// Ukraine's notary registry bulk XML/zip export from ern.minjust.gov.ua / data.gov.ua) into the
@@ -33,7 +35,7 @@ import {IEvidenceRegistry} from "@rarimo/evidence-registry/interfaces/IEvidenceR
 /// (Entrypoint, StateKeeper, RegistrationSimple all follow the same pattern; only PP's
 /// fund-custody contracts - PrivacyPool/State - are deliberately immutable, a trust-minimization
 /// choice for the vault logic specifically, not something a registry anchor needs).
-contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
+contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IReceiver {
     /**
      * THERE IS NO PUBLICATION ROLE. The gate is `forwarder` - an ADDRESS, set once - and this note
      * records what it replaced, because the history is the argument for it.
@@ -91,7 +93,9 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
     WorkflowVersion[] public workflowVersions;
 
     event WorkflowPinned(bytes32 indexed workflowId, uint256 index, uint64 activeFrom);
-    event ForwarderSet(address indexed forwarder);
+    /// @notice Carries the PREVIOUS address too, so a re-point is visible as a re-point rather than
+    ///         having to be inferred from a second identical-looking event.
+    event ForwarderSet(address indexed previousForwarder, address indexed forwarder);
 
     error ZeroWorkflowId();
     error WorkflowAlreadyPinned(bytes32 workflowId);
@@ -100,8 +104,6 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
     error MalformedReportMetadata(uint256 length);
     /// @notice Only the Forwarder may deliver reports.
     error NotForwarder(address caller);
-    /// @notice The Forwarder is write-once and has already been set.
-    error ForwarderAlreadySet(address current);
 
     /**
      * Where the workflow ID sits in the metadata header CRE prepends to every report.
@@ -160,12 +162,12 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
     mapping(bytes32 => RegistrySnapshot[]) public snapshots;
 
     /**
-     * @notice The CRE Forwarder, and the ONLY address `onReport` accepts. Write-once.
+     * @notice The CRE Forwarder, and the ONLY address `onReport` accepts.
      *
-     * @dev THIS REPLACES A GRANTABLE ROLE, and the difference is the whole point. `REGISTRY_POSTMAN`
-     *      was meant to end up held by a Forwarder, but nothing STOPPED it being granted to a person,
-     *      or to several, or re-granted later. The guarantee was "remember not to". An address that
-     *      can be set once removes the human key BY CONSTRUCTION.
+     * @dev THIS REPLACES A GRANTABLE ROLE. `REGISTRY_POSTMAN` was meant to end up held by a
+     *      Forwarder, but nothing STOPPED it being granted to a person, or to several. An address
+     *      narrows that to exactly one holder at a time. It is NOT write-once - see `setForwarder`
+     *      for why that was wrong.
      *
      *      WHY NOT VERIFY DON SIGNATURES HERE INSTEAD, which sec. 2.18cp called the stronger option:
      *      THE SIGNATURES NEVER ARRIVE. `onReport(bytes metadata, bytes report)` is the entire
@@ -174,15 +176,19 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
      *      for a signature set. A contract cannot check what it is not given, so 2.18cp preferred
      *      something this interface does not offer.
      *
-     *      ⚠️ WHAT THIS DOES **NOT** ESTABLISH, and an earlier version of this comment claimed it
-     *      did. Fixing the caller does NOT make the DATA trustworthy. Whether a report reflects DON
-     *      consensus depends entirely on what the address set here actually is and what it checks
-     *      before calling - **and no Forwarder contract, interface or ABI exists anywhere in this
-     *      repository**, so that is unverified here. If the address is a plain EOA, this contract
-     *      accepts whatever it says.
+     *      ⚠️ AN EARLIER VERSION OF THIS COMMENT SAID "no Forwarder contract, interface or ABI
+     *      exists anywhere in this repository, so that is unverified here" - and drew the conclusion
+     *      that the Forwarder might be a plain EOA. **That was a repo-scoped search standing in for a
+     *      fact about Chainlink.** `KeystoneForwarder` is a Chainlink-operated CONTRACT, and per
+     *      their documentation it VALIDATES THE REPORT'S DON SIGNATURES and only then calls
+     *      `onReport` on the receiver. Absence from this tree said nothing about its existence.
+     *      (Corrected 2026-08-07 after the same mistake was repeated in conversation; sec. 2.18fg.)
      *
-     *      SO THE HONEST CLAIM IS NARROW: this bounds WHO may publish to exactly one address chosen
-     *      once. It does not bound WHAT they may publish, and it is not a consensus proof.
+     *      SO THE HONEST CLAIM, RESTATED: if this address is the real `KeystoneForwarder`, DON
+     *      consensus IS checked - upstream of here, by it, not by us. What this contract still cannot
+     *      tell is WHICH address it was given, so the guarantee is conditional on `setForwarder`
+     *      having been pointed at the genuine deployment. Verify it against Chainlink's Forwarder
+     *      Directory for the target chain before calling.
      *
      *      APPENDED, NOT INSERTED. This contract is UUPS-upgradeable and has no storage gap, so a new
      *      variable may only go at the END - inserting one would shift every slot after it and
@@ -258,23 +264,52 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
      *      meantime - inaction and a contested update both leave the previous version working.
      */
     /**
-     * @notice Set the CRE Forwarder. Once only.
+     * @notice Set or replace the CRE Forwarder address.
      *
-     * @dev WRITE-ONCE IS THE MECHANISM, not caution: if the owner could re-point the report path at
-     *      will, the guarantee would be back to trusting a key-holder.
+     * @dev ⚠️ THIS WAS WRITE-ONCE UNTIL 2026-08-07, AND THAT WAS WRONG - not a trade-off that went
+     *      the other way, but a misreading of how the Forwarder is deployed. Chainlink's own
+     *      guidance is that **the forwarder address differs between environments**: deploy against
+     *      the MockForwarder to simulate, then point at the real `KeystoneForwarder` for production,
+     *      and their `ReceiverTemplate` exposes `setForwarderAddress()` precisely "to enable
+     *      updating between environments without redeploying the consumer contract".
      *
-     *      ⚠️ IT ALSO REMOVES ROTATION, WHICH IS A REAL COST AND NOT A PURE WIN. A compromised or
-     *      mistaken address cannot be replaced - the only remedy is a contract UPGRADE, which is far
-     *      heavier than re-granting a role. That trade is only worth taking if the address is itself
-     *      a contract with its own guarantees; **for an EOA it is strictly worse than a revocable
-     *      role**, because a leaked key becomes permanent. Whoever calls `setForwarder` is choosing
-     *      between those two situations, so verify what the address IS before calling it.
+     *      Write-once made the normal, documented lifecycle require a UUPS UPGRADE, and made a
+     *      mistaken or rotated address unfixable by any lighter means. The previous comment argued
+     *      write-once "removes the human key BY CONSTRUCTION"; it does not - `OWNER_ROLE` still
+     *      holds the upgrade key, so the same human could always re-point this by upgrading. It only
+     *      made the cheap path unavailable while leaving the expensive one open. See sec. 2.18fg.
+     *
+     *      WHAT STILL BOUNDS THIS: `OWNER_ROLE`, and the fact that a changed forwarder is announced
+     *      by `ForwarderSet` with BOTH addresses, so a watcher sees a re-point rather than having to
+     *      infer it.
+     *
+     *      THE ZERO CHECK STAYS, AND IS DELIBERATELY STRICTER THAN CHAINLINK'S TEMPLATE. Theirs
+     *      reads `if (s_forwarderAddress != address(0) && msg.sender != s_forwarderAddress)`, i.e. an
+     *      unset forwarder accepts EVERY caller. `onReport` here compares unconditionally, so an
+     *      unset forwarder accepts NOBODY. Fail-closed is the right direction for a publication path
+     *      and the template's default is not worth copying.
      */
     function setForwarder(address forwarder_) external onlyRole(OWNER_ROLE) {
-        if (forwarder != address(0)) revert ForwarderAlreadySet(forwarder);
         if (forwarder_ == address(0)) revert ZeroAddress();
+        emit ForwarderSet(forwarder, forwarder_);
         forwarder = forwarder_;
-        emit ForwarderSet(forwarder_);
+    }
+
+    /**
+     * @notice ERC-165, and it is what makes the CRE path work AT ALL.
+     *
+     * @dev The Forwarder probes this before delivering: "The KeystoneForwarder uses ERC165 to check
+     *      if your contract supports the IReceiver interface before sending a report." Without it the
+     *      probe answers false and no report is ever delivered - silently, with nothing reverting.
+     *      That is why this is not cosmetic conformance. See sec. 2.18fg.
+     */
+    function supportsInterface(bytes4 interfaceId_)
+        public
+        view
+        override(AccessControlUpgradeable, IERC165)
+        returns (bool)
+    {
+        return interfaceId_ == type(IReceiver).interfaceId || super.supportsInterface(interfaceId_);
     }
 
     function activeWorkflowId() public view returns (bytes32) {
@@ -307,18 +342,23 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
     /// pin constrained. Removing it deletes a moving part and closes the bypass in one act - which is
     /// why it was the right answer rather than gating it harder.
     ///
-    /// @dev Checks `onlyRole` on ITS OWN `msg.sender`, never via an external self-call - that would
-    /// make the contract's own address the effective caller and silently require the CONTRACT to
-    /// hold REGISTRY_POSTMAN instead of whoever invoked `onReport`.
+    /// @dev THE CALLING CONVENTION IS NOW CONFIRMED, and this comment used to say it was not - it
+    /// advised granting `REGISTRY_POSTMAN` to the Forwarder "once that is verified, or to an operator
+    /// key as a manual bootstrap in the meantime". That role no longer exists, and the convention is
+    /// documented by Chainlink: the Forwarder ERC-165-probes the receiver for `IReceiver`, then calls
+    /// `onReport(bytes metadata, bytes report)` with no return value. Both are now implemented -
+    /// `supportsInterface` and this signature - so the bootstrap advice is obsolete AND the probe it
+    /// never mentioned was the thing actually blocking delivery. See sec. 2.18fg.
     ///
-    /// The metadata LAYOUT is now confirmed (see REPORT_METADATA_LENGTH) against the CRE SDK this
-    /// repo depends on, rather than assumed. What is still unconfirmed is the Forwarder's calling
-    /// convention itself - grant REGISTRY_POSTMAN to the Forwarder's on-chain address once that is
-    /// verified, or to an operator key as a manual bootstrap in the meantime.
-    function onReport(
-        bytes calldata metadata,
-        bytes calldata report
-    ) external returns (uint256 index_, bytes32 root_) {
+    /// The metadata LAYOUT is confirmed separately (see REPORT_METADATA_LENGTH) against the CRE SDK
+    /// this repo depends on, rather than assumed.
+    /// @dev RETURNS NOTHING, because `IReceiver` declares `function onReport(bytes,bytes) external;`
+    /// with no return values and this contract now implements that interface. It previously returned
+    /// `(index_, root_)`, which was invisible to the Forwarder anyway - a report arrives by
+    /// transaction, so there is no caller in a position to read a return value. Callers that want
+    /// the result read `snapshots[registryId]` or the `SnapshotAnchored` event, both of which are
+    /// what an off-chain consumer has to use regardless.
+    function onReport(bytes calldata metadata, bytes calldata report) external override {
         if (msg.sender != forwarder) revert NotForwarder(msg.sender);
 
         // Length-checked before slicing: a short header would otherwise read whatever follows it,
@@ -332,7 +372,7 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable {
         if (reported_ != active_) revert UnpinnedWorkflow(reported_, active_);
 
         (bytes32 registryId_, bytes32[] memory leavesMem_) = abi.decode(report, (bytes32, bytes32[]));
-        return _publishSnapshot(registryId_, leavesMem_);
+        _publishSnapshot(registryId_, leavesMem_);
     }
 
     /// @dev Kept separate from `onReport` so the authorization and the publication read as distinct

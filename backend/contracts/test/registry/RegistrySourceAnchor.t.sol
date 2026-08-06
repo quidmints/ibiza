@@ -7,6 +7,8 @@ import {IEvidenceRegistry} from '@rarimo/evidence-registry/interfaces/IEvidenceR
 
 import {RegistrySourceAnchor} from '../../contracts/registry/RegistrySourceAnchor.sol';
 import {CreReportMetadata} from './CreReportMetadata.sol';
+import {IReceiver} from '../../contracts/interfaces/registry/IReceiver.sol';
+import {IERC165} from '@oz/utils/introspection/IERC165.sol';
 
 /// Minimal in-test ERC-7812 registry - same pattern as EntrypointAsp.t.sol's MockEvidenceRegistry
 /// (keccak-isolated, sidesteps the real registry's Poseidon-under-Forge linking issue).
@@ -64,7 +66,8 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     _activateWorkflow(anchor, admin);
 
     // The publication gate is an ADDRESS now, not a role: `postman` is simply the Forwarder this
-    // anchor accepts, set once and never re-pointed.
+    // anchor accepts. It is replaceable by OWNER_ROLE - see the re-point tests below.
+
     vm.prank(admin);
     anchor.setForwarder(postman);
   }
@@ -147,12 +150,34 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     anchor.onReport('', report);
   }
 
+  /**
+   * Publish through `onReport` and read the result BACK FROM STATE.
+   *
+   * `onReport` returns nothing as of sec. 2.18fg - Chainlink's `IReceiver` declares
+   * `function onReport(bytes,bytes) external;` with no return value, and the Forwarder ERC-165-probes
+   * for that interface before it will deliver anything at all.
+   *
+   * THIS IS A STRONGER ASSERTION THAN THE ONE IT REPLACES, not a workaround for a lost convenience.
+   * These tests previously read `(index, root)` straight out of the call under test - a number
+   * produced BY the code being verified. `snapshots[registryId][index]` is what a real consumer
+   * reads, on-chain or off, so a publication that returned the right values while persisting the
+   * wrong ones would now be caught, and before it would not have been.
+   */
+  function _report(bytes32 registryId_, bytes32[] memory leaves_)
+    internal
+    returns (uint256 index_, bytes32 root_)
+  {
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(registryId_, leaves_));
+    index_ = anchor.snapshotCount(registryId_) - 1;
+    (root_, ) = anchor.snapshots(registryId_, index_);
+  }
+
   // ── snapshot publication (via onReport, the only entrypoint) ────────────────────────────
 
   function test_snapshot_singleLeaf_rootIsTheLeafItself() public {
     bytes32 leaf = keccak256('only-notary');
     vm.prank(postman);
-    (uint256 index, bytes32 root) = anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(leaf)));
+    (uint256 index, bytes32 root) = _report(NOTARY_REGISTRY, _oneLeafSet(leaf));
 
     assertEq(index, 0);
     assertEq(root, leaf); // a 1-leaf tree's root IS the leaf - matches MerkleProof.verify(empty proof)
@@ -165,7 +190,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     (bytes32[] memory leaves, bytes32 expectedRoot) = _twoLeafSet(keccak256('a'), keccak256('b'));
 
     vm.prank(postman);
-    (, bytes32 root) = anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, leaves));
+    (, bytes32 root) = _report(NOTARY_REGISTRY, leaves);
 
     assertEq(root, expectedRoot);
     assertEq(registry.statements(_expectedKey(NOTARY_REGISTRY, 0)), expectedRoot);
@@ -212,8 +237,8 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
 
   function test_snapshot_neverOverwritesPriorSnapshot() public {
     vm.startPrank(postman);
-    (, bytes32 root0) = anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('a'))));
-    (, bytes32 root1) = anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('b'))));
+    (, bytes32 root0) = _report(NOTARY_REGISTRY, _oneLeafSet(keccak256('a')));
+    (, bytes32 root1) = _report(NOTARY_REGISTRY, _oneLeafSet(keccak256('b')));
     vm.stopPrank();
 
     assertEq(anchor.snapshotCount(NOTARY_REGISTRY), 2);
@@ -224,8 +249,8 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
 
   function test_snapshot_distinctRegistriesDoNotCollide() public {
     vm.startPrank(postman);
-    (, bytes32 rootA) = anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('a'))));
-    (, bytes32 rootB) = anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(OTHER_REGISTRY, _oneLeafSet(keccak256('b'))));
+    (, bytes32 rootA) = _report(NOTARY_REGISTRY, _oneLeafSet(keccak256('a')));
+    (, bytes32 rootB) = _report(OTHER_REGISTRY, _oneLeafSet(keccak256('b')));
     vm.stopPrank();
 
     assertEq(anchor.snapshotCount(NOTARY_REGISTRY), 1);
@@ -241,7 +266,9 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     bytes memory report = abi.encode(NOTARY_REGISTRY, _oneLeafSet(leaf));
 
     vm.prank(postman);
-    (uint256 index, bytes32 root) = anchor.onReport(_metadata(TEST_WORKFLOW), report);
+    anchor.onReport(_metadata(TEST_WORKFLOW), report);
+    uint256 index = anchor.snapshotCount(NOTARY_REGISTRY) - 1;
+    (bytes32 root, ) = anchor.snapshots(NOTARY_REGISTRY, index);
 
     assertEq(index, 0);
     assertEq(root, leaf);
@@ -315,10 +342,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     bytes32 fabricated = keccak256('a designation no register ever contained');
 
     vm.prank(postman); // an ordinary key: it never ran the pinned workflow
-    (, bytes32 root) = anchor.onReport(
-      _metadata(TEST_WORKFLOW), // ...and simply asserts that it did
-      abi.encode(NOTARY_REGISTRY, _oneLeafSet(fabricated))
-    );
+    (, bytes32 root) = _report(NOTARY_REGISTRY, _oneLeafSet(fabricated)); // ...and simply asserts that it did
 
     assertEq(root, fabricated, 'the pin does not constrain a postman that can write its own metadata');
     assertEq(anchor.latestRoot(NOTARY_REGISTRY), fabricated);
@@ -383,29 +407,93 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
    * least allowed to contain.
    */
   /*
-   * THE FORWARDER IS WRITE-ONCE, AND THAT IS THE WHOLE SECURITY ARGUMENT (sec. 2.18cp/2.18cm).
+   * THE FORWARDER IS REPLACEABLE BY THE OWNER, AND IT WAS WRITE-ONCE UNTIL sec. 2.18fg.
    *
-   * A grantable role's guarantee is "the operator granted it to the Forwarder and to nothing else,
-   * and will not grant it again". These three tests are what make that a property of the CODE:
-   * publication is one address, chosen once, and no key-holder can move it afterwards.
+   * The two tests here previously asserted the OPPOSITE - that not even the owner could re-point it -
+   * and called that "the whole security argument". It was not one. Chainlink's own guidance is that
+   * the forwarder address DIFFERS BETWEEN ENVIRONMENTS (MockForwarder to simulate, KeystoneForwarder
+   * in production) and their `ReceiverTemplate` exposes `setForwarderAddress()` precisely to move
+   * between them without redeploying. Write-once turned the documented lifecycle into a UUPS upgrade.
+   *
+   * It also never bought what it claimed: `OWNER_ROLE` holds the upgrade key, so the same key-holder
+   * could always re-point the address by upgrading. Write-once removed the cheap path and left the
+   * expensive one open.
    */
-  function test_theForwarderCannotBeChangedOnceSet() public {
+  function test_theOwnerCanRepointTheForwarder() public {
+    assertTrue(anchor.hasRole(anchor.OWNER_ROLE(), admin), 'admin should be the owner');
+
     vm.prank(admin);
-    vm.expectRevert(
-      abi.encodeWithSelector(RegistrySourceAnchor.ForwarderAlreadySet.selector, postman)
-    );
+    anchor.setForwarder(address(0xBEEF));
+    assertEq(anchor.forwarder(), address(0xBEEF), 'the forwarder was not re-pointed');
+  }
+
+  /// The re-point must actually MOVE the authority, not merely record a new address - the old
+  /// forwarder has to stop being accepted. Without this a re-point could pass while leaving a
+  /// compromised address able to publish, which is the failure the rotation exists to fix.
+  function test_repointingRevokesTheOldForwarder() public {
+    vm.prank(admin);
+    anchor.setForwarder(address(0xBEEF));
+
+    vm.prank(postman); // the ADDRESS THAT USED TO BE the forwarder
+    vm.expectRevert(abi.encodeWithSelector(RegistrySourceAnchor.NotForwarder.selector, postman));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('x'))));
+
+    vm.prank(address(0xBEEF)); // ...and the new one is accepted
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('x'))));
+    assertEq(anchor.snapshotCount(NOTARY_REGISTRY), 1, 'the new forwarder could not publish');
+  }
+
+  /// Still refused for a non-owner, and still refused for the zero address - the latter because
+  /// `onReport` compares unconditionally, so a zero forwarder would accept NOBODY and silently brick
+  /// publication rather than opening it.
+  function test_theForwarderCannotBeRepointedByAStranger() public {
+    vm.prank(stranger);
+    vm.expectRevert();
     anchor.setForwarder(address(0xBEEF));
   }
 
-  /// ...and not even by the owner, which is the point: this is not an access-control decision the
-  /// owner gets to revisit, it is a one-time construction step.
-  function test_theOwnerCannotRepointTheForwarder() public {
-    assertTrue(anchor.hasRole(anchor.OWNER_ROLE(), admin), 'admin should be the owner');
+  function test_theForwarderCannotBeSetToZero() public {
     vm.prank(admin);
-    vm.expectRevert(
-      abi.encodeWithSelector(RegistrySourceAnchor.ForwarderAlreadySet.selector, postman)
+    vm.expectRevert(RegistrySourceAnchor.ZeroAddress.selector);
+    anchor.setForwarder(address(0));
+  }
+
+  /*
+   * ERC-165, AND THIS IS THE ONE THAT WAS SILENTLY BROKEN (sec. 2.18fg).
+   *
+   * Chainlink: "The KeystoneForwarder uses ERC165 to check if your contract supports the IReceiver
+   * interface before sending a report." This contract declared `onReport` but never advertised the
+   * interface, so the probe answered FALSE and no report would ever have been delivered.
+   *
+   * NOTHING WOULD HAVE FAILED. No revert, no event, no failing test - the ingestion path would simply
+   * have stayed silent forever, and every test in this file would have kept passing, because they all
+   * call `onReport` DIRECTLY and skip the probe the real Forwarder performs first. That is exactly the
+   * failure shape a guard earns its place against.
+   */
+  function test_theAnchorAdvertisesIReceiverToTheForwardersProbe() public view {
+    assertTrue(
+      anchor.supportsInterface(type(IReceiver).interfaceId),
+      'the Forwarder ERC-165 probe would answer false and never deliver a report'
     );
-    anchor.setForwarder(admin);
+  }
+
+  /// The interface id must be the selector of `onReport` ALONE - Solidity excludes inherited
+  /// functions from `interfaceId`, which is why ours matches Chainlink's despite the IERC165 base.
+  /// Pinned as a value so a signature change cannot move it silently.
+  function test_theReceiverInterfaceIdIsTheOnReportSelector() public pure {
+    assertEq(
+      type(IReceiver).interfaceId,
+      bytes4(keccak256('onReport(bytes,bytes)')),
+      'IReceiver.interfaceId is not the onReport selector'
+    );
+  }
+
+  /// Adding IReceiver must not shadow what AccessControl already advertised, and an unknown id must
+  /// still be false - without this a `supportsInterface` that returned true unconditionally would
+  /// pass the test above.
+  function test_supportsInterfaceKeepsAccessControlAndRejectsUnknown() public view {
+    assertTrue(anchor.supportsInterface(type(IERC165).interfaceId), 'the ERC165 id was lost');
+    assertFalse(anchor.supportsInterface(bytes4(0xdeadbeef)), 'an unknown interface answered true');
   }
 
   /// Nobody else may deliver a report - and the rejection names the caller rather than failing as a
@@ -562,7 +650,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     assertEq(leaves.length, 7, 'fixture did not carry the expected leaf count');
 
     vm.prank(postman);
-    (uint256 index, bytes32 onChainRoot) = anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(registryId, leaves));
+    (uint256 index, bytes32 onChainRoot) = _report(registryId, leaves);
 
     assertEq(index, 0, 'first snapshot should be index 0');
     assertEq(onChainRoot, goRoot, 'Go and Solidity disagree about the Merkle root of one leaf set');

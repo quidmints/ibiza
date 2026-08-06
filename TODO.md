@@ -8043,6 +8043,57 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18ew PP'S ASSOCIATION SET WAS DELETED, NOT DEFERRED - and 2.13b said keep it (user, 2026-08-06)
+
+*"why dont we use the association set proof instead of supplementing it? what did we lose"* and
+*"isnt there a way to go around the association set by using a fresh address?"*
+
+**1. A FRESH ADDRESS DOES NOT GET AROUND IT.** The set screens DEPOSITS by on-chain history, not
+addresses. A fresh address funded with stolen ETH is still traceable - chain analysis follows the
+money, and the funding path does not vanish because the last hop is new.
+
+**2. BUT IT WAS NEVER A GATE.** Buterin/Illum/Nadler/Schär/Soleimani frame it as a **separating
+equilibrium**: honest users can prove their funds do not originate from known unlawful sources, and
+bad actors **cannot produce that proof**. It works by making non-participation conspicuous, not by
+blocking entry. A criminal with genuinely clean funds passes - they were never the problem. The
+problem is withdrawing SPECIFIC known-tainted deposits, and those are identifiable.
+
+**3. SO "INSTEAD" IS NOT AVAILABLE - the two prove different things and each covers the other's hole:**
+
+| | proves | remove it and |
+|---|---|---|
+| identity registry | **who** - a scarce, registered, un-revoked person | the blacklist goes **VACUOUS** - 2.13b's own trap: mint a fresh `sk_identity`, derive an unlisted holderRoot, pass |
+| association set | **where the money came from** | provenance is unproven - an identified, un-revoked passport holder withdraws stolen funds and the protocol says nothing |
+
+**4. AND THIS WAS NOT A CONSIDERED TRADE. 2.13b SPECIFIED THREE PREDICATES:**
+> 1. `holderRoot ∈ registered identities` - permissionless, scarce, nobody's discretion.
+> 2. `holderRoot ∉ blacklist` - rule-bound, fail-open.
+> 3. *optionally* `label ∈ ASP-screened set` - **"PP's ORIGINAL chain-analysis screening, preserved
+>    as a separate predicate a deployment may enable, rather than deleted."**
+
+The instruction was **coexist**. What shipped has 1 and 2 fused into one SMT inclusion (2.13k, a good
+-43% change) and **3 absent entirely** - no `aspRoot`, no `associationRoot`, no label-set check
+anywhere in the contracts. The label survives only inside `commitment_hasher`.
+
+**HOW IT WENT MISSING WITHOUT A DECISION.** 2.13k replaced "the ASP inclusion" - but by then the ASP
+tree was already an IDENTITY tree keyed on `holder_root`, not PP's label set. So a change that
+correctly collapsed two IDENTITY checks into one reads, in the record, as though it disposed of the
+association set too. It never did; the association set had simply never been built after 2.13b, and
+nothing tracked it.
+
+**⚠️ `PrivacyPool.sol`'S OWN HEADER STILL CLAIMS IT:** *"@dev Withdrawals require a valid proof of
+being approved by an ASP."* That is false and has been for some time - the exact stale-comment
+failure mode this project has been bitten by repeatedly.
+
+- [ ] **Fix the false header on `PrivacyPool`** before anything else here - it describes a guarantee
+      the contract does not provide.
+- [ ] **Decide whether to restore predicate 3.** It is the whole regulatory argument of Privacy
+      Pools, and the protocol currently answers "where did this money come from" with nothing. This
+      is a scope decision for the repo owner, not a defect to quietly fix.
+- [ ] If restored, it is a SEPARATE predicate, per 2.13b - a deployment may enable it, with the
+      withdrawer choosing the set and the recipient choosing which ASPs they accept. Not another
+      global registry.
+
 ### 2.18ev A REVOKED-BUT-UNEXPIRED CERTIFICATE CANNOT BE REMOVED AT ALL - and the fix needs no circuit (2026-08-06)
 
 Went to build CRL non-membership as 2.18eu's highest-value item. **Checked the mechanism, and the

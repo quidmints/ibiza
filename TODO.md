@@ -8043,6 +8043,62 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18es FEWER MOVING PARTS: split the controller KEY, not the trust model (user, 2026-08-05)
+
+*"is there a way to achieve our goal with less moving parts"* - yes, and it deletes machinery instead
+of adding it. **The self-proved path needs six new components and none of them work yet:**
+
+| component | status |
+|---|---|
+| a canonical subject identifier | **unsolved** - names vary by transliteration (2.18eo); passports cover **23.3%** (2.18eq) |
+| an OPRF | needs the identifier it cannot create, and adds an operator who can deny service (2.18er) |
+| non-membership circuit | **~529k gates on EVERY withdrawal** (2.18eq) |
+| a second tree + document parsing | plus TWO fail-closed mapping tables (country, document type) |
+| exclusion-specific root freshness | the asymmetry 2.13e flags |
+| **and it still keeps a controller** | for `document.not-current` and its kind - 2.18cu says so itself |
+
+**THE ALTERNATIVE CHANGES ONE THING AND NO CODE.** The envelope is hashed ElGamal on babyJub:
+`c1 = G·r`, `shared = PK·r`, `sealed[i] = payload[i] + H(shared, i)`. `seal_payload` takes
+`controller_x/y` - **a single public key**. So:
+
+> **Let `PK` be the SUM of n independently-generated keys: `PK = Σ PKᵢ`.** Each holder keeps `skᵢ`.
+> To open an envelope each computes `c1·skᵢ` and the points are summed, giving `c1·Σskᵢ = shared`.
+> **No party ever holds the decryption key, and no party ever learns it.**
+
+**ZERO CIRCUIT CHANGE. ZERO CONTRACT CHANGE.** `PK` is one curve point whichever way it was formed;
+`seal_payload`, `CONTROLLER_KEY_X/Y` and every committed fixture see exactly what they see today. The
+change is entirely in how the key is generated and used, which is off-chain.
+
+**AND IT NEEDS NO CEREMONY IN THE DANGEROUS SENSE.** There is no dealer, no Shamir, no Lagrange, no
+toxic waste and no interactive DKG - each party generates a keypair, publishes `PKᵢ`, and the points
+are added. Re-sharing later invalidates nothing already proven, unlike a SNARK setup.
+
+**THE FAILURE MODE IS THE HARMLESS ONE, BY 2.18cu'S OWN ARGUMENT.** `n`-of-`n` means any holder can
+block a revocation - and for a BLACKLIST that fails **OPEN**: someone does not get revoked. 2.18cu
+shows that is the safe direction, precisely because inaction shrinks a blacklist. **Contrast the
+OPRF, whose operator's silence fails CLOSED and censors a withdrawer** (2.18er). Same "one party can
+stall it", opposite consequence.
+
+**WHAT IS HONESTLY GIVEN UP.** This is NOT authority-free: all `n` together can de-anonymise. It
+moves the property from *"one party can read anyone"* to *"no party can read anyone alone"*, which is
+achievable today at zero code cost - where authority-freeness is, on three measurements, not
+achievable at all for this predicate.
+
+**AND THE ANCHORED LISTS ARE NOT WASTED.** They stop being an enforcement mechanism and become an
+AUDIT one: a revocation cites the snapshot it rests on, so every use of the authority is attributable
+and falsifiable off-chain. That is what 2.18cr correctly refused to let them be a *guard*, kept as a
+*record* - the distinction being that nothing pretends to enforce it on-chain.
+
+- [ ] Decide `n` and who holds the shares. **The only real question here**, and it is governance, not
+      engineering.
+- [ ] Additive `n`-of-`n` first, since it needs no dealer. Move to `t`-of-`n` only if a lost share
+      turning off revocation permanently is judged worse than a stalled revocation - note that with a
+      blacklist, "revocation stops working" fails open by the same argument.
+- [ ] Require `revoke` to cite `(registryId, snapshotIndex)` as EVIDENCE, explicitly not as a check.
+      2.18cr rejected citation-as-guard and was right; citation-as-record is a different claim.
+- [ ] Say plainly in the docs that the sanctions predicate has an authority. Three measurements say
+      the alternative is unavailable, and an unbuilt item implies it is merely pending.
+
 ### 2.18er THE OPRF IS NOT THE BLOCKING DEPENDENCY, AND IT CONTRADICTS 2.18cu'S CENTRAL CLAIM (2026-08-05)
 
 Went to build the OPRF, since 2.18cz calls it *"load-bearing rather than optional"* and 2.18eq

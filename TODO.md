@@ -8043,6 +8043,57 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18ey WHY THE CERTIFICATE CODE EXISTS - and what today's measurements did to that reason (user, 2026-08-06)
+
+*"why do we need this code again"* - a fair question after three designs were ruled out. The chain of
+necessity, then what is left of it.
+
+**WHY IT IS THERE, in four steps, each from a recorded decision:**
+1. **2.13b chose a BLACKLIST over an allowlist.** An allowlist fails CLOSED - a gatekeeper who simply
+   never admits you censors without ever acting.
+2. **2.13b's own trap: a blacklist over identities is vacuous unless identities are SCARCE.** Mint a
+   fresh `sk_identity`, derive a holderRoot nobody listed, pass. A negative proof means nothing about
+   something you can mint more of.
+3. **Scarcity = "one real passport, one identity".**
+4. **Proving "real passport" IS the certificate code**: master list -> document signer
+   (`certificatesSmt`) -> SOD -> MRZ.
+
+So the certificate machinery exists to make identities **countable and unforgeable**, which is the
+only thing that makes any negative claim about an identity mean anything.
+
+**AND IT HAS REAL DEPENDANTS** - `HolderRegistration`, `HolderStateKeeper`, `IdentityRegistry`,
+`PrivacyPool`, `Entrypoint`, plus the notary/title path. It is not vestigial.
+
+**BUT WHAT THE BLACKLIST CAN HOLD SHRANK TODAY.** It cannot screen sanctions - 23.3% coverage, no
+canonical identifier (2.18eq/et). So the scarcity is currently in service of a list whose only sound
+contents are document-validity predicates. **That is a far smaller job than the one it was built
+for**, and the honest summary is:
+
+| this code buys | this code does NOT buy |
+|---|---|
+| proof of personhood - one passport, one identity | **sanctions screening** (measured, not argued) |
+| a revocation hook a state can pull | **fund provenance** - that was the association set, and it is gone (2.18ew) |
+| the scarcity that makes a blacklist non-vacuous | |
+
+**⚠️ SO THE REAL POSITION IS THAT WE ARE BETWEEN TWO COHERENT DESIGNS.**
+
+| | identity | provenance | answers "where did the money come from" | answers "who is this" |
+|---|---|---|---|---|
+| **A. original Privacy Pools** | none | association sets | **yes** | no - and does not need to |
+| **B. what 2.13b specified** | passport-scarce | association sets ALONGSIDE | **yes** | yes |
+| **C. what is built** | passport-scarce | **none** | **no** | yes |
+
+**C answers neither question a recipient actually asks.** It knows who withdrew and nothing about the
+funds - and the identity half cannot carry the sanctions claim that was supposed to justify it. A is
+simpler and answers the regulatory question. B is what was asked for. **C is the one combination that
+was never chosen; it is where the work stopped.**
+
+- [ ] **This is a scope decision for the repo owner, not a defect to fix quietly.** Either restore
+      predicate 3 and reach B, or decide the identity half is carrying personhood only and say so.
+- [ ] If personhood-only is the answer, the certificate code stays - `HolderRegistration`, the title
+      ledger and the notary path all need it - but the pool's claims must be rewritten, starting with
+      `PrivacyPool.sol`'s header, which still promises ASP approval it does not check.
+
 ### 2.18ex ANY CSCA MAY SIGN ANY CERTIFICATE, AND NOTHING RECORDS WHICH ONE DID (user, 2026-08-06)
 
 *"someone can offer a malicious certificate that passes the check"* - **yes. Not by the route that is

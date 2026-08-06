@@ -8088,8 +8088,17 @@ anyone can prove from public data.
       the CMS `signedData` and `issuerAndSerial` is already a declared type - but **neither is read**,
       so this is real work rather than plumbing. Check first whether the master list's CRL slot is
       even populated, or whether CRLs must come from the PKD separately.
-- [ ] Add the inclusion-proof removal path. Small, self-contained, and testable against a synthetic
-      anchored root exactly as `RegistrySourceAnchor.t.sol` already does.
+- [ ] **⚠️ AND THE ICAO WORKFLOW HAS NO ON-CHAIN WRITE PATH AT ALL.** `backend/cre/icao_master_list`
+      is `masterlist.go` + tests: no `main.go`, no `WriteReport`, unlike `notary_registry` and
+      `sanctions_lists`. So `icaoMasterTreeMerkleRoot` is TYPED IN by an owner today, and the
+      workflow's whole point - that ICAO's own CMS signature removes the trusted publisher - never
+      reaches the chain. **The new revocation root inherits exactly that**, which is why the contract
+      says so rather than implying it is trustless. This is the gap that makes both roots authorities.
+- [x] **Add the inclusion-proof removal path.** **DONE**: `StateKeeper.removeRevokedCertificate`
+      (permissionless, proof-gated) + `revokedCertificatesRoot` + `changeRevokedCertificatesRoot`,
+      with 6 tests including the gap itself pinned as a test. Kept SEPARATE from `removeCertificate`
+      rather than relaxing its expiry check - that one is `onlyRegistration` and unconditional, so
+      loosening it would hand every registered registration the power to drop ANY certificate.
 - [ ] **Do not gate it on the workflow.** The contract half closes the hole for any anchored revoked
       set; the workflow decides what goes in it.
 

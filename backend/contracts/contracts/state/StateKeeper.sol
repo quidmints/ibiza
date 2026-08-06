@@ -12,6 +12,8 @@ import {AMultiOwnable} from "@solarity/solidity-lib/access/AMultiOwnable.sol";
 
 import {DynamicSet} from "@solarity/solidity-lib/libs/data-structures/DynamicSet.sol";
 
+import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+
 import {PoseidonSMT} from "./PoseidonSMT.sol";
 
 contract StateKeeper is Initializable, AMultiOwnable, UUPSUpgradeable {
@@ -62,6 +64,25 @@ contract StateKeeper is Initializable, AMultiOwnable, UUPSUpgradeable {
 
     bytes32 public icaoMasterTreeMerkleRoot;
 
+    /**
+     * @notice Root of the tree of REVOKED certificate keys, in the same `certificateKey` form
+     *         `addCertificate` stores.
+     *
+     * @dev WHY THIS EXISTS: until it did, a certificate revoked BEFORE its expiry could not be
+     *      removed by anybody. `removeCertificate` requires `expirationTimestamp < block.timestamp`,
+     *      so a compromised CSCA stayed usable for every passport it had signed until the calendar
+     *      caught up - which for a country signing key is years. Certificate revocation is the
+     *      mechanism that CONTAINS a key compromise, and containment was waiting on expiry.
+     *
+     *      KEYED ON THE PUBLIC KEY, NOT A SERIAL, because that is what this contract and the
+     *      circuits both use. CRLs list `(issuer, serial)`; the ICAO master list carries the
+     *      certificates themselves, so serial resolves to key off-chain and only the key is
+     *      published here. That is what makes this provable from public data rather than asserted.
+     *
+     *      APPENDED, NOT INSERTED - this contract is upgradeable and has no storage gap.
+     */
+    bytes32 public revokedCertificatesRoot;
+
     mapping(bytes32 => bool) public usedSignatures;
 
     mapping(bytes32 => CertificateInfo) internal _certificateInfos;
@@ -75,6 +96,7 @@ contract StateKeeper is Initializable, AMultiOwnable, UUPSUpgradeable {
 
     event CertificateAdded(bytes32 certificateKey, uint256 expirationTimestamp);
     event CertificateRemoved(bytes32 certificateKey);
+    event RevokedCertificatesRootChanged(bytes32 newRoot);
     event BondAdded(bytes32 passportKey, bytes32 identityKey);
     event BondRevoked(bytes32 passportKey, bytes32 identityKey);
     event BondIdentityReissued(bytes32 passportKey, bytes32 identityKey);
@@ -129,6 +151,44 @@ contract StateKeeper is Initializable, AMultiOwnable, UUPSUpgradeable {
         certificatesSmt.add(certificateKey_, certificateKey_);
 
         emit CertificateAdded(certificateKey_, expirationTimestamp_);
+    }
+
+    /**
+     * @notice Removes a certificate PROVEN revoked, whether or not it has expired.
+     *
+     * @dev PERMISSIONLESS ON PURPOSE - the proof is the authorisation. Requiring a role here would
+     *      mean a compromised key stays live until a privileged party acts, which is the failure
+     *      this function exists to remove. Anyone can carry the evidence.
+     *
+     *      DELIBERATELY SEPARATE FROM `removeCertificate` rather than relaxing its expiry check.
+     *      That function is `onlyRegistration` and unconditional; loosening it would let any
+     *      registered registration drop ANY certificate, which is a censorship power none of them
+     *      has today. Here the power is bounded by the anchored set.
+     *
+     *      ⚠️ THE ROOT IS OWNER-SET, exactly like `icaoMasterTreeMerkleRoot`, so this is as
+     *      trustless as the master root and no more. The ICAO workflow verifies ICAO's own CMS
+     *      signature but has NO on-chain write path (`backend/cre/icao_master_list` is a library
+     *      with no `main.go`), so both roots are typed in today. Feeding them from the anchor is
+     *      what would make this authority-free; see TODO sec. 2.18ew.
+     */
+    function removeRevokedCertificate(
+        bytes32 certificateKey_,
+        bytes32[] calldata revocationProof_
+    ) external virtual {
+        require(revokedCertificatesRoot != bytes32(0), "StateKeeper: no revocation root");
+        require(
+            MerkleProof.processProof(revocationProof_, certificateKey_) == revokedCertificatesRoot,
+            "StateKeeper: certificate is not proven revoked"
+        );
+
+        CertificateInfo storage _info = _certificateInfos[certificateKey_];
+        require(_info.expirationTimestamp > 0, "StateKeeper: certificate is not registered");
+
+        delete _certificateInfos[certificateKey_];
+
+        certificatesSmt.remove(certificateKey_);
+
+        emit CertificateRemoved(certificateKey_);
     }
 
     /**
@@ -278,6 +338,20 @@ contract StateKeeper is Initializable, AMultiOwnable, UUPSUpgradeable {
      */
     function changeICAOMasterTreeRoot(bytes32 newRoot_) external virtual onlyOwner {
         icaoMasterTreeMerkleRoot = newRoot_;
+    }
+
+    /**
+     * @notice Sets the root of the revoked-certificate tree.
+     * @param newRoot_ the new revocation root
+     *
+     * @dev Same authority as `changeICAOMasterTreeRoot` and for the same reason: both describe what
+     *      ICAO published. Setting it to zero disables `removeRevokedCertificate` rather than
+     *      accepting every proof, which is the safe direction for a root that has not been
+     *      established yet.
+     */
+    function changeRevokedCertificatesRoot(bytes32 newRoot_) external virtual onlyOwner {
+        revokedCertificatesRoot = newRoot_;
+        emit RevokedCertificatesRootChanged(newRoot_);
     }
 
     /**

@@ -8112,19 +8112,34 @@ separate cleanly by ONE test: does the identifier exist on both sides?**
 |---|---|---|---|
 | document is genuine | **CSCA public key** - `leafPreimage` uses the RSA modulus / EC point itself | **yes** | **none** - shipped, `Registration2.registerCertificate` |
 | certificate revoked | **issuer + serial** - already parsed as `issuerAndSerial`, CRLs already fetched | **yes** | **none** - self-provable, unbuilt |
-| fund provenance | **deposit label** - `keccak(SCOPE, nonce)`, pool-assigned | **yes** | **none** - PP's association sets, machinery intact |
+| ~~fund provenance~~ | deposit label - pool-assigned | yes | **NOT PROVEN AT ALL - see the correction below** |
 | **person is sanctioned** | a name, or a document number present for **23.3%** | **NO** (2.18eo/eq/et) | **unavoidable** |
 
-**THREE OF THE FOUR NEED NO AUTHORITY AND NO THRESHOLD, and the reason is the same in each: the key
-is a value the document ITSELF carries and the publisher ALSO publishes.** A CSCA key is the key. A
-certificate serial is the serial. A deposit label is assigned by the pool. Nothing needs
-transliterating, mapping or blinding.
+**TWO OF THE FOUR NEED NO AUTHORITY AND NO THRESHOLD, and the reason is the same in each: the key is
+a value the document ITSELF carries and the publisher ALSO publishes.** A CSCA key is the key. A
+certificate serial is the serial. Nothing needs transliterating, mapping or blinding.
+
+**⚠️ CORRECTION (2026-08-06): I listed THREE and fund provenance was wrong.** The label is still
+created by the pool at deposit exactly as in original Privacy Pools - `keccak(SCOPE, ++nonce)`, with
+`depositors[_label]` recorded - but **nothing proves it is in an approved set any more.** Original PP
+proves TWO memberships at withdrawal: the state tree AND an ASP association set. Ours proves the state
+tree and the IDENTITY REGISTRY - `PrivacyPool.sol` says it plainly: *"ONE identity check, where there
+used to be two (sec. 2.13k)"*. The label survives only as an input to `commitment_hasher`.
+
+That is the 2.13b inversion working as designed - allowlist-of-labels became blacklist-of-identities -
+but it means **fund provenance is not a trustless predicate we already have; it is not a predicate we
+have at all.** Whether it should return as a SEPARATE proof alongside identity is an open design
+question, not a settled one, and it is the honest answer to "what does the protocol prove about where
+the money came from": today, nothing.
 
 **THE FOURTH IS THE ONLY ONE THAT EVER NEEDED A CONTROLLER, and the answer is to stop claiming it.**
 Drop person-sanctions from the protocol. What the protocol then proves is:
 
-> a genuine, **un-revoked** passport holder withdrawing their own funds, whose deposit is in an
-> association set the recipient chose to accept
+> a genuine, **un-revoked** passport holder withdrawing their own funds
+>
+> **and NOT** "whose deposit is in an association set the recipient chose to accept" - that clause was
+> in an earlier draft of this section and is false: the association-set proof was replaced by the
+> identity check, not kept alongside it.
 
 **AND SANCTIONS SCREENING STILL HAPPENS - somewhere it can be done correctly.** At the fiat
 on/off-ramp the institution has the person's actual name, is legally obliged to screen, and has a

@@ -8043,6 +8043,78 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18ez FOUR CORRECTIONS, AND THE SCARCITY ARGUMENT HAS AN ALLOWLIST UNDER IT (user, 2026-08-06)
+
+**1. THE ASP SET IS NOT OPTIONAL AND NOT AN ALLOWLIST.** Repo owner: *"it was not meant to be a
+separate predicate but must be greenlighted (tainted non-membership as well as blacklist
+non-membership)"*. I read 2.13b's *"optionally"* as "a deployment may skip it". Wrong on both counts -
+it is REQUIRED, and it should be **taint NON-membership**, not PP's approved-set membership. Both
+predicates then have the same polarity and the same failure direction:
+
+| | proves | fails |
+|---|---|---|
+| `label ∉ tainted set` | these funds are not known-bad | **OPEN** - an unpopulated taint set admits everyone |
+| `identity ∉ blacklist` | this person is not excluded | **OPEN** - same |
+
+PP's original is an ALLOWLIST of approved labels and fails CLOSED. Inverting it is the same move
+2.13b made for identities, applied to funds, and it is strictly better for censorship-resistance.
+
+**2. SCARCITY IS NOT "ONE PASSPORT, ONE IDENTITY" - I said that and it is wrong.** The design is
+explicitly multi-document: *"several documents may share one holder root"*, with `DocumentRenewedVia`
+binding a renewed passport to the SAME `holderRoot`. Scarcity comes from the other direction: a
+document can be REGISTERED ONCE. `_usedDocumentHash` is a bool, and the `dg1Hash => holderRoot`
+mapping that used to sit beside it was DELETED for privacy (2.18bg) - so the system knows a document
+is spent without recording whose it is. **Scarcity is "a document backs at most one holder", not "a
+holder has at most one document".**
+
+**3. HOW RARIMO PROVES A REAL PASSPORT** - `Registration2.register`, permissionless, no signer, no
+role: a Groth16 proof over the passport binding `dgCommit` and the identity key, against
+`certificatesRoot_` - the SMT of document-signer certificates, each admitted by an on-chain ICAO
+signature check under the master root.
+
+**⚠️ 4. AND OUR HOLDER PATH IS SIGNER-GATED, WHICH BREAKS 2.13b'S FOUNDATION.**
+`HolderRegistration._authenticateDocument` does:
+```solidity
+address signer_ = ECDSA.recover(...);
+require(_isSigner(signer_), "HolderRegistration: caller is not a signer");
+```
+2.13b's argument for scarcity was, verbatim: *"`registerDocumentViaNoir` ... is **not role-gated** -
+anyone with a valid passport can register and nobody can decline them. So inclusion there is
+proof-of-personhood, NOT approval."* **It is role-gated.** So inclusion IS approval, the registered
+set IS an allowlist, and it fails CLOSED - the exact shape 2.13b was written to eliminate, sitting
+underneath the blacklist that replaced it. rarimo's own path has no such gate.
+
+**5. WHY THE BLACKLIST CANNOT SCREEN SANCTIONS - and why the TAINT SET CAN.** The blacklist MECHANISM
+is fine; the problem is POPULATING it. To list someone you must match a published listing to a
+registered commitment, and 2.18eq measured the only exact identifier at **23.3%**. But the taint set
+has no such problem:
+
+> **Addresses and transfers are canonical, exact, and public.** Taint propagates by rules over data
+> everyone can see and recompute. There is no transliteration, no alias arity, no missing field.
+
+**That is the asymmetry that decides where automation is possible**: identity matching is not
+automatable, fund taint is. It is also why the ASP predicate carries the regulatory weight and the
+identity predicate cannot.
+
+**6. AND IT CAN BE MORE TRUSTLESS THAN PP'S MODEL.** PP relies on a curated association set - you
+trust the ASP's judgement. A taint set derived by PUBLISHED RULES over public chain data is
+REPRODUCIBLE: anyone can re-run the rules and get the same set, so the operator is checkable rather
+than trusted. **The repo owner's caveat is the right one though: "public data may not hold."**
+Attribution - *which* address is a hack - is a judgement about the world, not a fact on-chain. So the
+honest split is: **propagation is deterministic and automatable; the seed set is a claim someone
+makes.** Anchor the seeds separately from the rules so the judgement is visible and small.
+
+**7. "WHAT IS 2.13b?"** A section of this file. `TODO.md` is the project's decision log, numbered
+`2.<n><letters>` in the order written, and 2.13b is the 2026-07-27 entry that inverted the ASP.
+
+- [ ] **Restore the taint predicate as REQUIRED, inverted**: `label ∉ tainted`. Not optional, not an
+      allowlist.
+- [ ] **Fix or justify the signer gate on `registerDocumentViaNoir`.** As written, personhood is
+      approval and the whole blacklist argument rests on an allowlist. Either remove the gate to
+      match rarimo's permissionless `register`, or 2.13b's reasoning has to be redone honestly.
+- [ ] Automate taint propagation from public chain data, with the SEED set anchored separately from
+      the RULES, so what is judged stays distinguishable from what is computed.
+
 ### 2.18ey WHY THE CERTIFICATE CODE EXISTS - and what today's measurements did to that reason (user, 2026-08-06)
 
 *"why do we need this code again"* - a fair question after three designs were ruled out. The chain of

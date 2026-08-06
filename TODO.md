@@ -13287,3 +13287,41 @@ instantiated once the proof paths moved to real verifiers, and a dead Groth16 `I
   deployed) but it is UUPS — once deployed, a change of that shape needs a migration, not an upgrade.
 - **The identity-keyed ASP has a larger blast radius than upstream's label-keyed one:** revoking one
   identity blocks **every** note it holds, across every deposit.
+
+### 2.18fa The ASP was never dropped — it was inverted and FUSED. The gap is elsewhere (2026-08-06)
+
+**Correcting 2.18ez, which said the ASP set was dropped and should be restored as a required
+predicate. It was not dropped, and there is no second predicate to restore.** §2.13b's title is
+"INVERT the ASP" — a polarity change on ONE predicate.
+
+**Approved-set membership and taint non-membership are the same predicate.** Over a fixed universe,
+`label ∈ A` ⟺ `label ∉ T` when `A = U \ T`. They differ only in what INACTION does: an allowlist
+denies by omission (fails closed), a blacklist permits by omission (fails open) — which is exactly
+the argument §2.13b already makes.
+
+**And the code already implements both with one SMT operation.** `circuits/pp/src/withdraw.nr`
+calls `smt_verifier_full` with `SMT_INCLUSION` + `STATUS_CLEAN = 0`:
+  - inclusion in the identity tree  = the approved set (proof-of-personhood)
+  - leaf value == 0                 = not revoked (taint non-membership)
+`IdentityRegistry.revoke:325-330` writes the predicate AS the leaf value, so revocation makes the
+clean-status proof impossible rather than adding a row to a published blacklist. That ALREADY
+satisfies the confidentiality constraint at §2.13b+ ("publishing the tree publishes the list"): the
+tree is public, the reason is the leaf, non-membership is never stated.
+
+**THE ACTUAL GAP is the other half of §2.13b's title — "keep PP's labels alongside".** PP's ASP is
+over LABELS (deposits — money provenance); ours is over IDENTITIES (people). A clean person can
+deposit dirty funds. `Entrypoint.sol:118-137` records that no admission path exists at all. OPEN.
+
+**⚠ AND A VERIFIED CONTRADICTION IN §2.13b'S OWN LOAD-BEARING CLAIM.** §2.13b:2288 asserts
+`registerDocumentViaNoir` is "not role-gated", which is what makes inclusion PERSONHOOD rather than
+APPROVAL. **It is gated.** `HolderRegistration._authenticateDocument:311-315` recovers a signer from
+`signature_` and requires `_isSigner(signer_)` — a backend attestation over the passport struct.
+NOT the caller (the error string `"caller is not a signer"` is wrong, and misled an earlier reading
+into calling it a caller gate). Anyone may relay; a backend signer must sign first. So an inactive
+signer set silently censors registration — the exact fails-closed inaction lever §2.13b exists to
+remove, reintroduced through the registration door.
+
+Rarimo's own `Registration2.register` is permissionless Groth16 with no signer, so **this gate is
+ours, not inherited**. Either the gate goes, or §2.13b's argument does — both cannot stand. Not yet
+decided, therefore OPEN; nothing downstream of it may be closed. Fixing the error string is not the
+fix and would hide the finding.

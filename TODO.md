@@ -8043,6 +8043,59 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18et "IS THERE A WAY WITH NO SACRIFICE" - no, and the binding constraint is the DATA (user, 2026-08-05)
+
+**No. And it is worth being exact about why, because the obstacle is not cryptographic and no
+protocol removes it.**
+
+**THE REQUIREMENT.** To decide whether holder H is on list L, something must compare an identifier H
+can produce against one L publishes. That is not a design choice; it is what "is this person listed"
+means.
+
+**WHAT THE TWO SIDES ACTUALLY CONTAIN.** An ICAO 9303 MRZ carries: document type, issuing state,
+surname, given names, document number, nationality, DOB, sex, expiry, personal number. Measured
+against the real OFAC SDN (7,473 individuals):
+
+| field | in the list | usable as an exact key |
+|---|---|---|
+| date of birth | 98.6% | **no** - not unique; blocking on DOB+nationality refuses thousands of unrelated people |
+| nationality | 74.4% | **no** - not unique |
+| place of birth | 63.6% | **no** - not in the MRZ at all |
+| names | ~100% | **no** - transliteration and alias ordering vary, by the workflow's own comment |
+| **document number** | **27.7%** | **yes - and it is the only one** |
+
+> **The exact overlap between a passport and a sanctions listing is the document number, and nothing
+> else. It is present for 23.3% of listed individuals across all three sources.**
+
+**SO EVERY DESIGN INHERITS THE SAME CEILING.** An OPRF blinds an identifier; it does not create one.
+A ZK circuit proves a statement about data; it does not supply data the publisher never wrote. A
+threshold key splits who may look; it does not make the comparison possible without looking. **No
+protocol can compare a field that one side does not publish.**
+
+**THEREFORE THE CHOICE IS WHICH SACRIFICE, and all three are now measured rather than argued:**
+
+| design | coverage | authority | failure mode |
+|---|---|---|---|
+| document-binding (2.18ep/eq) | **23.3%** | **none** | fails open - unlisted passports clear |
+| OPRF path (2.18er) | needs an identifier that does not exist | an operator who can **deny service** | fails **CLOSED** - censors a withdrawer |
+| threshold controller (2.18es) | **complete** | `n` parties, none alone | fails open - a stalled share means no revocation |
+
+**THE OPRF ROW IS NOT A TRADE AT ALL** - it pays a censorship vector for a capability it cannot
+deliver without the identifier it presupposes. Between the other two, only the threshold design is
+complete, and its sacrifice is the one that can be BOUNDED rather than eliminated.
+
+**HOW TO BOUND IT, which is the closest thing to "no sacrifice" available.** The residual power is
+that `n` parties together can read an envelope. Make every exercise of it ATTRIBUTABLE: each share
+holder signs what they decrypted, and a revocation cites the snapshot it rests on. Mass
+de-anonymisation stays possible and becomes **visible** - which is a real property, and is not the
+same as claiming it cannot happen.
+
+- [ ] **Say this in the docs.** The sanctions predicate has an authority; the reason is that the
+      lists do not publish a field a passport holder can also produce. Users can then judge it.
+- [ ] Revisit ONLY if a source begins publishing a canonical subject identifier, or if registration
+      ever binds a document type whose number IS widely listed. Both are external events, not work
+      items - so this should not sit in the queue as though it were pending.
+
 ### 2.18es FEWER MOVING PARTS: split the controller KEY, not the trust model (user, 2026-08-05)
 
 *"is there a way to achieve our goal with less moving parts"* - yes, and it deletes machinery instead

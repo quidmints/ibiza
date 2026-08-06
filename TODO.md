@@ -13665,3 +13665,50 @@ UKRAINE'S MINISTRY OF JUSTICE NOTARY REGISTRY - legal notaries - and has nothing
 "We already did it for the notary stuff" refers to that. No TLS attestation capability exists here.
 
 Both OPEN. Neither blocks §2.18ff's fund-side conclusion.
+
+### 2.18fj The sanctions workflow parses NAMES and discards the one on-chain-checkable field (2026-08-07)
+
+**VERIFIED, NOT ASSERTED.** OFAC's SDN publishes SANCTIONED DIGITAL CURRENCY ADDRESSES as ID records
+whose `idType` reads `"Digital Currency Address - XBT"`, `"- ETH"`, `"- LTC"`, `"- XMR"` etc., carried
+in the `idList` element (`sdn:idListType`). A maintained extractor already exists -
+`0xB10C/ofac-sanctioned-digital-currency-addresses` - so per rule 8 this is a port, not a hand-roll,
+and it doubles as the reference for the exact element path.
+
+**AND `idList` IS A CONTAINER OUR PARSER DELIBERATELY WALKS AROUND** (`sources.go:243`, `:433`:
+"OFAC nests `<uid>` inside an entry's akaList, addressList and idList, so a walker that [descends]
+..."). `ListedSubject` carries `Reference`, `Kind`, `NameParts` and nothing else. **The addresses are
+fetched, parsed past, and thrown away.**
+
+**WHY THIS IS THE FINDING RATHER THAN A NICE-TO-HAVE.** Per §2.18fh the name-keyed tree cannot be
+checked against `dg1Hash`. It equally cannot be checked against `label`, which is chain-derived. So
+**the workflow currently anchors a root that no on-chain predicate can consume at all.** The address
+field is the only one in the entire feed that lives in an on-chain key space, and it satisfies every
+constraint the user has set:
+  - CANONICAL - an address is exact bytes; no transliteration, no alias ordering
+  - NO FUZZINESS - exact match, not name matching
+  - NO THRESHOLDS - membership is a yes/no fact
+
+**IT ALSO CORRECTS §2.18ez.** That entry said taint SEED ATTRIBUTION is "a judgement". For
+OFAC-listed addresses it is not - the seeds are published, exactly and by name. Judgement enters only
+at PROPAGATION (how far taint travels from a seed), which is a separate, later decision.
+
+**THE JOIN, stated so nobody assumes it is direct:** an OFAC address is a DEPOSITOR ADDRESS; our
+`label` is a per-deposit identifier. They are linked at deposit time - `Entrypoint` sees `msg.sender`
+- so the chain is `sanctioned address -> deposit -> label`, and the withdrawal predicate stays
+`label NOT IN taintedLabels` exactly as §2.18fe describes. Nothing about the circuit design changes;
+only which field the workflow extracts and which key space the anchored tree uses.
+
+**NOT VERIFIED, do not assume:** whether UK OFSI and UN SC publish crypto addresses in their exports.
+Checked for OFAC only. If they do not, the address-keyed tree is OFAC-only and the other two remain
+name-keyed and on-chain-unusable.
+
+**CROSS-SOURCE CORROBORATION, since it was the original question:** there is NO shared identifier
+across the three sources (`sources.go` has no cross-reference field, and `Reference` is each source's
+own). Subject-level corroboration would therefore need NAME MATCHING - fuzzy, and ruled out by the
+user. What IS available threshold-free: each source anchors its own `registryId` already (one list per
+deployment), so composition is a CONJUNCTION the on-chain consumer chooses - "absent from all three"
+or "absent from OFAC" - both exact, neither a threshold. Note the direction of the trade before
+picking: "excluded if in ANY list" resists evasion but lets one erroneous source censor; "excluded
+only if in ALL" resists censorship but any single listing is evadable.
+
+OPEN. The parser change is the prerequisite for everything in §2.18fe.

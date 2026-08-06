@@ -13551,3 +13551,54 @@ on-chain-inserted tree. Therefore:
 
 §2.18fe constraints 2 (populatability: labels automatable, identities only via `dg1Hash` at
 registration, 23.3% coverage) and 3 (domain separation) are UNAFFECTED and still open. Nothing built.
+
+### 2.18fg The CRE ingestion path could NEVER have delivered a report — ERC-165 (2026-08-07)
+
+**LANDED.** `IReceiver` implemented, `onReport` conformed, forwarder made replaceable.
+489 tests pass / 0 fail; `tools/check-client-abis.py` green.
+
+**THE DEFECT, and its shape is why it survived.** Chainlink: *"The KeystoneForwarder uses ERC165 to
+check if your contract supports the IReceiver interface before sending a report."*
+`RegistrySourceAnchor` declared `onReport` but never advertised the interface, so **the probe would
+have answered false and no report would ever have arrived.** Nothing reverts. No event is missing,
+because none was ever due. Every test in `RegistrySourceAnchor.t.sol` kept passing **because they all
+call `onReport` DIRECTLY and skip the probe the real Forwarder performs first** - the tests exercised
+the second half of a handshake whose first half was absent.
+
+Note the selector detail that hid it: Solidity derives a selector from the PARAMETER LIST alone, so
+the old `onReport` returning `(uint256, bytes32)` was still *callable* by the Forwarder. It is the
+ERC-165 probe, not the call, that rejects a non-conforming receiver.
+
+**THREE FIXES, all read off Chainlink's documentation rather than inferred:**
+  1. `contracts/interfaces/registry/IReceiver.sol` - ONE shared declaration; `supportsInterface`
+     implemented, overriding `AccessControlUpgradeable`.
+  2. `onReport` returns nothing, per `function onReport(bytes,bytes) external;`. No caller could read
+     a return value anyway - a report arrives by transaction.
+  3. **`setForwarder` is replaceable.** Write-once was wrong, not a trade taken the other way: the
+     address DIFFERS BETWEEN ENVIRONMENTS (MockForwarder to simulate, `KeystoneForwarder` in
+     production) and `ReceiverTemplate` exposes a setter to move between them without redeploying.
+     Write-once made the documented lifecycle require a UUPS upgrade - **and never bought what it
+     claimed, since `OWNER_ROLE` holds the upgrade key, so the same holder could always re-point by
+     upgrading.** It removed the cheap path and left the expensive one open. `ForwarderSet` now
+     carries both addresses so a re-point is visible as a re-point.
+
+**KEPT, AND DELIBERATELY STRICTER THAN CHAINLINK'S TEMPLATE.** Theirs is
+`if (s_forwarderAddress != address(0) && msg.sender != s_forwarderAddress)` - an unset forwarder
+accepts EVERY caller. Ours compares unconditionally, so an unset forwarder accepts NOBODY.
+Fail-closed is right for a publication path; the template's default was not worth copying.
+
+**ALSO CORRECTED: the "no Forwarder exists anywhere in this repository" note.** It concluded the
+forwarder might be a plain EOA. That was a REPO-SCOPED SEARCH standing in for a fact about Chainlink -
+`KeystoneForwarder` is a Chainlink-operated contract that validates the report's DON signatures before
+calling `onReport`. Absence from this tree said nothing about its existence. Same defect class as
+§2.18fb; the honest claim is now conditional on `setForwarder` pointing at the genuine deployment,
+which must be checked against Chainlink's Forwarder Directory for the target chain.
+
+**TESTS NOW READ FROM STATE.** They previously destructured `(index, root)` out of the call under
+test - a value produced BY the code being verified. They now read `snapshots[registryId][index]`,
+which is what any real consumer reads, so a publication that reported correctly and persisted wrongly
+would be caught.
+
+**RELEVANT TO §2.18fe/§2.18ff:** `backend/cre/sanctions_lists/main.go` already exists, so the
+exclusion set's ingestion workflow is written. It could not have delivered until this change. Whether
+it has an on-chain write path is NOT verified here and remains open.

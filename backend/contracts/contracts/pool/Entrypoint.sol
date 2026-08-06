@@ -306,31 +306,28 @@ contract Entrypoint is
     emit FeesWithdrawn(_asset, _recipient, _balance);
   }
 
-  /*///////////////////////////////////////////////////////////////
-                           VIEW METHODS 
-  //////////////////////////////////////////////////////////////*/
-
-
-  /// @inheritdoc IEntrypoint
-  /// @dev Replaces the old `latestActiveRoot()` equality check. Any root this contract has ever
-  ///      computed is accepted, forever - safe ONLY because the tree is append-only, which is now
-  ///      enforced by construction rather than assumed of an off-chain operator. An old root's
-  ///      membership set is a strict subset of the current one, so accepting it grants nothing the
-  ///      current root would not.
-  ///
-  ///      There is deliberately no activation delay here. Upstream's existed so watchers could
-  ///      spot "a malicious/equivocating postman" pushing a fabricated root - a threat that no
-  ///      longer exists, because no postman can author a root at all. Keeping the delay would only
-  ///      have forced a newly admitted identity to wait an hour before their own inclusion proof
-  ///      worked, buying nothing: there was never any mechanism to act on the warning it gave.
-
-  /// @notice Current size (leaf count) and depth of the ASP tree, for wallets building inclusion
-  ///         proofs against it.
-
-  /// @notice Current depth of the ASP tree - the `asp_tree_depth` public signal a withdrawal proof
-  ///         must carry.
-
-  /// @notice Deterministic, field-reduced ERC-7812 statement key for the ASP root at `_index`.
+  /*
+   * THERE ARE NO VIEW METHODS HERE, AND FOUR ORPHANED DOC BLOCKS SAID OTHERWISE UNTIL 2026-08-07.
+   *
+   * They documented `latestActiveRoot`, an ASP tree size accessor, an ASP tree depth accessor and an
+   * ASP statement-key helper - none of which exist; the next function after them was `receive()`.
+   * Deleted rather than updated, because the reasoning inside them was ACTIVELY WRONG and pointed at
+   * the money path:
+   *
+   *   "any root this contract has ever computed is accepted, forever - safe ONLY because the tree is
+   *    append-only"
+   *
+   * The tree that now gates withdrawals is NOT append-only. `IdentityRegistry.revoke` calls
+   * `_tree.update(commitment_, predicate_)`, so a pre-revocation root still shows a revoked identity
+   * as CLEAN. Accepting old roots forever would let a revoked identity withdraw. That is why
+   * `IdentityRegistry.isValidRoot` bounds acceptance by `MAX_ROOT_AGE` (see its sec. 3 header), and
+   * why anyone porting the deleted reasoning to the identity path would remove the guard that stops
+   * exactly this. See TODO sec. 2.18fb.
+   *
+   * One block also claimed a withdrawal proof "must carry" an `asp_tree_depth` public signal.
+   * `ProofLib.WithdrawProof` has SEVEN slots and no such signal; the ASP tree depth was upstream's,
+   * needed because its ASP tree was a variable-depth LeanIMT. Ours is a fixed-depth SMT (2.18fc).
+   */
 
   /*///////////////////////////////////////////////////////////////
                             RECEIVE

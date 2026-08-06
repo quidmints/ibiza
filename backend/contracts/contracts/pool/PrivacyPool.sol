@@ -31,7 +31,21 @@ import {State} from './State.sol';
 /**
  * @title PrivacyPool
  * @notice Allows publicly depositing and privately withdrawing funds.
- * @dev Withdrawals require a valid proof of being approved by an ASP.
+ * @dev Withdrawals require a valid proof of a REGISTERED, UNREVOKED IDENTITY - not ASP approval.
+ *      Upstream's eighth public signal was `ASPRoot` and the leaf it proved membership of was the
+ *      `label`, i.e. the DEPOSIT (0xbow `withdraw.circom`: `ASPRootChecker.leaf <== label`). Slot [5]
+ *      now carries `identityRoot` and the leaf is the withdrawer's identity commitment, proven
+ *      included with a CLEAN status (`ProofLib.sol` sec. 2.13k collapsed `ASPRoot` + `revocationRoot`
+ *      into it).
+ *
+ *      SO THE SUBJECT OF THE PREDICATE CHANGED, from funds to people, and this line claimed the
+ *      upstream one until 2026-08-07. **Nothing here screens fund provenance.** A holder with a clean
+ *      identity may withdraw a deposit of any origin. `Entrypoint` has no admission path at all - see
+ *      its ASSOCIATION SET METHODS block - so there is no second check elsewhere.
+ *
+ *      The `label` is still bound into both commitments (`pp/src/withdraw.nr:80,99` over
+ *      `commitment_hasher`), exactly as upstream, so a provenance check remains expressible without
+ *      touching the note format. TODO sec. 2.18fa records the gap, 2.18fe the design.
  * @dev Deposits can be irreversibly suspended by the Entrypoint, while withdrawals can't.
  */
 abstract contract PrivacyPool is State, IPrivacyPool {
@@ -95,13 +109,22 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     // is simultaneously "registered" and "not revoked", because a revoked leaf holds its predicate
     // as the value and can no longer prove 0.
     //
-    // `isValidRoot`, NOT "is known". The old ASP check deliberately accepted ANY historical root,
-    // which was safe for a pure INCLUSION tree: an append-only tree's historical membership is a
-    // strict subset of the current one, so an old root can only ever under-approve. THAT REASONING
-    // NO LONGER APPLIES. This tree also carries revocations, and an old root has FEWER of those, so
-    // honouring one indefinitely would let a revoked identity prove the clean state forever. The
-    // registry therefore expires superseded roots while keeping the LATEST valid regardless of age,
-    // so controller inaction still cannot block a withdrawal.
+    // `isValidRoot`, NOT "is known", and NOT upstream's equality check.
+    //
+    // ⚠️ AN EARLIER VERSION OF THIS COMMENT SAID "the old ASP check deliberately accepted ANY
+    // historical root". That was false, and it attributed OUR design to upstream. Upstream compared
+    // against a SINGLE root: `if (_proof.ASPRoot() != ENTRYPOINT.latestActiveRoot()) revert
+    // IncorrectASPRoot();` - the newest root past its activation delay, and nothing else. Accepting
+    // every historical root forever was this fork's change (2026-08-07, TODO sec. 2.18fb).
+    //
+    // WHY IT MATTERS THAT THE REASONING IS OURS: accepting old roots is safe for a pure INCLUSION
+    // tree, because an append-only tree's historical membership is a strict subset of the current
+    // one, so an old root can only ever under-approve. THAT DOES NOT HOLD HERE. This tree also
+    // carries revocations - `IdentityRegistry.revoke` UPDATES a leaf rather than appending - so an
+    // old root has FEWER of them, and honouring one indefinitely would let a revoked identity prove
+    // the clean state forever. The registry therefore expires superseded roots (`MAX_ROOT_AGE`)
+    // while keeping the LATEST valid regardless of age, so controller inaction still cannot block a
+    // withdrawal.
     //
     // Asked of the REGISTRY, not the Entrypoint. Routing this through the Entrypoint - even as a
     // pass-through - would preserve the exact hole that split closes: the Entrypoint is upgradeable

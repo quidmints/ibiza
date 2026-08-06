@@ -13343,3 +13343,39 @@ writes into the holder tree". Measured why it cannot today:
 
 So removing our signer as the passport trust root costs **a circuit and leaf-format change on
 `Registration2`, not a deployment change**. OPEN, and the size is now known rather than guessed.
+
+### 2.18fb Checked against upstream: a one-slot substitution — and three orphaned ASP comments (2026-08-06)
+
+**FIRST, THE LIMIT ON THIS CHECK, because it bounds every claim below: upstream PP is NOT VENDORED
+in this tree.** No `.circom`, no `lib/`, no package dependency, and the earliest commit (0762975)
+already carries our changes. The closest thing to upstream available here is that commit's
+`ProofLib.sol`, whose accessors are still upstream's. Anything about PP's *circuit* is therefore
+unverifiable from this repo and must not be asserted from the paper.
+
+**WHAT THE CODE SHOWS — a literal one-slot substitution, confirming §2.18fa from structure rather
+than prose:**
+
+| | upstream (0762975) | current |
+|---|---|---|
+| signals | `uint256[8] pubSignals` | `uint256[7] pubSignals` |
+| slot [5] | `ASPRoot` | `identityRoot` |
+| slot [6] | `ASPTreeDepth` | gone — SMT depth is a compile-time global |
+| enforced | `PrivacyPool.sol:59` `ASPRoot() != ENTRYPOINT.latestActiveRoot()` | `PrivacyPool.sol:110` `IDENTITY_REGISTRY.isValidRoot(...)` |
+
+`ProofLib.sol:21` records the merge in the struct's own doc: "`ASPRoot` + `revocationRoot` collapsed
+into one `identityRoot`" (§2.13k). Enforcement also got STRONGER on purpose — asked of the registry,
+not the Entrypoint, because the Entrypoint is upgradeable and an upgraded one could lie about which
+roots are genuine (§2.5a).
+
+**⚠ THE FINDING: `Entrypoint.sol:315-332` IS THREE ORPHANED DOC BLOCKS.** `@inheritdoc IEntrypoint`,
+an ASP-tree size accessor and an ASP-tree depth accessor, none with a function under them — the next
+function is `:353`. One states a withdrawal proof "must carry" an `asp_tree_depth` public signal;
+`ProofLib`'s 7-slot struct has no such signal.
+
+**AND IT IS NOT MERELY DEAD PROSE.** The block reasons: "any root this contract has ever computed is
+accepted, forever - safe ONLY because the tree is append-only." **The identity tree is NOT
+append-only** - `IdentityRegistry.revoke` calls `_tree.update(commitment_, predicate_)`, so a
+pre-revocation root still shows the identity CLEAN. That trap is already closed on the live path
+(`IdentityRegistry.sol:35`; `isValidRoot:381` bounds acceptance by `MAX_ROOT_AGE`). So the stale
+comment carries reasoning that, if ported to the identity path, would justify deleting the guard
+that stops a revoked identity withdrawing. Delete the blocks; do not "update" them. OPEN.

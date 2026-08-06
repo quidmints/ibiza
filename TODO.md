@@ -13379,3 +13379,47 @@ pre-revocation root still shows the identity CLEAN. That trap is already closed 
 (`IdentityRegistry.sol:35`; `isValidRoot:381` bounds acceptance by `MAX_ROOT_AGE`). So the stale
 comment carries reasoning that, if ported to the identity path, would justify deleting the guard
 that stops a revoked identity withdrawing. Delete the blocks; do not "update" them. OPEN.
+
+### 2.18fc Upstream PP fetched from GitHub: the label plumbing SURVIVED, only the check was cut (2026-08-07)
+
+**§2.18fb said PP's circuit was "unverifiable from this repo". That was the wrong conclusion - it is
+not vendored, but it is public.** `0xbow-io/privacy-pools-core`,
+`packages/circuits/circuits/withdraw.circom`. Fetched; quoted below from source.
+
+**UPSTREAM, VERBATIM (lines 87-91):**
+```
+ASPRootChecker.leaf <== label;
+ASPRootChecker.leafIndex <== ASPIndex;
+ASPRootChecker.siblings <== ASPSiblings;
+ASPRootChecker.actualDepth <== ASPTreeDepth;
+ASPRoot === ASPRootChecker.out;
+```
+So the ASP leaf **is the label** - a DEPOSIT, not a person - and the component is
+`LeanIMTInclusionProof`, i.e. genuinely an ALLOWLIST. §2.13b's "invert" was aimed at a real
+allowlist, now confirmed from source rather than from the paper.
+
+`label` is PRIVATE: upstream's own `ProofLib` enumerates 8 pubSignals (2 circuit outputs +
+6 public inputs) and `label` is not among them. Two independent artifacts agree, which is the control.
+
+**AND IT EXPLAINS THE 8->7 COLLAPSE MECHANICALLY.** `ASPTreeDepth` is a signal upstream because the
+ASP tree is a LeanIMT with variable depth (`actualDepth <== ASPTreeDepth`). Ours is a fixed-depth
+SMT, so the depth is a compile-time global. The signal did not get dropped by choice; the tree type
+changed.
+
+**⚠ THE FINDING, AND IT MAKES §2.18fa's GAP CHEAP TO CLOSE.** Upstream binds `label` into BOTH
+commitments (lines 62, 95) so provenance follows the money into the change note. **We kept that
+plumbing exactly:** `withdraw.nr:80` `commitment_hasher(w.value, w.label, w.nullifier, w.secret)`
+and `:99` `commitment_hasher(new_value, w.label, w.out_nullifier, w.out_secret)`, over
+`commitment.nr:24` `hash_3([value, label, precommitment])` - structurally identical to upstream.
+
+**Only the `ASPRootChecker` constraint was removed. The leaf a provenance check needs is already a
+witness field and already bound into both notes.** So restoring fund-provenance screening is
+ADDITIVE, not a rebuild: a root signal, an inclusion-or-exclusion check on `label`, and
+siblings+index as private witness. It does not touch the identity path - it is a second independent
+constraint on a value that is already committed.
+
+**PRICE IT BEFORE BUILDING IT (rule 9), because the cost is NOT in the circuit:** a new public signal
+takes `ProofLib` from 7 to 8 slots, which regenerates every withdrawal verifier and fixture, and
+`PUB_LEN` is baked into the recursion-tree leaf commitment - so `BatchCommitmentLib`, both tree
+circuits and both `TreeRoot{16,32}HonkVerifier`s move with it. That is a money-path change and gets
+its own run with a falsifiable prediction (rule 10). Not started. OPEN.

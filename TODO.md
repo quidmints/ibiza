@@ -13712,3 +13712,54 @@ picking: "excluded if in ANY list" resists evasion but lets one erroneous source
 only if in ALL" resists censorship but any single listing is evadable.
 
 OPEN. The parser change is the prerequisite for everything in §2.18fe.
+
+### 2.18fk RESOLVED — a TLS capability is NOT needed, and the reason is the config hash (user, 2026-08-07)
+
+**Conclusion: DO NOT build a TLS attestation capability. §2.18fi is closed on this point.** The user's
+argument was that pinning the workflow already fixes the URL, so TLS is redundant. It holds, and the
+joint it turns on is one this thread had not checked.
+
+**THE LOAD-BEARING FACT, verified against Chainlink's documentation:** a workflow ID *"is a hash
+derived from the workflow binary and configuration"* and *"changes whenever the workflow binary or
+configuration is modified"*. **`Config.ExportURL` is therefore INSIDE the pinned hash.** This mattered
+because `sources.go:223` deliberately does NOT hardcode the URL ("hardcoding one is a hardcoded
+dependency on a publisher's URL scheme surviving"), so it was not obvious the pin reached it. It does.
+
+**THE CHAIN, end to end:**
+  1. `onReport` requires `reported_ == activeWorkflowId()` (`UnpinnedWorkflow` otherwise);
+  2. `workflowId = hash(binary, config)` and config carries `ExportURL` -> **the URL is pinned
+     on-chain**;
+  3. every DON node runs that exact binary+config and must produce a BYTE-IDENTICAL result
+     (`http.SendRequest` + `cre.ConsensusIdenticalAggregation`);
+  4. a spoofed workflow, or the same workflow re-pointed at another URL, hashes differently and is
+     refused.
+
+**AND TLS ATTESTATION WOULD NOT COVER THE RESIDUAL EITHER - this is why it is useless rather than
+merely redundant:**
+  - poisoned ORIGIN: TLSNotary would faithfully prove the poisoned bytes. No help.
+  - CA/DNS-level MITM hitting every node identically: it presents a VALID certificate, so a TLS proof
+    verifies. No help.
+  - single-node MITM: consensus already fails to agree, so no report is produced. Already covered.
+  The only thing it adds is TRANSFERABLE auditability for a party who distrusts the DON - and such a
+  party cannot trust the `onReport` delivery either, so it is moot for the on-chain path.
+
+**WHERE THE TRUST ACTUALLY SITS, so this closure does not read as "nothing left to check":**
+  1. **Who may re-pin.** `pinWorkflow` is `OWNER_ROLE`, append-only, and timelocked
+     `WORKFLOW_ACTIVATION_DELAY = 24 hours`; re-pinning an already-named id reverts, so a contested
+     version cannot be quietly re-armed. An owner CAN pin a new workflowId - hence a new URL - but
+     only visibly and after 24h. Real authority, not a TLS problem.
+  2. **Whether `forwarder` is the genuine `KeystoneForwarder`.** The repo's own test
+     `test_anEoaPostmanForgesTheHeaderAndPublishesFabricatedLeaves` shows that against an EOA
+     forwarder the metadata is SELF-ASSERTED and the pin constrains nothing at all. This is the real
+     residual, and §2.18fg already made the guarantee explicitly conditional on checking Chainlink's
+     Forwarder Directory for the target chain.
+  3. **Publisher integrity.** OFAC signs nothing (`sources.go:147`). No transport technology fixes
+     that; only the publisher signing its export would.
+
+**NAME COLLISION, restated because it is what prompted the question:** the "notary stuff" is
+`backend/cre/notary_registry` = UKRAINE'S MINISTRY OF JUSTICE NOTARY REGISTRY, legal notaries. It has
+nothing to do with TLSNotary and needs no TLS capability; it is the same pinned-workflow shape as the
+sanctions lists and inherits this entire analysis.
+
+⚠️ Marked resolved, NOT ✅, per the closure rule: it is conditional on residual (2), which is a
+deployment-time check nobody has made yet.

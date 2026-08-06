@@ -13312,16 +13312,34 @@ tree is public, the reason is the leaf, non-membership is never stated.
 over LABELS (deposits — money provenance); ours is over IDENTITIES (people). A clean person can
 deposit dirty funds. `Entrypoint.sol:118-137` records that no admission path exists at all. OPEN.
 
-**⚠ AND A VERIFIED CONTRADICTION IN §2.13b'S OWN LOAD-BEARING CLAIM.** §2.13b:2288 asserts
-`registerDocumentViaNoir` is "not role-gated", which is what makes inclusion PERSONHOOD rather than
-APPROVAL. **It is gated.** `HolderRegistration._authenticateDocument:311-315` recovers a signer from
-`signature_` and requires `_isSigner(signer_)` — a backend attestation over the passport struct.
-NOT the caller (the error string `"caller is not a signer"` is wrong, and misled an earlier reading
-into calling it a caller gate). Anyone may relay; a backend signer must sign first. So an inactive
-signer set silently censors registration — the exact fails-closed inaction lever §2.13b exists to
-remove, reintroduced through the registration door.
+**⚠ THE "SIGNER GATE CONTRADICTION" FILED HERE FIRST WAS A DUPLICATE OF §2.18g, AND WRONGLY FRAMED.
+Struck, and replaced by what is actually new.** `IdentityRegistry.sol:207-217` already documents it
+at the call site, more precisely: `register` is permissionless, but the document must already sit in
+`registrationSmt`, whose writer `HolderRegistration` requires a backend signer's signature per user —
+"the approval step still exists; it is one layer upstream of here." `:55-57` states the consequence:
+**the trust root for "this is a genuine passport" is OUR SIGNER KEY, not the issuing state's.**
 
-Rarimo's own `Registration2.register` is permissionless Groth16 with no signer, so **this gate is
-ours, not inherited**. Either the gate goes, or §2.13b's argument does — both cannot stand. Not yet
-decided, therefore OPEN; nothing downstream of it may be closed. Fixing the error string is not the
-fix and would hide the finding.
+Three corrections to that first filing, each checked:
+  - It is **not** a contradiction in §2.13b. §2.13b scoped its claim to the Noir path; §2.18g had
+    already recorded the honest system-level scope.
+  - The gate is **inherited, not ours**. `HolderRegistration` follows `RegistrationSimple`, a rarimo
+    contract that verifies a backend signer. We chose that rarimo path over the other rarimo path.
+  - It is **not an undecided binary**. The replacement is named and in-repo:
+    `Registration2.registerViaNoir`, proof-gated against a certificates root built by verifying ICAO
+    signatures ON-CHAIN.
+
+**WHAT IS NEW, AND IT IS WHY THE REPLACEMENT IS STILL UNUSED.** §2.18g says "until a path like that
+writes into the holder tree". Measured why it cannot today:
+  - `Registration2` reaches the keeper via `stateKeeper.addBond(...)`, and
+    **`HolderStateKeeper.addBond:186` is an override whose entire body is
+    `revert("HolderStateKeeper: use addDocument (holder tree)")`** — deliberate, to stop the upstream
+    1:1 binding being mixed with the holder tree.
+  - The leaf semantics genuinely differ, so this is not a wiring task. Upstream binds passport→identity
+    **1:1**. The holder tree binds document→holderRoot **many:1**, keyed
+    `poseidon2(documentKey, holderRoot)` → `poseidon3(dgCommit, seq, timestamp)`
+    (`HolderStateKeeper:369-375`). `Registration2`'s circuit has no `holderRoot` or `seq` to bind.
+  - `onlyRegistration` is a **deployment-time enrolment of which CONTRACTS may write**, not a
+    per-person approval — so it is NOT itself a censorship lever and must not be counted as one.
+
+So removing our signer as the passport trust root costs **a circuit and leaf-format change on
+`Registration2`, not a deployment change**. OPEN, and the size is now known rather than guessed.

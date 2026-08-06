@@ -8043,6 +8043,58 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18ex ANY CSCA MAY SIGN ANY CERTIFICATE, AND NOTHING RECORDS WHICH ONE DID (user, 2026-08-06)
+
+*"someone can offer a malicious certificate that passes the check"* - **yes. Not by the route that is
+already defended, but by two that are not.**
+
+**WHAT IS ALREADY DEFENDED, checked before concluding.** `registerCertificate` takes caller-supplied
+`keyOffset` and `expirationOffset` into the signed attributes, which looks like the obvious hole -
+point the offset at bytes that are not a public key, or at a different date. `X509.sol` bounds and
+prefix-checks both, and `test/utils/X509.t.sol` pins it: offset-where-the-prefix-is-absent,
+offset-smaller-than-the-prefix, key-running-past-the-end, key-longer-than-the-attributes,
+expiration-running-past-the-attributes. **That route is closed.**
+
+**1. THE CHECK IS "SOME KEY IN THE MASTER TREE SIGNED THIS" - NOTHING NARROWER.** There is no issuer
+binding anywhere in `Registration2`: no `issuer`, no country, no scoping of a signer's authority. So
+**any one of ~200 states' CSCAs is sufficient to register any certificate**, and a compromised CSCA
+from country X can sign a document signer used for passports claiming country Y. That is the ICAO
+trust model - a flat set of equally-trusted state keys - and it is not a defect in this code. But the
+design should CONTAIN it, and it currently cannot, because of the second finding.
+
+**2. `CertificateInfo` STORES ONLY `expirationTimestamp`.** No issuer, no signer, no provenance:
+
+```solidity
+struct CertificateInfo { uint64 expirationTimestamp; }
+```
+
+> **So if a CSCA is compromised, you cannot enumerate the certificates it signed.** There is no link
+> from a registered certificate back to the key that vouched for it. "Revoke everything country X
+> signed" is not expressible - you would have to already know each certificate's key by other means.
+
+**AND THIS COMPOUNDS THE GAP 2.18ev JUST CLOSED.** `removeRevokedCertificate` can now remove a
+SPECIFIC proven-revoked certificate. But the realistic incident is not "one DSC was revoked", it is
+"a state signing key was compromised", and the response to that is to drop everything it signed -
+which the data model cannot express. **Containment is possible per-certificate and impossible
+per-issuer.**
+
+**THE FIX IS ONE FIELD.** Record the signing key with the certificate:
+```solidity
+struct CertificateInfo { uint64 expirationTimestamp; bytes32 signerKey; }
+```
+`registerCertificate` already HAS `icaoMember_.publicKey` in hand - it just discards it after
+verifying the signature. Appending is upgrade-safe: existing entries read `signerKey == 0`, which
+correctly means "unknown, registered before this was recorded" rather than a false attribution.
+
+- [ ] **Record the signing CSCA on each certificate.** Small, and it is what makes issuer-scoped
+      revocation expressible at all. Without it 2.18ev's removal path can only ever be used on
+      certificates somebody has already identified one at a time.
+- [ ] Then an issuer-scoped removal: drop every certificate whose `signerKey` is in an anchored
+      revoked-CSCA set. Same proof shape as `removeRevokedCertificate`, one level up.
+- [ ] Consider whether the certificate's own issuer field should be checked against the signer.
+      Unbound today, so a single compromised CSCA can impersonate any state's document signer - which
+      is worth deciding on deliberately rather than inheriting.
+
 ### 2.18ew PP'S ASSOCIATION SET WAS DELETED, NOT DEFERRED - and 2.13b said keep it (user, 2026-08-06)
 
 *"why dont we use the association set proof instead of supplementing it? what did we lose"* and

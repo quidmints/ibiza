@@ -8043,6 +8043,55 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18er THE OPRF IS NOT THE BLOCKING DEPENDENCY, AND IT CONTRADICTS 2.18cu'S CENTRAL CLAIM (2026-08-05)
+
+Went to build the OPRF, since 2.18cz calls it *"load-bearing rather than optional"* and 2.18eq
+confirmed document-binding cannot replace it. **Checked the mechanism first, and two things are
+wrong - one about ordering, one a direct contradiction.**
+
+**1. THERE IS A PRIOR DEPENDENCY, AND IT IS THE ONE ACTUALLY BLOCKING.** An OPRF computes
+`F(k, x)` such that the holder learns the output and not `k`, and the operator learns nothing about
+`x`. That defeats **grindability** - 2.18cz's real argument, that a published `hash(name)` lets anyone
+dictionary-attack the register. It does **nothing** about whether the two sides feed it the same `x`.
+
+> `F(k, "IVANOV IVAN")` and `F(k, "IVANOV<<IVAN<<<")` are unrelated values. **The OPRF requires a
+> canonical identifier; it does not create one.**
+
+So the chain is **canonical identifier → OPRF → self-proved non-membership**, and 2.18cz names the
+second link as the dependency while the first is unbuilt. 2.18eo established names are not canonical
+(transliteration and alias ordering both vary, by the workflow's own comment); 2.18eq measured the
+only canonical alternative at **23.3%** coverage. **The blocker is the identifier, not the primitive.**
+
+**2. IT CONTRADICTS THE ARGUMENT 2.18cu RESTS ON.** That section's case for self-proved
+non-membership is, verbatim:
+
+> *"No controller reads anyone. No matcher runs over the population. **Nobody can be silent, because
+> there is nobody whose action is required.**"*
+
+But an OPRF is a **two-party protocol by definition** - the holder blinds `x`, the key holder
+evaluates, the holder unblinds. **The key holder's participation is required per evaluation.** They
+can refuse, be unavailable, or be compelled. A threshold OPRF distributes that across `t`-of-`n` but
+does not remove it.
+
+**AND BY 2.18cu'S OWN POLARITY ARGUMENT THAT IS THE BAD DIRECTION.** It shows a blacklist fails OPEN
+when the feed stalls, which is why inaction is harmless. But a holder who cannot obtain an OPRF
+evaluation cannot produce a proof at all, so **the OPRF operator's silence fails CLOSED - it censors
+the withdrawer.** The design swaps *"a controller who can de-anonymise"* for *"an operator who can
+deny service"*, which is a different authority, not no authority.
+
+**WHAT THIS DOES NOT SAY.** The OPRF is not useless - it is the right answer to grindability, and if
+a canonical identifier ever exists it should be used. What is wrong is the ORDER and the CLAIM: it is
+not the next thing to build, and it does not deliver an authority-free design.
+
+- [ ] **Correct 2.18cu's central claim.** "Nobody whose action is required" is false for any design
+      that needs an OPRF. Either the claim narrows to "no controller reads anyone", or the design
+      needs a non-interactive alternative.
+- [ ] **The real open question: is there a canonical subject identifier at all?** Names are not,
+      passports cover 23.3%. If the honest answer is no, then self-proved non-membership over these
+      lists is not achievable and the sanctions predicate keeps an authority - which should be
+      SAID rather than left as an unbuilt item implying it is merely pending.
+- [ ] Only after that: OPRF for grindability, if there is an identifier to blind.
+
 ### 2.18eq MEASURED: Poseidon on-chain is dead, keccak in-circuit is fine, and coverage is 27.7% (2026-08-05)
 
 Both numbers 2.18ep said to take before building. One settles a question open since 2.18db; the other
@@ -10226,9 +10275,10 @@ a public list be matched without the leaf being grindable. Until it exists, the 
 authority - and both have been rejected here already.
 
 - [x] **WRONG AND ALREADY DONE.** Inlining landed long ago and is worth **12%**, not 91% - see the correction in 2.x and `PoseidonInlineGas.t.sol`. Left struck through because the 91% figure drove a priority call.
-- [ ] Treat the OPRF as a dependency of self-proved non-membership (2.18cu), not a separate nicety.
-      Without it, folding the sanctions check into the holder's existing proof leaks or needs a
-      postman.
+- [ ] ~~Treat the OPRF as a dependency of self-proved non-membership.~~ **RE-ORDERED by 2.18er**: the
+      OPRF defeats grindability but requires a canonical identifier it does not create, and being a
+      two-party protocol it contradicts 2.18cu's "nobody whose action is required". The identifier is
+      the blocker; the OPRF comes after one exists.
 
 ### 2.18cy THE SIX ORPHANS: EC_LEN IS THE ONLY MISSING GENERIC, AND IT IS DOCUMENT-SPECIFIC (2026-08-04)
 

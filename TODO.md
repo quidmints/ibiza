@@ -8043,6 +8043,55 @@ genuinely different - just far more finely divided than proving cost cares about
       still fits 2^18. That single experiment decides whether 58 verifiers become 1.
 - [ ] Do NOT pursue a single universal circuit (128x). Size classes only.
 
+### 2.18eu NO THRESHOLDS: reduce the CLAIM to what has a canonical key, and every one of those is trustless (user, 2026-08-06)
+
+*"i dont want any thresholds"* - then 2.18es is out, and with it the only design that was both
+complete and authority-bounded. **What remains is better than it sounds, because the predicates
+separate cleanly by ONE test: does the identifier exist on both sides?**
+
+| predicate | key | canonical on both sides? | authority needed |
+|---|---|---|---|
+| document is genuine | **CSCA public key** - `leafPreimage` uses the RSA modulus / EC point itself | **yes** | **none** - shipped, `Registration2.registerCertificate` |
+| certificate revoked | **issuer + serial** - already parsed as `issuerAndSerial`, CRLs already fetched | **yes** | **none** - self-provable, unbuilt |
+| fund provenance | **deposit label** - `keccak(SCOPE, nonce)`, pool-assigned | **yes** | **none** - PP's association sets, machinery intact |
+| **person is sanctioned** | a name, or a document number present for **23.3%** | **NO** (2.18eo/eq/et) | **unavoidable** |
+
+**THREE OF THE FOUR NEED NO AUTHORITY AND NO THRESHOLD, and the reason is the same in each: the key
+is a value the document ITSELF carries and the publisher ALSO publishes.** A CSCA key is the key. A
+certificate serial is the serial. A deposit label is assigned by the pool. Nothing needs
+transliterating, mapping or blinding.
+
+**THE FOURTH IS THE ONLY ONE THAT EVER NEEDED A CONTROLLER, and the answer is to stop claiming it.**
+Drop person-sanctions from the protocol. What the protocol then proves is:
+
+> a genuine, **un-revoked** passport holder withdrawing their own funds, whose deposit is in an
+> association set the recipient chose to accept
+
+**AND SANCTIONS SCREENING STILL HAPPENS - somewhere it can be done correctly.** At the fiat
+on/off-ramp the institution has the person's actual name, is legally obliged to screen, and has a
+human to adjudicate a fuzzy match. **That is exactly where fuzzy matching belongs**: a false hit gets
+reviewed, where in a circuit it is a silent refusal and a miss is a silent pass. Pushing it on-chain
+does not make it stronger, it makes it unreviewable.
+
+**WHAT THIS DELETES**: the controller for sanctions, the OPRF and its operator, the canonical-identifier
+requirement, the second tree, document parsing, both fail-closed mapping tables, the ~529k-gate
+non-membership circuit, and exclusion-specific root freshness. **What it adds: nothing.**
+
+**⚠️ AND `document.not-current` STOPS NEEDING A CONTROLLER TOO.** 2.18cu says predicates with no
+external register keep an authority, and named that one - but a CRL **is** an external register, and
+it is keyed on issuer+serial, which is canonical. So it belongs in row 2, not with sanctions. **The
+authority-free set is larger than 2.18cu allowed.**
+
+- [ ] **Build CRL non-membership** - keyed on issuer+serial, self-proved, no authority, no threshold.
+      This is the item 2.18cw listed as "CRL anchoring" and it is now the highest-value one, because
+      it is the last predicate that both matters and CAN be made trustless.
+- [ ] **State the scope reduction explicitly**: the protocol does not screen persons against
+      sanctions lists, and the reason is that those lists publish no field a passport holder can
+      also produce. Anything vaguer invites the assumption that it does.
+- [ ] Re-check `IdentityRegistry`'s remaining predicates against the table above. If every one has a
+      canonical external key, the controller can go entirely - which would be the real prize and is
+      now a question with a yes/no answer rather than a design problem.
+
 ### 2.18et "IS THERE A WAY WITH NO SACRIFICE" - no, and the binding constraint is the DATA (user, 2026-08-05)
 
 **No. And it is worth being exact about why, because the obstacle is not cryptographic and no

@@ -13864,3 +13864,52 @@ they currently gate NOTHING on-chain, so the exposure is latent rather than live
 latent the moment an exclusion predicate consumes one.
 
 Not a decision, a measurement. OPEN.
+
+### 2.18fn Names AND addresses — separate trees, and Chainalysis's oracle is 66 days stale (user, 2026-08-07)
+
+**Q: do both? is it a double include? where did the original addresses come from? does Chainalysis
+already include OFAC?**
+
+**1. WHERE PP's ADDRESSES CAME FROM: nowhere on-chain.** The ASP tree's leaves are LABELS -
+`ASPRootChecker.leaf <== label`, read from upstream source in §2.18fc. Address analysis happened
+OFF-CHAIN at 0xbow (their KYT/on-chain analysis), and the only on-chain artifact was a root of
+approved labels. **Addresses were inputs to a decision, never anchored data.** So there is no upstream
+precedent to copy here - anchoring addresses would be new, not a restoration.
+  ⚠️ Chainalysis's link to PP is via the PAPER - Jacob Illum is a Chainalysis researcher and
+  co-authored it with Buterin, Nadler and Schar. **No evidence found of a Chainalysis DATA pipeline
+  into 0xbow's ASP.** Do not assert one.
+
+**2. CHAINALYSIS ALREADY PUBLISHES AN ON-CHAIN SANCTIONS ORACLE, and it is free.** A smart contract
+exposing `isSanctioned(address)`, maintained by Chainalysis on most EVM chains, requiring no customer
+relationship (docs example `0x40c57923924b5c5c5455c48d93317139addac8fb`). "An address is considered
+to be on the sanctions list if it is included within OFAC's SDN list."
+
+**⚠️ BUT THE MEASURED LAG IS 66 DAYS.** An address sanctioned by OFAC on 2024-05-28 was still absent
+from the oracle on 2024-08-02. **That is a real number for the RACE WINDOW §2.18fd said had to be
+measured** - and it is the window of the ALTERNATIVE, not of our design. Reading Chainalysis instead
+of ingesting OFAC ourselves would mean:
+  - a 66-day window in which a sanctioned address is freely spendable, and
+  - a liveness AND trust dependency on a vendor-operated contract we do not control.
+Our own CRE ingestion is therefore NOT redundant with it. It is fresher and self-sourced. (Reading the
+oracle as an ADDITIONAL disjunct costs one `staticcall` and is worth considering separately; it can
+only add coverage, never remove it.)
+
+**3. DOUBLE INCLUDE: not a correctness problem, but DO NOT PUT THEM IN ONE TREE.**
+  - Names and addresses are different KEY SPACES consumed by different predicates, so nothing is
+    double-counted: an address query can never match a name leaf. With the domain separation
+    §2.18fe constraint 3 already requires, that is guaranteed rather than probable.
+  - Cross-source duplicates (the same address in OFAC and OFSI) are already handled: each source
+    anchors its own `registryId`, and `snapshotLeaves` emits "hashed, deduplicated, strictly
+    ascending" within a snapshot.
+  - **THE REAL COST OF MIXING is inert bulk.** In one tree, name leaves are noise to an address
+    predicate: they never match, but they deepen the tree, so every address proof pays more siblings
+    - more gas on-chain and more constraints in-circuit - for zero benefit. The SDN's name rows vastly
+    outnumber its address rows, so this is not a rounding error.
+
+**CONCLUSION: do both, in SEPARATE registryIds.** `RegistrySourceAnchor` is already multi-list
+(`mapping(bytes32 => RegistrySnapshot[])`), so this costs nothing structurally. They serve different
+consumers anyway: ADDRESSES feed the on-chain withdrawal predicate; NAMES feed off-chain compliance
+review, and only ever a registration-time predicate if MRZ-keyed data appears (§2.18fh - they cannot
+be checked against `dg1Hash` or `label` as keyed today).
+
+Supersedes nothing; refines §2.18fj. OPEN.

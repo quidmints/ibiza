@@ -13811,3 +13811,56 @@ elapse before `onReport` will accept another report.** Until then `activeWorkflo
 artifact and every report from the new one is refused with `UnpinnedWorkflow` - which is the pin
 working, not a regression. Note this is required by the URL change ALONE, since the config was
 previously part of the hash too; there is no version of this change that avoids a re-pin.
+
+### 2.18fm Permissions audited against upstream PP — less on the money path, MORE on ingestion (2026-08-07)
+
+**Q: who can call `pinWorkflow`, and how do our permissions compare to upstream PP's ASP?**
+Enumerated from code on both sides, not summarised.
+
+**`pinWorkflow` is `onlyRole(OWNER_ROLE)`** (`RegistrySourceAnchor:241`). `initialize` grants `admin_`
+BOTH `OWNER_ROLE` and `DEFAULT_ADMIN_ROLE` (`:224-225`) and never calls `_setRoleAdmin`, so
+`OWNER_ROLE`'s admin is `DEFAULT_ADMIN_ROLE` and the same holder can grant it onward. That role also
+gates `setForwarder` (`:292`) and `_authorizeUpgrade` (`:228`).
+
+**UPSTREAM PP's ASP AUTHORITY** (`0762975:Entrypoint.sol`):
+  - `updateRoot(root, ipfsCID)` is `onlyRole(_ASP_POSTMAN)` (`:107`) - a role, not an address;
+  - `_setRoleAdmin(_ASP_POSTMAN, _OWNER_ROLE)` (`:96`) - the owner may grant it to ANYONE, to several
+    parties, and re-grant later;
+  - `_OWNER_ROLE` also gates `registerPool`, `removePool`, `updatePoolConfiguration`, `windDownPool`,
+    `withdrawFees` and `_authorizeUpgrade` (UUPS);
+  - `latestActiveRoot` applied `ROOT_ACTIVATION_DELAY` - a challenge window on NEW roots.
+
+**OURS, on the same axis:**
+
+| | upstream PP | ours |
+|---|---|---|
+| writes the set | `_ASP_POSTMAN` -> `updateRoot` | `CONTROLLER` -> `revoke` |
+| authority is | a ROLE, grantable/re-grantable by owner | an IMMUTABLE ADDRESS, constructor-set, no setter |
+| upgradeable away | yes (Entrypoint is UUPS) | NO - `IdentityRegistry` is a plain contract, no proxy |
+| getting IN | postman pushes the approved root | PERMISSIONLESS `register`, proof-gated only |
+| exclusion reasons | none, root is opaque | typed `predicates`, CONSTRUCTOR-FIXED and immutable |
+| timing guard | delay on NEW roots (`ROOT_ACTIVATION_DELAY`) | expiry of OLD roots (`MAX_ROOT_AGE`) |
+
+**THE TIMING ROW IS AN INVERSION, not a gap:** upstream delayed new roots so watchers could spot a
+fabricated push; we expire old roots so a revoked identity cannot replay a stale one. Opposite ends of
+one axis for opposite threats - consistent with the postman having been removed entirely.
+
+**SO ON THE IDENTITY PATH WE HOLD STRICTLY LESS AUTHORITY THAN UPSTREAM.** The controller can revoke
+but cannot admit, cannot be replaced, cannot be upgraded, and cannot mint new predicates.
+
+**⚠ AND THE FINDING: THE AUTHORITY CAME BACK ON THE INGESTION PATH, WHERE IT IS UPGRADE-BACKED.**
+`pinWorkflow` is append-only and timelocked 24h, and re-pinning an already-named id reverts so a
+contested version cannot be quietly re-armed - but **`_authorizeUpgrade` is held by the SAME role**, so
+an owner can install an implementation with no delay and rewrite `workflowVersions` outright. The
+append-only list and the timelock therefore constrain an HONEST owner only. Identical in shape to the
+write-once `setForwarder` argument struck in §2.18fg: a guarantee stated at one function while the
+upgrade key sits beside it.
+
+**This is the honest summary of the posture:** the operator key was removed from the MONEY path
+(`IdentityRegistry`, non-upgradeable, immutable controller, permissionless entry) and reintroduced in
+full on the DATA-INGESTION path (`RegistrySourceAnchor`, UUPS, one role holding pin + forwarder +
+upgrade). Whether that is acceptable depends on what the ingested roots gate - and per §2.18fh/§2.18fj
+they currently gate NOTHING on-chain, so the exposure is latent rather than live. It stops being
+latent the moment an exclusion predicate consumes one.
+
+Not a decision, a measurement. OPEN.

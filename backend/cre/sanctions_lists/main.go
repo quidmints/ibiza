@@ -49,10 +49,9 @@
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 //
 // OPERATOR TODO before deploying:
-//  1. Config.RegistryKey must name a declared source, and Config.ExportURL must be that source's
-//     published export. `SourceSpec.PublishedAt` records the URL each declaration was read from —
-//     compare the two rather than assuming, since a publisher's URL scheme is not part of any
-//     guarantee.
+//  1. Config.RegistryKey must name a declared source. THE URL IS NO LONGER AN OPERATOR INPUT —
+//     it is `SourceSpec.PublishedAt`, compiled in, so there is nothing to compare and nothing to get
+//     wrong. See the note on `PublishedAt` in sources.go for why the config indirection was dropped.
 //  2. RegistrySourceAnchor's REGISTRY_POSTMAN role must be granted to the address this workflow's
 //     WriteReport resolves to (see RegistrySourceAnchor.onReport's Forwarder-trust note), and a
 //     workflow version must be PINNED AND ACTIVE or `_publishSnapshot` reverts NoActiveWorkflow.
@@ -90,9 +89,6 @@ type Config struct {
 
 	// Which declared list this deployment anchors. See `sources` in sources.go.
 	RegistryKey string `json:"registryKey"`
-
-	// The published export URL for that list — see OPERATOR TODO #1.
-	ExportURL string `json:"exportUrl"`
 
 	// Standard 5-field cron. Defaults to daily: the authorities republish on their own schedules, so
 	// polling more often than they change buys nothing and only widens the window in which nodes
@@ -155,16 +151,13 @@ func onSchedule(config *Config, runtime cre.Runtime, _ *cron.Payload) (string, e
 	if err != nil {
 		return "", err
 	}
-	if config.ExportURL == "" {
-		return "", fmt.Errorf("exportUrl is empty for %s - see OPERATOR TODO #1 (published at %s)",
-			spec.Key, spec.PublishedAt)
-	}
-
 	httpClient := &http.Client{}
 
 	subjectsPromise := http.SendRequest(config, runtime, httpClient,
 		func(cfg *Config, lg *slog.Logger, sr *http.SendRequester) (*[]ListedSubject, error) {
-			out, err := fetchAndDecode(sr, cfg.RegistryKey, cfg.ExportURL)
+			// `spec` is captured, not re-resolved: it was already validated above, and a second
+			// lookup would need an error path that cannot be reached.
+			out, err := fetchAndDecode(sr, cfg.RegistryKey, spec.PublishedAt)
 			if err != nil {
 				return nil, err
 			}

@@ -13763,3 +13763,38 @@ sanctions lists and inherits this entire analysis.
 
 ⚠️ Marked resolved, NOT ✅, per the closure rule: it is conditional on residual (2), which is a
 deployment-time check nobody has made yet.
+
+### 2.18fl LANDED — the export URL is compiled in; the config indirection bought nothing (user, 2026-08-07)
+
+**The user asked "why don't we hardcode the url again?" The stated reason did not survive §2.18fk.**
+
+`sources.go` said: *"It is NOT fetched from here - the operator supplies the URL in config, because
+hardcoding one is a hardcoded dependency on a publisher's URL scheme surviving. Kept so a human can
+compare the two."*
+
+**That assumes config is cheaper to change than the binary. It is not.** A workflow ID hashes the
+BINARY AND THE CONFIG (§2.18fk), so changing `ExportURL` produced a new `workflowId` and required
+`pinWorkflow` plus the 24h `WORKFLOW_ACTIVATION_DELAY` before `onReport` would accept anything -
+exactly what rebuilding the binary costs. **Zero operational flexibility bought.**
+
+**What it did buy was DIVERGENCE.** The declared URL (`spec.PublishedAt`, compiled in) and the
+fetched URL (`config.ExportURL`) could differ, guarded only by "a human can compare the two" - the
+manual-check shape this thread keeps finding at the weak point. Deleting the second value deletes the
+comparison instead of trying to make it reliable.
+
+**CHANGED:** `fetchAndDecode` now takes `spec.PublishedAt`; `Config.ExportURL` and its empty-check are
+gone; OPERATOR TODO #1 no longer asks anyone to compare two URLs. `spec` is CAPTURED by the fetch
+closure rather than re-resolved, so no second lookup with an unreachable error path is introduced
+(rule 1). One binary still serves every source - `RegistryKey` selects the spec, which never depended
+on config carrying a URL.
+
+**AND THE ONE THING CONFIG FLEXIBILITY MIGHT HAVE BEEN FOR IS RECORDED AS FORBIDDEN:** pointing at a
+MIRROR. Authenticity here is transport-only, so fetching from anywhere but the publisher's own host
+discards the only authenticity the source has. Now stated at `PublishedAt` rather than left to
+inference.
+
+**VERIFIED:** `GOOS=wasip1 GOARCH=wasm go build ./...` clean, `go vet` clean, `go test ./...` ok.
+
+⚠️ **UNVERIFIED AND WORTH AN OPERATOR'S EYE:** OFAC's declared URL is under
+`.../api/PublicationPreview/exports/SDN.XML`. "PublicationPreview" may not be the canonical
+production endpoint. Compiling it in does not make it right - it makes it reviewable in one place.

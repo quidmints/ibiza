@@ -219,9 +219,23 @@ type SourceSpec struct {
 	// means, and that must fail loudly rather than silently merge two designations.
 	ReferenceIdentifiesRow bool
 
-	// PublishedAt documents where the export lives. It is NOT fetched from here - the operator
-	// supplies the URL in config, because hardcoding one is a hardcoded dependency on a publisher's
-	// URL scheme surviving. Kept so a human can compare the two.
+	// PublishedAt IS the URL fetched. It was config-supplied until 2026-08-07, on the reasoning that
+	// "hardcoding one is a hardcoded dependency on a publisher's URL scheme surviving" - and that
+	// reasoning does not survive how CRE pins a workflow.
+	//
+	// A WORKFLOW ID IS A HASH OF THE BINARY **AND THE CONFIG**, and changes whenever either does.
+	// So a config-supplied URL was never cheaper to change than a compiled-in one: both produce a new
+	// workflowId, and both then require `pinWorkflow` plus the 24h WORKFLOW_ACTIVATION_DELAY before
+	// `onReport` will accept a report. The indirection bought no operational flexibility whatsoever.
+	//
+	// WHAT IT DID BUY was a way for the declared URL and the fetched URL to DIVERGE, guarded only by
+	// "a human can compare the two". Deleting the second value deletes the comparison rather than
+	// making it more reliable. One binary still serves every source, because `RegistryKey` selects
+	// the spec - that never depended on config carrying a URL. See TODO sec. 2.18fl.
+	//
+	// ⚠️ A MIRROR IS NOT A VALID SUBSTITUTE, which is the one thing config flexibility might have
+	// been used for. Authenticity here is transport-only (see Authenticity, below), so fetching from
+	// anywhere but the publisher's own host discards the only authenticity the source has.
 	PublishedAt string
 }
 

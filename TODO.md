@@ -13913,3 +13913,53 @@ review, and only ever a registration-time predicate if MRZ-keyed data appears (�
 be checked against `dg1Hash` or `label` as keyed today).
 
 Supersedes nothing; refines §2.18fj. OPEN.
+
+### 2.18fo The name barrier stands — but `idList` also carries PASSPORT NUMBERS, which join exactly (user, 2026-08-07)
+
+**Q: we still want OFAC names, since a fresh address evades address screening. What was the barrier?**
+
+**THE BARRIER, restated precisely (§2.18fh).** A non-membership proof needs an EXACT CANONICAL KEY ON
+BOTH SIDES. Names have no canonical form:
+  - this repo's own code: "a name is not stable at all (transliteration and alias ordering both vary)"
+    (`sources.go`, on why `Reference` exists);
+  - OFAC maintains an `akaList` precisely because names vary;
+  - ICAO MRZ transliterates per Doc 9303; OFAC uses its own conventions.
+So `hash("IVANOV, Ivan")`, `hash("IVANOV, Ivan Ivanovich")` and the Cyrillic form are three different
+leaves, and **the non-membership proof PASSES on any spelling divergence** - fail-open, unreliable,
+and only repairable with fuzzy matching or a similarity threshold, both ruled out by the user.
+**Names are therefore unusable as an in-circuit predicate. That has not changed.**
+
+**⚠ BUT THE SAME DISCARDED CONTAINER CARRIES AN EXACT PERSON-LEVEL KEY.** Verified: OFAC's `idList`
+holds `<id>` elements with `idType`, `idNumber` AND `idCountry`, where `idType` takes values including
+`"Passport"` and `"National ID"` - alongside the `"Digital Currency Address - ..."` rows of §2.18fj.
+One container, two joins:
+
+| `idType` | joins to | screens |
+|---|---|---|
+| `Digital Currency Address - ETH/XBT/...` | deposit `label`, via the depositor address | FUNDS |
+| `Passport` + `idNumber` + `idCountry` | MRZ document number + issuing state | PEOPLE |
+
+`(idCountry, idNumber)` vs the MRZ's `(issuing state, document number)` is an EXACT match after
+deterministic canonicalisation (strip non-alphanumerics, uppercase) - not fuzzy, no threshold. It is
+exactly what names cannot be.
+
+**AND IT IS THE STRONGER PREDICATE FOR THE USER'S OWN THREAT.** An address costs nothing to mint, so
+address screening is evaded in one transaction. A passport is scarce - the same scarcity the identity
+design already rests on. Renewal still evades (a new document number is not on the list), but that is
+slow and state-mediated rather than instant.
+
+**WHERE IT IS CHECKED:** REGISTRATION, not withdrawal - `withdraw.nr` has no DG1, while the
+registration circuit does. Post-registration listing still needs `IdentityRegistry.revoke`.
+
+**OPEN QUESTIONS, none of them blocking, all needing measurement rather than argument:**
+  1. **Coverage.** Not every SDN individual carries a passport number. An earlier note in this file
+     cited 23.3%; **that figure's provenance is not established and it must be re-measured against the
+     actual `idList` rows before it is used for anything.**
+  2. **MRZ document-number encoding.** The MRZ field is 9 characters with a check digit and a filler
+     convention for longer numbers. Whether a >9-char OFAC passport number round-trips to the MRZ
+     representation is UNVERIFIED and is the likeliest source of silent misses.
+  3. **Canonicalisation must be byte-identical in the workflow and the circuit**, or the join fails
+     open exactly like names do. That is a single shared spec, not two implementations.
+
+Refines §2.18fj (extract the whole `idList`, not only the address rows) and lifts §2.18fh's "option b"
+from hypothetical to specified. OPEN.

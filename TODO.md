@@ -13798,3 +13798,16 @@ inference.
 ⚠️ **UNVERIFIED AND WORTH AN OPERATOR'S EYE:** OFAC's declared URL is under
 `.../api/PublicationPreview/exports/SDN.XML`. "PublicationPreview" may not be the canonical
 production endpoint. Compiling it in does not make it right - it makes it reviewable in one place.
+
+**⚠️ ARTIFACT REBUILT, AND THE PIN IS NOW STALE.** The tracked wasm is the deployable artifact and
+its hash IS the workflow ID (see commit 3e82411, which established this practice after a source
+change shipped without a rebuild). Built with the documented command
+`cd backend/cre/sanctions_lists && GOOS=wasip1 GOARCH=wasm go build ./...`
+
+    sha256 4a483b07 -> 5e6d842b
+
+**So `pinWorkflow` MUST be called with the new ID and the 24h `WORKFLOW_ACTIVATION_DELAY` must
+elapse before `onReport` will accept another report.** Until then `activeWorkflowId()` names the old
+artifact and every report from the new one is refused with `UnpinnedWorkflow` - which is the pin
+working, not a regression. Note this is required by the URL change ALONE, since the config was
+previously part of the hash too; there is no version of this change that avoids a re-pin.

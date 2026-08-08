@@ -14005,3 +14005,61 @@ Both proposed trees are cheaper on-chain AND in-circuit than the one currently a
 it is off-chain-only. Recorded, not proposed.
 
 Measurement only. Nothing built. OPEN.
+
+### 2.18fq Gender/age proofs ALREADY EXIST and are unwired; fuzzy name hits are unactionable (user, 2026-08-09)
+
+**Q: OFAC needs fuzzy matching but we can't auto-flag on a mistype. And once we have the passport we
+want gender and age proofs without revealing identity - what do we need?**
+
+**PART 1 - FUZZY MATCHING. The user is right on both halves, and the architecture already fits.**
+Fuzzy matching must NEVER enter the circuit or an on-chain predicate (§2.18fo: names have no
+canonical form, so an exact non-membership proof fails open on any spelling divergence). It belongs
+off-chain, producing a REVIEW QUEUE. A human decides. The on-chain act is
+`IdentityRegistry.revoke(commitment, predicate)` - `CONTROLLER`-gated, and the predicate records WHY.
+So nothing auto-flags, exactly as required.
+
+**⚠ BUT THE REVOCATION CANNOT BE ADDRESSED. `revoke` needs the COMMITMENT, and nothing on-chain can
+resolve a person to theirs.** `HolderStateKeeper:122-136` - `_holderOfDocumentHash` (dg1Hash =>
+holderRoot) is DELETED, its slot reserved as `__deprecated_holderOfDocumentHash` (sec. 2.18bg). Only
+`_usedDocumentHash`, a BOOL, remains.
+
+**CONSEQUENCE, and it is structural rather than a gap to patch: SCREENING PEOPLE IS PREVENTIVE-ONLY.**
+  - AT REGISTRATION: refusable, via the exact passport-number non-membership of §2.18fo (27.5%
+    coverage, §2.18fp). Works because DG1 is in-circuit there.
+  - AFTER REGISTRATION: a name hit OR an exact passport hit is **unactionable on-chain**, because the
+    document->holder link needed to name the commitment was deliberately removed for privacy.
+Restoring remediation means restoring that link. That is a privacy trade to decide, not a defect.
+
+**PART 2 - GENDER AND AGE PROOFS ARE ALREADY BUILT. Nothing cryptographic is needed.**
+  - `noir_dl_lib/src/query.nr:358` - **selector bit 6 is `sex`**, extracted by `dg1_data_extractor`
+    and returned UTF-8 encoded (`:405`, "F" -> 0x46 -> 70), gated by its selector bit so it is
+    disclosed only when asked for.
+  - **AGE** is `birth_date_lowerbound` / `birth_date_upperbound` against `current_date`
+    (`query_identity/src/main.nr:8,13-14`) - a RANGE proof, so it discloses a bound and not a
+    birthdate. `dg1` stays private (`[u8; 93]`).
+  - VERIFIERS EXIST: `sdk/verifier/TD3QueryProofNoirVerifier.sol`, `TD1QueryProofNoirVerifier.sol`,
+    `TD3QueryProofVerifier.sol`.
+  - **THE TIME REFERENCE IS SOUND** - the obvious way an age proof breaks is a prover-chosen date, and
+    it is already closed: `PublicSignalsBuilder.withCurrentDate:183-198` calls
+    `validateDate(parsedTimestamp_, timeBound_)` and reverts `InvalidDate(..., block.timestamp)`.
+  - The circuit/Solidity seam is already guarded by `tools/check-query-public-signals.py`.
+
+**SO WHAT IS ACTUALLY NEEDED IS TWO THINGS:**
+  1. **A CONCRETE `AQueryProofExecutor`.** It is abstract and its ONLY implementation in the tree is
+     `contracts/mock/sdk/ProofBuilderTest.sol` - a test mock. Something real must extend it and define
+     what a proof authorises.
+  2. **⚠ `_beforeVerify` MUST VALIDATE `registrationRoot_`, AND THE BASE DOES NOT.** `execute` takes
+     `registrationRoot_` as a CALLER PARAMETER and writes it straight into the signals via
+     `builder_.withIdStateRoot(registrationRoot_)` (`AQueryProofExecutor:113-122`). Nothing checks it
+     is a root the system ever produced. An implementation that skips this verifies proofs against a
+     root the PROVER INVENTED - the proof still verifies, it just means nothing. **Identical defect
+     class to the one `IdentityRegistry.register` already solved** with `UnknownRegistrationRoot` /
+     `RegistrationRootPredatesAnInvalidation` against `STATE_KEEPER.registrationSmt().isRootValid()`.
+     Copy that, do not re-derive it.
+
+**PRIVACY NOTE, since the goal is "without revealing identity":** disclosing sex is one bit, but sex +
+an age band + nationality together can be near-identifying in a small pool. The selector should
+disclose the MINIMUM the use case needs - and because the selector is a public signal, WHICH fields
+were requested is itself public.
+
+Nothing built. OPEN.

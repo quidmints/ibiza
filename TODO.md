@@ -13963,3 +13963,45 @@ registration circuit does. Post-registration listing still needs `IdentityRegist
 
 Refines §2.18fj (extract the whole `idList`, not only the address rows) and lifts §2.18fh's "option b"
 from hypothetical to specified. OPEN.
+
+### 2.18fp MEASURED against the live SDN — 27.5% passport coverage, and only 94 entries carry addresses (2026-08-09)
+
+**§2.18fo demanded this measurement instead of the unsourced 23.3% figure. Done, against the real
+export** (`SDN.XML`, 28.8 MB, `Record_Count` 19,199, `Publish_Date` 08/07/2026, fetched from the
+compiled-in URL - which incidentally confirms §2.18fl's URL is live).
+
+| | count | share |
+|---|---|---|
+| total `sdnEntry` | 19,199 | Entity 9,854 / Individual 7,479 / Vessel 1,524 / Aircraft 342 |
+| Individuals with a `Passport` id | **2,058** | **27.5% of individuals** |
+| `Passport` rows (some hold several) | 2,608 | — |
+| ...carrying `idCountry` | 2,417 | **92.7% of passport rows** |
+| Individuals with `National ID No.` | 1,299 | 17.4% |
+| entries with >=1 crypto address | **94** | 0.5% of entries |
+| digital-currency-address rows | **977** | — |
+
+**CORRECTION 1: the 23.3% cited in §2.18ez and §2.18fe was WRONG. It is 27.5%,** and now sourced.
+The old number was never traceable to a measurement; it was repeated twice regardless.
+
+**⚠ CORRECTION 2, AND IT IS THE MORE IMPORTANT ONE: ADDRESS COVERAGE IS TINY.** 94 entries, 977
+addresses. **Direct address screening catches almost nobody on its own.** Its entire value is as
+SEEDS for taint propagation - and those 94 include the major mixer and ransomware designations, which
+is why the seed set is small and still consequential. **§2.18fj must not be read as "address screening
+covers OFAC".** It does not; it covers 0.5% of entries plus whatever propagation reaches.
+
+**A THIRD FACT WORTH THE SPACE: 7.3% of `Passport` rows carry NO `idCountry`.** So a
+`(idCountry, idNumber)` join silently misses ~191 rows. Joining on `idNumber` alone would recover
+them at the cost of cross-country collisions - a passport number is only unique WITHIN an issuer.
+Neither option is free, and the choice must be explicit rather than discovered later.
+
+**TREE SIZES, which are better than the current design's:**
+  - address tree: 977 leaves, ~10 levels
+  - passport tree: 2,608 leaves, ~12 levels
+  - the NAME tree we anchor today: 19,199 leaves, ~15 levels
+Both proposed trees are cheaper on-chain AND in-circuit than the one currently anchored, which per
+§2.18fh no predicate can consume anyway.
+
+**`National ID No.` (1,299 individuals) is a candidate second person-join** but is NOT in the MRZ, so
+it is off-chain-only. Recorded, not proposed.
+
+Measurement only. Nothing built. OPEN.

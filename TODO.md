@@ -14681,3 +14681,46 @@ by diffing a rebuilt verifier, not assumed.**
 **AND THE SWAP TRICK WAS NEVER FORGOTTEN:** `BB_SWAP_GB=32` is the script default and the run used the
 container. bb reported `mem: 3.82 MiB` before rejecting the circuit - memory was never the constraint.
 The swap trick (6120ec3) rescued `27_512_3_4_336_248_NA`, a genuine OOM, and it worked.
+
+### 2.18ge ⚠ THE 79 PASSPORT VERIFIERS WERE ON THE 5.1.0 TEMPLATE — regeneration in progress (2026-08-09)
+
+**Found by running the back-fill, not by reading anything.** The "VK back-fill" was filed as
+housekeeping to schedule "when there is a free machine-hour" (TODO ~9246). **It is a correctness fix
+on the passport registration path**, and the count was never the point.
+
+**THE EVIDENCE.** Regenerating any committed passport verifier on the pinned bb changes it
+structurally:
+
+| | committed | regenerated |
+|---|---|---|
+| `NUMBER_OF_SUBRELATIONS` | 29 | **31** |
+| `romLogupGamma` (ROM-LogUp additive offset) | **0 occurrences** | 8 |
+| `splitChallenge` | present | removed |
+
+Diffstat across the 34 rebuilt so far: 26 files at 63+/36-, 7 at 98+/71-, 1 at 102+/75-.
+
+**THIS IS THE EXACT BOUNDARY `package.json` ALREADY DOCUMENTS**, measured there in both directions:
+*"The emitted Solidity moved 2,491 -> 2,518 lines, 99 lines differing, with ZERO VK constants
+changed. So the TEMPLATE is what breaks a verifier, and the key cannot tell you."* and *"Its proofs
+are mutually unverifiable anyway... each fails against the other at `UltraVerifier: verification
+failed at reduction step`."*
+
+**SO THE COMMITTED PASSPORT VERIFIERS CANNOT ACCEPT PROOFS FROM THE PINNED PROVER.** Not a
+degradation - a hard rejection at the reduction step.
+
+**AND `package.json`'s OWN CLAIM IS OVERBROAD:** *"every committed proof and verifier was regenerated
+on 6.0 (TODO sec. 2.18eh)"*. It does not hold for the passport set - if it did, regeneration would be
+a no-op, and it changes 99 lines. The passport verifiers were built 2026-08-03/04; the bb 6.0 move
+(`27bebcf`) and the 5.1.0 deletion (`b57e788`) landed 08-04/08-05, after them. They were never
+revisited. **A VK check cannot catch this** - zero VK constants differ - which is precisely what that
+same note warns about, so nothing in the repo could have flagged it.
+
+**STATE:** 34 of 79 regenerated and committed (`7891c07`), their keys now in `passport-vks/` so those
+34 never need the container again. 45 remain on the old template; **the tree is MIXED**, which is
+worse than uniformly-old for anyone reading it, so this must be finished rather than left.
+
+**METHOD NOTE, for whoever resumes:** batches of ~12 with a commit between, not one long run. A
+45-profile marathon put a 16 GB host into swap death (28.3M pageouts) and wedged the Docker daemon so
+hard it would not answer `docker kill` - recovery needed quitting Docker Desktop outright. The VM is
+allocated 12.7 GiB of 16 GB and then the container carves a 32 GiB swapfile inside it; lowering the
+Docker Desktop memory slider is the only lever and it is not scriptable (TCC-protected settings file).

@@ -101,8 +101,18 @@ contract PoseidonInlineDifferentialTest is Test {
     for (uint256 i = 0; i < 16; ++i) {
       bytes memory more = new bytes(64);
       more[0] = 0x01;
+      // PREVIOUS accumulator, kept because the inline call overwrites `acc` on the next line - so the
+      // upstream comparison must be made against the INPUT, not the output.
+      //
+      // ⚠️ THIS LINE ASSERTED NOTHING UNTIL 2026-08-09. It read
+      //     assertEq(acc, PoseidonT3.hash([acc == 0 ? 0 : acc, i]) == acc ? acc : acc);
+      // whose ternary yields `acc` on BOTH branches, reducing the whole statement to
+      // `assertEq(acc, acc)` - the upstream hash was computed and thrown away. It could not fail
+      // however badly `PoseidonT3Inline` behaved, and it also fed the POST-hash `acc`, so even the
+      // comparison it appeared to make was against the wrong operand. TODO sec. 2.18fx.
+      uint256 prev = acc;
       acc = PoseidonT3Inline.hash([acc, i]);
-      assertEq(acc, PoseidonT3.hash([acc == 0 ? 0 : acc, i]) == acc ? acc : acc);
+      assertEq(acc, PoseidonT3.hash([prev, i]), 'inline diverged from upstream at this step');
     }
     uint256 ref = 1;
     for (uint256 i = 0; i < 16; ++i) ref = PoseidonT3.hash([ref, i]);

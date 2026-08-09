@@ -14527,3 +14527,46 @@ at deploy time**, so a symbol-reference count cannot distinguish dead from live 
 about whether these 17 are deployed.** Same collapse the SPV CLAUDE.md records for its 35 verifiers.
 Deciding deletability needs deployment records, which this repo does not contain (no deploy scripts -
 §2.18fs). OPEN.
+
+### 2.18gb RESOLVED — Circom CANNOT be removed by vendoring; upstream has no Noir for those 6 (2026-08-09)
+
+§2.18ga left one question: do the 6 Noir profiles rarimo publishes but we lack cover the 6 Circom
+orphans? **Answered from the rarimo release API** (`rarimo/passport-zk-circuits-noir`, 54 releases,
+**82 distinct `registerIdentity_*` profiles**).
+
+**NO. The two sixes are DIFFERENT SETS - the matching count was coincidence.** Checked name by name:
+
+    1_160_3_4_576_200_NA                 not published upstream
+    1_256_3_6_336_560_1_2744_4_256       not published upstream
+    14_256_3_4_336_64_1_1480_5_296       not published upstream
+    20_160_3_3_736_200_NA                not published upstream
+    20_256_3_5_336_72_NA                 not published upstream
+    4_160_3_3_336_216_1_1296_3_256       not published upstream
+
+**So Circom cannot be deleted from the passport path by vendoring anything.** Only two routes exist:
+  a. **DROP SUPPORT** for those 6 passport profiles and delete the Circom stack with them; or
+  b. **AUTHOR Noir circuits for them ourselves** - rarimo has not, in 54 releases.
+Which is acceptable depends on which real documents those 6 profiles serve - a coverage question
+nobody has asked. **Until one is chosen, `AQueryProofExecutor.execute` and `Registration2.register`
+must stay, and the "migration" framing in both headers is misleading: there is nothing upstream left
+to migrate FROM.**
+
+**THE VENDORING GAP IS EXACTLY ONE PROFILE, NOT SIX.** Diffing 82 upstream against our 79:
+
+| unvendored upstream profile | verdict |
+|---|---|
+| `20_256_3_5_336_248_25_2120_5_1816` | **THE REAL GAP** - live in our manifest with no verifier (§2.18fy). It IS published upstream, so this is buildable today and closes 79/79 -> 80/80. |
+| `14_256_1_4_1752_576_1_1496_3_512` | already QUARANTINED - declares `dg1` as `[u8; 0]` |
+| `1_256_1_5_2376_336_1_2120_4_512` | already QUARANTINED - same |
+| `21_160_1_2_560_576_NA` | already QUARANTINED - same |
+
+So three of the four "missing" profiles are DEGENERATE and must stay out; vendoring them would be a
+regression. `ID_Card_I` is ours-only with no upstream asset, exactly as `_provenance` records.
+
+**The manifest's own note - "rarimo additionally publishes 6 registerIdentity profiles this repo does
+not have, four of them TD1" - is STALE** (dated 2026-08-02; vendoring happened since). Measured today
+it is 4 unvendored, of which 3 are quarantined and 1 is real.
+
+**ACTIONABLE, and it is small:** build `NoirRegisterIdentity_20_256_3_5_336_248_25_2120_5_1816.sol`
+from the published asset. That removes the only live manifest entry that fails at proving time. It
+does NOT reduce the Circom surface, which is a separate decision (a or b above).

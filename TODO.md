@@ -14195,3 +14195,55 @@ tree is still `contracts/mock/sdk/ProofBuilderTest.sol`, a test mock.** A real c
 genuinely missing piece - not a root check.
 
 No code changed. Correction only.
+
+### 2.18fu The presentation path, read end to end — complete except a consumer, plus two traps (2026-08-09)
+
+Read after §2.18ft, where a check was reported missing that was present. This is the whole path, and
+it claims nothing absent without having followed the call.
+
+**THE PATH:**
+  1. wallet proves `query_identity` (TD3) or `query_identity_td1`: `selector` picks disclosed fields,
+     `birth_date_*`/`expiration_date_*` give RANGE proofs, `event_id`/`event_data` bind the
+     presentation, `dg1` and `sk_identity` stay private;
+  2. a consumer extends `AQueryProofExecutor`, builds signals with `PublicSignalsBuilder`, calls
+     `executeNoir`;
+  3. the builder validates the ROOT (`withIdStateRoot` -> `isRootValid`, §2.18ft) and the DATE
+     (`withCurrentDate` -> `validateDate` vs `block.timestamp`);
+  4. `TD3QueryProofNoirVerifier` / `TD1QueryProofNoirVerifier` verifies;
+  5. `_afterVerify` performs whatever the presentation authorises.
+
+**THE BUILDER API IS COMPLETE:** `withSex`, `withBirthDateLowerboundAndUpperbound`,
+`withExpirationDateLowerboundAndUpperbound`, `withNationality`, `withCitizenship`,
+`withCitizenshipMask`, `withName`, `withNameResidual`, `withSelector`, `withEventIdAndData`,
+`withCurrentDate`, `withTimestampLowerboundAndUpperbound`, `withIdentityCounterLowerbound`. Nothing
+needs writing for gender or age.
+
+**NULLIFIER = `Poseidon3(sk_identity, Poseidon1(sk_identity), event_id)`** (`query.nr:421-425`) -
+scoped to the event. Same person + same `event_id` -> same nullifier, so double-use is detectable;
+same person + different `event_id` -> unlinkable, so consumers cannot correlate.
+
+**⚠ TRAP 1 - `event_id` MUST BE UNIQUE PER CONSUMER.** Two consumers sharing one `event_id` produce
+IDENTICAL nullifiers for the same person, making users linkable across them. The unlinkability above
+is a property of the DEPLOYMENT CHOICE, not of the circuit.
+
+**⚠ TRAP 2 - THE NULLIFIER IS SELECTOR-GATED, AND ZERO WHEN NOT REQUESTED.** `query.nr:425` multiplies
+it by its selector bit, so a presentation that does not request it carries nullifier `0`. A consumer
+that stores nullifiers WITHOUT requiring that bit records `0` for everyone: either the first
+presentation "uses up" the zero slot and every later one is rejected as replayed, or the check is
+absent and there is no double-use protection at all. **Both fail silently and plausibly** - the
+rule-3 shape. Any consumer relying on nullifiers must REQUIRE the bit in the selector it pins.
+
+**⚠ DEPLOYMENT NOTE - ON L1, DO NOT WIRE `RegistrationSMTReplicator`.** It is the L2 MIRROR
+(`test/state/RootValidityCopies.t.sol:26`): oracle-signed root transitions, owner-set oracle set,
+`ROOT_VALIDITY = 1 hours`. It implements `IPoseidonSMT`, so it drops into the executor's
+`registrationSMT` slot transparently - and doing so on L1 silently downgrades the root check from
+"the real SMT holds this root" to "the oracle set attested it". We are L1-only, so the consumer must
+be initialised with `StateKeeper.registrationSmt()`.
+
+**WHAT IS ACTUALLY MISSING IS ONE THING, AND IT IS NOT TECHNICAL:** the only implementation of
+`AQueryProofExecutor` in the tree is `contracts/mock/sdk/ProofBuilderTest.sol`, a test mock. Writing a
+real one requires deciding **what a presentation authorises** - which action, gated on which disclosed
+fields, under which `event_id`. Nothing in the repo states that, and it is a product decision, not an
+engineering one.
+
+Read-through only, nothing built. OPEN.

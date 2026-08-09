@@ -167,13 +167,19 @@ contract Registration2 is Initializable, UUPSUpgradeable {
      *   - `registerCertificate` / `revokeCertificate` - NEITHER STACK. DSC admission is gated by a
      *     CSCA SIGNATURE, not a ZK proof. Every piece of certificate hardening (X509 bounds
      *     sec. 2.18m, PKCS#1 forgery sec. 2.18u, low-s sec. 2.18v) is independent of this choice.
-     *   - `registerViaNoir` / `reissueIdentityViaNoir` - Noir/Honk. 76 verifiers vendored under
+     *   - `registerViaNoir` / `reissueIdentityViaNoir` - Noir/Honk. **79** verifiers vendored under
      *     `passport/verifiers2/noir/`.
-     *   - `register` / `reissueIdentity` - Circom/Groth16. 35 verifiers under
-     *     `passport/verifiers2/per-passport/`, of which 29 ALREADY have a Noir equivalent.
+     *   - `register` / `reissueIdentity` - Circom/Groth16. **6** verifiers under
+     *     `passport/verifiers2/per-passport/`, and NONE of them has a Noir equivalent - they are
+     *     Circom-only orphan profiles, which is why this path cannot yet be deleted.
      *
-     * This is a MIGRATION WITH SIX PROFILES LEFT, not a permanent dual-stack design. Do not add new
-     * Circom-only capability here - it would only have to be ported again.
+     * COUNTS ARE FROM THE FILESYSTEM, 2026-08-09. They previously read "76" and "35 of which 29",
+     * both stale: `dfaa42a` deleted the 29 Groth16 files that had Noir twins, taking that directory
+     * from 35 to 6. A count in a comment is the thing that rots first - recount before citing
+     * (sec. 2.18fy).
+     *
+     * This is a MIGRATION WITH SIX ORPHAN PROFILES LEFT, not a permanent dual-stack design. Do not
+     * add new Circom-only capability here - it would only have to be ported again.
      */
     function registerViaNoir(
         bytes32 certificatesRoot_,

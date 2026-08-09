@@ -14357,3 +14357,65 @@ BIRTHDATE in a passport field, which is exactly the junk a number-only join woul
 Reproduce by fetching SDN.XML and selecting entries by idType.
 
 Nothing built. Blocked on decision 1. OPEN.
+
+### 2.18fx A test assertion that asserted nothing, and the audit that found it (2026-08-09)
+
+**FIXED.** `test/libraries/PoseidonInlineDifferential.t.sol:105` read:
+
+    assertEq(acc, PoseidonT3.hash([acc == 0 ? 0 : acc, i]) == acc ? acc : acc);
+
+The ternary yields `acc` on BOTH branches, so the statement reduced to `assertEq(acc, acc)` and the
+upstream hash was computed and discarded. **It could not fail however badly `PoseidonT3Inline`
+behaved.** It also passed the POST-hash accumulator - `acc` was overwritten on the line above - so
+even the comparison it appeared to make used the wrong operand. Now keeps `prev` and compares the
+inline output against upstream ON THE SAME INPUT, which localises a divergence to the step where it
+happens instead of only at the loop's end. 489 pass / 0 fail.
+
+**Everything else the audit checked came back clean or GOOD, which is worth recording so it is not
+re-audited:** `NotaryRegistryProof.t.sol` - the file flagged for this - is CORRECT: it reads root,
+leaf and path from `test/fixtures/notary_registry_proof.txt`, emitted by the Go generator and checked
+by OpenZeppelin's `MerkleProof`, i.e. the cross-implementation shape. `RelayContext.t.sol`,
+`SmtCompat.t.sol`, `HashPrimitives.t.sol` and the already-fixed `BatchCommitment.t.sol` /
+`EscrowEnvelopeHonkVerifier.t.sol` are all genuine independent cross-checks. **Do not "fix" them.**
+
+**ONE MEDIUM LEFT OPEN, deliberately:** `pool/WithdrawEndToEnd.t.sol:170` `E2E_IDENTITY_ROOT` is
+transcribed from the registry that produced it, so it can detect a CHANGED root but never a WRONG
+one. It is defensible as a fixture-staleness guard - `withdraw_e2e.proof` binds the root
+independently, so real drift surfaces as a proof rejection - but the comment should say so. Contrast
+`WALLET_STATE_ROOT` on line 160, which IS independently computed by `src/pp/stateTree.ts`. Not
+changed; noted.
+
+### 2.18fy The passport back-fill is NOT blocked by nargo, and three comment counts were stale (2026-08-09)
+
+**THE BLOCKER I HAD BEEN CARRYING IS FALSE.** "The container needs the right nargo before the
+back-fill" does not hold: `codegen-passport-verifiers.sh:51-59` accepts **either**
+`1.0.0-beta.26+quid-icefix1` (host) **or** stock `1.0.0-beta.26` (container), because - its own
+comment - "their EVM verification keys are byte-identical, so nothing already generated needs
+regenerating". Verified by reading the script. The pin that is NOT relaxed is **bb**
+(`6.0.0-nightly.20260804`), and the real constraint on the back-fill is machine time and memory
+(~32 GiB), not a toolchain mismatch.
+
+**COUNTED FROM THE FILESYSTEM** (`ls | wc -l`, and a set-diff of `passport-profiles.json` against
+generated filenames):
+
+| | count |
+|---|---|
+| declared profiles | 79 live (+4 quarantined) |
+| `verifiers2/noir/NoirRegisterIdentity_*.sol` | **79** |
+| `verifiers2/per-passport/*.sol` (Circom) | **6** |
+| `passport/verifiers/*.sol` (light registration, unrelated) | 10 |
+
+**THREE COMMENTS WERE WRONG, ALL NOW CORRECTED:**
+  - `AQueryProofExecutor.sol:18` said Circom is kept "while six passport profiles still lack a Noir
+    verifier". **The six are Circom-ONLY ORPHAN profiles - a different statement.** The Noir gap is
+    ONE profile, not six.
+  - `Registration2.sol:171` said "76 verifiers"; actual 79.
+  - `Registration2.sol:173` said "35 verifiers ... of which 29" have Noir twins; `dfaa42a` deleted
+    those 29, leaving 6 with NO twin. Both numbers predate that commit.
+
+**⚠ AND ONE REAL DEFECT, NOT A COMMENT: the manifest advertises a profile that cannot be verified.**
+`20_256_3_5_336_248_25_2120_5_1816` is listed under live `profiles` and has NO
+`NoirRegisterIdentity_*.sol`. It should be moved to `quarantined` (where 4 others already sit,
+3 of them for declaring `dg1` length 0) or its verifier generated. A live manifest entry with no
+verifier fails at proving time, far from the declaration that caused it. **`passport-vks/` does not
+exist at all** - it is only a `VK_DEST` in the codegen script, never written. OPEN.

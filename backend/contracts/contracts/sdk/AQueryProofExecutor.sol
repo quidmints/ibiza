@@ -15,8 +15,11 @@ import {INoirVerifier} from "../interfaces/verifiers/INoirVerifier.sol";
  * supporting both Circom (Groth16) and Noir systems.
  *
  * @dev DUAL-STACK BY MIGRATION, NOT BY DESIGN (sec. 2.18aj). `executeNoir` is the preferred
- *      path; `execute` is the Circom/Groth16 predecessor, kept while six passport profiles still
- *      lack a Noir verifier. Note the POOL is already single-stack - both `PrivacyPool` verifiers
+ *      path; `execute` is the Circom/Groth16 predecessor, kept for the SIX CIRCOM-ONLY ORPHAN
+ *      PROFILES under `passport/verifiers2/per-passport/` - which is NOT the same statement as an
+ *      earlier version of this line ("six passport profiles still lack a Noir verifier"). Counted
+ *      from the filesystem 2026-08-09: 79 profiles are declared and 79 Noir verifiers exist, so the
+ *      Noir gap is ONE profile, not six (see sec. 2.18fy). Note the POOL is already single-stack - both `PrivacyPool` verifiers
  *      are `INoirVerifier` and no Groth16 remains there - so "are we on one stack yet?" has
  *      DIFFERENT ANSWERS for the pool and for the identity side. That is the confusion this note
  *      exists to end. New capability goes in `executeNoir`.

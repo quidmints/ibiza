@@ -14724,3 +14724,57 @@ worse than uniformly-old for anyone reading it, so this must be finished rather 
 hard it would not answer `docker kill` - recovery needed quitting Docker Desktop outright. The VM is
 allocated 12.7 GiB of 16 GB and then the container carves a 32 GiB swapfile inside it; lowering the
 Docker Desktop memory slider is the only lever and it is not scriptable (TCC-protected settings file).
+
+### 2.18gf The Circom decision, with the ceremony argument and what the 6 orphans actually are (user, 2026-08-09)
+
+*"we can't have circom in our repo because its a trusted ceremony. are passport profiles one per
+country?"*
+
+**1. THE CEREMONY ARGUMENT IS DECISIVE, AND IT IS ASYMMETRIC.** Groth16 requires a **PER-CIRCUIT**
+trusted setup: 17 separate ceremonies, none of them witnessed here, each with its own toxic waste.
+UltraHonk/bb uses a **UNIVERSAL** SRS - one ceremony, circuit-independent, and **already in our trust
+base for every other proof in this repo**. So deleting Circom removes 17 per-circuit trust
+assumptions and adds NOTHING. (Honk is not ceremony-free; the point is one universal ceremony we
+already rely on versus N circuit-specific ones we do not.)
+
+**2. PROFILES ARE NOT ONE PER COUNTRY.** Confirmed by decoding the name against the manifest's
+generics: the name is `SIG_TYPE _ hashbits _ ... _ AA_SIG_TYPE`, with `NA` meaning no Active
+Authentication. A profile is a **crypto/document CONFIGURATION** - signature algorithm, hash, DER
+lengths, AA presence. Many countries share one; one country spans several across issuance eras and
+algorithm migrations. **Dropping 6 profiles is NOT dropping 6 countries, and the names cannot tell
+you which or how many.** That remains the unanswered coverage question from §2.18gb.
+
+**3. WHAT THE SIX ARE:**
+
+| profile | SIG_TYPE | hash | AA |
+|---|---|---|---|
+| `1_160_3_4_576_200_NA` | 1 | **SHA-1** | none |
+| `20_160_3_3_736_200_NA` | 20 | **SHA-1** | none |
+| `4_160_3_3_336_216_1_1296_3_256` | 4 | **SHA-1** | yes |
+| `1_256_3_6_336_560_1_2744_4_256` | 1 | SHA-256 | yes |
+| `14_256_3_4_336_64_1_1480_5_296` | 14 | SHA-256 | yes |
+| `20_256_3_5_336_72_NA` | 20 | SHA-256 | none |
+
+**Three of six are SHA-1** - legacy documents, since ICAO moved off SHA-1 for new issuance. Passport
+validity is ~10 years, so that population shrinks on its own.
+
+**4. "IF THERE IS NO CIRCUIT" - THERE IS ONE; WHAT IS MISSING IS THE PARAMETERS.** Every profile is a
+single instantiation of the same generic `register_identity::<14 params>` (upstream's own artifact:
+`register_identity::<93, 283, 297, 74, 6, 256, 32, 32, 20, 31, 265, 42, 25, 227>`). Authoring a new
+profile is therefore NOT writing a circuit - it is supplying a 14-tuple. **But this repo already
+established the tuple is unrecoverable for these six:** rarimo publishes no Noir artifact for them
+(checked, all 54 releases / 82 artifacts, §2.18gb), their Circom `test/inputs` contain only Readmes,
+and **`EC_LEN` is a DER length that "genuinely exists nowhere outside a document"**.
+
+**SO THE OPTIONS REDUCE TO TWO, and neither is engineering work:**
+  a. **DROP the six**, delete all 17 Groth16 verifiers, and remove `Registration2.register` /
+     `AQueryProofExecutor.execute`. Cost: holders of those document configurations cannot register.
+     Unknown how many people that is - see (2).
+  b. **OBTAIN ONE PHYSICAL PASSPORT of each of the six configurations**, read the DER lengths, add the
+     tuples to the manifest and build. No new circuit, no ceremony, and it closes the gap permanently.
+
+**RECOMMENDATION: (a), unless the coverage question says otherwise.** The ceremony argument is a
+standing trust liability on the identity path; three of the six are already legacy SHA-1; and (b)
+depends on physically sourcing six specific document types, which is not a scheduling problem but a
+procurement one. **The blocking input is coverage: which real documents map to those six configs.**
+Nothing in this repo can answer that - it needs ICAO/issuer data, not code. OPEN.

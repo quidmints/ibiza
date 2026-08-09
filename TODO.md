@@ -14063,3 +14063,53 @@ disclose the MINIMUM the use case needs - and because the selector is a public s
 were requested is itself public.
 
 Nothing built. OPEN.
+
+### 2.18fr NO — the link already exists, sealed to the controller. §2.18fq was WRONG (2026-08-09)
+
+**§2.18fq claimed a post-registration OFAC hit is "unactionable on-chain" and that remediation
+requires restoring `_holderOfDocumentHash`. BOTH CLAIMS ARE FALSE.** Corrected here rather than
+edited above, so the error stays visible.
+
+**THE ESCROW ENVELOPE ALREADY CARRIES IT.** `escrow_envelope/src/main.nr:167-171` - the published
+ciphertext is:
+
+    payload[0]   = revocation secret
+    payload[1..5] = THE PACKED MRZ
+
+sealed to `controller_x` / `controller_y`. And `commitment` - the exact first argument of
+`IdentityRegistry.revoke(commitment, predicate)` - is a PUBLIC input of the same proof (`:161`).
+
+**So remediation is already possible, today:**
+  1. OFAC hit (fuzzy name review per §2.18fq, or exact passport number per §2.18fo);
+  2. the controller decrypts envelopes and matches the MRZ;
+  3. the controller calls `revoke(commitment, predicate)` - the commitment was never secret.
+
+`IdentityRegistry:221-222` states this was the envelope's PURPOSE: sealed to the controller's key "or
+it is unreadable by the only party that could ever act on it - a registration nobody can revoke."
+The design anticipated exactly this; §2.18fq failed to read it.
+
+**AND IT IS STRICTLY BETTER THAN THE DELETED MAP:**
+
+| | `_holderOfDocumentHash` (deleted) | escrow envelope (present) |
+|---|---|---|
+| who can resolve document -> holder | **anyone** - the map was public state | **only the controller** |
+| a SEIZED passport reveals | the holder's identity and their whole document set | only `_usedDocumentHash`: that it is registered SOMEWHERE |
+| remediation possible | yes | **yes** |
+
+Restoring the map would therefore **re-open the document-seizure leak that `sec. 2.18bg` closed while
+adding no capability the controller does not already have.** `HolderStateKeeper:170-177` names that
+threat precisely - the defence is against a seized document, not against the controller.
+
+**DO NOT RESTORE IT.** And do not remove `__deprecated_holderOfDocumentHash`: it is a reserved slot
+under a UUPS proxy, and removing it shifts `lastDocumentInvalidationAt`, whose zero-read would silently
+disable `RegistrationRootPredatesAnInvalidation`.
+
+**THE REAL PRIVACY FACT, which this makes explicit rather than changes: THE CONTROLLER CAN DECRYPT
+EVERY REGISTRANT'S MRZ.** It is an ESCROW design, named as such. Privacy here is against the PUBLIC
+and against document seizure - never against the controller. That is a property to state plainly in
+any external description, because a reader will otherwise assume otherwise.
+
+**COST NOTE:** matching is a linear scan - decrypt N envelopes per query. Fine at any plausible N, and
+it is off-chain work.
+
+Corrects §2.18fq. Nothing built.

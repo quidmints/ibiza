@@ -14898,3 +14898,45 @@ unsound (wrong - they are verbatim upstream); §2.18gd said our lib was missing 
 branch is missing upstream too); §2.18gi establishes it is an upstream defect with a known arithmetic
 cause. The pattern worth keeping: each step went further toward the source, and the last one - reading
 upstream's own embedded source - is the one that settled it.
+
+### 2.18gj "Solve the quarantine" — attempted, PARTLY solved, reverted. Two corrupted fields, not one (user, 2026-08-10)
+
+*"why is there a quarantine. solve it"* - fair: quarantine was parking. Attempted, and the attempt is
+the finding. **I reported it solved before building it. It was not.**
+
+**WHAT WAS RIGHT.** The three `DG1_LEN = 0` profiles are TD1 ID cards (`DOCUMENT_TYPE=1`, name field
+3), and the correct value IS derivable: **95**. Evidence, not inference - the one TD1 profile that
+builds, `25_384_1_3_336_256_NA`, declares 95, while all 77 TD3 profiles declare 93, matching ICAO
+geometry exactly (TD1 MRZ 3x30 + 5-byte header; TD3 2x44 + 5). Setting it **did** clear the original
+error, `"Invalid type found in the entry point to a program"`.
+
+Also verified, and it looked like a second defect but is not: **`EC_FIELD_SIZE = 0` is CORRECT** on
+two of them - 54 working profiles carry it, including all 3 `SIG_TYPE=14` and all 19 `SIG_TYPE=1`,
+because it is unused for RSA.
+
+**⚠ WHAT THE BUILD THEN EXPOSED: A SECOND CORRUPTED FIELD.** All three failed at
+`not_passports_zk_circuits.nr:118` - `assert(dg1_hash[i] == ec[i + DG1_SHIFT])` - with "Index out of
+bounds", because **`DG1_SHIFT == EC_LEN` EXACTLY in all three**: 70==70, 219==219, 297==297. The
+generator wrote `EC_LEN` into `DG1_SHIFT`.
+
+**CONTROL RUN, which is what makes this a finding rather than a guess: 0 of the other 78 profiles have
+`DG1_SHIFT == EC_LEN`,** and their `DG1_SHIFT` lies in **23..33** (nine distinct values). Values of 70,
+219 and 297 are far outside that band and each equals its own `EC_LEN`.
+
+**WHY I DID NOT GUESS THE SECOND FIELD, having nearly made this exact mistake at §2.18gi:** a wrong
+`DG1_SHIFT` is in-bounds and **compiles cleanly**, producing a verifier that checks the DG1 hash at
+the wrong offset in eContent. Silent wrong-statement verifier - strictly worse than a missing profile.
+There is even a tempting lead: `1_256_1_5_2376_336_1_2120_4_512` shares `EC_LEN=297`, `SA_LEN=74`,
+`DG15_SHIFT=265` and `EC_SHIFT=42` with `20_256_3_5_336_248_25_2120_5_1816`, which declares
+`DG1_SHIFT=31`. **Not applied.** A shared EC layout is not proof of a shared DG1 offset, and the two
+are different document types (TD1 vs TD3).
+
+**STATE: reverted to quarantined, manifest back to 78 profiles / 5 quarantined** - but the quarantine
+notes are now a real diagnosis instead of "DEGENERATE ARTIFACT": both corrupted fields named, the
+correct value for one of them recorded, the control documented, and the reason a guess is unsafe
+stated. **That is the durable output of this attempt.**
+
+**WHAT WOULD ACTUALLY SOLVE IT, both outside this repo:** an upstream re-release of these three (rarimo
+issued '-fix' builds for 24 profiles with the DG1_LEN defect, but never these - checked all 54
+releases), or one real document of each type to read the true DER layout from. Same conclusion the
+repo reached earlier by a different route: some of these parameters exist nowhere but in a passport.

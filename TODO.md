@@ -14247,3 +14247,54 @@ fields, under which `event_id`. Nothing in the repo states that, and it is a pro
 engineering one.
 
 Read-through only, nothing built. OPEN.
+
+### 2.18fv EUDI, not our own semantics — and where we do and do not fit (user, 2026-08-09)
+
+**§2.18fu said "what a presentation authorises" is a product decision for us. WRONG, and the user
+corrected it:** the semantics belong to the RELYING PARTY that requests the presentation, via a
+well-defined API. We must not roll our own. **EUDI takes precedence over W3C VC for our use case.**
+
+**WHAT EUDI'S ZKP WORKSTREAM ACTUALLY SPECIFIES** (ARF Topic G, ZKP discussion; ARF 1.4.0/2.4.0):
+three privacy properties -
+  1. **Selective disclosure** - reveal only the needed attributes;
+  2. **Relying Party unlinkability** - different RPs cannot correlate one user's transactions;
+  3. **Full unlinkability** - even the ISSUER cannot link presentations.
+Plus range proofs for minimisation, and composite proofs across credentials.
+
+**HOW OUR MACHINERY MAPS - two of three, already built:**
+
+| EUDI property | ours | status |
+|---|---|---|
+| selective disclosure | `selector` bitmask, per-field gating (`query.nr`) | ✅ present |
+| RP unlinkability | nullifier `Poseidon3(sk_identity, Poseidon1(sk_identity), event_id)` | ✅ present, IF `event_id` is per-RP (§2.18fu trap 1) |
+| full unlinkability | — | ❌ **the CONTROLLER can decrypt every MRZ (§2.18fs)** |
+| range proofs | `birth_date_*` / `expiration_date_*` bounds | ✅ present - this IS the age proof |
+
+**⚠ THE STRUCTURAL GAP, and it is not a detail: EUDI REQUIRES ZKP OVER THE ISSUED CREDENTIAL.** The
+mandated formats remain **ISO/IEC 18013-5 mdoc and SD-JWT VC**, and a scheme must "enable proof
+generation from already-issued credentials without re-issuance", with new metadata added to those
+standards. **We prove over the ICAO passport's DG1/SOD directly - not over an issuer-signed mdoc or
+SD-JWT VC.** So our proof is not an EUDI presentation; it is a different credential source that
+happens to prove similar predicates. Closing that is re-architecture, not configuration.
+
+**AND THE TARGET IS MOVING:** candidate schemes are **BBS+ / BBS#**, and the discussion states **no
+single ZKP scheme currently meets all the requirements**. Ours is Honk/Groth16 over Poseidon
+commitments - not a candidate. Conforming today means aiming at an unsettled spec.
+
+**WHAT IS SEPARABLE AND ADOPTABLE NOW** - the API, which is the part the user was pointing at:
+  - **OpenID4VP** for the request/response shape, so external services request from us using the
+    protocol they already implement;
+  - the **Relying Party registration** model (ARF Topic X): an RP registers its contact details and
+    its INTENDED USE - i.e. which attributes it may request. That is the "well-defined API", and it
+    is also the natural home for the minimum-disclosure discipline §2.18fu called for;
+  - the **EU Age Verification Blueprint** (`ageverification.dev`), which builds on the ARF and is the
+    direct precedent for our age proof rather than anything we would design.
+
+**THE ONE DESIGN CHOICE THIS FORCES, and it is EUDI property 2 vs 3:**
+  - `event_id = client_id` (stable per RP) -> cross-RP unlinkable, and the RP CAN detect repeat use;
+  - `event_id = H(client_id, nonce)` (per session) -> unlinkable even within one RP, but **no
+    double-use detection at all**.
+Not interchangeable, and §2.18fu trap 2 applies to both: a consumer relying on nullifiers must
+require the nullifier's selector bit or it records zero for everyone.
+
+Research and mapping only. Nothing built. Corrects §2.18fu's framing. OPEN.

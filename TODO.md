@@ -14298,3 +14298,62 @@ Not interchangeable, and §2.18fu trap 2 applies to both: a consumer relying on 
 require the nullifier's selector bit or it records zero for everyone.
 
 Research and mapping only. Nothing built. Corrects §2.18fu's framing. OPEN.
+
+### 2.18fw Measured the idList before building it — three things that change the design (2026-08-09)
+
+Preparing the §2.18fj/§2.18fo parser change. Measured against the live SDN first; each finding
+changed the design, so the implementation is NOT started.
+
+**1. ⚠ `idCountry` IS A COUNTRY NAME, THE MRZ IS AN ISO ALPHA-3 CODE. They do not join directly.**
+131 distinct values on Passport rows, in US State Department style: `Iran`, `Russia`,
+**`Korea, North`**, `Lebanon`... The MRZ issuing state is `IRN`, `RUS`, `PRK`. So the
+`(country, number)` join of §2.18fo needs a **curated 131-entry name -> alpha-3 table**.
+  - It is a LOOKUP, not similarity matching, so it stays exact once correct - it does not reintroduce
+    the fuzziness the user ruled out.
+  - **But a missing or renamed entry is a SILENT MISS**, and OFAC may introduce a new spelling at any
+    refresh. That needs the `AlwaysPresent`/`KindVocabulary` treatment this file already uses: an
+    unknown country must REFUSE THE SNAPSHOT rather than drop the row. Guessing "drops designated
+    parties while looking complete" - the existing comment's own words.
+  - This was NOT in §2.18fo, which assumed the join was direct. **Decision needed: curated table (with
+    refuse-on-unknown), or number-only join with cross-issuer collision risk.**
+
+**2. ADDRESS NORMALISATION MUST BE PER-CURRENCY, and the obvious normalisation is destructive.**
+20 distinct currency types. XBT/TRX/XMR/LTC are **base58 - CASE-SENSITIVE**; uppercasing or lowercasing
+an address destroys it. ETH is hex, where case is checksum-only. So a single `strings.ToUpper` over
+all addresses - the natural thing to write - silently corrupts 529 Bitcoin addresses. Leaf must carry
+the TYPE and normalise per type.
+
+**3. ONLY ~100-200 ADDRESSES ARE RELEVANT TO AN L1 EVM POOL, not 977.**
+
+| type | rows |
+|---|---|
+| XBT | 529 |
+| TRX | 198 |
+| **ETH** | **100** |
+| **USDT** | **93** |
+| LTC/XMR/BCH/DASH/ZEC/SOL/... | small |
+| ARB / BSC / BNB | 1 each |
+
+We are L1-only. Bitcoin, Tron and Monero addresses can never appear as depositors, so the directly
+useful set is ETH + the ERC-20 USDT rows, ~**193 addresses**. This sharpens §2.18fp further: address
+screening on L1 covers ~193 designated addresses directly, and everything else is propagation.
+
+**4. LEAF DESIGN CONSEQUENCE, and it differs from the existing name leaf: THE LEAF MUST NOT INCLUDE
+THE OFAC `Reference`.** `leafHash` currently binds `registryKey ++ Reference ++ Kind ++ NameParts`.
+A querier - the circuit, or a contract - knows only an ADDRESS, or a `(country, number)` pair. It does
+NOT know OFAC's internal reference, so a leaf containing it **cannot be reconstructed and the tree
+cannot be queried at all.** Identifier leaves must be `keccak(registryKey, idType, normalisedValue)`
+and `keccak(registryKey, alpha3, normalisedNumber)`. Getting this wrong yields a tree that anchors
+fine, verifies fine, and answers nothing - §2.18fh's vacuity shape again.
+
+**5. Minor:** 98 of 2,608 passport numbers (3.8%) carry punctuation or spaces, so strip-non-alnum is
+required, not cosmetic.
+
+**REAL TEST DATA IS CUT AND READY** (not yet committed - it belongs with the implementation): 5 real
+SDN entries, 35 KB, covering an individual with TWO passports of which one has NO country, an entity
+with TRX addresses, an entity with XMR addresses, and **one individual carrying BOTH a passport and an
+XBT address** - the crossover case. It also contains a passport whose `idNumber` is `19820215`, i.e. a
+BIRTHDATE in a passport field, which is exactly the junk a number-only join would have to tolerate.
+Reproduce by fetching SDN.XML and selecting entries by idType.
+
+Nothing built. Blocked on decision 1. OPEN.

@@ -14861,3 +14861,40 @@ keys in `passport-vks/`. Remaining: 7 light profiles (interrupted mid-run, no fa
 must be run alone - they are the pair that OOM'd the host originally. `20_256_3_5_336_248_25_2120_5_1816`
 remains unbuildable pending the `AA_SIG_TYPE == 25` branch fix (§2.18gd), which is now unblocked since
 no build is holding the tree.
+
+### 2.18gi ⚠ §2.18gd's FIX MUST NOT BE APPLIED — the bug is UPSTREAM's, byte-identical (2026-08-10)
+
+**§2.18gd proposed adding `if (AA_SIG_TYPE == 25) { EC_FIELD_SIZE = 28; HASH_SIZE = 28; }` to
+`noir_dl_lib`. RETRACTED. Applying it would have been the worst outcome available.**
+
+**WHAT CHECKING FOUND.** rarimo's compiled artifact embeds its own sources in `file_map`. Extracted
+their `not_passports_zk_circuits.nr` and compared the ECDSA AA branch against ours:
+
+    upstream ecdsa-branch sha256: ef126cf8ff38e957
+    ours     ecdsa-branch sha256: ef126cf8ff38e957      IDENTICAL
+
+**Our library has not diverged. Upstream's own code has no `AA_SIG_TYPE == 25` branch either** - only
+22 and 23, with everything else falling through to `EC_FIELD_SIZE = 32`. So for this profile upstream
+indexes `dg15[260..290]` against `[u8; 283]` exactly as we do.
+
+**SO THE ARTIFACT rarimo PUBLISHED WAS BUILT FROM CODE THAT READS PAST THE ARRAY.** Their
+`noir_version` is `1.0.0-beta.1`, which did not diagnose it. Our beta.26 does - *"Assertion is always
+false: Index out of bounds"*, then *"circuit is unsatisfiable"*. **The newer compiler is not the
+problem; it is the only reason anyone noticed.**
+
+**WHY THE FIX WOULD HAVE BEEN WORSE THAN THE GAP.** A local `== 25` branch makes our verifier check a
+DIFFERENT STATEMENT than any rarimo prover produces. It would have compiled, emitted a verifier, and
+looked like success - while silently disagreeing with every proof generated anywhere else. That is the
+same class as §2.18fh's vacuous predicate and §2.18fg's ERC-165 hole: it fails by looking fine.
+**The fix belongs upstream, and is worth reporting to rarimo** - with the arithmetic, which is short:
+`AA_SHIFT(227) - 1 + 2*EC_FIELD_SIZE(32) = 290 > 282`.
+
+**ACTION TAKEN:** profile moved from `profiles` to `quarantined` in `passport-profiles.json`, with the
+measurement and an explicit DO-NOT-PATCH note. Manifest is now **78 profiles / 5 quarantined**. The
+manifest no longer advertises a profile that cannot be built, which was §2.18gc's real complaint.
+
+**THIS IS THE THIRD CORRECTION ON THIS ONE PROFILE**, each narrowing it: §2.18gc said the generics were
+unsound (wrong - they are verbatim upstream); §2.18gd said our lib was missing a branch (wrong - the
+branch is missing upstream too); §2.18gi establishes it is an upstream defect with a known arithmetic
+cause. The pattern worth keeping: each step went further toward the source, and the last one - reading
+upstream's own embedded source - is the one that settled it.

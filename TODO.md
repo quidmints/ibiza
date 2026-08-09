@@ -14940,3 +14940,63 @@ stated. **That is the durable output of this attempt.**
 issued '-fix' builds for 24 profiles with the DG1_LEN defect, but never these - checked all 54
 releases), or one real document of each type to read the true DER layout from. Same conclusion the
 repo reached earlier by a different route: some of these parameters exist nowhere but in a passport.
+
+### 2.18gk REAL DIAGNOSIS of the degenerate profiles — one corrupted field, and a checker that catches it (user, 2026-08-10)
+
+*"do a real diagnosis and if you can fix the degeneracy in such a way that it will help them also,
+open another PR"*
+
+**THE DIAGNOSIS, from rarimo's own artifact rather than from the manifest.** Downloaded
+`v0.1.0/registerIdentity_21_160_1_2_560_576_NA.json` and read its embedded `main.nr`:
+
+    register_identity::<0, 0, 70, 92, 6, 256, 20, 20, 21, 70, 0, 72, 0, 0>
+
+So the recovery was FAITHFUL - the artifact really declares `DG1_LEN=0` and `DG1_SHIFT=70`. The
+corruption is upstream's, at generation.
+
+**A TRANSPOSITION HYPOTHESIS WAS RAISED AND REFUTED.** The profile NAME encodes two of the fields, and
+the schema is exact: **name field 5 = `EC_SHIFT*8`, field 6 = `DG1_SHIFT*8`, verified 78/78 with zero
+mismatches.** For the broken three the name and generics disagree, which looked like a swap. It is
+not - `EC_SHIFT + HASH_ALGO == SA_LEN` holds for **76/78** working profiles and **matches exactly in
+all three broken ones** (72+20=92, 72+32=104, 42+32=74), so their `EC_SHIFT` is CORRECT. Only
+`DG1_SHIFT` is wrong, and it holds `EC_LEN` in every case.
+
+**AND IT IS NOT RECOVERABLE.** Searched for an identity fixing `DG1_SHIFT`:
+`DG1_SHIFT + DG_HASH_ALGO == EC_LEN` is **0/78**. Working values cluster in 23..33 across nine
+distinct values, with no derivation. A wrong choice is IN BOUNDS and compiles cleanly, producing a
+verifier that checks the DG1 hash at the wrong offset. **So it stays quarantined - the diagnosis is
+now exact, the field is named, and guessing is still refused.**
+
+**THE FIX THAT HELPS UPSTREAM: `tools/check-passport-profile-consistency.py`.** The existing recovery
+validates each generic against the artifact's own ABI - which compares each length to ITSELF and
+nothing else, so it cannot see a tuple that is individually plausible and jointly impossible. The new
+checker tests the arithmetic the circuit already implies: DG1_LEN non-zero; DG1 and DG15 hashes inside
+`ec`; the ec hash inside `sa`; the AA key inside `dg15` using `extract_dg15_pk_hash`'s own byte
+counts. **All of it is arithmetic on numbers already in the manifest** - no document, no build, no
+container. Both defects found this week would have been caught in milliseconds rather than by a failed
+32 GiB build. Result: 78 live clean, 4 quarantined refused with reasons, and the quarantined set acts
+as a CONTROL so a stale quarantine fails the run too.
+
+**⚠ AND IT FOUND SOMETHING NEW, WHICH IS THE PART WORTH SENDING UPSTREAM.**
+`extract_dg15_pk_hash` branches only on `AA_SIG_TYPE` 22 and 23. **20, 21, 24 and 25 all fall through
+to a 32-byte default**, and five SHIPPING profiles are in that set:
+
+| profile | AA_SIG_TYPE |
+|---|---|
+| `1_256_3_7_336_264_20_2760_6_2008` | 20 |
+| `25_384_3_5_576_248_20_3768_3_2008` | 20 |
+| `21_256_3_7_336_264_21_3072_6_2008` | 21 |
+| `2_256_3_6_336_264_21_2448_6_2008` | 21 |
+| `28_384_3_3_576_264_24_2024_4_2792` | 24 |
+
+These **compile and ship**, because 32 bytes happens to fit inside their `dg15`. If 32 is wrong for
+those curves they read the WRONG BYTES as the AA public key - silently, with no error anywhere.
+`AA_SIG_TYPE 25` is the identical defect that merely happened to overflow and so got caught (§2.18gi).
+**The out-of-bounds was the lucky case.**
+
+**PR STATUS: NOT OPENED. `gh` is not installed on this machine and no upstream credentials are
+configured**, so I cannot open one. The content is ready and is two separable contributions:
+  1. the consistency checks, portable to rarimo's generator;
+  2. the `AA_SIG_TYPE` 20/21/24/25 report, which is a correctness bug in shipped artifacts and does
+     not depend on (1).
+Needs a decision on how to file - and (2) is worth sending regardless of whether they want (1).

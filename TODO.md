@@ -14778,3 +14778,54 @@ standing trust liability on the identity path; three of the six are already lega
 depends on physically sourcing six specific document types, which is not a scheduling problem but a
 procurement one. **The blocking input is coverage: which real documents map to those six configs.**
 Nothing in this repo can answer that - it needs ICAO/issuer data, not code. OPEN.
+
+### 2.18gg THE NOIR APPROACH EXISTS AND WE ARE ALREADY ON IT — `register_lite` (user, 2026-08-10)
+
+*"how did you go from 6 to 17... we should be able to find a noir approach."*
+
+**FIRST, THE 6 vs 17 WAS SLOPPY AND IS CORRECTED.** They are different sets:
+  - **6** = passport profiles with no per-profile Noir twin (`verifiers2/per-passport/`)
+  - **17** = every Groth16 contract in the tree = those 6 + 6 universal (rsa/pss) + 4 geo/mne + 1 query
+§2.18gf's "17 ceremonies" treated all 17 as blocked. They are not:
+
+| set | Noir equivalent | blocked? |
+|---|---|---|
+| `TD3QueryProofVerifier` (1) | `TD1`/`TD3QueryProofNoirVerifier` EXIST | **no - deletable today** |
+| per-passport orphans (6) | no per-profile twin, but see below | **no - `register_lite` covers them** |
+| universal rsa/pss, geo, mne (10) | none found | unknown purpose, unresolved |
+
+**THE NOIR APPROACH: `register_lite`, AND IT IS ALREADY THE PATH WE RUN.** Upstream publishes
+`register_lite_{160,224,256,384,512}` (checked: 31 non-`registerIdentity_*` assets across 54
+releases). We have them as `passport/verifiers/RegisterIdentityLight{160..512}.sol` - the set an
+earlier audit dismissed as "an unrelated light-registration Honk set". They are not unrelated.
+
+`noir_dl_lib/src/lite.nr:30` - `register_identity_light` takes **TWO generics**, `DG1_LEN` and
+`DG_HASH_ALGO`, against `register_identity`'s fourteen, and its only inputs are `dg1` and
+`sk_identity`. **So it is parameterised by HASH SIZE alone and covers EVERY profile, including all six
+orphans** (three SHA-1 -> `_160`, three SHA-256 -> `_256`). The per-profile tuple problem - the
+unrecoverable `EC_LEN` of §2.18gf - **does not exist on this path at all.**
+
+**⚠ AND THAT IS PRECISELY WHY IT IS "LITE": IT VERIFIES NO ICAO CHAIN.** No `dg15`, `ec`, `sa`, `pk`,
+`sig`, `icao_root` or inclusion branches are inputs. It hashes DG1 and binds it to `sk_identity`.
+The genuineness of the document is asserted by the **BACKEND SIGNER** - `HolderRegistration`'s
+`_isSigner` gate - which is exactly the trust root §2.18fa flagged and `IdentityRegistry.sol:55`
+states: *"the trust root for 'this is a genuine passport' is therefore OUR SIGNER KEY, not the issuing
+state's signature."*
+
+**SO THE COVERAGE QUESTION AND THE CIRCOM QUESTION SEPARATE CLEANLY:**
+  - **Profile coverage is NOT a reason to keep Circom.** `register_lite` already covers every
+    document configuration, orphans included. Nobody is excluded by dropping the 6.
+  - **What Circom's 6 orphans uniquely provide is FULL-ICAO-CHAIN registration for those
+    configurations** - via `Registration2.register`, the Groth16 path. Dropping them does not exclude
+    those holders; it downgrades them to the signer-attested path everyone else is already on.
+  - The 79 per-profile Noir verifiers being regenerated belong to `Registration2` - the chain path we
+    are NOT on. That regeneration is what makes moving to it possible (§2.18fa).
+
+**REVISED RECOMMENDATION, replacing §2.18gf's:** dropping Circom costs **no coverage**, only the
+ICAO-chain option for 6 configurations. Weigh that against 17 per-circuit trusted ceremonies. The
+"which countries" question is therefore **no longer blocking the Circom decision** - it only affects
+who would have to use the signer path rather than the chain path.
+
+**STILL OPEN:** what `universal/{rsa,pss}`, `geo` and `mne` are for, and whether any Noir equivalent
+exists. `geo`/`mne` read as ISO country codes (Georgia, Montenegro) but their headers are snarkJS
+boilerplate with no provenance - NOT verified, and must not be assumed.

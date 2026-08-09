@@ -14419,3 +14419,66 @@ generated filenames):
 3 of them for declaring `dg1` length 0) or its verifier generated. A live manifest entry with no
 verifier fails at proving time, far from the declaration that caused it. **`passport-vks/` does not
 exist at all** - it is only a `VK_DEST` in the codegen script, never written. OPEN.
+
+### 2.18fz OpenID4VP researched — DCQL has NO range language, and our nullifier is a capability EUDI lacks (2026-08-09)
+
+Researched against the final **OpenID for Verifiable Presentations 1.0** spec and the **EU Age
+Verification Blueprint Annex A** directly. This changes §2.18fv's "adopt Layer A" plan in three ways.
+
+**1. ⚠ DCQL CANNOT EXPRESS A RANGE OR A PREDICATE.** `presentation_definition` is GONE from final
+1.0; **DCQL** replaced it. A DCQL claims query is `id` / `path` / `values`, where `values` constrains
+a claim to **exact** values - "the Wallet SHOULD return the claim only if the type and value of the
+claim both match exactly". **There is no `gte`, no range, no comparison operator anywhere in DCQL.**
+So an RP cannot ask "date of birth before 2008-01-01". **The predicate must be a PRE-BAKED BOOLEAN
+CLAIM in the credential**, which is exactly what the AV Blueprint does: doctype `eu.europa.ec.av.1`,
+one element, `{"age_over_18": true}`. Nothing else - no `age_in_years`, no `age_over_N` for other N.
+**Our `birth_date_lowerbound/upperbound` range proof is strictly MORE expressive than anything the
+protocol can request**, and there is no standard way for an RP to ask for it.
+
+**2. THE NULLIFIER MAPS ONTO `client_id`, AND THE PROTOCOL HAS NO EQUIVALENT OF IT.** Verbatim,
+§14.1: "The `client_id` is used to detect the replay of Verifiable Presentations to a party other
+than the one intended… The `nonce` value binds the Verifiable Presentation to a certain
+authentication transaction". So the split §2.18fv posed as a choice is ALREADY BOTH VALUES:
+
+| | `client_id` | `nonce` |
+|---|---|---|
+| stability | **stable per RP** | **fresh per request, MUST** |
+| our use | the `event_id` the nullifier is scoped to | replay/session freshness |
+
+Bind `event_id` to the AUDIENCE - `client_id` in redirect flows, `origin:<origin>` under the DC API,
+where "the Client Identifier is not used as the audience". **Caveat: an RP with several origins gets
+several nullifier domains, and changing Client Identifier Prefix changes the domain.**
+⚠️ **"nullifier" has ZERO hits in the whole spec.** §15.5 achieves verifier-to-verifier unlinkability
+by **batch issuance of one-time-use credentials** - which deliberately DESTROYS repeat-use detection.
+Ours gives unlinkability AND repeat-use detection at once. That is a capability the EUDI stack does
+not have, not a gap we need to close.
+
+**3. THE AV BLUEPRINT'S PRIMARY PATH IS NOT OpenID4VP.** Annex A: the primary is the **W3C Digital
+Credentials API** with ISO/IEC 18013-7 Annex C (CBOR `DeviceRequest`, HPKE-encrypted `DeviceResponse`);
+"OpenID for Verifiable Presentations is used as a **fallback** mechanism". The fallback profile pins
+`response_mode=direct_post`, request by value, client identifier prefix MUST be `redirect_uri`, DCQL
+mandatory, P-256/ES256.
+Its ZK recommendation is **Frigo & shelat, "Anonymous credentials from ECDSA" (ePrint 2024/2010)** -
+**SHOULD, not MUST** - proving issuer signature, attribute value true, a signature over the NONCE, and
+validity period. Note the statement binds only the nonce: **no per-RP value, hence no unlinkability
+primitive**, consistent with (2).
+
+**4. CUSTOM FORMATS ARE SPEC-LEGAL BUT NOT INTEROPERABLE.** §3: the spec "supports **any** Credential
+format". But §6.1 says valid Format Identifiers "are defined in Appendix B" - which lists only W3C VC,
+`mso_mdoc`, `dc+sd-jwt` - and **there is no IANA or OpenID registry for credential formats**; Appendix
+E registers with nine registries, none of them one. Extension is by **PROFILING**, negotiated through
+`vp_formats_supported`, with `vp_formats_not_supported` as the rejection. So we can define e.g.
+`icao-mrtd-zk`, declare it, and be spec-legal - but any RP not told about it rejects us, and the AV
+profile hard-codes `mso_mdoc` + `eu.europa.ec.av.1`.
+
+**WHAT THIS DOES TO §2.18fv's PLAN.** "Adopt Layer A (the API)" survives but shrinks: we can speak
+OpenID4VP mechanics - `client_id`/`nonce` binding, `direct_post`, DCQL shape - and that is worth
+doing for the binding semantics alone. We CANNOT be requested by an unmodified EUDI RP without a
+profile agreement, and we cannot expose our range proof through DCQL at all. **The honest framing is
+BILATERAL INTEROP with RPs that opt in, not drop-in EUDI compatibility.**
+
+**NOT VERIFIED, flagged by the research:** whether `eu.europa.ec.av.1` has grown past `age_over_18`
+in a newer revision; whether any deployed wallet accepts a non-Appendix-B format identifier; and
+whether the ARF itself forbids an EUDI wallet from holding a non-mdoc/non-SD-JWT credential at all -
+that last one is the question that decides whether even bilateral interop is available inside EUDI.
+OPEN.

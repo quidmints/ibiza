@@ -14829,3 +14829,35 @@ who would have to use the signer path rather than the chain path.
 **STILL OPEN:** what `universal/{rsa,pss}`, `geo` and `mne` are for, and whether any Noir equivalent
 exists. `geo`/`mne` read as ISO country codes (Georgia, Montenegro) but their headers are snarkJS
 boilerplate with no provenance - NOT verified, and must not be assumed.
+
+### 2.18gh The stranded verifier deleted — `ID_Card_I` could not work and could not be fixed (user, 2026-08-10)
+
+**DELETED** `passport/verifiers2/noir/NoirRegisterIdentity_ID_Card_I.sol`.
+
+**IT WAS NOT MERELY UNUSED - IT WAS NON-FUNCTIONAL, and that is the argument.** An
+unreferenced-symbol count proves nothing here (§2.18ga: every verifier scores zero because they are
+wired by ADDRESS). This does not rest on that. Three independent facts:
+  1. **Stale template.** `romLogupGamma` appears 0 times, so it is a 5.1.0-era verifier. Per
+     `package.json`'s own measurement, proofs across that boundary fail at `UltraVerifier:
+     verification failed at reduction step`. **It would reject every proof the pinned prover makes.**
+  2. **Unrebuildable.** It is NOT in `passport-profiles.json`'s `profiles` - it sits in
+     `quarantined` - so `codegen-passport-verifiers.sh` cannot emit it.
+  3. **Unrecoverable.** The manifest's own provenance: *"ID_Card_I is the exception and cannot be
+     regenerated: its VK matches no published asset, including the TD1 profile it was diffed
+     against."* Confirmed independently: 82 upstream artifacts across 54 releases, none matching.
+
+So it could not verify, could not be rebuilt, and could not be recovered. **Keeping it is keeping a
+file that reads as a working verifier and is not one** - the exact silent-failure shape rule 3 exists
+for.
+
+**AND ID CARDS ARE NOT LOST WITH IT.** The path we actually run is the light one
+(§2.18gg), and it has TD1 variants: `passport/verifiers/RegisterIdentityLightID{160,224,256,384,512}
+HonkVerifier.sol`, five of them, alongside the five TD3 `RegisterIdentityLight*`. ID-card holders
+register through those. Nothing is excluded by this deletion.
+
+**END STATE OF THE REGENERATION:** 70 of 78 buildable profiles now carry the 6.0 template with their
+keys in `passport-vks/`. Remaining: 7 light profiles (interrupted mid-run, no failures) and 2 heavy
+2^25-CRS profiles (`25_384_3_5_576_248_20_3768_3_2008`, `28_384_3_3_576_264_24_2024_4_2792`) which
+must be run alone - they are the pair that OOM'd the host originally. `20_256_3_5_336_248_25_2120_5_1816`
+remains unbuildable pending the `AA_SIG_TYPE == 25` branch fix (§2.18gd), which is now unblocked since
+no build is holding the tree.

@@ -14158,3 +14158,40 @@ None of these reduce the RETROACTIVE exposure if the scalar is ever assembled; t
 for assembling it.
 
 Not a decision, a description. OPEN, and it blocks any external claim about the privacy model.
+
+### 2.18ft §2.18fq's "the base does not validate the root" was WRONG — it does, and it is tested (2026-08-09)
+
+**Correcting a claimed security hole that does not exist.** §2.18fq asserted that
+`AQueryProofExecutor` writes a caller-supplied `registrationRoot_` into the public signals unchecked,
+and that every implementor must close it in `_beforeVerify`. **False.**
+
+`PublicSignalsBuilder.withIdStateRoot:152-153`:
+
+    if (!IPoseidonSMT($.registrationSMT).isRootValid(idStateRoot_)) {
+        revert InvalidRegistrationRoot($.registrationSMT, idStateRoot_);
+    }
+
+and `execute`/`executeNoir`/`executeTD1` all call `withIdStateRoot`. **The check is wired.** It is
+also TESTED, by a suite written for exactly this: `test/sdk/QueryProofRootCheck.t.sol`, four tests
+against a REAL `PoseidonSMT` - invented root rejected, invented root on the TD1 path rejected, zero
+root rejected, genuine root accepted.
+
+**AND THE TEST FILE PREDICTED THE MISTAKE I MADE.** Its header, verbatim: *"THE CHECK EXISTS -
+`PublicSignalsBuilder.withIdStateRoot` calls `isRootValid` and reverts `InvalidRegistrationRoot`.
+**It is not in the executor, which is where one looks first.**"* I looked in the executor, saw the
+root written to the signals, and concluded it was unchecked - without following `withIdStateRoot`
+one call deeper. Second time in this thread that a claimed missing check was already present
+(cf. §2.18fb, where a booked finding was re-derived as new).
+
+**ALSO NOTE WHAT THAT SUITE RECORDS,** because it is the more interesting fact: before it existed the
+guard was INERT in every test, since `mock/sdk/ProofBuilderTest.sol` wires a `MockRegistrationSMT`
+whose `isRootValid` returns TRUE UNCONDITIONALLY - "the guard would have stayed green had it been
+deleted". That is the real lesson here, and it is already handled.
+
+**WHAT REMAINS TRUE FROM §2.18fq:** the rest stands. Gender (selector bit 6) and age (birth-date
+range vs a `block.timestamp`-validated `current_date`) exist with verifiers; the seam is guarded by
+`tools/check-query-public-signals.py`; and **the only implementation of `AQueryProofExecutor` in the
+tree is still `contracts/mock/sdk/ProofBuilderTest.sol`, a test mock.** A real consumer is the one
+genuinely missing piece - not a root check.
+
+No code changed. Correction only.

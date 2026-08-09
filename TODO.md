@@ -14621,3 +14621,63 @@ time rather than at build time.**
 
 **PROPOSED, NOT DONE:** add a `SHIFT`-bounds check to the recovery/validation step so a tuple whose
 shifts exceed its own array lengths is quarantined at recovery. OPEN.
+
+### 2.18gd §2.18gc WAS WRONG TWICE. The generics are sound; our lib is missing an AA branch (user, 2026-08-09)
+
+**The user said "they can compile" and was right. §2.18gc's correction of the manifest was itself the
+error, and the manifest's original note was closer to the truth.**
+
+**ERROR 1 - I USED THE WRONG `EC_FIELD_SIZE`.** §2.18gc computed the overrun as ~450 using the GENERIC
+`EC_FIELD_SIZE = 256`. Inside `extract_dg15_pk_hash` that name is a **LOCAL** that shadows it
+(`not_passports_zk_circuits.nr:653-661`):
+
+    let mut HASH_SIZE = 31;
+    let mut EC_FIELD_SIZE = 32;                                    // BYTES, not the generic
+    if (AA_SIG_TYPE == 22) { EC_FIELD_SIZE = 40; }
+    if (AA_SIG_TYPE == 23) { EC_FIELD_SIZE = 24; HASH_SIZE = 24; }
+
+Real index: `227 + (30-j) + 1 + 32` = 260..290 against `[u8; 283]` - **out of bounds by 8, not ~450.**
+
+**ERROR 2 - "THE GENERICS ARE NOT SOUND" IS FALSE.** Downloaded the upstream artifact
+(`v0.2.4/registerIdentity_20_256_3_5_336_248_25_2120_5_1816.json`) and read its embedded `main.nr`.
+Its generics are `93, 283, 297, 74, 6, 256, 32, 32, 20, 31, 265, 42, 25, 227` - **character for
+character what our manifest holds.** The recovery was correct. The manifest's "generics are sound" was
+RIGHT and I overturned it on bad arithmetic. Rule 13 cuts both ways: an accusation needs the same
+evidence as a dismissal.
+
+**THE ACTUAL ROOT CAUSE: `extract_dg15_pk_hash` HAS NO BRANCH FOR `AA_SIG_TYPE == 25`.** It handles
+only 22 and 23; everything else takes the 32-byte default. Our profile distribution is
+`{0:36, 1:35, 20:2, 21:2, 22:2, 24:1, 25:1}`, so **20, 21, 24 and 25 all fall through** - and the
+default happens to be correct for three of them.
+
+**THE EVIDENCE IS AN EXACT-FIT PATTERN ACROSS ALL 8 ECDSA-AA PROFILES:**
+
+| profile | AA | DG15_LEN | max index | |
+|---|---|---|---|---|
+| `1_256_3_7_336_264_20_2760_6_2008` | 20 | 315 | 314 | = DG15-1 |
+| `21_256_3_7_336_264_21_3072_6_2008` | 21 | 315 | 314 | = DG15-1 |
+| `25_384_3_5_576_248_20_3768_3_2008` | 20 | 315 | 314 | = DG15-1 |
+| `2_256_3_6_336_264_21_2448_6_2008` | 21 | 315 | 314 | = DG15-1 |
+| `2_256_3_4_336_248_22_1496_7_2408` | 22 | 381 | 380 | = DG15-1 |
+| `2_256_3_5_336_248_22_1808_7_2408` | 22 | 381 | 380 | = DG15-1 |
+| `28_384_3_3_576_264_24_2024_4_2792` | 24 | 445 | 412 | ok |
+| **`20_256_3_5_336_248_25_2120_5_1816`** | **25** | **283** | **290** | **OUT BY 8** |
+
+`dg15` ends exactly where the AA key ends for every working profile. Solving ours for that same fit:
+`AA_SHIFT - 1 + 2*EC_FIELD_SIZE = DG15_LEN - 1` -> `227 - 1 + 2e = 282` -> **`EC_FIELD_SIZE = 28`**
+(a 224-bit curve), and `HASH_SIZE = 28` so `X_Y_SHIFT = EC_FIELD_SIZE - HASH_SIZE` does not underflow
+u32. That gives max index **282 = DG15_LEN - 1**, the exact fit the other seven show.
+
+**PROPOSED FIX, one line, mirroring the existing `== 23` form:**
+
+    if (AA_SIG_TYPE == 25) { EC_FIELD_SIZE = 28; HASH_SIZE = 28; }
+
+**NOT APPLIED YET, and deliberately: the 78-profile VK back-fill is RUNNING against this mounted
+working tree.** Editing `noir_dl_lib` mid-run would change the library under a build in flight. Apply
+after it finishes. The branch is selected on a comptime generic, so it monomorphises away for every
+`AA_SIG_TYPE != 25` profile and should leave all 79 existing VKs untouched - **that must be VERIFIED
+by diffing a rebuilt verifier, not assumed.**
+
+**AND THE SWAP TRICK WAS NEVER FORGOTTEN:** `BB_SWAP_GB=32` is the script default and the run used the
+container. bb reported `mem: 3.82 MiB` before rejecting the circuit - memory was never the constraint.
+The swap trick (6120ec3) rescued `27_512_3_4_336_248_NA`, a genuine OOM, and it worked.

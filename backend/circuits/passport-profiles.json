@@ -1468,7 +1468,7 @@
         "AA_SHIFT": 227
       },
       "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree).",
-      "blocked": "COMPILER BUG, not degeneracy - generics are sound. nargo beta.26 aborts inside noir_dl_lib/src/bignum/fns/expressions.nr:280 with \"Brillig function call isn't properly covered by a manual constraint\". No verifier exists for this profile yet."
+      "blocked": "OUT-OF-BOUNDS BY CONSTRUCTION - measured 2026-08-09, and this REPLACES an earlier note that read 'COMPILER BUG, not degeneracy - generics are sound'. That dismissal was wrong. extract_dg15_pk_hash (not_passports_zk_circuits.nr:672) indexes dg15[AA_SHIFT + (HASH_SIZE-1-j) + X_Y_SHIFT + EC_FIELD_SIZE]. The lib sets HASH_SIZE=31 and X_Y_SHIFT = EC_FIELD_SIZE - HASH_SIZE, so with THESE generics that is 227 + (30-j) + 225 + 256 = 707..738 against dg15: [u8; 283] - out of bounds by ~450. nargo is correctly refusing it ('Assertion is always false: Index out of bounds', then 'circuit is unsatisfiable'); it is not a compiler defect. LEAD, NOT A CONCLUSION: EC_FIELD_SIZE is recovered as 256, which is BITS, while this code path uses it as a BYTE count (line 660 sets EC_FIELD_SIZE=24, plainly bytes). But substituting 32 still gives 259..290 against 283, so a units fix alone does NOT rescue it - AA_SHIFT or DG15_LEN is also suspect. Do not re-attempt the build until the tuple is re-derived from the artifact."
     },
     "20_256_3_6_336_248_NA": {
       "generics": {

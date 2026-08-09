@@ -14570,3 +14570,54 @@ it is 4 unvendored, of which 3 are quarantined and 1 is real.
 **ACTIONABLE, and it is small:** build `NoirRegisterIdentity_20_256_3_5_336_248_25_2120_5_1816.sol`
 from the published asset. That removes the only live manifest entry that fails at proving time. It
 does NOT reduce the Circom surface, which is a separate decision (a or b above).
+
+### 2.18gc The one "buildable" profile is NOT buildable — and its blocked-note was a wrong dismissal (2026-08-09)
+
+**§2.18gb said `20_256_3_5_336_248_25_2120_5_1816` "IS published upstream, so this is buildable today".
+It is not. Ran it; it fails, and the recorded reason for the failure was wrong.**
+
+**THE RUN** (`./build-passport-verifiers-docker.sh 20_256_3_5_336_248_25_2120_5_1816`, container +
+32 GiB swap, the documented recipe): `FAILED_WRITE_VK`, 0 verifiers regenerated, the `.sol` unchanged.
+**Not a resource failure** - no OOM, no swap exhaustion. A compile-time defect:
+
+    bug: Assertion is always false: Index out of bounds
+      not_passports_zk_circuits.nr:672  in extract_dg15_pk_hash
+    ...
+    circuit is unsatisfiable. An AssertZero opcode contains no variables but has a non-zero constant
+
+**⚠ THE MANIFEST'S OWN DIAGNOSIS WAS A DISMISSAL WITHOUT EVIDENCE, AND IT WAS WRONG.** The `blocked`
+field read: *"COMPILER BUG, not degeneracy - generics are sound. nargo beta.26 aborts inside
+expressions.nr:280..."*. Arithmetic, from the lib's own constants (`HASH_SIZE = 31`,
+`X_Y_SHIFT = EC_FIELD_SIZE - HASH_SIZE`) and this profile's recovered generics
+(`DG15_LEN 283`, `AA_SHIFT 227`, `EC_FIELD_SIZE 256`):
+
+    y index = AA_SHIFT + (HASH_SIZE-1-j) + X_Y_SHIFT + EC_FIELD_SIZE
+            = 227 + (30-j) + 225 + 256
+            = 707 .. 738          against  dg15: [u8; 283]
+
+**Out of bounds by roughly 450 elements, for every j.** nargo is refusing an index that cannot ever be
+in range - that is the compiler working, not failing. The generics are NOT sound. Rule 13: the
+dismissal needed the same evidence as a finding and never got it. `passport-profiles.json` updated in
+place with the measurement.
+
+**A LEAD, RECORDED AS A LEAD:** `EC_FIELD_SIZE` is recovered as **256**, which is BITS, while this
+code path uses it as a BYTE count - line 660 sets `EC_FIELD_SIZE = 24`, plainly bytes. **But
+substituting 32 gives 259..290 against 283, still out of bounds for small j**, so a units fix alone
+does not rescue it and `AA_SHIFT` or `DG15_LEN` is also suspect. The recovery's own validation only
+cross-checked `dg1/dg15/ec/sa/pk` LENGTHS against the artifact ABI - it never checked that the SHIFT
+fields land inside those lengths. **That check is the fix, and it would have caught this at recovery
+time rather than at build time.**
+
+**CONSEQUENCES:**
+  - §2.18gb's "one real gap, buildable today" is **withdrawn**. There is no buildable gap; the profile
+    needs its tuple re-derived from the artifact first.
+  - The manifest still advertises it as LIVE. Until the tuple is fixed it should be **quarantined**,
+    like the three degenerate ones - a live entry whose circuit cannot compile fails at proving time,
+    far from the declaration that caused it.
+  - `passport-vks/` is still empty. The 79-profile VK back-fill (the "last 32 GiB run") is untouched
+    and remains the open machine-hour item - and it is a KEY back-fill, not a verifier rebuild: the
+    verifiers are valid, built on the current toolchain by `86a9788`; the KEYS were discarded by the
+    old one-slot build directory.
+
+**PROPOSED, NOT DONE:** add a `SHIFT`-bounds check to the recovery/validation step so a tuple whose
+shifts exceed its own array lengths is quarantined at recovery. OPEN.

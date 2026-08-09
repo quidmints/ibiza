@@ -1506,18 +1506,10 @@
         "AA_SHIFT": 32
       },
       "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree)."
-    }
-  },
-  "quarantined": [
-    {
-      "ID_Card_I": {
-        "reason": "no artifact published under this name in any release"
-      }
     },
-    {
-      "name": "21_160_1_2_560_576_NA",
+    "21_160_1_2_560_576_NA": {
       "generics": {
-        "DG1_LEN": 0,
+        "DG1_LEN": 95,
         "DG15_LEN": 0,
         "EC_LEN": 70,
         "SA_LEN": 92,
@@ -1532,12 +1524,11 @@
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "reason": "DEGENERATE ARTIFACT, not a toolchain gap. Its own ABI declares dg1 with length 0 - a passport circuit that reads NO MRZ, so it cannot prove anything about a document. Published under noir 1.0.0-beta.1; beta.26 refuses it with \"Invalid type found in the entry point to a program\", which is the compiler catching the defect rather than a regression. Not patched around: emitting a circuit for it would produce a verifier that verifies nothing."
+      "repaired": "DG1_LEN was 0 in rarimo's v0.1.0 artifact - a passport circuit reading NO MRZ, which cannot prove anything about a document. Set to 95 on 2026-08-10, the TD1 value. EVIDENCE, not inference: this profile is DOCUMENT_TYPE=1 (name field 3), and the one TD1 profile that builds - 25_384_1_3_336_256_NA - declares DG1_LEN=95, while all 77 TD3 profiles declare 93. That matches ICAO exactly: TD1 MRZ is 3x30=90 chars + 5-byte header, TD3 is 2x44=88 + 5. Every other generic left untouched. THIS DELIBERATELY DIVERGES FROM THE PUBLISHED ARTIFACT'S ABI, because that ABI is the bug: rarimo re-published 24 other profiles via '-fix' for this same defect but never these three (checked all 54 releases). See TODO sec. 2.18gj."
     },
-    {
-      "name": "14_256_1_4_1752_576_1_1496_3_512",
+    "14_256_1_4_1752_576_1_1496_3_512": {
       "generics": {
-        "DG1_LEN": 0,
+        "DG1_LEN": 95,
         "DG15_LEN": 165,
         "EC_LEN": 219,
         "SA_LEN": 104,
@@ -1552,12 +1543,11 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 64
       },
-      "reason": "DEGENERATE, same defect as 21_160_1_2_560_576_NA: the artifact's own ABI declares dg1 with length 0, so the circuit reads NO MRZ and cannot prove anything about a document. beta.26 refuses it (\"Invalid type found in the entry point to a program\"). Added and then withdrawn on 2026-08-04 - it should never have been added, and the degeneracy audit that found it now covers every profile."
+      "repaired": "DG1_LEN 0 -> 95, same repair and same evidence as 21_160_1_2_560_576_NA (TD1, cross-checked against 25_384_1_3_336_256_NA and ICAO TD1 geometry). NOTE EC_FIELD_SIZE=0 IS CORRECT HERE AND IS NOT A SECOND DEFECT: 54 working profiles carry it, including all 3 SIG_TYPE=14 and all 19 SIG_TYPE=1, because it is unused for RSA signature types. See TODO sec. 2.18gj."
     },
-    {
-      "name": "1_256_1_5_2376_336_1_2120_4_512",
+    "1_256_1_5_2376_336_1_2120_4_512": {
       "generics": {
-        "DG1_LEN": 0,
+        "DG1_LEN": 95,
         "DG15_LEN": 229,
         "EC_LEN": 297,
         "SA_LEN": 74,
@@ -1572,7 +1562,14 @@
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 64
       },
-      "reason": "DEGENERATE, same defect as 21_160_1_2_560_576_NA: the artifact's own ABI declares dg1 with length 0, so the circuit reads NO MRZ and cannot prove anything about a document. beta.26 refuses it (\"Invalid type found in the entry point to a program\"). Added and then withdrawn on 2026-08-04 - it should never have been added, and the degeneracy audit that found it now covers every profile."
+      "repaired": "DG1_LEN 0 -> 95, same repair and same evidence as 21_160_1_2_560_576_NA (TD1, cross-checked against 25_384_1_3_336_256_NA and ICAO TD1 geometry). EC_FIELD_SIZE=0 is correct for SIG_TYPE=1 (RSA) - all 19 such profiles carry it. See TODO sec. 2.18gj."
+    }
+  },
+  "quarantined": [
+    {
+      "ID_Card_I": {
+        "reason": "no artifact published under this name in any release"
+      }
     },
     {
       "name": "20_256_3_5_336_248_25_2120_5_1816",

@@ -5,7 +5,7 @@ pragma solidity >=0.8.21;
 uint256 constant N = 262144;
 uint256 constant LOG_N = 18;
 uint256 constant NUMBER_OF_PUBLIC_INPUTS = 13;
-uint256 constant VK_HASH = 0x01b0f13acf8cb4c39eb2d195420cf9f69a596973b788259d995b1f7e76019d29;
+uint256 constant VK_HASH = 0x00ede6d5ee4066e6df7b598fd7b8fcf34de2b77a6181f2e368c00bd2677ab850;
 library HonkVerificationKey {
     function loadVerificationKey() internal pure returns (Honk.VerificationKey memory) {
         Honk.VerificationKey memory vk = Honk.VerificationKey({
@@ -13,48 +13,48 @@ library HonkVerificationKey {
             logCircuitSize: uint256(18),
             publicInputsSize: uint256(13),
             ql: Honk.G1Point({ 
-               x: uint256(0x152f853438234ade7e5e31eb19776be03cfa67d93a0948251bc7b10aee8ac0a2),
-               y: uint256(0x22dcb0accd7233435caee401aecb3d878771ab0fc3a163aa7f19b2215c7992eb)
+               x: uint256(0x015800c5375532c917a1d509578b078a24834cf716e313a8fa222c3e799857a0),
+               y: uint256(0x1b5e73875504009929101f351e2b864134e0388efa3ff5bbb76b9d2ebcf32fb0)
             }),
             qr: Honk.G1Point({ 
-               x: uint256(0x29f7ab9d6b128db4394cb90dee812f86219d134ef937055f4472f1d1a9080bd3),
-               y: uint256(0x2a9ad1d4e4c047b0d90e6040a9d5b45f803ee5a2d07aed4b8fecfd961a0cdb66)
+               x: uint256(0x0c2373610b0594e29bff13852bfa4acbcd2f1f12f82fd9c12ddaa28472208520),
+               y: uint256(0x20682f3c948dd9e188f020cd2577c639cb099ed4d7f4f63b0e7caa9d2e7c9798)
             }),
             qo: Honk.G1Point({ 
                x: uint256(0x1431333f24c671266f138c5ebb530a03e4f4ad711c3f5629f66b946fb66517eb),
                y: uint256(0x245d2a4494f09b9c07fb16ab3acfb2ed2c11bdb12228f9c930478042ed235caf)
             }),
             q4: Honk.G1Point({ 
-               x: uint256(0x08ddbc1f20b090bc1d05863f951ab8cca8d087923f4f043c65623f0dfe7b2f5f),
-               y: uint256(0x159167874fbb892e35792062abe3943f95bdc2d10b8104df583565d5bd92ad21)
+               x: uint256(0x08f88bc150584857c0d5f9fdc32f8cf4d55acc53bad21d18c98f7180735f6071),
+               y: uint256(0x2be3f9855481789a1c41748301c6cf129b0643130068451711b1c8a61823b9fe)
             }),
             qm: Honk.G1Point({ 
-               x: uint256(0x03ebba9971f4111343a558169f40fade4cd5b55321a5d594453b6740d21a31cd),
-               y: uint256(0x2968d3f60fac09e199768e91abe6f878c4a304d955c08e00c941619b873eae35)
+               x: uint256(0x0d83f55c50bf56c657f843e9b27410ff992693b90bf8f64f4aa2f0a64c3d2820),
+               y: uint256(0x126d12d083ce485ff21b5388986b4bd97704120bdb297a30c3d8501f08a82e7b)
             }),
             qc: Honk.G1Point({ 
-               x: uint256(0x1c680c162c810c864dc991cb96838662dd359bb87f046d36880cef168e371035),
-               y: uint256(0x1361f4a5d66b2f1bfb62d66319d07388a6c522b70b92a758d91958722a958a7d)
+               x: uint256(0x13fabf3fc0f8065a8fdecc68fe0c2129d11903c8174f7ea41671ad7732a5bf8a),
+               y: uint256(0x2a06a4f4d409074a7fd8315724d9409e4ab6e80c8954f9e3be38cb3fbccce9a5)
             }),
             qLookup: Honk.G1Point({ 
                x: uint256(0x0bd539531d7a0e4d32818af5e747589e768877f9b5ed2fb7bcdc451c1aab8feb),
                y: uint256(0x159e04786a5b8616289ef17d8395c53f5a990fd9e5f812f670e5f0e106cecfc1)
             }),
             qArith: Honk.G1Point({ 
-               x: uint256(0x03a45564453fcd9cb90d3f9b0e1920c67927c9094ce5798f16277400b3648356),
-               y: uint256(0x02c9cfa51a1c0100439201eff38b8a97fde70ad4dfd2f5af9749238a101d1444)
+               x: uint256(0x0b14714472e4de44a7892f809a29b70182827cd1e6e4b536117f9eae1aa3b9a4),
+               y: uint256(0x2815c16afeb2fdce5f6e2f63bf6b5651f0aab3404170d708b24402299a9681d3)
             }),
             qDeltaRange: Honk.G1Point({ 
-               x: uint256(0x08cb2a380ce8f542fb86a62e2e8f87e288db6ff8a33b2adb8cc89d04ab51b518),
-               y: uint256(0x2cc0608718c7b73ac41ea1d461c4da07b65ae04e2783b29d102571bde43d2167)
+               x: uint256(0x1a52c2c6bf856cd142941b53d685a0783478d7212add569f38951736c288c5e6),
+               y: uint256(0x0f953ec1a4249adaeadfd4cfca46f85537033161511130774cddeb35568dc450)
             }),
             qElliptic: Honk.G1Point({ 
                x: uint256(0x0000000000000000000000000000000000000000000000000000000000000000),
                y: uint256(0x0000000000000000000000000000000000000000000000000000000000000000)
             }),
             qMemory: Honk.G1Point({ 
-               x: uint256(0x1aa40e8772cfb5123dae27fa438c3096558ca5e738046f3ae64764ec514b8d21),
-               y: uint256(0x1ea3de5d6130db5862e5dcce3694577e10e4002b4578d03f7999cdf6a42196e3)
+               x: uint256(0x048324e4eea663f13f928494ce82fdecff112dd63b5ed08b3daebdd3561c2b83),
+               y: uint256(0x012b299f4e454c86fdf588846db2c3efcd35935a0202c2e8ecabd1d3aba85fb0)
             }),
             qNnf: Honk.G1Point({ 
                x: uint256(0x0000000000000000000000000000000000000000000000000000000000000000),
@@ -69,20 +69,20 @@ library HonkVerificationKey {
                y: uint256(0x0000000000000000000000000000000000000000000000000000000000000000)
             }),
             s1: Honk.G1Point({ 
-               x: uint256(0x1c42becbe9c20e595766415dc227e22a1c0ffaa49dd2f2d19524e214ef87fbd2),
-               y: uint256(0x09637426eea9b134dc3cb5716ce03592df1d24013615a36454397504d36fdaec)
+               x: uint256(0x03521b549563b8186a17979cefa0f10105ae7ffe94cf0776ac30da40a864247a),
+               y: uint256(0x25e8f779b11439439e1a613848fa5e22c0a6b83ba6eaa197d315761bc7bf0426)
             }),
             s2: Honk.G1Point({ 
-               x: uint256(0x2432557cb82be06538f1ffd563f0c8f9a5ae9ddaa574186132fdd2a95ab5a921),
-               y: uint256(0x2b8ab8524d2057345206692ca514cbb87dcb4fd8a13e8565f5c0d2cb3a41cdfc)
+               x: uint256(0x12c4c5bfbf91c0c6c78e80ddbab4ec72cef26ebf9fe8521f131e5e9143c07465),
+               y: uint256(0x2406ca364cabfa393dea85e035b3d2c782a9732713c938ab2ed8e076a5b57ac4)
             }),
             s3: Honk.G1Point({ 
-               x: uint256(0x1130693d675c5a8d9e3bb08798430422f84e9919c6d1addfa6545a4dddc69298),
-               y: uint256(0x260e6d589588f77abafee2db759e3c7fc05c6213e89ac427318dda80600fb3c9)
+               x: uint256(0x15b6d72f8c5b0ee92ad15dc95a2a5c2b536f4e4b333eae6b2ab116a0c842c4d1),
+               y: uint256(0x1dbe3becd88cde7dabf874174aeb4d6eaa28922c183505dac46226280f491b3c)
             }),
             s4: Honk.G1Point({ 
-               x: uint256(0x16f5eba3a321ab392272192883a4786a5f54a25843bbc496f678e2841e797a6e),
-               y: uint256(0x163dc44c0c97f702a956e2d7f01daab8e2024b38cb3adf9eca11e1a7d0225a78)
+               x: uint256(0x2df7c8e3c0d012d0841ee4770abc234e525d59df00c1be35c05337f36a5ed299),
+               y: uint256(0x1ee61f5d75efcc29be19678d94e55ae0215422d11d89765e3bb104f8532ee1cf)
             }),
             t1: Honk.G1Point({ 
                x: uint256(0x27451a90643dd18d70b33e6574d2281b883ddfb57e388d1203ac49f4672df485),
@@ -101,28 +101,28 @@ library HonkVerificationKey {
                y: uint256(0x19aa01660f4e0ea14eac66ab9be35610f763aa59ba319ba085ba648ba7b18111)
             }),
             id1: Honk.G1Point({ 
-               x: uint256(0x064da67b5f9936e9e80b1e5aceb0c63f2b686c7807d42c5851b4731e64220e59),
-               y: uint256(0x0997b63bbc41616f14bb0415d1adc79f789185689f0d2051a099d17aa0306bc8)
+               x: uint256(0x14ea3e5e4f41f2baf3ca1c1ba98714296df3924e7f89ce7768ed22261cf1508f),
+               y: uint256(0x28a71c369f4d54873a7639b78996f45eeffbcec551a709b7ccd099f7617ca689)
             }),
             id2: Honk.G1Point({ 
-               x: uint256(0x15a9c174284d3e7bb5d91ec9ca6eabfb6caed04740c271a9a732dca6a022d636),
-               y: uint256(0x1a67bdf780cb4d6f72641fca61777cc149463bfd0da63c3166bd5316147cd5ce)
+               x: uint256(0x0b1ea8ff3e19f9602075b77c15547cab87236fc274a891b1ad9074c89cd2480f),
+               y: uint256(0x04c56af10c5300ee3a0c63138143a6b45583cb5ca53ebe43a3e83c45f22a86b4)
             }),
             id3: Honk.G1Point({ 
-               x: uint256(0x0951613f14b9456b598437bfb0da4905c9b362eebb4f731506db5bec7f634d75),
-               y: uint256(0x0c0b0eed2ff091b6807bbaf02c88384bf76f277bb5e4fc5121f2c2cbff51c9c7)
+               x: uint256(0x1948ef8e3c983acaa6c38c755206197892c523a29b0276191e7696316f0a56da),
+               y: uint256(0x1c1e3ab14d623e72c0bab6ef998130b33d833cdf4282d157266c2a24c8ade7ea)
             }),
             id4: Honk.G1Point({ 
-               x: uint256(0x071eee92e09f59b938f6617fccc076cf3f7214f4f1acba017991ddaa160f7f87),
-               y: uint256(0x23af10e36a555639f7bb4b0673a3a8e45cdffc61937411928e864817cb14ac17)
+               x: uint256(0x1ac5de5f47cfba37656b8bc895f8d39f293efb1ee86d577b1f7035f013b88d39),
+               y: uint256(0x10c2b92272928b7e2f6db32e94f4490a883e05a1c82b95d0432a71afdaa906d7)
             }),
             lagrangeFirst: Honk.G1Point({ 
                x: uint256(0x2a56ce41f6b0be13b9c26747621b821eee81b23a887f299049b14c11e98460d6),
                y: uint256(0x1aa98f2de3ddda547d8f6de4e725ded5827d6338c78656c0d12ca1aea6ef2c7c)
             }),
             lagrangeLast: Honk.G1Point({ 
-               x: uint256(0x1d855ed5419e01e93c8de2a754648d19a2af377368810435705890b248135921),
-               y: uint256(0x24c68769fc67d676319b3020180a44c92188cba37955b323218a690643fe6681)
+               x: uint256(0x019f8d17fc51645a830f6ffaba9dc0884d170b1f9e830be1a6b5bdbe72c86b48),
+               y: uint256(0x074b787a1b9ce9a60a710d4e39dca96f6ae43b0f94c367dc5be83a236cc490e8)
             })
         });
         return vk;
@@ -321,7 +321,7 @@ function equal(Fr a, Fr b) pure returns (bool) {
 
 uint256 constant CONST_PROOF_SIZE_LOG_N = 25;
 
-uint256 constant NUMBER_OF_SUBRELATIONS = 29;
+uint256 constant NUMBER_OF_SUBRELATIONS = 31;
 uint256 constant BATCHED_RELATION_PARTIAL_LENGTH = 8;
 uint256 constant ZK_BATCHED_RELATION_PARTIAL_LENGTH = 9;
 uint256 constant NUMBER_OF_ENTITIES = 41;
@@ -433,6 +433,7 @@ library Honk {
     struct RelationParameters {
         // challenges
         Fr eta;
+        Fr romLogupGamma; // ROM-LogUp additive offset
         Fr beta;
         Fr gamma;
         // derived
@@ -542,15 +543,6 @@ library ZKTranscriptLib {
         return t;
     }
 
-    function splitChallenge(Fr challenge) internal pure returns (Fr first, Fr second) {
-        uint256 challengeU256 = uint256(Fr.unwrap(challenge));
-        // Split into two equal 127-bit chunks (254/2)
-        uint256 lo = challengeU256 & 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF; // 127 bits
-        uint256 hi = challengeU256 >> 127;
-        first = FrLib.from(lo);
-        second = FrLib.from(hi);
-    }
-
     function generateRelationParametersChallenges(
         Honk.ZKProof memory proof,
         bytes32[] calldata publicInputs,
@@ -558,7 +550,8 @@ library ZKTranscriptLib {
         uint256 publicInputsSize,
         Fr previousChallenge
     ) internal pure returns (Honk.RelationParameters memory rp, Fr nextPreviousChallenge) {
-        (rp.eta, previousChallenge) = generateEtaChallenge(proof, publicInputs, vkHash, publicInputsSize);
+        (rp.eta, rp.romLogupGamma, previousChallenge) =
+            generateEtaChallenge(proof, publicInputs, vkHash, publicInputsSize);
 
         (rp.beta, rp.gamma, nextPreviousChallenge) = generateBetaGammaChallenges(previousChallenge, proof);
     }
@@ -568,7 +561,7 @@ library ZKTranscriptLib {
         bytes32[] calldata publicInputs,
         uint256 vkHash,
         uint256 publicInputsSize
-    ) internal pure returns (Fr eta, Fr previousChallenge) {
+    ) internal pure returns (Fr eta, Fr romLogupGamma, Fr previousChallenge) {
         // Size: 1 (vkHash) + publicInputsSize + 8 (geminiMask(2) + 3 wires(6))
         bytes32[] memory round0 = new bytes32[](1 + publicInputsSize + 8);
         round0[0] = bytes32(vkHash);
@@ -594,8 +587,9 @@ library ZKTranscriptLib {
         round0[1 + publicInputsSize + 6] = bytes32(proof.w3.x);
         round0[1 + publicInputsSize + 7] = bytes32(proof.w3.y);
 
-        previousChallenge = FrLib.from(uint256(keccak256(abi.encodePacked(round0))) % P);
-        (eta,) = splitChallenge(previousChallenge);
+        eta = FrLib.from(uint256(keccak256(abi.encodePacked(round0))) % P);
+        romLogupGamma = FrLib.from(uint256(keccak256(abi.encodePacked(Fr.unwrap(eta)))) % P);
+        previousChallenge = romLogupGamma;
     }
 
     function generateBetaGammaChallenges(Fr previousChallenge, Honk.ZKProof memory proof)
@@ -612,8 +606,9 @@ library ZKTranscriptLib {
         round1[5] = bytes32(proof.w4.x);
         round1[6] = bytes32(proof.w4.y);
 
-        nextPreviousChallenge = FrLib.from(uint256(keccak256(abi.encodePacked(round1))) % P);
-        (beta, gamma) = splitChallenge(nextPreviousChallenge);
+        beta = FrLib.from(uint256(keccak256(abi.encodePacked(round1))) % P);
+        gamma = FrLib.from(uint256(keccak256(abi.encodePacked(Fr.unwrap(beta)))) % P);
+        nextPreviousChallenge = gamma;
     }
 
     // Alpha challenges non-linearise the gate contributions
@@ -631,8 +626,7 @@ library ZKTranscriptLib {
         alpha0[4] = proof.zPerm.y;
 
         nextPreviousChallenge = FrLib.from(uint256(keccak256(abi.encodePacked(alpha0))) % P);
-        Fr alpha;
-        (alpha,) = splitChallenge(nextPreviousChallenge);
+        Fr alpha = nextPreviousChallenge;
 
         // Compute powers of alpha for batching subrelations
         alphas[0] = alpha;
@@ -647,7 +641,7 @@ library ZKTranscriptLib {
         returns (Fr[CONST_PROOF_SIZE_LOG_N] memory gateChallenges, Fr nextPreviousChallenge)
     {
         previousChallenge = FrLib.from(uint256(keccak256(abi.encodePacked(Fr.unwrap(previousChallenge)))) % P);
-        (gateChallenges[0],) = splitChallenge(previousChallenge);
+        gateChallenges[0] = previousChallenge;
         for (uint256 i = 1; i < logN; i++) {
             gateChallenges[i] = gateChallenges[i - 1] * gateChallenges[i - 1];
         }
@@ -666,7 +660,7 @@ library ZKTranscriptLib {
         challengeData[2] = proof.libraCommitments[0].y;
         challengeData[3] = Fr.unwrap(proof.libraSum);
         nextPreviousChallenge = FrLib.from(uint256(keccak256(abi.encodePacked(challengeData))) % P);
-        (libraChallenge,) = splitChallenge(nextPreviousChallenge);
+        libraChallenge = nextPreviousChallenge;
     }
 
     function generateSumcheckChallenges(Honk.ZKProof memory proof, Fr prevChallenge, uint256 logN)
@@ -682,8 +676,7 @@ library ZKTranscriptLib {
                 univariateChal[j + 1] = proof.sumcheckUnivariates[i][j];
             }
             prevChallenge = FrLib.from(uint256(keccak256(abi.encodePacked(univariateChal))) % P);
-
-            (sumcheckChallenges[i],) = splitChallenge(prevChallenge);
+            sumcheckChallenges[i] = prevChallenge;
         }
         nextPreviousChallenge = prevChallenge;
     }
@@ -709,7 +702,7 @@ library ZKTranscriptLib {
         rhoChallengeElements[i + 1] = proof.libraCommitments[2].y;
 
         nextPreviousChallenge = FrLib.from(uint256(keccak256(abi.encodePacked(rhoChallengeElements))) % P);
-        (rho,) = splitChallenge(nextPreviousChallenge);
+        rho = nextPreviousChallenge;
     }
 
     function generateGeminiRChallenge(Honk.ZKProof memory proof, Fr prevChallenge, uint256 logN)
@@ -726,8 +719,7 @@ library ZKTranscriptLib {
         }
 
         nextPreviousChallenge = FrLib.from(uint256(keccak256(abi.encodePacked(gR))) % P);
-
-        (geminiR,) = splitChallenge(nextPreviousChallenge);
+        geminiR = nextPreviousChallenge;
     }
 
     function generateShplonkNuChallenge(Honk.ZKProof memory proof, Fr prevChallenge, uint256 logN)
@@ -749,7 +741,7 @@ library ZKTranscriptLib {
         }
 
         nextPreviousChallenge = FrLib.from(uint256(keccak256(abi.encodePacked(shplonkNuChallengeElements))) % P);
-        (shplonkNu,) = splitChallenge(nextPreviousChallenge);
+        shplonkNu = nextPreviousChallenge;
     }
 
     function generateShplonkZChallenge(Honk.ZKProof memory proof, Fr prevChallenge)
@@ -764,7 +756,7 @@ library ZKTranscriptLib {
         shplonkZChallengeElements[2] = proof.shplonkQ.y;
 
         nextPreviousChallenge = FrLib.from(uint256(keccak256(abi.encodePacked(shplonkZChallengeElements))) % P);
-        (shplonkZ,) = splitChallenge(nextPreviousChallenge);
+        shplonkZ = nextPreviousChallenge;
     }
 
     function loadProof(bytes calldata proof, uint256 logN) internal pure returns (Honk.ZKProof memory p) {
@@ -956,6 +948,7 @@ library RelationsLib {
         accumulateDeltaRangeRelation(purportedEvaluations, evaluations, powPartialEval);
         accumulateEllipticRelation(purportedEvaluations, evaluations, powPartialEval);
         accumulateMemoryRelation(purportedEvaluations, rp, evaluations, powPartialEval);
+        accumulateRomLogupRelation(purportedEvaluations, rp, evaluations, powPartialEval);
         accumulateNnfRelation(purportedEvaluations, evaluations, powPartialEval);
         accumulatePoseidonExternalRelation(purportedEvaluations, evaluations, powPartialEval);
         accumulatePoseidonInternalRelation(purportedEvaluations, evaluations, powPartialEval);
@@ -1406,6 +1399,40 @@ library RelationsLib {
         evals[14] = ap.memory_identity;
     }
 
+    /**
+     * ROM LogUp sub-relations (single-value ROM tables)
+     *
+     * Wire layout on ROM-LogUp rows: (w1, w2, w3, w4) = (index, value, multiplicity, inverse), q_c = array id.
+     * Two selector bitpatterns identify these rows within the q_memory-gated region:
+     *   q_logup_table = q_2 * (1 - q_1)  (table entry: w3 = m_i, the read count)
+     *   q_logup_read  = q_4 * (1 - q_1)  (read access: w3 = 0)
+     * The (1 - q_1) factor distinguishes them from ROM_CONSISTENCY (q_1 = q_2 = 1) and RAM_TIMESTAMP
+     * (q_1 = q_4 = 1). The fingerprint denominator is romLogupGamma + index + eta * value + eta_two * array_id,
+     * where romLogupGamma is an independent challenge (not a power of eta) so the LogUp partial-fraction
+     * soundness argument holds. Split into its own function (rather than folded into accumulateMemoryRelation)
+     * to avoid stack-too-deep. See relations/memory_relation.hpp for the soundness argument.
+     */
+    function accumulateRomLogupRelation(
+        Fr[NUMBER_OF_ENTITIES] memory p,
+        Honk.RelationParameters memory rp,
+        Fr[NUMBER_OF_SUBRELATIONS] memory evals,
+        Fr domainSep
+    ) internal pure {
+        Fr eta_two = rp.eta * rp.eta;
+
+        Fr q_logup_table = wire(p, WIRE.Q_R) * (ONE - wire(p, WIRE.Q_L));
+        Fr q_logup_read = wire(p, WIRE.Q_4) * (ONE - wire(p, WIRE.Q_L));
+        Fr denom = rp.romLogupGamma + wire(p, WIRE.W_L) + (wire(p, WIRE.W_R) * rp.eta) + (wire(p, WIRE.Q_C) * eta_two);
+
+        // Subrelation 6: per-row inverse correctness (linearly independent, scaled by domainSep). deg 5.
+        evals[20] =
+            (q_logup_table + q_logup_read) * (wire(p, WIRE.W_4) * denom - ONE) * (wire(p, WIRE.Q_MEMORY) * domainSep);
+
+        // Subrelation 7: LogUp sum identity. Linearly dependent: summed across the trace, so NOT scaled by
+        // domainSep (mirrors the log-derivative lookup subrelation). deg 5.
+        evals[21] = (q_logup_read - q_logup_table * wire(p, WIRE.W_O)) * wire(p, WIRE.W_4) * wire(p, WIRE.Q_MEMORY);
+    }
+
     function accumulateNnfRelation(
         Fr[NUMBER_OF_ENTITIES] memory p,
         Fr[NUMBER_OF_SUBRELATIONS] memory evals,
@@ -1479,7 +1506,7 @@ library RelationsLib {
 
         ap.nnf_identity = non_native_field_identity + limb_accumulator_identity;
         ap.nnf_identity = ap.nnf_identity * (wire(p, WIRE.Q_NNF) * domainSep);
-        evals[20] = ap.nnf_identity;
+        evals[22] = ap.nnf_identity;
     }
 
     function accumulatePoseidonExternalRelation(
@@ -1515,13 +1542,13 @@ library RelationsLib {
         ep.v3 = ep.t2 + ep.v4; // u_1 + 3u_2 + 5u_3 + 7u_4
 
         ep.q_pos_by_scaling = wire(p, WIRE.Q_POSEIDON2_EXTERNAL) * domainSep;
-        evals[21] = evals[21] + ep.q_pos_by_scaling * (ep.v1 - wire(p, WIRE.W_L_SHIFT));
+        evals[23] = evals[23] + ep.q_pos_by_scaling * (ep.v1 - wire(p, WIRE.W_L_SHIFT));
 
-        evals[22] = evals[22] + ep.q_pos_by_scaling * (ep.v2 - wire(p, WIRE.W_R_SHIFT));
+        evals[24] = evals[24] + ep.q_pos_by_scaling * (ep.v2 - wire(p, WIRE.W_R_SHIFT));
 
-        evals[23] = evals[23] + ep.q_pos_by_scaling * (ep.v3 - wire(p, WIRE.W_O_SHIFT));
+        evals[25] = evals[25] + ep.q_pos_by_scaling * (ep.v3 - wire(p, WIRE.W_O_SHIFT));
 
-        evals[24] = evals[24] + ep.q_pos_by_scaling * (ep.v4 - wire(p, WIRE.W_4_SHIFT));
+        evals[26] = evals[26] + ep.q_pos_by_scaling * (ep.v4 - wire(p, WIRE.W_4_SHIFT));
     }
 
     function accumulatePoseidonInternalRelation(
@@ -1553,16 +1580,16 @@ library RelationsLib {
         ip.q_pos_by_scaling = wire(p, WIRE.Q_POSEIDON2_INTERNAL) * domainSep;
 
         ip.v1 = ip.u1 * INTERNAL_MATRIX_DIAGONAL[0] + ip.u_sum;
-        evals[25] = evals[25] + ip.q_pos_by_scaling * (ip.v1 - wire(p, WIRE.W_L_SHIFT));
+        evals[27] = evals[27] + ip.q_pos_by_scaling * (ip.v1 - wire(p, WIRE.W_L_SHIFT));
 
         ip.v2 = ip.u2 * INTERNAL_MATRIX_DIAGONAL[1] + ip.u_sum;
-        evals[26] = evals[26] + ip.q_pos_by_scaling * (ip.v2 - wire(p, WIRE.W_R_SHIFT));
+        evals[28] = evals[28] + ip.q_pos_by_scaling * (ip.v2 - wire(p, WIRE.W_R_SHIFT));
 
         ip.v3 = ip.u3 * INTERNAL_MATRIX_DIAGONAL[2] + ip.u_sum;
-        evals[27] = evals[27] + ip.q_pos_by_scaling * (ip.v3 - wire(p, WIRE.W_O_SHIFT));
+        evals[29] = evals[29] + ip.q_pos_by_scaling * (ip.v3 - wire(p, WIRE.W_O_SHIFT));
 
         ip.v4 = ip.u4 * INTERNAL_MATRIX_DIAGONAL[3] + ip.u_sum;
-        evals[28] = evals[28] + ip.q_pos_by_scaling * (ip.v4 - wire(p, WIRE.W_4_SHIFT));
+        evals[30] = evals[30] + ip.q_pos_by_scaling * (ip.v4 - wire(p, WIRE.W_4_SHIFT));
     }
 
     // Batch subrelation evaluations using precomputed powers of alpha

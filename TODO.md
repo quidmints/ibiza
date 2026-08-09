@@ -14113,3 +14113,48 @@ any external description, because a reader will otherwise assume otherwise.
 it is off-chain work.
 
 Corrects §2.18fq. Nothing built.
+
+### 2.18fs WHO IS THE CONTROLLER — undecided, unrotatable, and it decrypts retroactively (user, 2026-08-09)
+
+**Q: controller?** Answering §2.18fr's closing fact ("the controller can decrypt every registrant's
+MRZ") with what the controller actually IS.
+
+**STRUCTURALLY** (`IdentityRegistry:98-104,170-181`):
+  - `address public immutable CONTROLLER` - "The only party that may revoke. Also controls the label
+    list."
+  - `uint256 public immutable CONTROLLER_KEY_X / _Y` - a **Baby Jubjub** sealing key, pinned so an
+    envelope cannot be sealed to a key the controller does not hold.
+  - Both set in the constructor, checked ONLY for non-zero, and **never changeable**: immutable, on a
+    contract that is not upgradeable (§2.18fm).
+
+**IT IS TWO SEPARATE SECRETS, AND THE DOCS CONFLATE THEM:**
+  1. an ETHEREUM private key for `CONTROLLER`, which calls `revoke`;
+  2. a BABY JUBJUB scalar for `CONTROLLER_KEY_X/Y`, which decrypts every envelope.
+Nothing on-chain binds them to one holder. **They can be split** - and `CONTROLLER` can be a multisig
+CONTRACT today with no code change, since only `msg.sender` equality is checked. Neither is
+constrained to be a multisig, a contract, or a threshold scheme; an EOA satisfies the constructor.
+
+**WHO IS IT IN PRACTICE: NOBODY HAS DECIDED.** There are no deploy scripts anywhere in the repo -
+no `deploy/`, no `script/`. The controller is an unmade decision, not a recorded one.
+
+**⚠ THE SEVERE CONSEQUENCE, and it follows from choices ALREADY MADE rather than from anything
+proposed here: THE DECRYPTION IS RETROACTIVE AND THE KEY CANNOT BE ROTATED.**
+  - Every envelope is published as PUBLIC INPUTS to `register`, so the ciphertexts live in chain
+    history permanently, whether or not any contract stores them.
+  - The sealing key is IMMUTABLE, on a NON-UPGRADEABLE contract.
+  - Therefore a compromise of the Baby Jubjub scalar **at any future time retroactively decrypts every
+    MRZ ever registered.** There is no forward secrecy, and no re-key path short of deploying a new
+    registry and migrating every registration.
+This is the largest privacy risk in the design. It is not a defect introduced by §2.18fr - §2.18fr
+merely made the capability explicit - but it should be stated wherever the privacy properties are
+described.
+
+**WHAT IS AVAILABLE WITHOUT CODE CHANGES, since §2.18fm already put the residual at deployment time:**
+  - hold the Baby Jubjub scalar under THRESHOLD/MPC so no single party can decrypt - a key-generation
+    choice, invisible to the contract;
+  - point `CONTROLLER` at a multisig or timelock contract rather than an EOA;
+  - split the two roles between different holders, since nothing requires them to match.
+None of these reduce the RETROACTIVE exposure if the scalar is ever assembled; they only raise the bar
+for assembling it.
+
+Not a decision, a description. OPEN, and it blocks any external claim about the privacy model.

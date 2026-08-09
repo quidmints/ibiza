@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""Self-consistency checks on passport circuit parameter tuples.
+
+WHY THIS EXISTS. `passport-profiles.json` recovers each profile's 14 generics from rarimo's published
+artifacts and cross-checks them against that artifact's OWN abi - `dg1`/`dg15`/`ec`/`sa`/`pk` array
+lengths must equal DG1_LEN/DG15_LEN/EC_LEN/SA_LEN/N. **That check compares each length to itself and
+nothing else.** It cannot see a tuple whose lengths are individually plausible but jointly impossible,
+and three published profiles are exactly that.
+
+WHAT IT MISSED, twice, both found only when a build failed hours later:
+
+  * `21_160_1_2_560_576_NA`, `14_256_1_4_1752_576_1_1496_3_512`, `1_256_1_5_2376_336_1_2120_4_512`
+    declare DG1_SHIFT == EC_LEN, so `assert(dg1_hash[i] == ec[i + DG1_SHIFT])` reads past `ec`.
+    0 of the 78 working profiles do this.
+  * `20_256_3_5_336_248_25_2120_5_1816` places an AA key at AA_SHIFT with 2*32 bytes to follow, in a
+    dg15 of 283 - eight bytes short.
+
+Both are arithmetic on numbers already in the manifest. Neither needed a document, a build, or a
+container to detect. THAT is the point of this file: these are cheap checks that run in milliseconds
+and would have moved both discoveries months earlier, from "a 32 GiB build failed" to "the manifest
+refuses to load".
+
+⚠️ ONE CHECK IS DELIBERATELY A WARNING, NOT AN ERROR. `EC_SHIFT + HASH_ALGO == SA_LEN` holds for 76
+of 78 profiles - strong enough to be worth reporting, not strong enough to reject on. A check that
+fires on correct input is a clamp, not a check.
+
+Run: python3 tools/check-passport-profile-consistency.py
+"""
+import json
+import pathlib
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+MANIFEST = ROOT / "backend/circuits/passport-profiles.json"
+
+# `extract_dg15_pk_hash` uses a LOCAL byte count, not the EC_FIELD_SIZE generic (which is in bits and
+# is 0 for RSA). Mirrors noir_dl_lib/src/not_passports_zk_circuits.nr:653-661.
+AA_ECDSA_BYTES = {22: 40, 23: 24}
+AA_ECDSA_DEFAULT = 32
+
+
+def aa_key_bytes(aa_sig_type: int) -> int:
+    return AA_ECDSA_BYTES.get(aa_sig_type, AA_ECDSA_DEFAULT)
+
+
+def check(name: str, g: dict) -> tuple[list[str], list[str]]:
+    """Returns (errors, warnings). Errors mean the circuit cannot be satisfiable."""
+    errors, warnings = [], []
+
+    # A passport circuit that reads no MRZ cannot prove anything about a document.
+    if g["DG1_LEN"] == 0:
+        errors.append("DG1_LEN == 0: the circuit reads no MRZ")
+
+    # `assert(dg1_hash[i] == ec[i + DG1_SHIFT])` for i in 0..DG_HASH_ALGO.
+    end = g["DG1_SHIFT"] + g["DG_HASH_ALGO"]
+    if end > g["EC_LEN"]:
+        errors.append(
+            f"DG1 hash runs past ec: DG1_SHIFT({g['DG1_SHIFT']}) + DG_HASH_ALGO({g['DG_HASH_ALGO']})"
+            f" = {end} > EC_LEN({g['EC_LEN']})"
+        )
+
+    # Same shape for the DG15 hash, where the profile has one.
+    if g["DG15_LEN"] > 0:
+        end = g["DG15_SHIFT"] + g["DG_HASH_ALGO"]
+        if end > g["EC_LEN"]:
+            errors.append(
+                f"DG15 hash runs past ec: DG15_SHIFT({g['DG15_SHIFT']}) +"
+                f" DG_HASH_ALGO({g['DG_HASH_ALGO']}) = {end} > EC_LEN({g['EC_LEN']})"
+            )
+
+    # The eContent hash sits inside signedAttributes.
+    end = g["EC_SHIFT"] + g["HASH_ALGO"]
+    if end > g["SA_LEN"]:
+        errors.append(
+            f"ec hash runs past sa: EC_SHIFT({g['EC_SHIFT']}) + HASH_ALGO({g['HASH_ALGO']})"
+            f" = {end} > SA_LEN({g['SA_LEN']})"
+        )
+    elif end != g["SA_LEN"]:
+        # 76/78 sit flush against the end. Reported, never fatal.
+        warnings.append(
+            f"ec hash is not flush with sa: EC_SHIFT + HASH_ALGO = {end}, SA_LEN = {g['SA_LEN']}"
+        )
+
+    # Active Authentication: an ECDSA public key is two coordinates read out of dg15.
+    aa = g["AA_SIG_TYPE"]
+    if aa >= 20:
+        kb = aa_key_bytes(aa)
+        hash_size = 24 if aa == 23 else 31
+        x_y_shift = kb - hash_size
+        if x_y_shift < 0:
+            errors.append(f"AA_SIG_TYPE {aa}: key bytes({kb}) < hash size({hash_size}), shift underflows")
+        else:
+            end = g["AA_SHIFT"] + (hash_size - 1) + x_y_shift + kb
+            if end > g["DG15_LEN"] - 1:
+                errors.append(
+                    f"AA key runs past dg15: max index {end} > DG15_LEN-1"
+                    f" ({g['DG15_LEN'] - 1}) for AA_SIG_TYPE {aa} (key {kb} bytes)"
+                )
+        if aa not in AA_ECDSA_BYTES:
+            warnings.append(
+                f"AA_SIG_TYPE {aa} has no branch in extract_dg15_pk_hash; it falls through to"
+                f" {AA_ECDSA_DEFAULT} bytes, which may be wrong for this curve"
+            )
+
+    return errors, warnings
+
+
+def main() -> int:
+    m = json.loads(MANIFEST.read_text())
+    live = m["profiles"]
+    quarantined = {q["name"]: q["generics"] for q in m["quarantined"] if "name" in q}
+
+    bad_live, warned = 0, 0
+    for name, entry in sorted(live.items()):
+        errors, warnings = check(name, entry["generics"])
+        if errors:
+            bad_live += 1
+            print(f"ERROR {name}")
+            for e in errors:
+                print(f"        {e}")
+        for w in warnings:
+            warned += 1
+            print(f"warn  {name}: {w}")
+
+    print(f"\nchecked {len(live)} live profiles: {bad_live} inconsistent, {warned} warnings")
+
+    # The quarantined ones are the control: if they stop failing, either they were fixed upstream or
+    # a check regressed. Either way somebody should look.
+    print(f"\ncontrol - {len(quarantined)} quarantined profiles, each EXPECTED to fail:")
+    surprises = 0
+    for name, g in sorted(quarantined.items()):
+        errors, _ = check(name, g)
+        if errors:
+            print(f"  refused as expected: {name}")
+            for e in errors:
+                print(f"        {e}")
+        else:
+            surprises += 1
+            print(f"  ⚠️  NOW PASSES, investigate: {name}")
+
+    if bad_live:
+        print(f"\nFAIL: {bad_live} live profile(s) are internally inconsistent.")
+        return 1
+    if surprises:
+        print(f"\nFAIL: {surprises} quarantined profile(s) now pass; the quarantine may be stale.")
+        return 1
+    print("\nOK - every live profile is self-consistent, and every quarantined one is still refused.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

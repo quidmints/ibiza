@@ -14482,3 +14482,48 @@ in a newer revision; whether any deployed wallet accepts a non-Appendix-B format
 whether the ARF itself forbids an EUDI wallet from holding a non-mdoc/non-SD-JWT credential at all -
 that last one is the question that decides whether even bilateral interop is available inside EUDI.
 OPEN.
+
+### 2.18ga "Did we get rid of Circom?" — YES on the money path, NO on identity: 17 verifiers remain (user, 2026-08-09)
+
+**The answer differs by subsystem, which is exactly what `AQueryProofExecutor`'s header warns about.**
+
+**POOL / MONEY PATH: GENUINELY CIRCOM-FREE.** `State.sol:46,48` and `PrivacyPool.sol:64` are all
+`INoirVerifier`; no Groth16 contract is reachable from it. `PrivacyPool.sol:400`'s claim holds.
+
+**IDENTITY / PASSPORT SIDE: 17 REAL GROTH16 VERIFIER CONTRACTS** (counted by grepping for an actual
+pairing check, not for the word "Groth16" - 24 files MENTION it, and 7 of those are comments saying
+there is none):
+
+| directory | count |
+|---|---|
+| `passport/verifiers2/per-passport/` | 6 |
+| `passport/verifiers2/universal/{rsa,pss}` | 6 |
+| `passport/verifiers2/geo` + `mne` | 4 |
+| `sdk/verifier/TD3QueryProofVerifier.sol` | 1 |
+
+Circom is still offered on live entry points: `Registration2.register` / `reissueIdentity`, and
+`AQueryProofExecutor.execute` / `executeTD1`.
+
+**⚠ WHY IT CANNOT JUST BE DELETED, and it is NOT a porting backlog of ours.** All 6 per-passport
+profiles are genuine orphans - **no Noir twin exists** (checked name by name) - and **none of the 6 is
+in `passport-profiles.json`**, so the codegen cannot produce them: it has never been told they exist.
+The manifest's own `_provenance` explains why: it was RECOVERED FROM `rarimo/passport-zk-circuits-noir`
+RELEASE ASSETS, so it only ever contained profiles **rarimo published in Noir**. The six Circom-only
+profiles are ones upstream has not published a Noir circuit for. **The gap is upstream's.**
+
+**A LEAD, EXPLICITLY NOT A CONCLUSION:** the same `_provenance` records that "rarimo additionally
+publishes 6 registerIdentity profiles this repo does not have, four of them TD1 - see TODO task 24."
+**That is a DIFFERENT six** - Noir profiles we have not vendored, versus Circom profiles we have no
+Noir for. The counts matching is suggestive and nothing more. **If those two sets coincide, vendoring
+task 24 deletes Circom from the passport path entirely; if they do not, the orphans need upstream
+circuits that may not exist.** Resolving it needs the rarimo release asset list. That is the single
+question standing between here and a one-stack identity side.
+
+**⚠ AND A MEASUREMENT THAT PROVED NOTHING, recorded because it nearly became a finding.** All 17
+Groth16 verifiers have ZERO symbol references outside their own directories - which looks like
+conclusive dead code. **CONTROL RUN: the NOIR verifiers score 0 too**, including the known-live
+`TD3QueryProofNoirVerifier` and every `NoirRegisterIdentity_*`. Verifiers here are wired **by ADDRESS
+at deploy time**, so a symbol-reference count cannot distinguish dead from live and **says nothing
+about whether these 17 are deployed.** Same collapse the SPV CLAUDE.md records for its 35 verifiers.
+Deciding deletability needs deployment records, which this repo does not contain (no deploy scripts -
+§2.18fs). OPEN.

@@ -83,6 +83,25 @@ trap 'rm -f "${CIRCUITS_DIR}/.docker-profiles.txt"' EXIT
 # rejects them with the unhelpful "Invalid argument".
 BB_SWAP_GB="${BB_SWAP_GB:-32}"
 
+# MEMORY, AND THE LEVER THAT ACTUALLY EXISTS (found 2026-08-10, TODO sec. 2.18gn).
+#
+# bb 6.0 stores its polynomials in a FileBackedMemory arena with a fixed storage budget. Its own help:
+#   --storage_budget    "Storage budget for FileBackedMemory (e.g. '500m', '2g'). When exceeded,
+#                        falls back to RAM (REQUIRES --slow_low_memory)."
+#   --slow_low_memory   "Enable low memory mode (can be 2x slower or more)."
+#
+# ⚠️ WITHOUT `--slow_low_memory` THERE IS NO FALLBACK, SO EXCEEDING THE BUDGET IS AN ASSERTION, NOT A
+# SLOWDOWN: `Assertion failed: (aligned_local + bytes <= bound)`, thrown out of libc++abi with no
+# mention of memory anywhere in the message. That is what blocked the two 2^25 profiles - it reads
+# like a compiler or circuit defect and is neither. Swap does not help, because the bound is a fixed
+# arena rather than exhaustible memory, which is why the 32 GiB swapfile below made no difference to
+# them while it rescued the earlier OOM cases.
+#
+#   BB_SLOW_LOW_MEMORY=1 BB_STORAGE_BUDGET=8g ./build-passport-verifiers-docker.sh <profile>
+#
+# Both are passed through to the container below. Empty by default: low-memory mode is 2x slower or
+# worse, so it is opt-in for the profiles that need it rather than on for all 78.
+
 # CORES: all of them, and THREAD COUNT IS NOT THE LEVER - the table above already settled it.
 # `HARDWARE_CONCURRENCY=2` was tried, bb honoured it ("num threads: 2"), and the peak did not move,
 # because the peak is the circuit's polynomials (2^25 x 32 bytes each), not per-thread scratch.
@@ -109,6 +128,8 @@ docker run --rm --platform linux/amd64 \
   -v ibiza-swap:/swap \
   -w /repo/backend/circuits \
   -e ONLY_FILE=/repo/backend/circuits/.docker-profiles.txt \
+  -e BB_SLOW_LOW_MEMORY="${BB_SLOW_LOW_MEMORY:-}" \
+  -e BB_STORAGE_BUDGET="${BB_STORAGE_BUDGET:-}" \
   "${IMAGE}" \
   bash -lc '
     set -e

@@ -15087,3 +15087,55 @@ and §2.18fn repeated it as if it were the production deployment. My error, not 
 **THE GENERAL FAULT, since this is the second time this session:** a search summary was promoted to a
 verified fact because it was specific. Specificity is not provenance. The oracle address took two
 `eth_call`s to refute - the check was cheap and I did not run it before writing it down.
+
+### 2.18gn WHY THE ARENA BUG HAPPENS — found the mechanism, and §2.18gl was wrong (user, 2026-08-10)
+
+*"why is the arena bug occuring?"* - answered, from bb's own help text rather than by guessing.
+
+**THE MECHANISM.** bb 6.0 keeps polynomials in a **FileBackedMemory** arena with a fixed storage
+budget. Two flags exist, both undocumented anywhere in this repo until now:
+
+    --storage_budget    Storage budget for FileBackedMemory (e.g. '500m', '2g').
+                        When exceeded, falls back to RAM (REQUIRES --slow_low_memory).
+    --slow_low_memory   Enable low memory mode (can be 2x slower or more).
+
+Env equivalents `BB_STORAGE_BUDGET` and `BB_SLOW_LOW_MEMORY` (read from the binary's own strings).
+
+**⚠ WITHOUT `--slow_low_memory` THERE IS NO FALLBACK, SO OVERFLOW IS AN ASSERTION RATHER THAN A
+SLOWDOWN:** `Assertion failed: (aligned_local + bytes <= bound)`, thrown from libc++abi **with no
+mention of memory in the message**. It names an allocator invariant, which is why it read as a circuit
+or compiler defect. It is neither.
+
+**IT ALSO EXPLAINS THE THING THAT DID NOT ADD UP:** why the 32 GiB swapfile rescued the earlier OOM
+profiles but did nothing for these two. A fixed arena bound is not relieved by swap. bb sat at 12.4 GB
+RSS - well under the ceiling - and threw anyway.
+
+**SO §2.18gl's CONCLUSION WAS WRONG.** It said "bb 6.0.0-nightly cannot build these two circuits" and
+treated the pin as broken. bb *can*; it refuses by default rather than degrading. The missing flag
+looked like a hard incompatibility.
+
+**MEASURED WITH THE FLAG ON** (`BB_SLOW_LOW_MEMORY=1 BB_STORAGE_BUDGET=8g`, solo run):
+
+    CircuitProve: Proving key computed in 1512191 ms (mem: 12530.00 MiB)   <- previously died HERE
+    Assertion failed: (aligned_local + bytes <= bound)
+      Left  : 124990672
+      Right : 124518529
+
+**Real progress: the proving key now COMPUTES** (~25 min, 12.2 GB) where both earlier attempts threw
+before reaching it. What fails now is a **SECOND, far smaller arena - about 124.5 MB - overflowing by
+472,143 bytes, i.e. 0.4%.** `BB_STORAGE_BUDGET=8g` plainly does not govern this one; it is a different
+allocation with its own bound, hit during `write_vk` after the key exists.
+
+**STOPPED HERE, deliberately** - the user flagged battery drain, and three runs have now cost roughly
+two hours of a 16 GB laptop. The next cheap experiments, for whoever picks this up:
+  1. **Vary `BB_STORAGE_BUDGET`** (e.g. `2g`, `512m`) and see whether the 124.5 MB bound moves at all.
+     If it does not, that arena is sized by something else and the flag is the wrong lever.
+  2. **Check whether bb honours the ENV form**; only the `--flag` form is documented in its help. If
+     the env var is ignored, this run never actually enabled low-memory mode - though the proving key
+     completing where it previously did not is evidence that it did.
+  3. **A 0.4% overflow is worth reporting to Aztec on its own** - it suggests an off-by-a-bit arena
+     sizing rather than a genuine capacity limit, and it is a much sharper bug report than "large
+     circuit fails".
+
+`build-passport-verifiers-docker.sh` now passes both variables through (`cb947a2`), opt-in, with the
+mechanism documented at the flag. **Still 76/78.** OPEN.

@@ -15000,3 +15000,54 @@ configured**, so I cannot open one. The content is ready and is two separable co
   2. the `AA_SIG_TYPE` 20/21/24/25 report, which is a correctness bug in shipped artifacts and does
      not depend on (1).
 Needs a decision on how to file - and (2) is worth sending regardless of whether they want (1).
+
+### 2.18gl THE TWO 2^25 PROFILES CANNOT BE REBUILT ON bb 6.0 — and that leaves them broken (2026-08-10)
+
+**76 of 78 passport verifiers are now on the pinned template. The remaining two cannot be built at
+all**, and this is a diagnosis rather than another interrupted run.
+
+**THE FAILURE, from a clean solo run of `25_384_3_5_576_248_20_3768_3_2008`** (container, 32 GiB swap,
+nothing else on the machine - the earlier `quid-ln` cargo run had exited):
+
+    libc++abi: terminating due to uncaught exception of type std::runtime_error:
+      Assertion failed: (aligned_local + bytes <= bound)
+    !! FAILED_WRITE_VK 25_384_3_5_576_248_20_3768_3_2008
+
+**IT IS NOT AN OOM.** No kill, no OOM-killer message, and the host had headroom. `bb` reached
+**12.4 GB RSS** and 13 minutes into `write_vk` before throwing - past the ~11.7 GiB peak the swapfile
+was added for (`6120ec3`), so the swap is working. `bound` names a FIXED internal arena, not
+exhaustible memory.
+
+**AND IT IS NOT THE CRS.** The cached volume holds `bn254_g1.dat` at exactly 2,147,483,648 bytes =
+2 GiB = **2^25 points at 64 bytes each** - correctly sized for these profiles.
+
+**THE LEVERS ARE ALREADY RULED OUT BY THE SCRIPT'S OWN MEASUREMENTS:** "`HARDWARE_CONCURRENCY=2` was
+tried, bb honoured it, and the peak did not move, because the peak is the circuit's polynomials
+(2^25 x 32 bytes each), not per-thread scratch." A fixed-arena assertion is not relieved by more swap
+either.
+
+**SO THE READING IS: bb 6.0.0-nightly.20260804 CANNOT BUILD THESE TWO CIRCUITS, AND bb 5.1.0 COULD** -
+both have committed verifiers, produced in the 2026-08-03/04 sequence when 5.1.0 was the pin. The 6.0
+template is also LARGER (31 subrelations vs 29, plus the ROM-LogUp parameter, §2.18ge), which is
+consistent with the same circuit now exceeding a bound it previously fit under.
+
+**⚠ THE CONSEQUENCE, WHICH IS WORSE THAN "TWO FILES ARE STALE":** by `package.json`'s own measurement,
+a 5.1.0-template verifier REJECTS proofs from a 6.0 prover at `verification failed at reduction step`.
+So these two profiles - `25_384_3_5_576_248_20_3768_3_2008` and
+`28_384_3_3_576_264_24_2024_4_2792` - **are unusable on the `Registration2` full-chain path**: the
+prover cannot produce a proof their verifier accepts, and the verifier cannot be regenerated to match.
+They are not "not yet done"; they are broken until either bb changes or the pin does.
+
+**OPTIONS, none of them a retry:**
+  a. **Pin an intermediate bb** for these two only - contradicts "one pin, in one file" (`b57e788`) and
+     §2.18ge's finding that mixed templates are exactly the bug.
+  b. **Report upstream to Aztec** - a fixed-arena assertion on a 2^25 circuit is a bb defect, and the
+     report writes itself: it worked on 5.1.0, fails on 6.0.0-nightly.20260804, same circuit.
+  c. **Drop the two profiles**, as §2.18gf contemplates for the Circom orphans. They remain reachable
+     via `register_lite` (§2.18gg), so no holder is excluded - only the full-chain path is lost.
+  d. **Raise the Docker VM allocation** past 12.7 GiB and retry once, on the chance the arena is sized
+     from available RAM. Cheapest test, NOT scriptable (TCC-protected settings), and the fixed-`bound`
+     wording argues against it.
+
+**NOT RETRIED FURTHER.** Two attempts, ~70 minutes of a 16 GB laptop, one clean diagnosis. A third run
+would test nothing new. OPEN, pending a choice above.

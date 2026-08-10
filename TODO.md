@@ -15051,3 +15051,39 @@ They are not "not yet done"; they are broken until either bb changes or the pin 
 
 **NOT RETRIED FURTHER.** Two attempts, ~70 minutes of a 16 GB laptop, one clean diagnosis. A third run
 would test nothing new. OPEN, pending a choice above.
+
+### 2.18gm ⚠ THE CHAINALYSIS ORACLE ADDRESS IN §2.18fn IS NOT THE LIVE ORACLE (user, 2026-08-10)
+
+*"idk that address"* - correct to doubt it. **Verified on-chain and it does not do what §2.18fn said.**
+
+**WHAT WAS CITED.** §2.18fn quoted `0x40c57923924b5c5c5455c48d93317139addac8fb` as Chainalysis's free
+on-chain sanctions oracle, and leaned on it to argue our own OFAC ingestion is worth doing.
+
+**WHAT IS ACTUALLY THERE** (two independent public RPCs, identical results):
+  - the address HAS code - `eth_getCode` returns an identical bytecode prefix from
+    `ethereum-rpc.publicnode.com` and `eth.drpc.org`, so it is a real deployed contract;
+  - it HAS the right ABI - `cast sig 'isSanctioned(address)'` = `0xdf592f7d`, and that selector
+    appears in the contract's own dispatch table;
+  - **but `isSanctioned` returns FALSE for every OFAC-designated address tested**:
+    `0x722122dF12D4e14e13Ac3b6895a86e84145b6967`,
+    `0xdd4c48c0b24039969fc16d1cdf626eab821d3384`,
+    `0x8589427373D6D84E98730D7795D8f6f8731FDA16` - all Tornado Cash, all SDN-listed since 2022.
+
+A populated oracle returns true for all three. **So this is a DOCUMENTATION EXAMPLE address** - which
+is exactly how the source described it ("the example contract address shown in the documentation") -
+and §2.18fn repeated it as if it were the production deployment. My error, not the source's.
+
+**WHAT SURVIVES AND WHAT DOES NOT:**
+  - ❌ **The address.** Do not use it. Anything downstream that reads a sanctions oracle must resolve
+    the real per-chain deployment from Chainalysis's own directory first.
+  - ⚠️ **The 66-day lag figure** (an address designated 2024-05-28 still absent on 2024-08-02) came
+    from a third-party blog via search summary and was NEVER independently verified either. §2.18fn
+    used it as a measured number. **It is not one.** Treat it as an unverified anecdote until someone
+    checks it against the real oracle's history.
+  - ✅ **The argument's structure.** "Reading a vendor oracle means accepting its update latency and a
+    liveness dependency on a contract we do not control" stands on its own, and does not need either
+    number. It just cannot be quantified from anything currently in this file.
+
+**THE GENERAL FAULT, since this is the second time this session:** a search summary was promoted to a
+verified fact because it was specific. Specificity is not provenance. The oracle address took two
+`eth_call`s to refute - the check was cheap and I did not run it before writing it down.

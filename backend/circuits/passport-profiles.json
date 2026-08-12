@@ -784,25 +784,6 @@
       },
       "from": "first-published artifact"
     },
-    "28_384_3_3_576_264_24_2024_4_2792": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 445,
-        "EC_LEN": 317,
-        "SA_LEN": 120,
-        "N": 8,
-        "EC_FIELD_SIZE": 384,
-        "DG_HASH_ALGO": 48,
-        "HASH_ALGO": 48,
-        "SIG_TYPE": 28,
-        "DG1_SHIFT": 33,
-        "DG15_SHIFT": 253,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 24,
-        "AA_SHIFT": 349
-      },
-      "from": "first-published artifact"
-    },
     "2_256_3_4_336_248_22_1496_7_2408": {
       "generics": {
         "DG1_LEN": 93,
@@ -1574,6 +1555,26 @@
       },
       "reason": "Same two corrupted fields as 21_160_1_2_560_576_NA: DG1_LEN=0 (correct value 95, verified), and DG1_SHIFT == EC_LEN exactly (297 == 297) against a 23..33 range across all 78 working profiles. Repair attempted 2026-08-10 and reverted. SUGGESTIVE BUT NOT SUFFICIENT: 20_256_3_5_336_248_25_2120_5_1816 shares this profile's EC_LEN=297, SA_LEN=74, DG15_SHIFT=265 and EC_SHIFT=42, and declares DG1_SHIFT=31 - so 31 is a plausible value here. It was NOT applied: a shared EC layout is not proof of a shared DG1 offset, the documents differ in type (TD1 vs TD3), and a wrong offset compiles silently. See TODO sec. 2.18gj.",
       "reason_note": "EC_FIELD_SIZE=0 is correct for SIG_TYPE=1 (RSA); all 19 such profiles carry it."
+    },
+    {
+      "name": "28_384_3_3_576_264_24_2024_4_2792",
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 445,
+        "EC_LEN": 317,
+        "SA_LEN": 120,
+        "N": 8,
+        "EC_FIELD_SIZE": 384,
+        "DG_HASH_ALGO": 48,
+        "HASH_ALGO": 48,
+        "SIG_TYPE": 28,
+        "DG1_SHIFT": 33,
+        "DG15_SHIFT": 253,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 24,
+        "AA_SHIFT": 349
+      },
+      "reason": "🔴 THE DOCUMENT SIGNATURE IS NEVER VERIFIED. Quarantined 2026-08-10, and this is a SOUNDNESS hole rather than a build failure. `verify_signature` (not_passports_zk_circuits.nr:128) dispatches on SIG_TYPE with branches for 1,2,3,4,5,6,7,8,10,11,12,13,14,15,20,21,23,24,25,26,27. **There is no branch for 28 and no catch-all assert.** The function returns nothing, is called once as `let _ = verify_signature::<...>` at line 62, and each branch asserts internally - so an unmatched SIG_TYPE means the body simply does nothing and registration continues. No other signature check exists in the flow. The Merkle step still proves the DSC public key is in the ICAO tree, but NOTHING proves the SOD was signed by that key - and DSC public keys are public data, published in the ICAO master list. A prover could therefore assert an arbitrary MRZ under this profile. UPSTREAM IS IDENTICAL: rarimo's own artifact for this profile (v0.1.22) declares SIG_TYPE 28 and embeds a library whose branch list is also missing 28, so this is inherited verbatim rather than introduced here. NOT PATCHED: adding a branch requires knowing which algorithm 28 denotes, which nothing here establishes. See TODO sec. 2.18gt."
     },
     {
       "name": "20_256_3_5_336_248_25_2120_5_1816",

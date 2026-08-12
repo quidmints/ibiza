@@ -15393,3 +15393,48 @@ registrations is the thing to weigh, not the profile count.
 
 **NOT STARTED.** The migration is a money-adjacent identity change and wants its own run with a stated
 prediction (rule 10).
+
+### 2.18gt 🔴 SIG_TYPE 28 NEVER VERIFIES THE DOCUMENT SIGNATURE — soundness, not a build failure (2026-08-10)
+
+*"are you sure we can address the core issue"* / *"how was the upstream rarime handling these"* -
+this is the core issue, and upstream handles it identically: **not at all.**
+
+**THE HOLE.** `verify_signature` (`not_passports_zk_circuits.nr:128`) dispatches on `SIG_TYPE` with
+branches for **1,2,3,4,5,6,7,8,10,11,12,13,14,15,20,21,23,24,25,26,27**. There is **no branch for 28
+and no catch-all assert.** The function returns nothing, is called exactly once as
+`let _ = verify_signature::<...>` (line 62), and every branch asserts internally - so an unmatched
+`SIG_TYPE` means **the body does nothing and registration proceeds.** Grepped the whole flow: no other
+signature check exists.
+
+**WHY THAT IS EXPLOITABLE, not merely sloppy.** Step 3 still proves the DSC public key is in the ICAO
+Merkle tree - but **DSC public keys are PUBLIC DATA**, published in the ICAO master list (31,397 of
+them sit in `~/Downloads/passport/icaopkd-001-complete-10245.ldif`). So the only thing binding a
+registration to a real document is the signature, and for this profile it is never checked. A prover
+can name any DSC and assert an arbitrary MRZ.
+
+**⚠️ UPSTREAM IS BYTE-FOR-BYTE THE SAME.** Downloaded rarimo's own artifact for the affected profile
+(`v0.1.22/registerIdentity_28_384_3_3_576_264_24_2024_4_2792.json`): its embedded `main.nr` declares
+`SIG_TYPE = 28` (generics `93, 445, 317, 120, 8, 384, 48, 48, 28, 33, 253, 72, 24, 349`) and its
+embedded library's branch list is **also missing 28**. So rarimo published a profile their own circuit
+cannot verify. Inherited verbatim; not introduced here.
+
+**ACTIONS TAKEN:**
+  - `28_384_3_3_576_264_24_2024_4_2792` moved to `quarantined` with the full reasoning. Manifest is
+    now **77 live / 6 quarantined**.
+  - **The generated verifier DELETED.** This is the one case where deletion is right and §2.18gp's
+    "do not delete what you cannot rebuild" does not apply: `ID_Card_I` was merely unbuildable, this
+    one is UNSOUND. A deployable verifier for a circuit that skips signature checking would accept
+    forged registrations, and the circuit to produce those proofs is in our own tree.
+  - Its in-flight rebuild was killed rather than committed.
+  - **`tools/check-passport-profile-consistency.py` now parses `verify_signature`'s branch list and
+    REFUSES any profile whose `SIG_TYPE` is unimplemented.** That is the gate that would have caught
+    this at manifest time instead of by reading the circuit by hand.
+
+**NOT PATCHED, deliberately:** adding a `SIG_TYPE == 28` branch requires knowing which algorithm 28
+denotes, and nothing in either repo says. Guessing would produce a verifier that checks the WRONG
+signature scheme - silently, which is worse than refusing the profile.
+
+**THIS IS THE SAME CLASS AS §2.18gg's AA FINDING, one layer more serious.** There, `AA_SIG_TYPE`
+20/21/24/25 fall through to a 32-byte default and may read the wrong bytes as the Active
+Authentication key. Here the fall-through skips document authentication entirely. **Both are silent
+`if`-chains with no `else`.** Worth sending upstream together - added to `UPSTREAM-REPORTS.md`.

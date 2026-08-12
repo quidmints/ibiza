@@ -43,9 +43,41 @@ def aa_key_bytes(aa_sig_type: int) -> int:
     return AA_ECDSA_BYTES.get(aa_sig_type, AA_ECDSA_DEFAULT)
 
 
+CIRCUIT = ROOT / "backend/circuits/noir_dl_lib/src/not_passports_zk_circuits.nr"
+
+
+def implemented_sig_types() -> set[int]:
+    """Every SIG_TYPE `verify_signature` actually has a branch for.
+
+    ⚠️ THIS IS A SOUNDNESS CHECK, NOT A TIDINESS ONE, and it is the one that matters most in this
+    file. `verify_signature` returns nothing, is called as `let _ = verify_signature::<...>`, and
+    each branch asserts internally. So a SIG_TYPE with NO branch does not fail - **the function body
+    does nothing and registration proceeds with the document signature unverified.** The Merkle step
+    still proves the DSC public key is in the ICAO tree, but DSC public keys are published in the
+    ICAO master list, so that alone lets a prover assert an arbitrary MRZ.
+
+    `28_384_3_3_576_264_24_2024_4_2792` shipped in exactly that state, upstream and here.
+    """
+    import re
+
+    src = CIRCUIT.read_text()
+    start = src.index("fn verify_signature<")
+    body = src[start:]
+    return {int(m.group(1)) for m in re.finditer(r"if \(SIG_TYPE == (\d+)\)", body)}
+
+
+IMPLEMENTED = implemented_sig_types()
+
+
 def check(name: str, g: dict) -> tuple[list[str], list[str]]:
-    """Returns (errors, warnings). Errors mean the circuit cannot be satisfiable."""
+    """Returns (errors, warnings). Errors mean the circuit is unsatisfiable OR unsound."""
     errors, warnings = [], []
+
+    if g["SIG_TYPE"] not in IMPLEMENTED:
+        errors.append(
+            f"SIG_TYPE {g['SIG_TYPE']} has NO branch in verify_signature -"
+            f" the document signature would never be checked (implemented: {sorted(IMPLEMENTED)})"
+        )
 
     # A passport circuit that reads no MRZ cannot prove anything about a document.
     if g["DG1_LEN"] == 0:

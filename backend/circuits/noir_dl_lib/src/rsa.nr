@@ -253,6 +253,67 @@ pub fn verify_rsa<let N_BITS: u32, let N: u32, let HASH_SIZE: u32, let EXP: u32>
 
     }
 
+    // SHA512 cases
+    //
+    // ⚠️ THIS BLOCK'S ABSENCE WAS A FAIL-OPEN HOLE, not a missing feature. Every assertion in this
+    // function lives INSIDE an `if (HASH_SIZE == n)` block, so reaching it with a size that had no
+    // block computed `sig^e mod n` and then asserted NOTHING - any signature passed.
+    // `3_512_3_3_336_264_NA` (SIG_TYPE 3, HASH_ALGO 64) shipped in exactly that state.
+    // `verify_rsa_pss` does not share the defect because it ends in an UNCONDITIONAL assert and so
+    // fails closed; PKCS#1 v1.5 nests its assertions and fails open. Structure, not coverage.
+    //
+    // EM = 0x00 || 0x01 || 0xFF*170 || 0x00 || DigestInfo(19) || H(64)   for k = 256 bytes, and
+    // `exp_result` holds it as 120-bit (15-byte) limbs, least significant first. Every constant
+    // below was READ OFF a real EM rather than hand-assembled - see the derivation in the commit
+    // message. The cross-check that it is the right model: it independently reproduces
+    // `exp_result[16] == 0x1ff..` and `exp_result[17] == 0x00`, which the SHA-256 N=18 case above
+    // already asserts for the same modulus size.
+    if (HASH_SIZE == 64){
+        let chunk_0: [u8; 15] = exp_result[0].to_be_bytes();
+        for i in 0..15{
+            assert(chunk_0[i] == hashed[49 + i], "pkcs padding failure");
+        }
+        let chunk_1: [u8; 15] = exp_result[1].to_be_bytes();
+        for i in 0..15{
+            assert(chunk_1[i] == hashed[34 + i], "pkcs padding failure");
+        }
+        let chunk_2: [u8; 15] = exp_result[2].to_be_bytes();
+        for i in 0..15{
+            assert(chunk_2[i] == hashed[19 + i], "pkcs padding failure");
+        }
+        let chunk_3: [u8; 15] = exp_result[3].to_be_bytes();
+        for i in 0..15{
+            assert(chunk_3[i] == hashed[4 + i], "pkcs padding failure");
+        }
+
+        // The limb straddling the DigestInfo tail and the first 4 hash bytes.
+        // ⚠️ The DigestInfo bytes ARE asserted here. The SHA-256 block above computes a
+        // `chunk3_remainder` over its equivalent bytes and then never asserts it, leaving
+        // DigestInfo[6..19] unchecked on that path; this one does not repeat that.
+        let chunk_4: [u8; 15] = exp_result[4].to_be_bytes();
+        let digest_info_tail: [u8; 11] =
+            [0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05, 0x00, 0x04, 0x40];
+        for i in 0..11{
+            assert(chunk_4[i] == digest_info_tail[i], "pkcs padding failure");
+        }
+        for i in 0..4{
+            assert(chunk_4[i + 11] == hashed[i], "pkcs padding failure");
+        }
+
+        // 6 bytes of padding, the 0x00 separator, then DigestInfo[0..8].
+        assert(exp_result[5] == 0xffffffffffff003051300d06096086, "pkcs padding failure");
+        for i in 6..(N - 2){
+            assert(exp_result[i] == 0xffffffffffffffffffffffffffffff, "pkcs padding failure");
+        }
+        // RSA2048 with SHA512. No other modulus size reaches this block - the consistency checker
+        // rejects any PKCS profile whose (HASH_ALGO, N) pair has no tail here, which is what keeps
+        // an unhandled N from silently skipping the top-limb assertions the way HASH_SIZE 64 did.
+        if (N == 18){
+            assert(exp_result[N - 2] == 0x1ffffffffffffffffffffffffffff, "pkcs padding failure");
+            assert(exp_result[N - 1] == 0x00, "pkcs padding failure");
+        }
+    }
+
 
 }
 

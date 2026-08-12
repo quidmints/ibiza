@@ -87,6 +87,24 @@ RSA = ROOT / "backend/circuits/noir_dl_lib/src/rsa.nr"
 PKCS_SIG_TYPES = {1, 2, 3, 4, 5, 6, 7, 8}
 
 
+def verify_rsa_tails() -> dict[int, set[int]]:
+    """Per-HASH_SIZE block -> the modulus sizes N it asserts top-limb padding for.
+
+    The top two limbs (the 0x00 0x01 header and the leading 0xFF run) are asserted in an
+    `if (N == n)` tail inside each hash block. An N with no tail skips those assertions, which is the
+    same fail-open shape as a missing hash block, one level down.
+    """
+    import re
+
+    src = RSA.read_text()
+    body = src[src.index("pub fn verify_rsa<"):]
+    parts = re.split(r"if \(HASH_SIZE == (\d+)\)", body)
+    out: dict[int, set[int]] = {}
+    for i in range(1, len(parts), 2):
+        out[int(parts[i])] = {int(m) for m in re.findall(r"if \(N == (\d+)\)", parts[i + 1])}
+    return out
+
+
 def verify_rsa_hash_sizes() -> set[int]:
     """Hash sizes `verify_rsa` actually implements a padding block for.
 
@@ -103,6 +121,7 @@ def verify_rsa_hash_sizes() -> set[int]:
 
 
 RSA_HASHES = verify_rsa_hash_sizes()
+RSA_TAILS = verify_rsa_tails()
 
 
 def name_fields(name: str) -> list[int] | None:
@@ -166,6 +185,12 @@ def check(name: str, g: dict) -> tuple[list[str], list[str]]:
             f"SIG_TYPE {g['SIG_TYPE']} reaches verify_rsa with HASH_ALGO {g['HASH_ALGO']}, which has"
             f" no padding block (implemented: {sorted(RSA_HASHES)}) - every pkcs assertion is inside"
             f" those blocks, so the signature would never be checked"
+        )
+    elif g["SIG_TYPE"] in PKCS_SIG_TYPES and g["N"] not in RSA_TAILS.get(g["HASH_ALGO"], set()):
+        errors.append(
+            f"verify_rsa's HASH_SIZE=={g['HASH_ALGO']} block has no N=={g['N']} tail"
+            f" (has {sorted(RSA_TAILS.get(g['HASH_ALGO'], set()))}) - the top-limb padding"
+            f" assertions would be skipped"
         )
 
     # A passport circuit that reads no MRZ cannot prove anything about a document.

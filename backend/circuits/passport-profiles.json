@@ -1568,6 +1568,26 @@
       },
       "from": "re-release v0.1.10-fix"
     },
+    "3_512_3_3_336_264_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 310,
+        "SA_LEN": 106,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 64,
+        "HASH_ALGO": 64,
+        "SIG_TYPE": 3,
+        "DG1_SHIFT": 33,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "provenance": "RECOVERED by implementing verify_rsa's missing HASH_SIZE==64 block. It had been quarantined as fail-open: SIG_TYPE 3 dispatches to verify_rsa with this profile's HASH_ALGO=64, only the 32 and 20 blocks existed, and every pkcs assertion lives inside those blocks - so it computed sig^e mod n and asserted nothing.",
+      "constants_derivation": "Every constant in the new block was READ OFF a real EM rather than hand-assembled: EM = 00 01 || FF*170 || 00 || DigestInfo(19) || H(64) for k=256, split into 120-bit limbs least-significant first. The model is corroborated because it independently reproduces exp_result[16]==0x1ff.. and exp_result[17]==0x00, which the SHA-256 N=18 case already asserts for the same modulus size."
+    },
     "4_160_3_3_336_216_1_1296_3_256": {
       "generics": {
         "DG1_LEN": 93,
@@ -1689,28 +1709,6 @@
         "AA_SHIFT": 227
       },
       "reason": "UPSTREAM DEFECT, two independent ones, and neither is fixable here. (1) SIG_TYPE 25 is BrainpoolP384r1 - confirmed by reading its verify_signature branch, which builds BrainpoolP384r1Fr - so its AA coordinates are 48 bytes, but extract_dg15_pk_hash branches only for AA_SIG_TYPE 22 and 23 and falls through to EC_FIELD_SIZE=32. It therefore reads both coordinates from the wrong offsets and the AA key hash does not commit to the real key. Latent, because this is the only profile using AA_SIG_TYPE 25. (2) The profile is unsatisfiable regardless: with the correct 48-byte field the read needs DG15_LEN >= 323 while DG15_BLOCK_NUMBER=5 caps it at 5*64-9 = 311. The published 283 does not even satisfy the incorrect 32-byte read, which needs 291. Adding the branch would not make it build. Filed in UPSTREAM-REPORTS.md."
-    },
-    {
-      "name": "3_512_3_3_336_264_NA",
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 0,
-        "EC_LEN": 310,
-        "SA_LEN": 106,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 64,
-        "HASH_ALGO": 64,
-        "SIG_TYPE": 3,
-        "DG1_SHIFT": 33,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "reason": "UNSOUND AS SHIPPED - the RSA signature is never verified. SIG_TYPE 3 dispatches to verify_rsa::<2048, 18, HASH_ALGO, 65537>, and this profile carries HASH_ALGO=64 (SHA-512). verify_rsa implements ONLY HASH_SIZE==32 and HASH_SIZE==20 blocks, and EVERY padding assertion lives inside those blocks. With HASH_SIZE=64 it computes exp_result = sig^e mod n and then asserts NOTHING, so any signature passes. Same fail-open class as the missing SIG_TYPE 28 branch. It is the only live profile reaching verify_rsa with an unhandled hash size (all other PKCS profiles are 20 or 32).",
-      "contrast": "verify_rsa_pss does NOT have this defect and is the reason the bug is easy to miss: it covers HASH_SIZE 32/48/64 and ends with an UNCONDITIONAL assert(hash[i] == hash_result[i]), so an unhandled size leaves hash_result zeroed and fails CLOSED. PKCS#1 v1.5 nests all of its assertions inside the size blocks and therefore fails OPEN. Structure, not coverage, is what differs.",
-      "to_reopen": "Implement a HASH_SIZE==64 block in verify_rsa: PKCS#1 v1.5 EM = 0x00 01 FF..FF 00 || DigestInfo || H, with the SHA-512 DigestInfo 3051300d060960864801650304020305000440 (19 bytes) and a 64-byte hash, expressed against 120-bit limbs the way the existing SHA-256 and SHA-1 blocks are. NOT written here deliberately: it is new padding-verification code on a proof path with no test vector available in this tree, and a subtly wrong constant would fail open exactly like the hole it replaces."
     }
   ],
   "standalone_circuits": {

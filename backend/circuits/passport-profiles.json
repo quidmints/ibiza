@@ -24,6 +24,26 @@
     "coverage": "75 of the 76 committed verifiers. ID_Card_I is the exception and cannot be regenerated: its VK matches no published asset, including the TD1 profile it was diffed against. rarimo additionally publishes 6 registerIdentity profiles this repo does not have, four of them TD1 - see TODO task 24."
   },
   "profiles": {
+    "10_256_3_3_576_248_1_1184_5_264": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 262,
+        "EC_LEN": 180,
+        "SA_LEN": 104,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 10,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 148,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 33
+      },
+      "from": "v0.2.5 artifact",
+      "note": "The artifact's own //name comment reads ..._0_1184_5_264 while the asset is named ..._1_1184_5_264 - AA_SIG_TYPE is 0 in the circuit, 1 in the name. RESOLVED as an upstream naming bug rather than a parameter ambiguity: our committed verifier shares all 61 VK constants with rarimo's published .sol of this name, and NO asset exists under the _0_ name, so this circuit is the one this file was built from. AA_SIG_TYPE=0 is legal - not_passports_zk_circuits.nr:625 guards `if (AA_SIG_TYPE != 0)`, i.e. carry DG15 without verifying its key."
+    },
     "11_256_3_2_336_216_NA": {
       "generics": {
         "DG1_LEN": 93,
@@ -99,6 +119,44 @@
         "AA_SHIFT": 33
       },
       "from": "first-published artifact"
+    },
+    "11_256_3_3_576_248_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 180,
+        "SA_LEN": 104,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 11,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.10-fix"
+    },
+    "11_256_3_4_336_232_1_1480_4_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 229,
+        "EC_LEN": 217,
+        "SA_LEN": 74,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 11,
+        "DG1_SHIFT": 29,
+        "DG15_SHIFT": 185,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "from": "re-release v0.1.6-fix"
     },
     "11_256_3_4_576_248_1_1496_5_296": {
       "generics": {
@@ -176,6 +234,25 @@
       },
       "from": "first-published artifact"
     },
+    "11_256_3_5_576_248_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 258,
+        "SA_LEN": 104,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 11,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.12-fix"
+    },
     "11_256_3_5_576_264_NA": {
       "generics": {
         "DG1_LEN": 93,
@@ -233,6 +310,82 @@
       },
       "from": "first-published artifact"
     },
+    "14_256_3_3_576_240_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 156,
+        "SA_LEN": 104,
+        "N": 26,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 14,
+        "DG1_SHIFT": 30,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.8-fix"
+    },
+    "14_256_3_4_336_232_1_1480_5_296": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 298,
+        "EC_LEN": 233,
+        "SA_LEN": 74,
+        "N": 26,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 14,
+        "DG1_SHIFT": 29,
+        "DG15_SHIFT": 185,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 37
+      },
+      "from": "re-release v0.1.12-fix"
+    },
+    "14_256_3_4_336_64_1_1480_5_296": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 282,
+        "EC_LEN": 217,
+        "SA_LEN": 74,
+        "N": 26,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 14,
+        "DG1_SHIFT": 8,
+        "DG15_SHIFT": 185,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 37
+      },
+      "derived": "DERIVED 2026-08-10 (sec. 2.18gv). signals=6834. \u26a0\ufe0f C(N=26,AA)=1502 is INTERPOLATED, not measured - no N=26 profile exists in both repos. Justified by C being near-flat in N for AA profiles (1498 at N=18, 1506 at N=35, slope 0.47/limb), but it is the only value here not directly calibrated. DG1_SHIFT=8 is also outside the 23..33 band. THE LEAST TRUSTWORTHY OF THE SIX."
+    },
+    "14_256_3_4_576_248_1_1496_3_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 165,
+        "EC_LEN": 219,
+        "SA_LEN": 104,
+        "N": 26,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 14,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 187,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "from": "re-release v0.1.8-fix"
+    },
     "15_512_3_3_336_248_NA": {
       "generics": {
         "DG1_LEN": 93,
@@ -270,6 +423,44 @@
         "AA_SHIFT": 0
       },
       "from": "first-published artifact"
+    },
+    "1_160_3_4_576_200_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 208,
+        "SA_LEN": 92,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 20,
+        "HASH_ALGO": 20,
+        "SIG_TYPE": 1,
+        "DG1_SHIFT": 25,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "derived": "DERIVED 2026-08-10, NOT read from a Noir artifact - rarimo publishes none for this profile. Method in TODO sec. 2.18gv: rarimo's CIRCOM release ships a ~2.8 MB -mobile.zip containing circom's generated C++, which declares get_main_input_signal_no(). That is an equation, signals = 8*(DG1_LEN + DG15_LEN + EC_LEN + SA_LEN) + C, with C calibrated per input-shape class from profiles present in BOTH repos. Here signals=4242 and C(N=18,no-AA)=1098 from 11_256_3_2_336_216_NA, giving EC_LEN=208. DG1_SHIFT and EC_SHIFT come from the name (fields 5 and 6 over 8, verified 78/78); SA_LEN from the EC_SHIFT + HASH_ALGO == SA_LEN identity (76/78). \u26a0\ufe0f UNVALIDATED SEMANTICALLY: it satisfies every bounds check, but a wrong offset compiles cleanly and would verify the wrong bytes."
+    },
+    "1_256_3_3_576_248_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 180,
+        "SA_LEN": 104,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 1,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.23-fix"
     },
     "1_256_3_4_336_232_1_1480_4_256": {
       "generics": {
@@ -366,6 +557,25 @@
       },
       "from": "first-published artifact"
     },
+    "1_256_3_4_576_232_1_1480_3_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 165,
+        "EC_LEN": 217,
+        "SA_LEN": 104,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 1,
+        "DG1_SHIFT": 29,
+        "DG15_SHIFT": 185,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "from": "re-release v0.1.12-fix"
+    },
     "1_256_3_4_600_248_1_1496_3_256": {
       "generics": {
         "DG1_LEN": 93,
@@ -423,6 +633,25 @@
       },
       "from": "first-published artifact"
     },
+    "1_256_3_5_336_248_1_2120_4_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 229,
+        "EC_LEN": 297,
+        "SA_LEN": 74,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 1,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 265,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "from": "re-release v0.1.7-fix"
+    },
     "1_256_3_5_344_232_NA": {
       "generics": {
         "DG1_LEN": 93,
@@ -441,6 +670,25 @@
         "AA_SHIFT": 0
       },
       "from": "first-published artifact"
+    },
+    "1_256_3_5_576_248_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 297,
+        "SA_LEN": 104,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 1,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.9-fix"
     },
     "1_256_3_6_336_248_1_2432_3_256": {
       "generics": {
@@ -480,6 +728,25 @@
       },
       "from": "first-published artifact"
     },
+    "1_256_3_6_336_560_1_2744_4_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 185,
+        "EC_LEN": 375,
+        "SA_LEN": 74,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 1,
+        "DG1_SHIFT": 70,
+        "DG15_SHIFT": 343,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "derived": "DERIVED 2026-08-10 (sec. 2.18gv). signals=7314, C(N=18,AA)=1498. \u26a0\ufe0f DG1_SHIFT=70 is outside the 23..33 band - same caveat as 20_256_3_5_336_72_NA, though less extreme relative to its EC_LEN. UNVALIDATED SEMANTICALLY."
+    },
     "1_256_3_6_576_248_1_2432_5_296": {
       "generics": {
         "DG1_LEN": 93,
@@ -498,6 +765,25 @@
         "AA_SHIFT": 37
       },
       "from": "first-published artifact"
+    },
+    "1_256_3_6_576_264_1_2448_3_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 166,
+        "EC_LEN": 338,
+        "SA_LEN": 104,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 1,
+        "DG1_SHIFT": 33,
+        "DG15_SHIFT": 306,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "from": "re-release v0.1.9-fix"
     },
     "1_256_3_7_336_264_20_2760_6_2008": {
       "generics": {
@@ -518,6 +804,63 @@
       },
       "from": "first-published artifact"
     },
+    "20_160_3_2_576_184_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 70,
+        "SA_LEN": 92,
+        "N": 6,
+        "EC_FIELD_SIZE": 256,
+        "DG_HASH_ALGO": 20,
+        "HASH_ALGO": 20,
+        "SIG_TYPE": 20,
+        "DG1_SHIFT": 23,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.8-fix"
+    },
+    "20_160_3_3_576_200_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 153,
+        "SA_LEN": 92,
+        "N": 6,
+        "EC_FIELD_SIZE": 256,
+        "DG_HASH_ALGO": 20,
+        "HASH_ALGO": 20,
+        "SIG_TYPE": 20,
+        "DG1_SHIFT": 25,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.9-fix"
+    },
+    "20_160_3_3_736_200_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 116,
+        "SA_LEN": 112,
+        "N": 6,
+        "EC_FIELD_SIZE": 256,
+        "DG_HASH_ALGO": 20,
+        "HASH_ALGO": 20,
+        "SIG_TYPE": 20,
+        "DG1_SHIFT": 25,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 92,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "derived": "DERIVED 2026-08-10 (sec. 2.18gv). signals=4690, C(N=6,no-AA)=2122 calibrated from 20_256_3_3_336_224_NA. \u26a0\ufe0f UNVALIDATED SEMANTICALLY."
+    },
     "20_256_3_3_336_224_NA": {
       "generics": {
         "DG1_LEN": 93,
@@ -536,6 +879,63 @@
         "AA_SHIFT": 0
       },
       "from": "first-published artifact"
+    },
+    "20_256_3_5_336_248_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 311,
+        "SA_LEN": 74,
+        "N": 6,
+        "EC_FIELD_SIZE": 256,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 20,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.11-fix"
+    },
+    "20_256_3_5_336_72_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 282,
+        "SA_LEN": 74,
+        "N": 6,
+        "EC_FIELD_SIZE": 256,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 20,
+        "DG1_SHIFT": 9,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "derived": "DERIVED 2026-08-10 (sec. 2.18gv). signals=5714, C(N=6,no-AA)=2122. \u26a0\ufe0f\u26a0\ufe0f THE WEAKEST OF THE SIX: DG1_SHIFT=9 lies OUTSIDE the 23..33 band that all 78 known profiles occupy. The name says 72/8=9 and that mapping is 78/78 exact elsewhere, so it is either a genuinely unusual layout or a sign this profile does not follow the convention. Do not deploy without an independent check."
+    },
+    "20_256_3_6_336_248_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 313,
+        "SA_LEN": 74,
+        "N": 6,
+        "EC_FIELD_SIZE": 256,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 20,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree)."
     },
     "21_256_3_3_336_232_NA": {
       "generics": {
@@ -575,6 +975,25 @@
       },
       "from": "first-published artifact"
     },
+    "21_256_3_4_576_232_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 217,
+        "SA_LEN": 104,
+        "N": 6,
+        "EC_FIELD_SIZE": 256,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 21,
+        "DG1_SHIFT": 29,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.5-fix"
+    },
     "21_256_3_5_576_232_NA": {
       "generics": {
         "DG1_LEN": 93,
@@ -613,6 +1032,25 @@
       },
       "from": "first-published artifact"
     },
+    "23_160_3_3_576_200_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 153,
+        "SA_LEN": 92,
+        "N": 4,
+        "EC_FIELD_SIZE": 192,
+        "DG_HASH_ALGO": 20,
+        "HASH_ALGO": 20,
+        "SIG_TYPE": 23,
+        "DG1_SHIFT": 25,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.10-fix"
+    },
     "24_256_3_4_336_232_NA": {
       "generics": {
         "DG1_LEN": 93,
@@ -631,6 +1069,44 @@
         "AA_SHIFT": 0
       },
       "from": "first-published artifact"
+    },
+    "24_256_3_4_336_248_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 219,
+        "SA_LEN": 70,
+        "N": 4,
+        "EC_FIELD_SIZE": 224,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 28,
+        "SIG_TYPE": 24,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.11-fix"
+    },
+    "25_384_1_3_336_256_NA": {
+      "generics": {
+        "DG1_LEN": 95,
+        "DG15_LEN": 0,
+        "EC_LEN": 261,
+        "SA_LEN": 90,
+        "N": 8,
+        "EC_FIELD_SIZE": 384,
+        "DG_HASH_ALGO": 48,
+        "HASH_ALGO": 48,
+        "SIG_TYPE": 25,
+        "DG1_SHIFT": 32,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree)."
     },
     "25_384_3_3_336_232_NA": {
       "generics": {
@@ -727,6 +1203,25 @@
       },
       "from": "first-published artifact"
     },
+    "26_512_3_2_336_248_1_1384_2_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 165,
+        "EC_LEN": 237,
+        "SA_LEN": 106,
+        "N": 10,
+        "EC_FIELD_SIZE": 512,
+        "DG_HASH_ALGO": 64,
+        "HASH_ALGO": 64,
+        "SIG_TYPE": 26,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 173,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree)."
+    },
     "26_512_3_3_336_248_NA": {
       "generics": {
         "DG1_LEN": 93,
@@ -784,6 +1279,25 @@
       },
       "from": "first-published artifact"
     },
+    "2_256_3_4_336_232_1_1480_4_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 229,
+        "EC_LEN": 217,
+        "SA_LEN": 74,
+        "N": 35,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 2,
+        "DG1_SHIFT": 29,
+        "DG15_SHIFT": 185,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "from": "re-release v0.1.7-fix"
+    },
     "2_256_3_4_336_248_22_1496_7_2408": {
       "generics": {
         "DG1_LEN": 93,
@@ -802,6 +1316,25 @@
         "AA_SHIFT": 301
       },
       "from": "first-published artifact"
+    },
+    "2_256_3_4_336_248_NA": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 0,
+        "EC_LEN": 219,
+        "SA_LEN": 74,
+        "N": 35,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 2,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "from": "re-release v0.1.7-fix"
     },
     "2_256_3_5_336_248_22_1808_7_2408": {
       "generics": {
@@ -860,6 +1393,44 @@
       },
       "from": "first-published artifact"
     },
+    "2_256_3_6_336_264_21_2448_6_2008": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 315,
+        "EC_LEN": 338,
+        "SA_LEN": 74,
+        "N": 35,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 2,
+        "DG1_SHIFT": 33,
+        "DG15_SHIFT": 306,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 21,
+        "AA_SHIFT": 251
+      },
+      "from": "re-release v0.1.3"
+    },
+    "2_256_3_6_576_248_1_2432_3_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 165,
+        "EC_LEN": 336,
+        "SA_LEN": 104,
+        "N": 35,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 2,
+        "DG1_SHIFT": 31,
+        "DG15_SHIFT": 304,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "from": "re-release v0.1.6-fix"
+    },
     "3_160_3_3_336_200_NA": {
       "generics": {
         "DG1_LEN": 93,
@@ -917,443 +1488,6 @@
       },
       "from": "first-published artifact"
     },
-    "7_160_3_3_336_216_1_1080_3_256": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 165,
-        "EC_LEN": 155,
-        "SA_LEN": 62,
-        "N": 26,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 20,
-        "HASH_ALGO": 20,
-        "SIG_TYPE": 7,
-        "DG1_SHIFT": 27,
-        "DG15_SHIFT": 135,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "from": "first-published artifact"
-    },
-    "8_160_3_3_336_216_1_1080_3_256": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 165,
-        "EC_LEN": 155,
-        "SA_LEN": 62,
-        "N": 26,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 20,
-        "HASH_ALGO": 20,
-        "SIG_TYPE": 8,
-        "DG1_SHIFT": 27,
-        "DG15_SHIFT": 135,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "from": "first-published artifact"
-    },
-    "11_256_3_3_576_248_NA": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 0,
-        "EC_LEN": 180,
-        "SA_LEN": 104,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 11,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "from": "re-release v0.1.10-fix"
-    },
-    "11_256_3_4_336_232_1_1480_4_256": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 229,
-        "EC_LEN": 217,
-        "SA_LEN": 74,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 11,
-        "DG1_SHIFT": 29,
-        "DG15_SHIFT": 185,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "from": "re-release v0.1.6-fix"
-    },
-    "11_256_3_5_576_248_NA": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 0,
-        "EC_LEN": 258,
-        "SA_LEN": 104,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 11,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "from": "re-release v0.1.12-fix"
-    },
-    "14_256_3_3_576_240_NA": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 0,
-        "EC_LEN": 156,
-        "SA_LEN": 104,
-        "N": 26,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 14,
-        "DG1_SHIFT": 30,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "from": "re-release v0.1.8-fix"
-    },
-    "14_256_3_4_336_232_1_1480_5_296": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 298,
-        "EC_LEN": 233,
-        "SA_LEN": 74,
-        "N": 26,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 14,
-        "DG1_SHIFT": 29,
-        "DG15_SHIFT": 185,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 37
-      },
-      "from": "re-release v0.1.12-fix"
-    },
-    "14_256_3_4_576_248_1_1496_3_256": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 165,
-        "EC_LEN": 219,
-        "SA_LEN": 104,
-        "N": 26,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 14,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 187,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "from": "re-release v0.1.8-fix"
-    },
-    "1_256_3_3_576_248_NA": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 0,
-        "EC_LEN": 180,
-        "SA_LEN": 104,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 1,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "from": "re-release v0.1.23-fix"
-    },
-    "1_256_3_4_576_232_1_1480_3_256": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 165,
-        "EC_LEN": 217,
-        "SA_LEN": 104,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 1,
-        "DG1_SHIFT": 29,
-        "DG15_SHIFT": 185,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "from": "re-release v0.1.12-fix"
-    },
-    "1_256_3_5_336_248_1_2120_4_256": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 229,
-        "EC_LEN": 297,
-        "SA_LEN": 74,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 1,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 265,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "from": "re-release v0.1.7-fix"
-    },
-    "1_256_3_5_576_248_NA": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 0,
-        "EC_LEN": 297,
-        "SA_LEN": 104,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 1,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "from": "re-release v0.1.9-fix"
-    },
-    "1_256_3_6_576_264_1_2448_3_256": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 166,
-        "EC_LEN": 338,
-        "SA_LEN": 104,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 1,
-        "DG1_SHIFT": 33,
-        "DG15_SHIFT": 306,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "from": "re-release v0.1.9-fix"
-    },
-    "20_160_3_2_576_184_NA": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 0,
-        "EC_LEN": 70,
-        "SA_LEN": 92,
-        "N": 6,
-        "EC_FIELD_SIZE": 256,
-        "DG_HASH_ALGO": 20,
-        "HASH_ALGO": 20,
-        "SIG_TYPE": 20,
-        "DG1_SHIFT": 23,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "from": "re-release v0.1.8-fix"
-    },
-    "20_160_3_3_576_200_NA": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 0,
-        "EC_LEN": 153,
-        "SA_LEN": 92,
-        "N": 6,
-        "EC_FIELD_SIZE": 256,
-        "DG_HASH_ALGO": 20,
-        "HASH_ALGO": 20,
-        "SIG_TYPE": 20,
-        "DG1_SHIFT": 25,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "from": "re-release v0.1.9-fix"
-    },
-    "20_256_3_5_336_248_NA": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 0,
-        "EC_LEN": 311,
-        "SA_LEN": 74,
-        "N": 6,
-        "EC_FIELD_SIZE": 256,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 20,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "from": "re-release v0.1.11-fix"
-    },
-    "21_256_3_4_576_232_NA": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 0,
-        "EC_LEN": 217,
-        "SA_LEN": 104,
-        "N": 6,
-        "EC_FIELD_SIZE": 256,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 21,
-        "DG1_SHIFT": 29,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "from": "re-release v0.1.5-fix"
-    },
-    "23_160_3_3_576_200_NA": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 0,
-        "EC_LEN": 153,
-        "SA_LEN": 92,
-        "N": 4,
-        "EC_FIELD_SIZE": 192,
-        "DG_HASH_ALGO": 20,
-        "HASH_ALGO": 20,
-        "SIG_TYPE": 23,
-        "DG1_SHIFT": 25,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "from": "re-release v0.1.10-fix"
-    },
-    "24_256_3_4_336_248_NA": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 0,
-        "EC_LEN": 219,
-        "SA_LEN": 70,
-        "N": 4,
-        "EC_FIELD_SIZE": 224,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 28,
-        "SIG_TYPE": 24,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "from": "re-release v0.1.11-fix"
-    },
-    "2_256_3_4_336_232_1_1480_4_256": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 229,
-        "EC_LEN": 217,
-        "SA_LEN": 74,
-        "N": 35,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 2,
-        "DG1_SHIFT": 29,
-        "DG15_SHIFT": 185,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "from": "re-release v0.1.7-fix"
-    },
-    "2_256_3_4_336_248_NA": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 0,
-        "EC_LEN": 219,
-        "SA_LEN": 74,
-        "N": 35,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 2,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "from": "re-release v0.1.7-fix"
-    },
-    "2_256_3_6_336_264_21_2448_6_2008": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 315,
-        "EC_LEN": 338,
-        "SA_LEN": 74,
-        "N": 35,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 2,
-        "DG1_SHIFT": 33,
-        "DG15_SHIFT": 306,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 21,
-        "AA_SHIFT": 251
-      },
-      "from": "re-release v0.1.3"
-    },
-    "2_256_3_6_576_248_1_2432_3_256": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 165,
-        "EC_LEN": 336,
-        "SA_LEN": 104,
-        "N": 35,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 2,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 304,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "from": "re-release v0.1.6-fix"
-    },
     "3_256_3_4_600_248_1_1496_3_256": {
       "generics": {
         "DG1_LEN": 93,
@@ -1392,6 +1526,28 @@
       },
       "from": "re-release v0.1.6-fix"
     },
+    "4_160_3_3_336_216_1_1296_3_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 165,
+        "EC_LEN": 182,
+        "SA_LEN": 62,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 20,
+        "HASH_ALGO": 20,
+        "SIG_TYPE": 4,
+        "DG1_SHIFT": 27,
+        "DG15_SHIFT": 162,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "provenance": "Derived. SIG_TYPE 4 has no published Noir artifact; the tuple comes from rarimo circom RegisterIdentityBuilder, whose 10 template parameters ARE the profile name in order (SIGNATURE_TYPE, DG_HASH_TYPE, DOCUMENT_TYPE, EC_BLOCK_NUMBER, EC_SHIFT, DG1_SHIFT, AA_SIGNATURE_ALGO, DG15_SHIFT, DG15_BLOCK_NUMBER, AA_SHIFT). That decoding is validated against the 44 other named profiles: 8 of its 9 positional identities hold 44/44, and both block bounds (EC_LEN <= EC_BLOCK_NUMBER*blk, DG15_LEN <= DG15_BLOCK_NUMBER*blk) hold 44/44.",
+      "provenance_dg15_len": "DG15_LEN=165 is the DER length of a dg15 holding a 1024-bit RSA AA key with e=65537, counted byte by byte: 6F 81 A2 | 30 81 9F | AlgId 15 | 03 81 8D 00 | 30 81 89 | 02 81 81 00 | 128 | 02 03 01 00 01. INDEPENDENTLY CORROBORATED: the same derivation puts the modulus payload at byte 32, and AA_SHIFT=32 comes from the profile name separately - two unrelated routes agreeing on the same offset. It is also the modal live value (13 of 28 with AA_SIG_TYPE=1, AA_SHIFT=32); the 163s are the e=3 variant, which the same derivation predicts exactly.",
+      "provenance_ec_len": "EC_LEN=182 = DG15_SHIFT + DG_HASH_ALGO, i.e. the dg15 hash sits last in ec. Holds for 41 of 44 AA profiles, and is inside the block bound [182,192] forced by EC_BLOCK_NUMBER=3.",
+      "superseded": "An earlier derivation from circom signal counts gave DG15_LEN=138/EC_LEN=182, which is unsatisfiable: it fixes DG15_LEN+EC_LEN=320 while the read bounds force >=160 and >=182 (sum >=342). The signal-count input was the wrong one, not the bounds."
+    },
     "6_160_3_3_336_216_1_1080_3_256": {
       "generics": {
         "DG1_LEN": 93,
@@ -1411,177 +1567,43 @@
       },
       "from": "re-release v0.1.11-fix"
     },
-    "10_256_3_3_576_248_1_1184_5_264": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 262,
-        "EC_LEN": 180,
-        "SA_LEN": 104,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 10,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 148,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 33
-      },
-      "from": "v0.2.5 artifact",
-      "note": "The artifact's own //name comment reads ..._0_1184_5_264 while the asset is named ..._1_1184_5_264 - AA_SIG_TYPE is 0 in the circuit, 1 in the name. RESOLVED as an upstream naming bug rather than a parameter ambiguity: our committed verifier shares all 61 VK constants with rarimo's published .sol of this name, and NO asset exists under the _0_ name, so this circuit is the one this file was built from. AA_SIG_TYPE=0 is legal - not_passports_zk_circuits.nr:625 guards `if (AA_SIG_TYPE != 0)`, i.e. carry DG15 without verifying its key."
-    },
-    "20_256_3_6_336_248_NA": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 0,
-        "EC_LEN": 313,
-        "SA_LEN": 74,
-        "N": 6,
-        "EC_FIELD_SIZE": 256,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 20,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree)."
-    },
-    "25_384_1_3_336_256_NA": {
-      "generics": {
-        "DG1_LEN": 95,
-        "DG15_LEN": 0,
-        "EC_LEN": 261,
-        "SA_LEN": 90,
-        "N": 8,
-        "EC_FIELD_SIZE": 384,
-        "DG_HASH_ALGO": 48,
-        "HASH_ALGO": 48,
-        "SIG_TYPE": 25,
-        "DG1_SHIFT": 32,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree)."
-    },
-    "26_512_3_2_336_248_1_1384_2_256": {
+    "7_160_3_3_336_216_1_1080_3_256": {
       "generics": {
         "DG1_LEN": 93,
         "DG15_LEN": 165,
-        "EC_LEN": 237,
-        "SA_LEN": 106,
-        "N": 10,
-        "EC_FIELD_SIZE": 512,
-        "DG_HASH_ALGO": 64,
-        "HASH_ALGO": 64,
-        "SIG_TYPE": 26,
-        "DG1_SHIFT": 31,
-        "DG15_SHIFT": 173,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree)."
-    },
-    "1_160_3_4_576_200_NA": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 0,
-        "EC_LEN": 208,
-        "SA_LEN": 92,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 20,
-        "HASH_ALGO": 20,
-        "SIG_TYPE": 1,
-        "DG1_SHIFT": 25,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "derived": "DERIVED 2026-08-10, NOT read from a Noir artifact - rarimo publishes none for this profile. Method in TODO sec. 2.18gv: rarimo's CIRCOM release ships a ~2.8 MB -mobile.zip containing circom's generated C++, which declares get_main_input_signal_no(). That is an equation, signals = 8*(DG1_LEN + DG15_LEN + EC_LEN + SA_LEN) + C, with C calibrated per input-shape class from profiles present in BOTH repos. Here signals=4242 and C(N=18,no-AA)=1098 from 11_256_3_2_336_216_NA, giving EC_LEN=208. DG1_SHIFT and EC_SHIFT come from the name (fields 5 and 6 over 8, verified 78/78); SA_LEN from the EC_SHIFT + HASH_ALGO == SA_LEN identity (76/78). \u26a0\ufe0f UNVALIDATED SEMANTICALLY: it satisfies every bounds check, but a wrong offset compiles cleanly and would verify the wrong bytes."
-    },
-    "20_160_3_3_736_200_NA": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 0,
-        "EC_LEN": 116,
-        "SA_LEN": 112,
-        "N": 6,
-        "EC_FIELD_SIZE": 256,
-        "DG_HASH_ALGO": 20,
-        "HASH_ALGO": 20,
-        "SIG_TYPE": 20,
-        "DG1_SHIFT": 25,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 92,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "derived": "DERIVED 2026-08-10 (sec. 2.18gv). signals=4690, C(N=6,no-AA)=2122 calibrated from 20_256_3_3_336_224_NA. \u26a0\ufe0f UNVALIDATED SEMANTICALLY."
-    },
-    "20_256_3_5_336_72_NA": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 0,
-        "EC_LEN": 282,
-        "SA_LEN": 74,
-        "N": 6,
-        "EC_FIELD_SIZE": 256,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 20,
-        "DG1_SHIFT": 9,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "derived": "DERIVED 2026-08-10 (sec. 2.18gv). signals=5714, C(N=6,no-AA)=2122. \u26a0\ufe0f\u26a0\ufe0f THE WEAKEST OF THE SIX: DG1_SHIFT=9 lies OUTSIDE the 23..33 band that all 78 known profiles occupy. The name says 72/8=9 and that mapping is 78/78 exact elsewhere, so it is either a genuinely unusual layout or a sign this profile does not follow the convention. Do not deploy without an independent check."
-    },
-    "1_256_3_6_336_560_1_2744_4_256": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 185,
-        "EC_LEN": 375,
-        "SA_LEN": 74,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 1,
-        "DG1_SHIFT": 70,
-        "DG15_SHIFT": 343,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "derived": "DERIVED 2026-08-10 (sec. 2.18gv). signals=7314, C(N=18,AA)=1498. \u26a0\ufe0f DG1_SHIFT=70 is outside the 23..33 band - same caveat as 20_256_3_5_336_72_NA, though less extreme relative to its EC_LEN. UNVALIDATED SEMANTICALLY."
-    },
-    "14_256_3_4_336_64_1_1480_5_296": {
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 282,
-        "EC_LEN": 217,
-        "SA_LEN": 74,
+        "EC_LEN": 155,
+        "SA_LEN": 62,
         "N": 26,
         "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 14,
-        "DG1_SHIFT": 8,
-        "DG15_SHIFT": 185,
+        "DG_HASH_ALGO": 20,
+        "HASH_ALGO": 20,
+        "SIG_TYPE": 7,
+        "DG1_SHIFT": 27,
+        "DG15_SHIFT": 135,
         "EC_SHIFT": 42,
         "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 37
+        "AA_SHIFT": 32
       },
-      "derived": "DERIVED 2026-08-10 (sec. 2.18gv). signals=6834. \u26a0\ufe0f C(N=26,AA)=1502 is INTERPOLATED, not measured - no N=26 profile exists in both repos. Justified by C being near-flat in N for AA profiles (1498 at N=18, 1506 at N=35, slope 0.47/limb), but it is the only value here not directly calibrated. DG1_SHIFT=8 is also outside the 23..33 band. THE LEAST TRUSTWORTHY OF THE SIX."
+      "from": "first-published artifact"
+    },
+    "8_160_3_3_336_216_1_1080_3_256": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 165,
+        "EC_LEN": 155,
+        "SA_LEN": 62,
+        "N": 26,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 20,
+        "HASH_ALGO": 20,
+        "SIG_TYPE": 8,
+        "DG1_SHIFT": 27,
+        "DG15_SHIFT": 135,
+        "EC_SHIFT": 42,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 32
+      },
+      "from": "first-published artifact"
     }
   },
   "quarantined": [
@@ -1690,28 +1712,6 @@
         "AA_SHIFT": 227
       },
       "reason": "UPSTREAM LIBRARY BUG, not a bad tuple and not a toolchain gap - measured 2026-08-10. The generics are verbatim from rarimo's own artifact (v0.2.4), character for character. extract_dg15_pk_hash has branches for AA_SIG_TYPE 22 and 23 only; 25 falls through to EC_FIELD_SIZE=32, giving dg15 index 260..290 against [u8; 283] - out of bounds by 8. THE UPSTREAM SOURCE IS BYTE-IDENTICAL TO OURS: the ECDSA branch extracted from the artifact's own file_map hashes ef126cf8ff38e957, the same as noir_dl_lib. So rarimo published this profile from code that indexes past dg15; noir 1.0.0-beta.1 did not diagnose it, beta.26 does ('Assertion is always false: Index out of bounds' -> 'circuit is unsatisfiable'). DO NOT ADD A LOCAL AA_SIG_TYPE==25 BRANCH: it would diverge from upstream and yield a verifier for a different statement than any rarimo prover produces - a silent incompatibility. Fix belongs upstream. See TODO sec. 2.18gi."
-    },
-    {
-      "name": "4_160_3_3_336_216_1_1296_3_256",
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 138,
-        "EC_LEN": 182,
-        "SA_LEN": 62,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 20,
-        "HASH_ALGO": 20,
-        "SIG_TYPE": 4,
-        "DG1_SHIFT": 27,
-        "DG15_SHIFT": 162,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 32
-      },
-      "reason": "GENERICS NOT RECOVERABLE - quarantined rather than guessed. This is one of the six Circom orphans whose 14-tuple was derived from published signal counts; the other five build and are validated, this one is under-determined. The derived DG15_LEN=138 with AA_SHIFT=32 violates the RSA-AA read bound (extract_dg15_pk_hash touches AA_SHIFT+27+4*25 = 159, so DG15_LEN>=160), an invariant that holds for 37 of the other 38 RSA-AA profiles. It cannot simply be raised: the signal equation fixes DG15_LEN+EC_LEN=320, while the two hard read bounds require DG15_LEN>=160 and EC_LEN>=182, summing to >=342. NO assignment satisfies all three, so at least one input to the derivation is wrong for this profile and there is no third source to break the tie - the profile NAME does not encode the generics reliably either (only field 0 == SIG_TYPE holds across all 45 named profiles; every other field identity fails on some profile). Shipping a guessed tuple would mean a verification circuit whose constraints are plausible and unverified.",
-      "blocked_on": "An authoritative source for this tuple: the original rarimo circom artifact for this profile, or a real passport of this class to fit against. Not on any code change here.",
-      "note_exp_37187": "Separately RESOLVED and kept: this profile was the first anywhere to compile the SIG_TYPE 4 branch, which failed on a nargo Brillig-coverage error. rsa.nr exp_37187 is now unrolled and that error is gone - the build proceeded past it to the dg15 failure above. That fix is proven equivalent by exponent replay, but note it is currently UNEXERCISED, since its only consumer is this quarantined profile."
     }
   ]
 }

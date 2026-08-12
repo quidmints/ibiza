@@ -113,8 +113,22 @@ def check(name: str, g: dict) -> tuple[list[str], list[str]]:
             f"ec hash is not flush with sa: EC_SHIFT + HASH_ALGO = {end}, SA_LEN = {g['SA_LEN']}"
         )
 
-    # Active Authentication: an ECDSA public key is two coordinates read out of dg15.
+    # Active Authentication, RSA case: `extract_dg15_pk_hash` reads FIVE fixed chunks out of dg15 -
+    # four of 25 bytes and a last of 28 - so the highest index touched is AA_SHIFT + 27 + 4*25.
+    # Nothing scales with the key size; the read is the same width for every RSA AA profile.
+    # VALIDATED AS AN INVARIANT, not asserted: it holds for 37 of the 38 RSA-AA profiles, and the
+    # single exception was a tuple DERIVED here rather than published - i.e. the check's only
+    # disagreement with the corpus was with the thing that was actually wrong.
     aa = g["AA_SIG_TYPE"]
+    if 0 < aa < 20:
+        end = g["AA_SHIFT"] + 27 + 4 * 25
+        if end > g["DG15_LEN"] - 1:
+            errors.append(
+                f"RSA AA key runs past dg15: max index {end} > DG15_LEN-1 ({g['DG15_LEN'] - 1});"
+                f" AA_SHIFT({g['AA_SHIFT']}) needs DG15_LEN >= {g['AA_SHIFT'] + 128}"
+            )
+
+    # Active Authentication: an ECDSA public key is two coordinates read out of dg15.
     if aa >= 20:
         kb = aa_key_bytes(aa)
         hash_size = 24 if aa == 23 else 31

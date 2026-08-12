@@ -15438,3 +15438,53 @@ signature scheme - silently, which is worse than refusing the profile.
 20/21/24/25 fall through to a 32-byte default and may read the wrong bytes as the Active
 Authentication key. Here the fall-through skips document authentication entirely. **Both are silent
 `if`-chains with no `else`.** Worth sending upstream together - added to `UPSTREAM-REPORTS.md`.
+
+### 2.18gu A METHOD THAT RECOVERS `EC_LEN` FROM PUBLISHED ARTIFACTS — no document needed (2026-08-10)
+
+**§2.18gs concluded the six orphans need a physical passport because `EC_LEN` "exists nowhere outside
+a document". That is now WRONG, or at least premature.** The same technique that cracked SIG_TYPE 28 -
+read what upstream actually SHIPS rather than reasoning about it - applies here.
+
+**ALL SIX ORPHANS ARE PUBLISHED IN THE CIRCOM REPO.** `rarimo/passport-zk-circuits` has 30 releases
+carrying **38 distinct profiles**, and every one of the six is among them - including a
+`-mobile.zip` of only ~2.8 MB (versus 290 MB for the full artifacts).
+
+**AND THAT ARCHIVE CONTAINS THE CIRCUIT'S SIGNAL COUNT.** It holds circom's generated C++ witness
+calculator, which declares:
+
+    uint get_main_input_signal_no() {return N;}
+
+That single number is an equation in the generics, because the main inputs are the byte arrays:
+
+    signals = 8 x (DG1_LEN + DG15_LEN + EC_LEN + SA_LEN) + C
+
+where `C` covers `pk`/`reduction_pk`/`sig`, `sk_identity`, `icao_root` and the 80 inclusion branches.
+**Everything except `EC_LEN` is already known or derivable** (`DG1_LEN` from document type,
+`SA_LEN` from the `EC_SHIFT + HASH_ALGO == SA_LEN` identity of §2.18gk, `DG15_LEN` = 0 for the `NA`
+profiles). So `EC_LEN` falls out.
+
+**MEASURED, three artifacts:**
+
+| profile | signals | 8x(sum of known lens) | implied C |
+|---|---|---|---|
+| `11_256_3_2_336_216_NA` (known, N=18, no AA) | 3218 | 2120 | **1098** |
+| `11_256_3_3_576_240_1_864_5_264` (known, N=18, AA=1) | 6290 | 4792 | **1498** |
+| `1_160_3_4_576_200_NA` (ORPHAN, N=18, no AA) | 4242 | — | assume 1098 |
+
+⇒ for the orphan: `(4242 - 1098) / 8 = 393 = 93 + 0 + EC_LEN + 92` ⇒ **`EC_LEN = 208`**, and
+`DG1_SHIFT(25) + DG_HASH_ALGO(20) = 45 <= 208` so it satisfies the bounds check.
+
+**⚠️ C IS NOT UNIVERSAL - it varies by INPUT-SHAPE CLASS.** The two known profiles differ by exactly
+**400**, which is what Active Authentication adds. It will also differ with `N` (RSA-2048's 18 limbs
+vs ECDSA's 3). So each orphan needs a calibration profile **of its own class**: same `N`, same
+AA-present/absent. That is a small matrix, and every calibration profile is a 2.8 MB download.
+
+**STATUS: METHOD PROVEN, ONE VALUE DERIVED, NOT YET VALIDATED.** The `EC_LEN = 208` figure assumes `C`
+transfers from a `SIG_TYPE 11` (RSA-PSS-2048) profile to a `SIG_TYPE 1` (RSA-PKCS1-2048) one. Both are
+N=18 and neither has AA, so the input shape should match - **but that has not been confirmed, and
+§2.18gd is a standing reminder of what an unvalidated arithmetic assumption costs here.** Validate by
+calibrating against a `SIG_TYPE 1` no-AA profile present in both sets before trusting it.
+
+**IF IT HOLDS, IT CHANGES THE COVERAGE ANSWER ENTIRELY:** the six orphans would need no passports at
+all, only ~6 calibration downloads and a rebuild - and full ICAO-chain coverage stops depending on
+procurement.

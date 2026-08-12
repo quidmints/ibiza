@@ -154,7 +154,11 @@ def check(name: str, g: dict) -> tuple[list[str], list[str]]:
 def main() -> int:
     m = json.loads(MANIFEST.read_text())
     live = m["profiles"]
-    quarantined = {q["name"]: q["generics"] for q in m["quarantined"] if "name" in q}
+    # A quarantined profile need not have generics: `ID_Card_I` has no published artifact, so there is
+    # no tuple to check. Those are reported, not skipped silently - an entry that this file cannot
+    # examine is exactly the kind of thing that goes stale unnoticed.
+    quarantined = {q["name"]: q["generics"] for q in m["quarantined"] if "generics" in q}
+    no_generics = [q["name"] for q in m["quarantined"] if "generics" not in q]
 
     bad_live, warned = 0, 0
     for name, entry in sorted(live.items()):
@@ -183,6 +187,9 @@ def main() -> int:
         else:
             surprises += 1
             print(f"  ⚠️  NOW PASSES, investigate: {name}")
+
+    for name in sorted(no_generics):
+        print(f"  not checkable (no generics recorded): {name}")
 
     if bad_live:
         print(f"\nFAIL: {bad_live} live profile(s) are internally inconsistent.")

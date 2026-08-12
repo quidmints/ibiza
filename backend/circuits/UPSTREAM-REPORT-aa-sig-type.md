@@ -115,3 +115,54 @@ milliseconds without a document, a build, or a proving run:
 
 Our implementation is `tools/check-passport-profile-consistency.py`; it clears all 78 profiles we
 build and refuses exactly the four above. Happy to port it to whatever form suits your generator.
+
+---
+
+# 4. ⚠ REGRESSION: a circuit bb 5.1.0 builds, bb 6.0.0-nightly.20260804 refuses by 0.4%
+
+Separate from items 1–3, and the strongest of the four because there is a clean before/after.
+
+**Same circuit, same nargo, same generics. Only bb changed.**
+
+| bb | result |
+|---|---|
+| **5.1.0** | builds `registerIdentity_25_384_3_5_576_248_20_3768_3_2008` and `..._28_384_3_3_576_264_24_2024_4_2792` successfully |
+| **6.0.0-nightly.20260804** | `write_vk` aborts |
+
+Both verifiers are committed artifacts produced under `REQUIRED_BB="5.1.0"`; nargo was
+`1.0.0-beta.26` in both cases and did not change.
+
+### The failure
+
+```
+CircuitProve: Proving key computed in 2158032 ms (mem: 12494.55 MiB)
+libc++abi: terminating due to uncaught exception of type std::runtime_error:
+  Assertion failed: (aligned_local + bytes <= bound)
+  Left   : 124990672
+  Right  : 124518529
+```
+
+Note the proving key **succeeds**. The abort is in `write_vk` afterwards, and the overflow is
+**472,143 bytes — 0.4%** of a ~124.5 MB bound.
+
+### What we ruled out, by measurement
+
+| | |
+|---|---|
+| host memory | not the cause — 32 GiB swapfile available, bb peaked at 12.4 GB, well under |
+| thread count | `HARDWARE_CONCURRENCY` honoured, peak unchanged |
+| `--slow_low_memory` | **helps and is worth noting**: with it the proving key computes, where without it bb aborts *before* reaching that point. Does not clear this second bound. |
+| `--storage_budget` | **no effect at all.** `8g` and `512m` produce a **byte-identical** bound — `Left 124990672 / Right 124518529` both times. A 16× change moves it by zero. |
+
+That invariance is the useful signal: the bound does not appear to be the FileBackedMemory budget it
+looks like, and a 0.4% overshoot after a successful proving-key computation reads as arena **sizing**
+rather than a genuine capacity limit.
+
+### Why it matters downstream
+
+A verifier built under 5.1.0 does not accept proofs from a 6.0 prover (they fail at
+`verification failed at reduction step`, with **zero VK constants differing** — so no key comparison
+detects it). Consumers therefore cannot regenerate these two verifiers to match a 6.0 prover, and
+cannot keep using the 5.1.0 ones either. The profiles become unusable rather than merely stale.
+
+Happy to supply the exact circuit, generics tuple, and container recipe on request.

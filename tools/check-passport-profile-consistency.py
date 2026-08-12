@@ -79,6 +79,31 @@ def implemented_sig_types() -> set[int]:
 
 IMPLEMENTED = implemented_sig_types()
 
+RSA = ROOT / "backend/circuits/noir_dl_lib/src/rsa.nr"
+
+# SIG_TYPEs that dispatch to `verify_rsa` (PKCS#1 v1.5). The PSS types (10-15) go to `verify_rsa_pss`,
+# which does NOT need this check - it ends in an unconditional assert and so fails CLOSED on a hash
+# size it does not implement.
+PKCS_SIG_TYPES = {1, 2, 3, 4, 5, 6, 7, 8}
+
+
+def verify_rsa_hash_sizes() -> set[int]:
+    """Hash sizes `verify_rsa` actually implements a padding block for.
+
+    ⚠️ WHY THIS IS A SOUNDNESS CHECK. Every `assert(... "pkcs padding failure")` in `verify_rsa` sits
+    INSIDE an `if (HASH_SIZE == n)` block. Reach it with an `n` it does not implement and the function
+    computes `sig^e mod n` and then asserts NOTHING - so any signature passes. `3_512_3_3_336_264_NA`
+    (SIG_TYPE 3, HASH_ALGO 64) shipped in exactly that state.
+    """
+    import re
+
+    src = RSA.read_text()
+    body = src[src.index("pub fn verify_rsa<"):]
+    return {int(m.group(1)) for m in re.finditer(r"if \(HASH_SIZE == (\d+)\)", body)}
+
+
+RSA_HASHES = verify_rsa_hash_sizes()
+
 
 def name_fields(name: str) -> list[int] | None:
     """The profile name IS rarimo circom `RegisterIdentityBuilder`'s parameter list, in order:
@@ -134,6 +159,13 @@ def check(name: str, g: dict) -> tuple[list[str], list[str]]:
         errors.append(
             f"SIG_TYPE {g['SIG_TYPE']} has NO branch in verify_signature -"
             f" the document signature would never be checked (implemented: {sorted(IMPLEMENTED)})"
+        )
+
+    if g["SIG_TYPE"] in PKCS_SIG_TYPES and g["HASH_ALGO"] not in RSA_HASHES:
+        errors.append(
+            f"SIG_TYPE {g['SIG_TYPE']} reaches verify_rsa with HASH_ALGO {g['HASH_ALGO']}, which has"
+            f" no padding block (implemented: {sorted(RSA_HASHES)}) - every pkcs assertion is inside"
+            f" those blocks, so the signature would never be checked"
         )
 
     # A passport circuit that reads no MRZ cannot prove anything about a document.

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 import {PublicSignalsBuilder} from "./lib/PublicSignalsBuilder.sol";
@@ -11,21 +10,21 @@ import {INoirVerifier} from "../interfaces/verifiers/INoirVerifier.sol";
 
 /**
  * @title Abstract Query Proof Executor
- * @notice An abstract contract providing a framework for verifying ZK proofs related to user queries,
- * supporting both Circom (Groth16) and Noir systems.
+ * @notice An abstract contract providing a framework for verifying Noir/Honk query proofs.
  *
- * @dev DUAL-STACK BY MIGRATION, NOT BY DESIGN (sec. 2.18aj). `executeNoir` is the preferred
- *      path; `execute` is the Circom/Groth16 predecessor, kept for the SIX CIRCOM-ONLY ORPHAN
- *      PROFILES under `passport/verifiers2/per-passport/` - which is NOT the same statement as an
- *      earlier version of this line ("six passport profiles still lack a Noir verifier"). Counted
- *      from the filesystem 2026-08-09: 79 profiles are declared and 79 Noir verifiers exist, so the
- *      Noir gap is ONE profile, not six (see sec. 2.18fy). Note the POOL is already single-stack - both `PrivacyPool` verifiers
- *      are `INoirVerifier` and no Groth16 remains there - so "are we on one stack yet?" has
- *      DIFFERENT ANSWERS for the pool and for the identity side. That is the confusion this note
- *      exists to end. New capability goes in `executeNoir`.
+ * @dev SINGLE-STACK AS OF 2026-08-10 (sec. 2.18gq). The Circom/Groth16 predecessors - `execute`,
+ *      `executeTD1` and `_verifyCircomProof` - are GONE, along with the `ProofPoints` struct and the
+ *      `TD3QueryProofVerifier` they called into. `executeNoir` and `executeTD1Noir` are the only
+ *      paths, and both already had verifiers (`TD3QueryProofNoirVerifier`,
+ *      `TD1QueryProofNoirVerifier`), so nothing was lost with them.
+ *
+ *      WHY, and it is not tidiness: **Groth16 needs a PER-CIRCUIT trusted setup.** Every Circom
+ *      verifier carried its own ceremony whose toxic waste nobody here witnessed. UltraHonk uses one
+ *      UNIVERSAL SRS, already in this repo's trust base for every other proof. Deleting these removed
+ *      trust assumptions and added none. The app ships bb 6.0 only, so a Groth16 path could not have
+ *      been exercised anyway.
  */
 abstract contract AQueryProofExecutor is Initializable {
-    using Strings for uint256;
     using PublicSignalsBuilder for uint256;
 
     // bytes32(uint256(keccak256("rarimo.contract.AQueryProofExecutor")) - 1)
@@ -37,15 +36,7 @@ abstract contract AQueryProofExecutor is Initializable {
         address verifier;
     }
 
-    struct ProofPoints {
-        uint256[2] a;
-        uint256[2][2] b;
-        uint256[2] c;
-    }
-
-    error FailedToCallVerifyProof();
     error InvalidNoirProof(bytes32[] pubSignals, bytes zkPoints);
-    error InvalidCircomProof(uint256[] pubSignals, ProofPoints zkPoints);
 
     function __AQueryProofExecutor_init(
         address registrationSMT_,
@@ -106,32 +97,6 @@ abstract contract AQueryProofExecutor is Initializable {
         bytes memory userPayload_
     ) internal view virtual returns (uint256 builder_);
 
-    /**
-     * @notice Executes the full ZK proof verification workflow for a Circom (Groth16) proof.
-     * @param registrationRoot_ The root of the identity SMT against which the proof was generated.
-     * @param currentDate_ The current date (encoded as `yyMMdd`) to be included in the public signals.
-     * @param userPayload_ Encoded application-specific data to be used by hooks and the signal builder.
-     * @param zkPoints_ The Circom Groth16 proof points (`ProofPoints` struct).
-     */
-    function execute(
-        bytes32 registrationRoot_,
-        uint256 currentDate_,
-        bytes memory userPayload_,
-        ProofPoints memory zkPoints_
-    ) external {
-        _beforeVerify(registrationRoot_, currentDate_, userPayload_);
-
-        uint256 builder_ = _buildPublicSignals(registrationRoot_, currentDate_, userPayload_);
-        builder_.withIdStateRoot(registrationRoot_);
-
-        uint256[] memory publicSignals_ = PublicSignalsBuilder.buildAsUintArray(builder_);
-
-        if (!_verifyCircomProof(zkPoints_, publicSignals_)) {
-            revert InvalidCircomProof(publicSignals_, zkPoints_);
-        }
-
-        _afterVerify(registrationRoot_, currentDate_, userPayload_);
-    }
 
     /**
      * @notice Executes the full ZK proof verification workflow for a Noir proof.
@@ -157,29 +122,6 @@ abstract contract AQueryProofExecutor is Initializable {
 
         if (!INoirVerifier($.verifier).verify(zkPoints_, publicSignals_)) {
             revert InvalidNoirProof(publicSignals_, zkPoints_);
-        }
-
-        _afterVerify(registrationRoot_, currentDate_, userPayload_);
-    }
-
-    /**
-     * @notice Executes TD1 ZK proof verification workflow for a Circom (Groth16) proof.
-     */
-    function executeTD1(
-        bytes32 registrationRoot_,
-        uint256 currentDate_,
-        bytes memory userPayload_,
-        ProofPoints memory zkPoints_
-    ) external {
-        _beforeVerify(registrationRoot_, currentDate_, userPayload_);
-
-        uint256 builder_ = _buildPublicSignalsTD1(registrationRoot_, currentDate_, userPayload_);
-        PublicSignalsTD1Builder.withIdStateRoot(builder_, registrationRoot_);
-
-        uint256[] memory publicSignals_ = PublicSignalsTD1Builder.buildAsUintArray(builder_);
-
-        if (!_verifyCircomProof(zkPoints_, publicSignals_)) {
-            revert InvalidCircomProof(publicSignals_, zkPoints_);
         }
 
         _afterVerify(registrationRoot_, currentDate_, userPayload_);
@@ -242,33 +184,6 @@ abstract contract AQueryProofExecutor is Initializable {
 
     function _setVerifier(address verifier_) internal {
         _getABuilderStorage().verifier = verifier_;
-    }
-
-    function _verifyCircomProof(
-        ProofPoints memory zkPoints_,
-        uint256[] memory pubSignals_
-    ) private view returns (bool) {
-        AExecutorStorage storage $ = _getABuilderStorage();
-
-        string memory funcSign_ = string(
-            abi.encodePacked(
-                "verifyProof(uint256[2],uint256[2][2],uint256[2],uint256[",
-                pubSignals_.length.toString(),
-                "])"
-            )
-        );
-
-        /// @dev We have to use abi.encodePacked to encode a dynamic array as a static array (without offset and length)
-        (bool success_, bytes memory returnData_) = $.verifier.staticcall(
-            abi.encodePacked(
-                abi.encodeWithSignature(funcSign_, zkPoints_.a, zkPoints_.b, zkPoints_.c),
-                pubSignals_
-            )
-        );
-
-        if (!success_) revert FailedToCallVerifyProof();
-
-        return abi.decode(returnData_, (bool));
     }
 
     /**

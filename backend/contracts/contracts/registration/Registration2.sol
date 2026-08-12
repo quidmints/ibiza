@@ -6,7 +6,6 @@ import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProo
 import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-import {Groth16VerifierHelper} from "@solarity/solidity-lib/libs/zkp/Groth16VerifierHelper.sol";
 
 import {StateKeeper} from "../state/StateKeeper.sol";
 import {PoseidonSMT} from "../state/PoseidonSMT.sol";
@@ -17,7 +16,6 @@ import {ICertificateDispatcher} from "../interfaces/dispatchers/ICertificateDisp
 
 contract Registration2 is Initializable, UUPSUpgradeable {
     using MerkleProof for bytes32[];
-    using Groth16VerifierHelper for address;
 
     bytes32 public constant P_NO_AA = keccak256("P_NO_AA");
     uint256 internal constant _PROOF_SIGNALS_COUNT = 5;
@@ -59,7 +57,6 @@ contract Registration2 is Initializable, UUPSUpgradeable {
     mapping(bytes32 => address) public passportVerifiers;
 
     error InvalidNoirProof(bytes proof, bytes32[] pubSignals);
-    error InvalidCircomProof(Groth16VerifierHelper.ProofPoints proof, uint256[] pubSignals);
 
     modifier onlyValidCertificateRoot(bytes32 certificatesRoot_) {
         _requireValidCertificateRoot(certificatesRoot_);
@@ -123,63 +120,29 @@ contract Registration2 is Initializable, UUPSUpgradeable {
     }
 
     /**
-     * @notice Registers the user passport <> user identity bond in the registration SMT.
-     * @param certificatesRoot_ the root of certificates MT (prevents accidental frontrunning)
-     * @param identityKey_ the hash of the public key of an identity
-     * @param dgCommit_ the commitment of DG1 (is used for identity query proof)
-     * @param passport_ the passport info
-     * @param zkPoints_ the passport validity ZK proof
-     */
-    function register(
-        bytes32 certificatesRoot_,
-        uint256 identityKey_,
-        uint256 dgCommit_,
-        Passport memory passport_,
-        Groth16VerifierHelper.ProofPoints memory zkPoints_
-    ) external virtual {
-        uint256 passportKey_ = _passportValidation(identityKey_, passport_);
-
-        _verifyCircomZKProof(
-            _getPassportVerifier(passport_.zkType),
-            certificatesRoot_,
-            passportKey_,
-            uint256(passport_.passportHash),
-            identityKey_,
-            dgCommit_,
-            zkPoints_
-        );
-
-        stateKeeper.addBond(
-            bytes32(passportKey_),
-            passport_.passportHash,
-            bytes32(identityKey_),
-            dgCommit_
-        );
-    }
-
-    /**
      * @notice The Noir/Honk twin of `register`, and THE PREFERRED PATH. Same arguments, same state
      *         transition, same `certificatesRoot_` check - the proving system is the only difference.
      *
-     * WHICH STACK OWNS WHAT, stated here because two entrypoints sitting side by side is precisely
-     * what makes it ambiguous (sec. 2.18aj):
+     * SINGLE-STACK AS OF 2026-08-10 (sec. 2.18gq). The Circom/Groth16 twins `register` and
+     * `reissueIdentity` are GONE, with `_verifyCircomZKProof` and all 17 Groth16 verifier contracts.
+     * Groth16 needs a PER-CIRCUIT trusted setup; UltraHonk uses one universal SRS this repo already
+     * relies on. The app ships bb 6.0 only, so a Groth16 verifier could not be exercised regardless.
      *
-     *   - `registerCertificate` / `revokeCertificate` - NEITHER STACK. DSC admission is gated by a
-     *     CSCA SIGNATURE, not a ZK proof. Every piece of certificate hardening (X509 bounds
-     *     sec. 2.18m, PKCS#1 forgery sec. 2.18u, low-s sec. 2.18v) is independent of this choice.
-     *   - `registerViaNoir` / `reissueIdentityViaNoir` - Noir/Honk. **79** verifiers vendored under
-     *     `passport/verifiers2/noir/`.
-     *   - `register` / `reissueIdentity` - Circom/Groth16. **6** verifiers under
-     *     `passport/verifiers2/per-passport/`, and NONE of them has a Noir equivalent - they are
-     *     Circom-only orphan profiles, which is why this path cannot yet be deleted.
+     * WHICH PATH OWNS WHAT:
+     *   - `registerCertificate` / `revokeCertificate` - NEITHER. DSC admission is gated by a CSCA
+     *     SIGNATURE, not a ZK proof. Every piece of certificate hardening (X509 bounds sec. 2.18m,
+     *     PKCS#1 forgery sec. 2.18u, low-s sec. 2.18v) is independent of the proving system.
+     *   - `registerViaNoir` / `reissueIdentityViaNoir` - Noir/Honk, and now the ONLY ZK path here.
+     *     **79** verifiers under `passport/verifiers2/noir/`, of which **76** are on the pinned 6.0
+     *     template and usable; 3 are stranded on the 5.1.0 template (sec. 2.18go).
      *
-     * COUNTS ARE FROM THE FILESYSTEM, 2026-08-09. They previously read "76" and "35 of which 29",
-     * both stale: `dfaa42a` deleted the 29 Groth16 files that had Noir twins, taking that directory
-     * from 35 to 6. A count in a comment is the thing that rots first - recount before citing
-     * (sec. 2.18fy).
-     *
-     * This is a MIGRATION WITH SIX ORPHAN PROFILES LEFT, not a permanent dual-stack design. Do not
-     * add new Circom-only capability here - it would only have to be ported again.
+     * ⚠️ THIS ENTRYPOINT IS THE ONLY ONE THAT VERIFIES THE ICAO CHAIN. `register_identity` consumes
+     * `ec`, `sa`, `pk`, `sig` and `icao_root`; `register_identity_light` - the path
+     * `HolderRegistration` actually runs - takes ONLY `dg1` and `sk_identity`, so it proves nothing
+     * about the issuing state's signature and leans on a backend signer instead (sec. 2.18gg).
+     * A configuration without a full 14-generic tuple therefore cannot have chain verification at
+     * all, whichever proving system is used. Counts here are from the filesystem; recount before
+     * citing (sec. 2.18fy).
      */
     function registerViaNoir(
         bytes32 certificatesRoot_,
@@ -222,35 +185,15 @@ contract Registration2 is Initializable, UUPSUpgradeable {
     }
 
     /**
-     * @notice Reissues the passport <> identity bond by migration to a new identity. The previous bond must be revoked
+     * @notice Reissues the passport <> identity bond by migration to a new identity. The previous
+     *         bond must be revoked. Noir/Honk only - the Circom twin was removed with the Groth16
+     *         stack (sec. 2.18gq).
      * @param certificatesRoot_ the root of certificates MT (prevents accidental frontrunning)
      * @param identityKey_ the hash of the public key of an identity
      * @param dgCommit_ the commitment of DG1 (is used for identity query proof)
      * @param passport_ the passport info
      * @param zkPoints_ the passport validity ZK proof
      */
-    function reissueIdentity(
-        bytes32 certificatesRoot_,
-        uint256 identityKey_,
-        uint256 dgCommit_,
-        Passport memory passport_,
-        Groth16VerifierHelper.ProofPoints memory zkPoints_
-    ) external virtual {
-        uint256 passportKey_ = _passportValidation(identityKey_, passport_);
-
-        _verifyCircomZKProof(
-            _getPassportVerifier(passport_.zkType),
-            certificatesRoot_,
-            passportKey_,
-            uint256(passport_.passportHash),
-            identityKey_,
-            dgCommit_,
-            zkPoints_
-        );
-
-        stateKeeper.reissueBondIdentity(bytes32(passportKey_), bytes32(identityKey_), dgCommit_);
-    }
-
     function reissueIdentityViaNoir(
         bytes32 certificatesRoot_,
         uint256 identityKey_,
@@ -362,29 +305,6 @@ contract Registration2 is Initializable, UUPSUpgradeable {
         require(
             dispatcher_.authenticate(challenge_, passport_.signature, passport_.publicKey),
             "Registration: invalid passport authentication"
-        );
-    }
-
-    function _verifyCircomZKProof(
-        address verifier_,
-        bytes32 certificatesRoot_,
-        uint256 passportKey_,
-        uint256 passportHash_,
-        uint256 identityKey_,
-        uint256 dgCommit_,
-        Groth16VerifierHelper.ProofPoints memory zkPoints_
-    ) internal view onlyValidCertificateRoot(certificatesRoot_) {
-        uint256[] memory pubSignals_ = new uint256[](_PROOF_SIGNALS_COUNT);
-
-        pubSignals_[0] = passportKey_; // output
-        pubSignals_[1] = passportHash_; // output
-        pubSignals_[2] = dgCommit_; // output
-        pubSignals_[3] = identityKey_; // output
-        pubSignals_[4] = uint256(certificatesRoot_); // public input
-
-        require(
-            verifier_.verifyProof(zkPoints_, pubSignals_),
-            InvalidCircomProof(zkPoints_, pubSignals_)
         );
     }
 

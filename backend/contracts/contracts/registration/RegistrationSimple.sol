@@ -9,7 +9,6 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 import {SetHelper} from "../libraries/SetHelper.sol";
-import {Groth16VerifierHelper} from "@solarity/solidity-lib/libs/zkp/Groth16VerifierHelper.sol";
 
 import {INoirVerifier} from "../interfaces/verifiers/INoirVerifier.sol";
 
@@ -17,7 +16,6 @@ import {StateKeeper} from "../state/StateKeeper.sol";
 
 contract RegistrationSimple is Initializable, UUPSUpgradeable {
     using ECDSA for bytes32;
-    using Groth16VerifierHelper for address;
     using SetHelper for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -61,40 +59,6 @@ contract RegistrationSimple is Initializable, UUPSUpgradeable {
         stateKeeper = StateKeeper(stateKeeper_);
 
         _signers.add(signers_);
-    }
-
-    function registerSimple(
-        uint256 identityKey_,
-        Passport memory passport_,
-        bytes memory signature_,
-        Groth16VerifierHelper.ProofPoints memory zkPoints_
-    ) external {
-        require(identityKey_ > 0, "RegistrationSimple: identity can not be zero");
-
-        bytes32 signedData_ = _buildSignedData(passport_);
-        address dataSigner_ = ECDSA.recover(
-            MessageHashUtils.toEthSignedMessageHash(signedData_),
-            signature_
-        );
-
-        _requireSigner(dataSigner_);
-
-        stateKeeper.useSignature(keccak256(signature_));
-
-        _verifyZKProof(
-            passport_.verifier,
-            uint256(passport_.dg1Hash),
-            passport_.dgCommit,
-            identityKey_,
-            zkPoints_
-        );
-
-        stateKeeper.addBond(
-            passport_.publicKey,
-            passport_.passportHash,
-            bytes32(identityKey_),
-            passport_.dgCommit
-        );
     }
 
     function registerSimpleViaNoir(
@@ -174,25 +138,6 @@ contract RegistrationSimple is Initializable, UUPSUpgradeable {
                     passport_.verifier
                 )
             );
-    }
-
-    function _verifyZKProof(
-        address verifier_,
-        uint256 dg1Hash_,
-        uint256 dg1Commitment_,
-        uint256 pkIdentityHash_,
-        Groth16VerifierHelper.ProofPoints memory zkPoints_
-    ) internal view {
-        uint256[] memory pubSignals_ = new uint256[](_PROOF_SIGNALS_COUNT);
-
-        pubSignals_[0] = dg1Hash_; // output
-        pubSignals_[1] = dg1Commitment_; // output
-        pubSignals_[2] = pkIdentityHash_; // output
-
-        require(
-            verifier_.verifyProof(zkPoints_, pubSignals_),
-            "RegistrationSimple: invalid zk proof"
-        );
     }
 
     function _verifyNoirZKProof(

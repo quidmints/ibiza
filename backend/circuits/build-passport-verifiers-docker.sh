@@ -130,6 +130,7 @@ docker run --rm --platform linux/amd64 \
   -e ONLY_FILE=/repo/backend/circuits/.docker-profiles.txt \
   -e BB_SLOW_LOW_MEMORY="${BB_SLOW_LOW_MEMORY:-}" \
   -e BB_STORAGE_BUDGET="${BB_STORAGE_BUDGET:-}" \
+  -e BB_MSM_LEGACY="${BB_MSM_LEGACY:-}" \
   "${IMAGE}" \
   bash -lc '
     set -e

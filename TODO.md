@@ -15545,3 +15545,56 @@ and the derivation inherits the error.
 Remaining: the second bb-stranded profile, `ID_Card_I`, and the three TD1 profiles whose `DG1_SHIFT`
 is corrupted upstream - and the SAME METHOD MAY REACH THOSE THREE, since they are TD1 and the
 signal-count equation does not care about document type.
+
+### 2.18gw The three TD1 profiles are NOT recoverable — every source now checked (2026-08-10)
+
+Pushed the §2.18gv method at the quarantined three. **It does not reach them, and this time the search
+is exhaustive rather than assumed.**
+
+**WHY THE METHOD FAILS HERE.** It needs `get_main_input_signal_no()` from a CIRCOM `-mobile.zip`.
+Measured: **none of the three is in the Circom repo, and there are NO TD1 profiles there at all** -
+zero, across 30 releases and 38 profiles. The equation has nothing to read.
+
+**AND THE NOIR SIDE IS A DEAD END BY CONSTRUCTION.** Only **four** TD1 profiles were ever published in
+Noir:
+
+| profile | release | state |
+|---|---|---|
+| `21_160_1_2_560_576_NA` | v0.1.0 | corrupt |
+| `14_256_1_4_1752_576_1_1496_3_512` | v0.1.0 | corrupt |
+| `1_256_1_5_2376_336_1_2120_4_512` | v0.1.0 | corrupt |
+| `25_384_1_3_336_256_NA` | **v0.1.17** | works |
+
+All three broken ones come from the FIRST release and were never re-published; the single working TD1
+arrived seventeen releases later. That reads as rarimo rebuilding TD1 support and abandoning these
+three - consistent with them issuing `-fix` builds for 24 OTHER profiles but never these.
+
+**The artifact cannot be mined for true values** either: its ABI AGREES with the corrupt generics
+(`dg1: [u8; 0]`), because it was compiled that way. The corruption is baked into the compiled circuit,
+not layered over it.
+
+**AND THE TWO CANDIDATE READINGS BOTH FAIL.** For `21_160_1_2_560_576_NA` the name says
+`EC_SHIFT=70, DG1_SHIFT=72`; the artifact says `EC_SHIFT=72, DG1_SHIFT=70`:
+  - artifact reading satisfies `EC_SHIFT + HASH_ALGO == SA_LEN` (72+20=92 ✓) but puts the DG1 hash at
+    70 in an `ec` of length 70 - out of bounds;
+  - name reading breaks that identity (70+20=90 ≠ 92) AND is still out of bounds at 72.
+Neither works, which means **`EC_LEN` is corrupt as well** - and with no independent equation, three
+unknowns cannot be pinned from one relation.
+
+**SO THESE THREE NEED AN EXTERNAL INPUT, and unlike §2.18gv that is now demonstrated rather than
+guessed:** either rarimo re-publishes them (as they did for 24 others), or one real TD1 document of
+each configuration. **This is the honest floor of what can be done from published data.**
+
+**FINAL TALLY AGAINST "close all 13":**
+
+| | n | status |
+|---|---|---|
+| recovered - `BB_MSM_LEGACY` | 1 | ✅ built, committed |
+| recovered - signal-count derivation | 6 | ✅ in manifest, checker green, **pending build** |
+| correctly REMOVED as unsound | 1 | ✅ `SIG_TYPE 28` - closing this by making it build would be the wrong outcome |
+| second bb-stranded profile | 1 | fix known and proven, just needs the run |
+| `ID_Card_I` | 1 | no artifact has ever existed, any repo, any version |
+| corrupt TD1s | 3 | **blocked - external input required** |
+
+**9 of 13 addressed, 1 of them by deletion.** The remaining four split into one that is a build away,
+and three-plus-one that need something nobody in this repo can produce.

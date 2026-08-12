@@ -34,13 +34,24 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "backend/circuits/passport-profiles.json"
 
 # `extract_dg15_pk_hash` uses a LOCAL byte count, not the EC_FIELD_SIZE generic (which is in bits and
-# is 0 for RSA). Mirrors noir_dl_lib/src/not_passports_zk_circuits.nr:653-661.
-AA_ECDSA_BYTES = {22: 40, 23: 24}
+# is 0 for RSA). Mirrors the branches in noir_dl_lib/src/not_passports_zk_circuits.nr.
+AA_ECDSA_BYTES = {22: 40, 23: 24, 24: 28}
 AA_ECDSA_DEFAULT = 32
+
+# GROUND TRUTH: the coordinate width each curve actually has. This is the table the code is checked
+# AGAINST, not a copy of it - the whole point is to catch the code falling through to the 32-byte
+# default for a curve that is not 32 bytes. AA_SIG_TYPE 24 (secp224r1) did exactly that, and the one
+# profile using it had already been built and marked live before this check existed.
+AA_CURVE_BYTES = {20: 32, 21: 32, 22: 40, 23: 24, 24: 28, 25: 48, 26: 64, 27: 66}
 
 
 def aa_key_bytes(aa_sig_type: int) -> int:
     return AA_ECDSA_BYTES.get(aa_sig_type, AA_ECDSA_DEFAULT)
+
+
+def aa_hash_size(aa_sig_type: int) -> int:
+    """Bytes of each coordinate folded into the Poseidon leaf, capped by the coordinate width."""
+    return min(31, aa_key_bytes(aa_sig_type))
 
 
 CIRCUIT = ROOT / "backend/circuits/noir_dl_lib/src/not_passports_zk_circuits.nr"
@@ -177,7 +188,20 @@ def check(name: str, g: dict) -> tuple[list[str], list[str]]:
     # Active Authentication: an ECDSA public key is two coordinates read out of dg15.
     if aa >= 20:
         kb = aa_key_bytes(aa)
-        hash_size = 24 if aa == 23 else 31
+
+        # THE CHECK THAT WOULD HAVE CAUGHT AA_SIG_TYPE 24. A curve with no branch silently uses 32
+        # bytes; if that is not the curve's real width, the extractor reads both coordinates from
+        # the wrong offsets and the AA key hash commits to something that is not the key. It fails
+        # SILENTLY - the circuit still builds and still proves - which is exactly the shape of defect
+        # this file exists to reject.
+        real = AA_CURVE_BYTES.get(aa)
+        if real is not None and real != kb:
+            errors.append(
+                f"AA_SIG_TYPE {aa} coordinates are {real} bytes but extract_dg15_pk_hash uses {kb}"
+                f" - both coordinates would be read from the wrong offsets"
+            )
+
+        hash_size = aa_hash_size(aa)
         x_y_shift = kb - hash_size
         if x_y_shift < 0:
             errors.append(f"AA_SIG_TYPE {aa}: key bytes({kb}) < hash size({hash_size}), shift underflows")
@@ -188,9 +212,13 @@ def check(name: str, g: dict) -> tuple[list[str], list[str]]:
                     f"AA key runs past dg15: max index {end} > DG15_LEN-1"
                     f" ({g['DG15_LEN'] - 1}) for AA_SIG_TYPE {aa} (key {kb} bytes)"
                 )
-        if aa not in AA_ECDSA_BYTES:
+        if aa not in AA_ECDSA_BYTES and real is None:
+            # Only unknown curves are worth a warning now. A curve that HAS no branch but whose real
+            # width is the 32-byte default is simply correct, and the mismatch case above is an
+            # error, so the old blanket "no branch" warning fired on working profiles - a check that
+            # cries wolf on correct input trains people to ignore it.
             warnings.append(
-                f"AA_SIG_TYPE {aa} has no branch in extract_dg15_pk_hash; it falls through to"
+                f"AA_SIG_TYPE {aa} is not in the curve table; it falls through to"
                 f" {AA_ECDSA_DEFAULT} bytes, which may be wrong for this curve"
             )
 

@@ -7,6 +7,11 @@ use crate::sigver::brainpoolP256r1::params::{BrainpoolP256r1Fq, BrainpoolP256r1F
 use crate::sigver::brainpoolP384r1::params::{BrainpoolP384r1Fq, BrainpoolP384r1Fr};
 use crate::sigver::brainpoolP512r1::params::{BrainpoolP512r1Fq, BrainpoolP512r1Fr};
 use crate::sigver::secp521r1::params::{Secp521r1Fq, Secp521r1Fr};
+// secp384r1 (NIST P-384) for SIG_TYPE 28. Unlike the brainpool curves this one lives under
+// `big_curve::curves`, not `sigver::*::params`. `verify_secp384r1_ecdsa` ALREADY EXISTED in
+// sigver/ecdsa.nr - it was simply never dispatched, which is why SIG_TYPE 28 verified nothing.
+use crate::big_curve::curves::secp384r1::{Secp384r1Fq, Secp384r1Fr};
+use crate::sigver::ecdsa::verify_secp384r1_ecdsa;
 
 pub fn register_identity<
     let DG1_LEN: u32,
@@ -549,6 +554,56 @@ fn verify_signature<
         assert(verify_brainpoolp384r1_ecdsa(public_key_x, public_key_y, hashed, (r, s)));
     }
 
+    // SIG_TYPE 28 - secp384r1 (NIST P-384), SHA-384.
+    //
+    // ⚠️ THIS BRANCH'S ABSENCE WAS A SOUNDNESS HOLE, NOT A MISSING FEATURE. `verify_signature`
+    // returns nothing and every branch asserts internally, so a SIG_TYPE with no branch does not
+    // fail - the body simply does nothing and registration proceeds WITH THE DOCUMENT SIGNATURE
+    // UNVERIFIED. The Merkle step still proves the DSC key is in the ICAO tree, but DSC public keys
+    // are published in the ICAO master list, so that alone would let a prover assert an arbitrary
+    // MRZ. `28_384_3_3_576_264_24_2024_4_2792` shipped in exactly that state, here and upstream.
+    //
+    // Identifying the curve: SIG_TYPE 28 carries N=8, EC_FIELD_SIZE=384 and SHA-384 - the same shape
+    // as SIG_TYPE 25 (brainpoolP384r1). Of the two 384-bit curves in ICAO use, brainpool is already
+    // 25, and secp384r1 is the only curve absent from an otherwise complete set (20 secp256r1,
+    // 21 brainpoolP256r1, 23 secp192r1, 24 secp224r1, 25 brainpoolP384r1, 26 brainpoolP512r1,
+    // 27 secp521r1). `verify_secp384r1_ecdsa` was already vendored and merely unreferenced.
+    //
+    // Structurally this is SIG_TYPE 25's branch with the curve types swapped: both are 4-limb
+    // 384-bit fields and both verifiers instantiate `verify_ecdsa` with the identical <97, 48>
+    // parameters, so the limb plumbing is unchanged.
+    if (SIG_TYPE == 28){
+        let mut limbs_x: [Field; 4] = [0; 4];
+        let mut limbs_y: [Field; 4] = [0; 4];
+        let mut limbs_r: [Field; 4] = [0; 4];
+        let mut limbs_s: [Field; 4] = [0; 4];
+
+        for i in 0..4{
+            limbs_x[i] = pk[i];
+            limbs_y[i] = pk[i + 4];
+            limbs_r[i] = sig[i];
+            limbs_s[i] = sig[i + 4];
+        }
+
+        let r: Secp384r1Fr = BigNum {
+            limbs: limbs_r,
+        };
+
+        let s: Secp384r1Fr = BigNum {
+            limbs: limbs_s
+        };
+
+        let public_key_x: Secp384r1Fq = BigNum {
+            limbs: limbs_x
+        };
+
+        let public_key_y: Secp384r1Fq = BigNum {
+            limbs: limbs_y
+        };
+
+        assert(verify_secp384r1_ecdsa(public_key_x, public_key_y, hashed, (r, s)));
+    }
+
     if (SIG_TYPE == 26){
         let mut limbs_x: [Field; 5] = [0; 5];
         let mut limbs_y: [Field; 5] = [0; 5];
@@ -655,6 +710,24 @@ fn extract_dg15_pk_hash<
             let mut EC_FIELD_SIZE = 32;
             if (AA_SIG_TYPE == 22){
                 EC_FIELD_SIZE = 40;
+            }
+            // AA_SIG_TYPE 24 is secp224r1: coordinates are 28 bytes, not the 32 this fell through to.
+            // Without this the extractor reads x starting 4 bytes off and y at 32 bytes after x
+            // instead of 28, so BOTH coordinates come from the wrong bytes and dg15_pk_hash does not
+            // commit to the actual AA key. HASH_SIZE must drop to 28 as well - it is capped by the
+            // coordinate width (28 < 31), exactly as type 23 caps it at 24, and leaving it at 31
+            // would make X_Y_SHIFT (EC_FIELD_SIZE - HASH_SIZE) underflow.
+            //
+            // ⚠️ AA_SIG_TYPE 25 (brainpoolP384r1, 48-byte coordinates) IS ALSO WRONG HERE and is
+            // deliberately NOT fixed: its only profile, 20_256_3_5_336_248_25_2120_5_1816, is
+            // UNSATISFIABLE with the correct width. The read spans AA_SHIFT - 1 + 2*EC_FIELD_SIZE
+            // regardless of HASH_SIZE, so 227 - 1 + 96 = 322 needs DG15_LEN >= 323 while
+            // DG15_BLOCK_NUMBER=5 caps it at 5*64 - 9 = 311. It is satisfiable ONLY under the wrong
+            // 32-byte width, which would ship a verifier committing to garbage. A branch for it
+            // would be unreachable code; the consistency checker rejects the profile by table instead.
+            if (AA_SIG_TYPE == 24){
+                EC_FIELD_SIZE = 28;
+                HASH_SIZE = 28;
             }
             if (AA_SIG_TYPE == 23){
                 EC_FIELD_SIZE = 24;

@@ -957,6 +957,27 @@
       },
       "from": "rarimo release artifact (recovered 2026-08-04, TODO sec. 2.18cz) - these 7 were published across earlier releases and were missing from the original recovery, which read only one release. Generics read verbatim from the artifact-embedded main.nr and cross-checked against that artifact's OWN abi (dg1/ec/sa/pk lengths all agree)."
     },
+    "21_160_1_2_560_576_NA": {
+      "generics": {
+        "DG1_LEN": 95,
+        "DG15_LEN": 0,
+        "EC_LEN": 119,
+        "SA_LEN": 90,
+        "N": 6,
+        "EC_FIELD_SIZE": 256,
+        "DG_HASH_ALGO": 20,
+        "HASH_ALGO": 20,
+        "SIG_TYPE": 21,
+        "DG1_SHIFT": 72,
+        "DG15_SHIFT": 0,
+        "EC_SHIFT": 70,
+        "AA_SIG_TYPE": 0,
+        "AA_SHIFT": 0
+      },
+      "provenance": "TD1. RECOVERED. Generics re-derived from the circom builder parameter list (DG1_LEN=95 for TD1, DG1_SHIFT=72, EC_SHIFT=70, SA_LEN=90); the old ones were mis-decoded, with DG1_LEN=0 and EC_LEN holding a shift value.",
+      "provenance_ec_len": "EC_LEN=119 is FORCED, with no free parameter. An LDSSecurityObject entry is SEQUENCE{INTEGER dg, OCTET STRING hash} = 7 + hash bytes, so EC_LEN = DG1_SHIFT + hash + n*(7+hash) [+16 for ldsVersionInfo]. That model fits 69/85 exactly and the remaining 16-byte cluster is the optional ldsVersionInfo. Here hash=20 and DG1_SHIFT=72, giving 92 + 27n [+16]. Three candidates fall in the available window [92,119], and two are eliminated: n=0 (EC_LEN 92, and 108 with ldsVersionInfo) would mean DG1 is the LAST data group, which happens in 0 of 85 profiles - no document omits the face image - while n=2 gives 146, past the SHA-1 padding cap of 2*64-9 = 119. Only n=1 survives, and 119+9 = 128 fills exactly two blocks, which is why EC_BLOCK_NUMBER is 2.",
+      "caveat": "EC_LEN is the one field derived structurally rather than read from an artifact. If it is wrong the circuit FAILS CLOSED - it would reject genuine documents of this class, not accept forged ones - so the risk is a dead profile, never a false accept. Revisit EC_LEN first if a real TD1 of this class fails to register."
+    },
     "21_256_3_3_336_232_NA": {
       "generics": {
         "DG1_LEN": 93,
@@ -1299,6 +1320,26 @@
       },
       "from": "first-published artifact"
     },
+    "28_384_3_3_576_264_24_2024_4_2792": {
+      "generics": {
+        "DG1_LEN": 93,
+        "DG15_LEN": 445,
+        "EC_LEN": 317,
+        "SA_LEN": 120,
+        "N": 8,
+        "EC_FIELD_SIZE": 384,
+        "DG_HASH_ALGO": 48,
+        "HASH_ALGO": 48,
+        "SIG_TYPE": 28,
+        "DG1_SHIFT": 33,
+        "DG15_SHIFT": 253,
+        "EC_SHIFT": 72,
+        "AA_SIG_TYPE": 24,
+        "AA_SHIFT": 349
+      },
+      "provenance": "RECOVERED from quarantine by implementing the missing verify_signature branch, not by relaxing anything. SIG_TYPE 28 is secp384r1 (NIST P-384) with SHA-384. It had no branch, and because verify_signature returns nothing and asserts internally, that meant the document signature was NEVER CHECKED for this profile - a soundness hole, not a missing feature. verify_secp384r1_ecdsa was already vendored in sigver/ecdsa.nr and simply unreferenced.",
+      "curve_identification": "N=8, EC_FIELD_SIZE=384, SHA-384 - the same shape as SIG_TYPE 25 (brainpoolP384r1). Of the two 384-bit curves in ICAO use brainpool is already 25, and secp384r1 is the only curve missing from an otherwise complete set: 20 secp256r1, 21 brainpoolP256r1, 23 secp192r1, 24 secp224r1, 25 brainpoolP384r1, 26 brainpoolP512r1, 27 secp521r1. Both verifiers instantiate verify_ecdsa with identical <97,48> parameters and both fields are 4-limb 384-bit, so the branch is 25 with the curve types swapped and no limb plumbing changed."
+    },
     "2_256_3_4_336_232_1_1480_4_256": {
       "generics": {
         "DG1_LEN": 93,
@@ -1633,27 +1674,6 @@
       "verifier_on_disk": "backend/contracts/contracts/passport/verifiers2/noir/NoirRegisterIdentity_ID_Card_I.sol - DELIBERATELY LEFT IN PLACE. It was deleted once and restored on the owner's instruction (b8d1262: \"deleting it was the wrong response to being unbuildable\"), so it is not being removed again without a decision. The evidence has changed since that call - the objection then was that unbuildable is not a reason to delete, and the reason now is incompatibility that has been measured - but that is the owner's call to make, not one to take silently. It is the ONLY non-6.0 verifier left in the tree."
     },
     {
-      "name": "21_160_1_2_560_576_NA",
-      "generics": {
-        "DG1_LEN": 95,
-        "DG15_LEN": 0,
-        "EC_LEN": 70,
-        "SA_LEN": 90,
-        "N": 6,
-        "EC_FIELD_SIZE": 256,
-        "DG_HASH_ALGO": 20,
-        "HASH_ALGO": 20,
-        "SIG_TYPE": 21,
-        "DG1_SHIFT": 72,
-        "DG15_SHIFT": 0,
-        "EC_SHIFT": 70,
-        "AA_SIG_TYPE": 0,
-        "AA_SHIFT": 0
-      },
-      "reason": "TD1. Generics CORRECTED - the previous ones were mis-decoded, not corrupt upstream: DG1_LEN was 0 (TD1 is 95), and EC_LEN had been filled with a shift value, which is what produced the bogus \"DG1_SHIFT == EC_LEN\" signature this was originally quarantined for. Now blocked on ONE unknown: EC_LEN, the true DER length of the encapsulated content, which is per-document and has no rule (0/83 fit any formula). Bounded to [92,119] by the DG1 read below and the SHA-1 padding cap above. Recoverable from a published artifact or a real TD1 of this class; not from anything in-repo.",
-      "decoder": "Recovered via rarimo circom RegisterIdentityBuilder, whose 10 template parameters ARE the profile name in order. Validated first: the 7-field NA form passes 8/8 checks at 38/38 and the 10-field form 8/9 at 44/44."
-    },
-    {
       "name": "14_256_1_4_1752_576_1_1496_3_512",
       "generics": {
         "DG1_LEN": 95,
@@ -1673,26 +1693,6 @@
       },
       "reason": "TD1, and PROVABLY IMPOSSIBLE AS PUBLISHED - this is an upstream defect, not a local derivation error. extract_dg15_pk_hash reads a fixed 128 bytes from AA_SHIFT, so AA_SHIFT=64 forces DG15_LEN >= 192. But DG15_BLOCK_NUMBER=3 with SHA-256 caps dg15 at 3*64-9 = 183 once padding is counted. 192 > 183, so no DG15_LEN satisfies both and no 1024-bit AA key fits at offset 64 in three blocks. Either DG15_BLOCK_NUMBER or AA_SHIFT is wrong upstream. Generics still corrected below so the contradiction is stated in the right units.",
       "decoder": "Recovered via rarimo circom RegisterIdentityBuilder, whose 10 template parameters ARE the profile name in order. Validated first: the 7-field NA form passes 8/8 checks at 38/38 and the 10-field form 8/9 at 44/44."
-    },
-    {
-      "name": "28_384_3_3_576_264_24_2024_4_2792",
-      "generics": {
-        "DG1_LEN": 93,
-        "DG15_LEN": 445,
-        "EC_LEN": 317,
-        "SA_LEN": 120,
-        "N": 8,
-        "EC_FIELD_SIZE": 384,
-        "DG_HASH_ALGO": 48,
-        "HASH_ALGO": 48,
-        "SIG_TYPE": 28,
-        "DG1_SHIFT": 33,
-        "DG15_SHIFT": 253,
-        "EC_SHIFT": 72,
-        "AA_SIG_TYPE": 24,
-        "AA_SHIFT": 349
-      },
-      "reason": "\ud83d\udd34 THE DOCUMENT SIGNATURE IS NEVER VERIFIED. Quarantined 2026-08-10, and this is a SOUNDNESS hole rather than a build failure. `verify_signature` (not_passports_zk_circuits.nr:128) dispatches on SIG_TYPE with branches for 1,2,3,4,5,6,7,8,10,11,12,13,14,15,20,21,23,24,25,26,27. **There is no branch for 28 and no catch-all assert.** The function returns nothing, is called once as `let _ = verify_signature::<...>` at line 62, and each branch asserts internally - so an unmatched SIG_TYPE means the body simply does nothing and registration continues. No other signature check exists in the flow. The Merkle step still proves the DSC public key is in the ICAO tree, but NOTHING proves the SOD was signed by that key - and DSC public keys are public data, published in the ICAO master list. A prover could therefore assert an arbitrary MRZ under this profile. UPSTREAM IS IDENTICAL: rarimo's own artifact for this profile (v0.1.22) declares SIG_TYPE 28 and embeds a library whose branch list is also missing 28, so this is inherited verbatim rather than introduced here. NOT PATCHED: adding a branch requires knowing which algorithm 28 denotes, which nothing here establishes. See TODO sec. 2.18gt."
     },
     {
       "name": "20_256_3_5_336_248_25_2120_5_1816",

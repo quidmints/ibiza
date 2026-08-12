@@ -678,10 +678,52 @@ fn extract_dg15_pk_hash<
     let mut dg15_pk_hash: Field = 0;
 
     if (AA_SIG_TYPE != 0){
-        if (AA_SIG_TYPE < 20) { // rsa keys stored
+        // RSA AA keys that are NOT 1024-bit.
+        //
+        // The block below hardcodes a 128-byte read (4 chunks of 25 plus one of 28), i.e. it assumes
+        // every RSA Active Authentication key is 1024-bit. `14_256_1_4_1752_576_1_1496_3_512` has a
+        // 768-bit one: AA_SHIFT(64) + modulus(96) + exponent(5) = 165 = DG15_LEN exactly, so the
+        // 128-byte read runs 27 bytes past the end of dg15 and the profile could not be built at all.
+        //
+        // The selector is the EXACT structural question - does a 1024-bit key physically fit - not a
+        // tuned threshold: if AA_SHIFT + 128 exceeds DG15_LEN then a 1024-bit key cannot be what is
+        // stored there. No new generic is needed, and every existing profile keeps its previous
+        // chunking and therefore its previous hash (all 40 have AA_SHIFT=32 with DG15_LEN >= 163, so
+        // 32 + 128 = 160 fits and they take the 1024-bit path unchanged).
+        //
+        // ⚠️ Relies on Noir folding these comptime branches, which is not an assumption: the
+        // SIG_TYPE 2 branch in verify_signature indexes pk[34], and SIG_TYPE 1 profiles with N=18
+        // compile anyway - impossible unless the dead branch is eliminated before bounds checking.
+        if ((AA_SIG_TYPE < 20) & (AA_SHIFT + 128 > DG15_LEN)) {
+            // 768-bit: 3 chunks of 25 bytes plus one of 21 = 96.
+            let mut dg15_chunks: [Field; 4] = [0; 4];
+            let mut poseidon_hasher: PoseidonHasher = PoseidonHasher::default();
+
+            for i in 0..4{
+                if (i != 3){
+                    let mut current = 1;
+                    for j in 0..25{
+                        dg15_chunks[i] += (dg15[AA_SHIFT + (24 - j) + i * 25]) as Field * current;
+                        current *= 256;
+                    }
+                    poseidon_hasher.write(dg15_chunks[i]);
+                } else {
+                    let mut current = 1;
+                    for j in 0..21{
+                        dg15_chunks[i] += (dg15[AA_SHIFT + (20 - j) + i * 25]) as Field * current;
+                        current *= 256;
+                    }
+                    poseidon_hasher.write(dg15_chunks[i]);
+                }
+
+                dg15_pk_hash = poseidon_hasher.finish();
+            }
+        }
+
+        if ((AA_SIG_TYPE < 20) & (AA_SHIFT + 128 <= DG15_LEN)) { // rsa keys stored, 1024-bit
             let mut dg15_chunks: [Field; 5] = [0; 5];
             let mut poseidon_hasher: PoseidonHasher = PoseidonHasher::default();
-            
+
             for i in 0..5{
                 if (i !=4){
                     let mut current = 1;
@@ -705,7 +747,12 @@ fn extract_dg15_pk_hash<
                 
             }
 
-        } else { // ecdsa key stored
+        }
+
+        // ⚠️ MUST be an explicit test, not the `else` of the RSA branch. The RSA case is now split in
+        // two (1024-bit and 768-bit), so an `else` would send every non-1024-bit RSA key into the
+        // ECDSA reader instead of its own branch.
+        if (AA_SIG_TYPE >= 20) { // ecdsa key stored
             let mut HASH_SIZE = 31;
             let mut EC_FIELD_SIZE = 32;
             if (AA_SIG_TYPE == 22){
@@ -728,6 +775,12 @@ fn extract_dg15_pk_hash<
             if (AA_SIG_TYPE == 24){
                 EC_FIELD_SIZE = 28;
                 HASH_SIZE = 28;
+            }
+            // AA_SIG_TYPE 25 is brainpoolP384r1: 48-byte coordinates, not the 32 default. HASH_SIZE
+            // stays 31 because it is a cap (31 < 48), so X_Y_SHIFT becomes 17 and the low 31 bytes of
+            // each coordinate are folded in, exactly as for the other wide curves.
+            if (AA_SIG_TYPE == 25){
+                EC_FIELD_SIZE = 48;
             }
             if (AA_SIG_TYPE == 23){
                 EC_FIELD_SIZE = 24;

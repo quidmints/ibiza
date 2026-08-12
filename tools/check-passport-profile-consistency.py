@@ -33,9 +33,6 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "backend/circuits/passport-profiles.json"
 
-# `extract_dg15_pk_hash` uses a LOCAL byte count, not the EC_FIELD_SIZE generic (which is in bits and
-# is 0 for RSA). Mirrors the branches in noir_dl_lib/src/not_passports_zk_circuits.nr.
-AA_ECDSA_BYTES = {22: 40, 23: 24, 24: 28}
 AA_ECDSA_DEFAULT = 32
 
 # GROUND TRUTH: the coordinate width each curve actually has. This is the table the code is checked
@@ -43,6 +40,25 @@ AA_ECDSA_DEFAULT = 32
 # default for a curve that is not 32 bytes. AA_SIG_TYPE 24 (secp224r1) did exactly that, and the one
 # profile using it had already been built and marked live before this check existed.
 AA_CURVE_BYTES = {20: 32, 21: 32, 22: 40, 23: 24, 24: 28, 25: 48, 26: 64, 27: 66}
+
+
+def aa_ecdsa_bytes() -> dict[int, int]:
+    """Coordinate width `extract_dg15_pk_hash` ACTUALLY uses per AA_SIG_TYPE, parsed from the circuit.
+
+    ⚠️ PARSED, NOT MIRRORED, and that is the point. This was a hand-written dict and it drifted the
+    moment a branch was added to the circuit - the checker went on reporting a curve as wrong after it
+    had been fixed. A copy of the code is a comment about the code, and goes stale the same way.
+    """
+    import re
+
+    src = CIRCUIT.read_text()
+    body = src[src.index("fn extract_dg15_pk_hash<"):]
+    return {
+        int(m.group(1)): int(m.group(2))
+        for m in re.finditer(
+            r"if \(AA_SIG_TYPE == (\d+)\)\s*\{[^}]*?EC_FIELD_SIZE = (\d+)", body, re.S
+        )
+    }
 
 
 def aa_key_bytes(aa_sig_type: int) -> int:
@@ -78,6 +94,7 @@ def implemented_sig_types() -> set[int]:
 
 
 IMPLEMENTED = implemented_sig_types()
+AA_ECDSA_BYTES = aa_ecdsa_bytes()
 
 RSA = ROOT / "backend/circuits/noir_dl_lib/src/rsa.nr"
 
@@ -151,8 +168,14 @@ def hash_block(dg_hash_type: int) -> tuple[int, int]:
     return (64, 9) if dg_hash_type in (160, 224, 256) else (128, 17)
 
 
-def check(name: str, g: dict) -> tuple[list[str], list[str]]:
-    """Returns (errors, warnings). Errors mean the circuit is unsatisfiable OR unsound."""
+def check(name: str, g: dict, dg15_blocks: int | None = None) -> tuple[list[str], list[str]]:
+    """Returns (errors, warnings). Errors mean the circuit is unsatisfiable OR unsound.
+
+    `dg15_blocks` overrides the block count parsed from the name. Exactly one profile needs it, and
+    the override is recorded in the manifest with its evidence rather than assumed here: a name field
+    can be wrong, and DG15_BLOCK_NUMBER is the one field the Noir circuit never consumes - the
+    generics carry DG15_LEN in bytes - so a wrong value there blocks nothing but this check.
+    """
     errors, warnings = [], []
 
     # BLOCK BOUNDS. circom sizes `ec` and `dg15` as BLOCK_NUMBER * block, and the digest's own padding
@@ -168,10 +191,11 @@ def check(name: str, g: dict) -> tuple[list[str], list[str]]:
                 f" = {f[3] * block - pad}"
             )
         if len(f) == 10 and g["DG15_LEN"] > 0:
-            if g["DG15_LEN"] > f[8] * block - pad:
+            blocks = dg15_blocks if dg15_blocks is not None else f[8]
+            if g["DG15_LEN"] > blocks * block - pad:
                 errors.append(
-                    f"DG15_LEN({g['DG15_LEN']}) exceeds DG15_BLOCK_NUMBER({f[8]}) * {block}"
-                    f" - {pad} padding = {f[8] * block - pad}"
+                    f"DG15_LEN({g['DG15_LEN']}) exceeds DG15_BLOCK_NUMBER({blocks}) * {block}"
+                    f" - {pad} padding = {blocks * block - pad}"
                 )
 
     if g["SIG_TYPE"] not in IMPLEMENTED:
@@ -235,11 +259,15 @@ def check(name: str, g: dict) -> tuple[list[str], list[str]]:
     # disagreement with the corpus was with the thing that was actually wrong.
     aa = g["AA_SIG_TYPE"]
     if 0 < aa < 20:
-        end = g["AA_SHIFT"] + 27 + 4 * 25
+        # Mirrors the selector in extract_dg15_pk_hash: a 1024-bit key if one physically fits at
+        # AA_SHIFT, otherwise the 768-bit reader. Only 14_256_1_4... takes the second path.
+        key_bytes = 128 if g["AA_SHIFT"] + 128 <= g["DG15_LEN"] else 96
+        end = g["AA_SHIFT"] + key_bytes - 1
         if end > g["DG15_LEN"] - 1:
             errors.append(
                 f"RSA AA key runs past dg15: max index {end} > DG15_LEN-1 ({g['DG15_LEN'] - 1});"
-                f" AA_SHIFT({g['AA_SHIFT']}) needs DG15_LEN >= {g['AA_SHIFT'] + 128}"
+                f" AA_SHIFT({g['AA_SHIFT']}) with a {key_bytes}-byte modulus needs DG15_LEN >="
+                f" {g['AA_SHIFT'] + key_bytes}"
             )
 
     # Active Authentication: an ECDSA public key is two coordinates read out of dg15.
@@ -293,7 +321,7 @@ def main() -> int:
 
     bad_live, warned = 0, 0
     for name, entry in sorted(live.items()):
-        errors, warnings = check(name, entry["generics"])
+        errors, warnings = check(name, entry["generics"], entry.get("dg15_block_number_corrected"))
         if errors:
             bad_live += 1
             print(f"ERROR {name}")

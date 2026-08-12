@@ -15488,3 +15488,60 @@ calibrating against a `SIG_TYPE 1` no-AA profile present in both sets before tru
 **IF IT HOLDS, IT CHANGES THE COVERAGE ANSWER ENTIRELY:** the six orphans would need no passports at
 all, only ~6 calibration downloads and a rebuild - and full ICAO-chain coverage stops depending on
 procurement.
+
+### 2.18gv ALL SIX CIRCOM ORPHANS RECOVERED WITHOUT A PASSPORT — derived from published artifacts (2026-08-10)
+
+**§2.18gs said these needed "one physical passport of each configuration". They did not.** The method
+that cracked SIG_TYPE 28 - read what upstream SHIPS - recovers every missing generic.
+
+**THE METHOD.** rarimo's CIRCOM repo publishes all six (30 releases, 38 profiles), and its ~2.8 MB
+`-mobile.zip` carries circom's generated C++, which declares
+
+    uint get_main_input_signal_no() {return N;}
+
+That is an equation in the generics, since the main inputs are the byte arrays:
+
+    signals = 8 x (DG1_LEN + DG15_LEN + EC_LEN + SA_LEN) + C
+
+**C IS PER INPUT-SHAPE CLASS, and was CALIBRATED, not assumed** - from profiles present in BOTH repos:
+
+| class | calibration profile | C |
+|---|---|---|
+| N=18, no AA | `11_256_3_2_336_216_NA` | **1098** |
+| N=18, AA | `11_256_3_3_576_240_1_864_5_264` | **1498** |
+| N=6, no AA | `20_256_3_3_336_224_NA` | **2122** |
+| N=35, AA | `2_256_3_6_336_264_1_2448_3_256` | **1506** |
+| N=26, AA | *(interpolated)* | 1502 |
+
+**THREE NAME-FIELD IDENTITIES, each verified against the whole corpus** rather than assumed:
+  - field5/8 = `EC_SHIFT`, field6/8 = `DG1_SHIFT` - **78/78**
+  - field8/8 = `DG15_SHIFT`, field10/8 = `AA_SHIFT` - **41/41** on AA profiles
+  - `EC_SHIFT + HASH_ALGO == SA_LEN` - **76/78**
+  - `DG15_SHIFT + DG_HASH_ALGO == EC_LEN` - **38/41** (used only for AA profiles, then cross-checked)
+
+**RESULT - all six added, manifest now 83 live / 6 quarantined, checker green:**
+
+| profile | EC_LEN | DG15_LEN | SA_LEN | confidence |
+|---|---|---|---|---|
+| `1_160_3_4_576_200_NA` | 208 | 0 | 92 | highest - directly calibrated class |
+| `20_160_3_3_736_200_NA` | 116 | 0 | 112 | directly calibrated |
+| `4_160_3_3_336_216_1_1296_3_256` | 182 | 138 | 62 | directly calibrated |
+| `1_256_3_6_336_560_1_2744_4_256` | 375 | 185 | 74 | ⚠️ DG1_SHIFT=70, outside the 23..33 band |
+| `20_256_3_5_336_72_NA` | 282 | 0 | 74 | ⚠️ DG1_SHIFT=9, outside the band |
+| `14_256_3_4_336_64_1_1480_5_296` | 217 | 282 | 74 | ⚠️⚠️ weakest: C interpolated AND DG1_SHIFT=8 |
+
+**⚠️ WHAT THIS IS NOT: SEMANTICALLY VALIDATED.** Every value passes the bounds checks, and those are
+independent of how it was derived - but **a wrong offset compiles cleanly and verifies the wrong
+bytes**, which is precisely the failure §2.18gd and §2.18gi were about. Compiling proves arithmetic
+consistency, nothing more. Real validation needs one genuine proof per profile, which still wants a
+document - but the DOCUMENT IS NO LONGER NEEDED TO BUILD, only to confirm.
+
+**Three of the six carry a `DG1_SHIFT` outside the band every known profile occupies.** That is the
+signal to watch: either those layouts are genuinely unusual, or the name convention differs for them
+and the derivation inherits the error.
+
+**STATUS AGAINST "close all 13":** 1 recovered by `BB_MSM_LEGACY`, 1 correctly removed as unsound
+(SIG_TYPE 28 - it should NEVER be closed by making it build), 6 derived here and pending a build.
+Remaining: the second bb-stranded profile, `ID_Card_I`, and the three TD1 profiles whose `DG1_SHIFT`
+is corrupted upstream - and the SAME METHOD MAY REACH THOSE THREE, since they are TD1 and the
+signal-count equation does not care about document type.

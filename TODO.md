@@ -15254,3 +15254,45 @@ inconvenient on the current toolchain.
 
 **79 files, 76 of them live.** That is the real number, and the three that are not live are blocked by
 things outside this repo - not by a decision we should be making by deleting files.
+
+### 2.18gq Groth16 removed — and the honest accounting of who loses ICAO-chain verification (user, 2026-08-10)
+
+*"we are only shipping 6.0 in the app so you cant leave these 17 groth references"* - done, and
+`da41a58` removes all of it: 17 verifier contracts (6 per-passport, 6 universal rsa/pss, 4 geo/mne,
+`TD3QueryProofVerifier`), `Registration2.register`/`.reissueIdentity`/`_verifyCircomZKProof`,
+`RegistrationSimple.registerSimple`/`_verifyZKProof`, `AQueryProofExecutor.execute`/`.executeTD1`/
+`_verifyCircomProof`, the `ProofPoints` struct and the `Strings` import. 489 tests pass; ABI check
+green. **Zero Groth16 verifier contracts remain**; the surviving mentions are prose.
+
+**COVERAGE WAS PROVED BEFORE DELETING, at the user's insistence and correctly so** - I had asserted it
+from `register_identity_light`'s generics without checking:
+  - it is declared `register_identity_light<DG1_LEN, DG_HASH_ALGO>(dg1, sk_identity)` and receives no
+    `ec`, `sa`, `pk`, `sig`, `icao_root` or `dg15`, so it **structurally cannot read** `SIG_TYPE`,
+    `EC_LEN`, `SA_LEN` or `AA_SIG_TYPE` - the only respects in which the six orphans differ;
+  - all six are TD3 with SHA-1 or SHA-256, and `RegisterIdentityLight160`/`256` both exist (all ten
+    light verifiers do). **Every one maps to a verifier that is present.**
+
+**⚠ BUT A CORRECTION I OWE: "they lose nothing" WAS TOO STRONG.** The deleted Circom `register`
+DID verify the ICAO chain - it consumed `certificatesRoot_` and a full passport proof. So those six
+configurations **did** have chain verification, in principle, and no longer do. What makes the
+deletion right is narrower and should be stated that way: **a 6.0-only app cannot exercise a Groth16
+verifier at all**, so the capability was unreachable in practice before it was unreachable in source.
+
+**WHY NONE OF THE 13 GETS CHAIN VERIFICATION, by group - the causes are different and only one is
+ours:**
+
+| group | n | why no chain verification | recoverable by |
+|---|---|---|---|
+| former Circom orphans | 6 | **no 14-generic tuple exists.** Tested: the name encodes `HASH_ALGO` (74/78) but NOT `N` (3/78) and NOT `EC_LEN` (0/78). Neither rarimo repo carries per-profile instantiations - the Noir repo publishes no artifact for them, and the Circom repo generates mains at build time. | **one physical document of each type** - `EC_LEN` is a DER length |
+| bb-stranded | 2 | verifiers EXIST and verify the chain, but sit on the 5.1.0 template and so reject 6.0 proofs | **an Aztec fix** (or a pin change) - §2.18go |
+| `ID_Card_I` | 1 | same, plus no upstream artifact to rebuild from | nothing currently known |
+| quarantined | 4 | parameters corrupted upstream: 3 with `DG1_SHIFT == EC_LEN` (true value unrecoverable), 1 with the `AA_SIG_TYPE 25` library bug | **an upstream re-release** - §2.18gj/§2.18gi |
+
+**So chain verification is blocked on a physical document (6), an Aztec regression (2), and rarimo's
+generator (4+1) - not on the Groth16 deletion.** Removing Circom did not create any of these; it made
+one of them visible by removing the path that had been papering over it while being unusable anyway.
+
+⚠️ **The user's ask - "quarantined ones must be proved verified, all former circom need to be
+regen'd" - is NOT satisfied and cannot be from inside this repo.** Three of the four blockers are
+other people's artifacts. The one lever we hold is the bb pin, and using it means shipping mixed
+templates, which §2.18ge shows is the exact defect that started this. OPEN.

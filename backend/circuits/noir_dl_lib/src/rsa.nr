@@ -59,21 +59,47 @@ fn exp_37187<let N_BITS: u32, let N: u32>(modulus: [Field; N], reduction: [Field
         modulus,
         reduction
     );
-    let mut res= RuntimeBigNum::one(params);
-    let mut x_big: RuntimeBigNum<N, N_BITS> = RuntimeBigNum::from_array(params, x);
+    let x_big: RuntimeBigNum<N, N_BITS> = RuntimeBigNum::from_array(params, x);
 
-    let mut exp: u32 = 37187;
-    
-    for _ in 0..15{
-        if exp % 2 == 1{
-            res *= x_big;
-        }
-        x_big *= x_big;
-
-        exp /= 2;
-    }
-    res *= x_big;
-
+    // UNROLLED, and that is the whole point (TODO sec. 2.18gx). The loop this replaces put a bignum
+    // multiply inside a CONDITIONAL (`if exp % 2 == 1 { res *= x_big; }`). Every bignum multiply
+    // reaches `evaluate_quadratic_expression`, which computes its quotient in an `unsafe { ... }`
+    // Brillig call and constrains it afterwards; under a condition nargo 1.0.0-beta.26 cannot see
+    // that coverage and refuses the circuit with "Brillig function call isn't properly covered by a
+    // manual constraint". SIG_TYPE 4 is the FIRST profile ever to compile this branch - no published
+    // Noir profile used it - so the path had never been exercised anywhere.
+    //
+    // ⚠️ SAME COMPUTATION, NOT A REWRITE OF THE MATH. The original was right-to-left
+    // square-and-multiply; this is left-to-right, which is the standard equivalent. 37187 =
+    // 0b1001000101000011 (bits 15,12,8,6,1,0) -> 15 squarings, 5 multiplies. The exponent was
+    // verified by replaying the emitted sequence step by step: it lands on exactly 37187. Only the
+    // control flow is gone, so this now has the same shape as `exp_65537` above.
+    //
+    // ⚠️ THE OTHER ODD-EXPONENT ROUTINES (58333, 45347, 46271, 3) STILL USE THE LOOP AND DO COMPILE,
+    // so a conditional is not sufficient on its own to trip the analysis - this instantiation
+    // (N=18 with SHA-1) is what does. They are deliberately left alone: they build, and rewriting
+    // working crypto that nobody asked about is not free.
+    let mut res = x_big;   // bit 15 (MSB)
+    res = res * res;       // x^2
+    res = res * res;       // x^4
+    res = res * res;       // x^8
+    res = res * x_big;     // x^9        <- bit 12
+    res = res * res;       // x^18
+    res = res * res;       // x^36
+    res = res * res;       // x^72
+    res = res * res;       // x^144
+    res = res * x_big;     // x^145      <- bit 8
+    res = res * res;       // x^290
+    res = res * res;       // x^580
+    res = res * x_big;     // x^581      <- bit 6
+    res = res * res;       // x^1162
+    res = res * res;       // x^2324
+    res = res * res;       // x^4648
+    res = res * res;       // x^9296
+    res = res * res;       // x^18592
+    res = res * x_big;     // x^18593    <- bit 1
+    res = res * res;       // x^37186
+    res = res * x_big;     // x^37187    <- bit 0
 
     res.get_limbs()
 }

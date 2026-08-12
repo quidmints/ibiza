@@ -15296,3 +15296,44 @@ one of them visible by removing the path that had been papering over it while be
 regen'd" - is NOT satisfied and cannot be from inside this repo.** Three of the four blockers are
 other people's artifacts. The one lever we hold is the bb pin, and using it means shipping mixed
 templates, which §2.18ge shows is the exact defect that started this. OPEN.
+
+### 2.18gr What the Groth16 deletion left behind, and what the missing profiles actually cost (user, 2026-08-10)
+
+*"did you make sure you cant leave these behind"* - **no, I had not checked, and two things turned up.**
+
+**1. STALE ABI JSON IN THE FRONTEND.** `frontend/identity-wallet/src/sdk/abis/IDCardVoting.json`
+declares `AQueryProofExecutor.ProofPoints` (3 sites) and `RegistrationSimple.json` declares
+`Groth16VerifierHelper.ProofPoints`. **`tools/check-client-abis.py` passed anyway** - it validates
+signatures DECLARED IN TYPESCRIPT against compiled contracts, and these JSON files are outside that
+scope. A second blind spot in the only client-side gate we have (cf. §E154-client-ghosts, where the
+same checker missed a DELETED function).
+
+⚠️ **DO NOT PRUNE THEM REFLEXIVELY.** `sdk/Rarime.ts:40,371` uses `registerSimpleContractAddress` -
+the frontend talks to an **upstream-DEPLOYED** `RegistrationSimple`, which still has the Groth16
+entrypoints. Our copy no longer does. The ABI may be correct FOR THAT CONTRACT and wrong only as a
+description of ours. Establish which before editing.
+
+**2. `IDCardVoting` IS A REAL `AQueryProofExecutor` CONSUMER, and §2.18fu said the only one was a test
+mock.** True of this repo - there is no `IDCardVoting.sol` here, only its ABI - but a deployed
+consumer exists somewhere. That does not invalidate the deletion (a deployed contract carries its own
+code), but it does invalidate the claim that nothing implements the executor.
+
+**3. NO SOURCE-LEVEL DANGLING REFERENCES.** Contracts, tests, CRE workflows and frontend TS are clean;
+frontend code calls `registerSimpleViaNoir`, never `registerSimple`. The 17 stale directories under
+`backend/contracts/out/` are untracked build output, cleared by `forge clean`.
+
+**WHICH DOCUMENT DO THE SIX NEED?** TD3 passports (`DG1_LEN` 93), `SIG_TYPE` 1/4/14/20, three SHA-1 and
+three SHA-256. The missing generic is `EC_LEN` - the DER byte length of the eContent - which only a
+real SOD reveals. **WHICH COUNTRY CANNOT BE ANSWERED FROM HERE**, and that is a property of the naming
+rather than a gap in the search: profiles are crypto configurations, not jurisdictions (§2.18gf).
+Mapping `SIG_TYPE` + hash to issuing states needs ICAO or issuer data this repo does not contain.
+
+**DOES NOT HAVING THEM PREVENT THE CAPABILITY? NO, and the reason is specific:** ICAO-chain
+verification exists ONLY on `Registration2.registerViaNoir`, **which is not the path this system
+runs**. `HolderRegistration` registers through `register_identity_light` plus a backend signer
+(§2.18gg), so today those six configurations lose nothing that is actually exercised.
+
+The cost is **prospective**: it lands only if we migrate to the full-chain path to remove the signer as
+the trust root for "this is a genuine passport" (§2.18fa) - and even then it caps that path's coverage
+at **76 of 89** configurations rather than blocking it. Worth deciding with that framing rather than as
+"six broken profiles".

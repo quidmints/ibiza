@@ -1586,9 +1586,9 @@
   },
   "quarantined": [
     {
-      "ID_Card_I": {
-        "reason": "no artifact published under this name in any release"
-      }
+      "name": "ID_Card_I",
+      "reason": "No artifact published under this name in any release, so its 14-tuple is unknown and no 6.0 circuit can be built. MEASURED 2026-08-12, and this supersedes the earlier reason: the .sol still in verifiers2/noir for it is a LEGACY ULTRAPLONK verifier (library UltraVerificationKey / abstract BaseUltraVerifier, Aztec 2022 header, zero NUMBER_OF_SUBRELATIONS) surviving from the original fork commit - it was never regenerated. It declares num_inputs = 5 against our 7 public signals. So it is not merely unbuilt: it is structurally incapable of verifying a bb 6.0 ZK-Honk proof.",
+      "verifier_on_disk": "backend/contracts/contracts/passport/verifiers2/noir/NoirRegisterIdentity_ID_Card_I.sol - DELIBERATELY LEFT IN PLACE. It was deleted once and restored on the owner's instruction (b8d1262: \"deleting it was the wrong response to being unbuildable\"), so it is not being removed again without a decision. The evidence has changed since that call - the objection then was that unbuildable is not a reason to delete, and the reason now is incompatibility that has been measured - but that is the owner's call to make, not one to take silently. It is the ONLY non-6.0 verifier left in the tree."
     },
     {
       "name": "21_160_1_2_560_576_NA",

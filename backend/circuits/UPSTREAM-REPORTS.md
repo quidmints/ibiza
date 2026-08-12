@@ -166,9 +166,19 @@ Note the proving key **succeeds**. The abort is in `write_vk` afterwards, and th
 | `--slow_low_memory` | **helps and is worth noting**: with it the proving key computes, where without it bb aborts *before* reaching that point. Does not clear this second bound. |
 | `--storage_budget` | **no effect at all.** `8g` and `512m` produce a **byte-identical** bound — `Left 124990672 / Right 124518529` both times. A 16× change moves it by zero. |
 
-That invariance is the useful signal: the bound does not appear to be the FileBackedMemory budget it
-looks like, and a 0.4% overshoot after a successful proving-key computation reads as arena **sizing**
-rather than a genuine capacity limit.
+That invariance is the useful signal: the bound is **not** the FileBackedMemory budget it looks like.
+
+### ⚠️ This is NOT the case fixed by #24249
+
+`fix(bb): size Pippenger MSM arena for the non-GLV mid-band` (#24249, merged 2026-06-24, commit
+`6deae818`) targets this exact assertion in `MsmArena::bump_alloc`. **That fix is already in our
+build** — it is an ancestor of `next`, `next` is this repository's default branch, and our pin is
+`6.0.0-nightly.20260804`, six weeks later. The assertion still fires.
+
+#24249 addressed the non-GLV mid-band, 8,192–131,072 points, "around ~28,696 points". **This circuit
+needs a 2^25 CRS**, far outside that band, and overshoots by 0.4% after the proving key has already
+been computed. So it appears to be a second, larger-scale instance of the same arena-sizing class,
+not a regression of the fix.
 
 ### Why it matters downstream
 

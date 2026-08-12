@@ -15212,3 +15212,45 @@ off, which is why "0 failures" across four batches is trustworthy rather than ho
 on numbers already in the manifest, findable in milliseconds - and both were found by a 32 GiB build
 failing hours later. `tools/check-passport-profile-consistency.py` now runs them in one command; it
 should gate the manifest, not follow it.
+
+### 2.18gp ⚠ RESTORED `ID_Card_I` — deleting it was wrong, and it made 79 read as 78 (user, 2026-08-10)
+
+*"we cant just exclude them. by the way there were 79 in the original rarime"* - correct on both.
+
+**THE COUNT, measured:**
+
+| | |
+|---|---|
+| verifiers the FORK imported (`0762975`) | **76**, `ID_Card_I` among them |
+| after recovering further published profiles | **79** |
+| after §2.18gh deleted `ID_Card_I` | 78 |
+| **now, restored** | **79** |
+
+**WHY THE DELETION WAS WRONG.** §2.18gh argued `ID_Card_I` is "provably non-functional": stale
+template, unrebuildable (quarantined, so codegen will not emit it), unrecoverable (its VK matches no
+published asset). Each of those is still true. **But none of them makes deletion the right response.**
+  - It came from rarimo's own repo and presumably verifies proofs from THEIR prover. It is a real
+    profile for a real document type, not junk.
+  - "Cannot be rebuilt on the bb we pin today" is a statement about OUR pin, not about the artifact -
+    exactly the error §2.18go had to walk back for the two 2^25 profiles, where bb 5.1.0 built what
+    6.0 refuses.
+  - Deleting destroys the artifact; **quarantining preserves it and loses nothing**, because nothing
+    wires it by symbol anyway.
+  - And it silently reduced document-type coverage by one while every count in this file kept
+    reporting success.
+
+**THE RULE THIS BREAKS.** Rule 1 ("no unreachable code") is about code that CANNOT be hit. This can be
+hit - by any consumer pinning a compatible bb. I applied a deletion rule to something that was merely
+inconvenient on the current toolchain.
+
+**STATE, stated honestly rather than as a score:**
+
+| | count | usable against the PINNED prover? |
+|---|---|---|
+| on the 6.0 template | **76** | yes |
+| on the 5.1.0 template, bb-regression-blocked | 2 | no - §2.18go, an Aztec bug with a clean before/after |
+| on the 5.1.0 template, unrebuildable | 1 (`ID_Card_I`) | no - no upstream artifact exists |
+| quarantined, no `.sol` at all | 4 | n/a - 3 with a corrupted `DG1_SHIFT`, 1 upstream AA defect |
+
+**79 files, 76 of them live.** That is the real number, and the three that are not live are blocked by
+things outside this repo - not by a decision we should be making by deleting files.

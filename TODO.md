@@ -15139,3 +15139,76 @@ two hours of a 16 GB laptop. The next cheap experiments, for whoever picks this 
 
 `build-passport-verifiers-docker.sh` now passes both variables through (`cb947a2`), opt-in, with the
 mechanism documented at the flag. **Still 76/78.** OPEN.
+
+### 2.18go 78 IS NOT REACHABLE ON THE PINNED bb — 76/78 is the ceiling, demonstrated (2026-08-10)
+
+**The storage budget does not govern the failing arena. Proven by running the same profile twice with
+a 16x difference in budget and getting a BYTE-IDENTICAL bound:**
+
+    BB_STORAGE_BUDGET=8g    -> Left 124990672 / Right 124518529
+    BB_STORAGE_BUDGET=512m  -> Left 124990672 / Right 124518529
+
+Same overflow, 472,143 bytes, **0.4%**, both times. A fixed internal bound, invariant under the only
+documented memory knob.
+
+**EVERY LEVER IS NOW EXHAUSTED, each ruled out by measurement rather than argument:**
+
+| lever | result |
+|---|---|
+| 32 GiB swapfile | no effect - a fixed bound is not exhaustible memory (bb sat at 12.4 GB, well under) |
+| `HARDWARE_CONCURRENCY` / cpuset | no effect - measured earlier; the peak is polynomials, not per-thread scratch |
+| `--slow_low_memory` | **real progress** - the proving key now COMPUTES (25 min at 8g, 36 min at 512m) where it previously threw before reaching it. Does not fix the second bound. |
+| `--storage_budget` | **no effect at all** - identical bound at 8g and 512m |
+
+**SO 78 CANNOT BE REACHED WITH `bb 6.0.0-nightly.20260804`.** `25_384_3_5_576_248_20_3768_3_2008` and
+`28_384_3_3_576_264_24_2024_4_2792` stay on the 5.1.0 template, and by `package.json`'s own
+measurement their verifiers reject proofs from the pinned prover - so both are unusable on the
+`Registration2` full-chain path. Neither holder is excluded: `register_lite` covers every
+configuration (§2.18gg).
+
+**THE UPSTREAM REPORT IS NOW MUCH SHARPER** than "large circuit fails", and should be added to
+`UPSTREAM-REPORT-aa-sig-type.md` or filed beside it: a **0.4% overflow of a bound that does not move
+with `--storage_budget`**, on a circuit that built under 5.1.0, after the proving key has already been
+computed successfully. That reads as arena SIZING, not capacity - and the invariance across a 16x
+budget change is the evidence that makes it actionable.
+
+---
+
+## FINAL LEARNINGS — what it actually took to move these 76 (user asked, 2026-08-10)
+
+**1. THE JOB WAS NOT THE JOB.** It was filed as a VK back-fill to schedule "when there is a free
+machine-hour". It was a **correctness fix**: all 79 verifiers were on the 5.1.0 template and rejected
+proofs from the pinned prover, and no VK check could have detected it (`package.json`: zero VK
+constants differ). Nobody would have found it by reading; it surfaced because a build was run.
+
+**2. EVERY BLOCKER I INHERITED WAS FALSE, AND EACH COST A RUN TO DISPROVE.**
+  - "container needs the right nargo" - false; the script accepts stock or patched, VKs byte-identical.
+  - "the verifiers were never rebuilt" - false; that was a WHY-THIS-EXISTS rationale, not current state.
+  - "bb 6.0 cannot build these circuits" (my own, §2.18gl) - false; it refuses by default and needs a flag.
+  - "the profile is buildable today" (§2.18gb) - false; it never built, in any commit, on any branch.
+
+**3. THE ERRORS THAT COST MOST WERE ARITHMETIC DONE ON THE WRONG VARIABLE.** §2.18gc computed an
+overrun of ~450 using the GENERIC `EC_FIELD_SIZE=256` where the code shadows it with a LOCAL of 32
+bytes. Real overrun: 8. That one wrong number produced a wrong diagnosis, a wrong manifest edit, and a
+wrong upstream story - all reversed only by reading the upstream source and finding it byte-identical
+to ours.
+
+**4. THE CONTROL RUN EARNED ITS KEEP THREE TIMES.** "All 17 Groth16 verifiers are unreferenced" looked
+conclusive until the Noir verifiers scored zero too (wired by address). "DG1_SHIFT == EC_LEN is a
+corruption" only became a finding when 0 of 78 working profiles shared it. "27.5% passport coverage"
+replaced a 23.3% that had no source. **Every number that survived this session came with a control;
+every one that did not, failed.**
+
+**5. BATCHING WAS THE DIFFERENCE BETWEEN 76 AND 0.** One 78-profile run put a 16 GB host into swap
+death (28.3M pageouts) and wedged the Docker daemon past `docker kill` - recovery needed quitting
+Docker Desktop outright, and produced nothing. Batches of ~12 with a commit between produced 76,
+survived four interruptions and two killed wrappers, and never lost more than one batch.
+
+**6. RECOMPUTE THE WORK LIST FROM DISK, NEVER FROM MEMORY.** Each batch re-derived its input with
+`grep -L romLogupGamma`. A profile that silently failed stayed in the list instead of being crossed
+off, which is why "0 failures" across four batches is trustworthy rather than hopeful.
+
+**7. THE CHEAP CHECK ALWAYS EXISTED AND WAS ALWAYS SKIPPED.** Both parameter defects were arithmetic
+on numbers already in the manifest, findable in milliseconds - and both were found by a 32 GiB build
+failing hours later. `tools/check-passport-profile-consistency.py` now runs them in one command; it
+should gate the manifest, not follow it.

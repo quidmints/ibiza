@@ -15337,3 +15337,59 @@ The cost is **prospective**: it lands only if we migrate to the full-chain path 
 the trust root for "this is a genuine passport" (§2.18fa) - and even then it caps that path's coverage
 at **76 of 89** configurations rather than blocking it. Worth deciding with that framing rather than as
 "six broken profiles".
+
+### 2.18gs FULL COVERAGE + NO SIGNER — the two are separable, and 76/89 is available now (user, 2026-08-10)
+
+*"we need full coverage and to remove the signer as a trust root. as little trust roots as possible.
+we use this app to prove capability and to sign musig 2 for SPV."*
+
+**FIRST, THE SEARCH IS NOW EXHAUSTIVE** (it was not when §2.18gr claimed it). rarimo derives profile
+generics FROM A REAL PASSPORT - `helpers/generateRegisterIdentityTest.js` shells out to
+`process_passport.py ./test/passports/<file>` - and publishes no passports:
+`test/inputs/passport` contains **only a Readme**, and `test/passports/` does not exist. Checked:
+`circuits/`, `circuits/scripts/`, `helpers/`, `package.json` scripts, `test/`, `test/inputs/`, and all
+82 release artifacts of the Noir repo. **`EC_LEN` for the six orphans requires a physical document.
+That is now established rather than assumed.**
+
+**⚠ THE KEY STRUCTURAL POINT: REMOVING THE SIGNER DOES NOT REQUIRE FULL COVERAGE.** They are separate
+changes and the first is available immediately.
+
+  - The signer exists ONLY because `HolderRegistration` registers through `register_identity_light`,
+    which consumes no `ec`/`sa`/`pk`/`sig`/`icao_root` and therefore proves nothing about the issuing
+    state's signature. Something must vouch for the document, and today that is our key.
+  - `Registration2.registerViaNoir` DOES verify the ICAO chain, and has working verifiers for **76 of
+    89** configurations right now.
+  - So: **migrate the 76 to the full-chain path and the signer stops being a trust root for them.**
+    No upstream dependency, no document, no bb fix. That is the single highest-value change available.
+
+**AND IT MOVES THE ROOT TO THE RIGHT PLACE.** Today the answer to "is this a genuine passport?" is
+*our signer key* (`IdentityRegistry.sol:55`). After the migration it is *the issuing state's CSCA*,
+verified on-chain against the ICAO master root. That is not one fewer trust root - it is a strictly
+better one, held by the party that actually issues the document.
+
+**REMAINING TRUST ROOTS AFTER THAT MIGRATION**, so the "as few as possible" goal has a target list:
+  1. **ICAO master root** - owner-set (`icaoMasterTreeMerkleRoot`). The CRE workflow verifies ICAO's
+     own CMS signature but has NO on-chain write path (§2.18ev), so this is typed in by hand. **This
+     becomes the most important remaining root and should be the next one attacked.**
+  2. **`CONTROLLER`** - immutable, sole revoker, and holds the Baby Jubjub key that decrypts every
+     registrant's MRZ (§2.18fs). Splittable and threshold-able at deploy with no code change.
+  3. **`OWNER_ROLE` on `RegistrySourceAnchor`** - pin, forwarder and upgrade in one role (§2.18fm).
+  4. **the backend signer** - eliminated for the 76, still required for the other 13.
+
+**THE 13, AND WHAT EACH ACTUALLY NEEDS - four different external dependencies:**
+
+| group | n | needs | tractable? |
+|---|---|---|---|
+| bb-stranded | 2 | an Aztec fix, or a pin change | report filed-ready (`UPSTREAM-REPORTS.md` item 4) |
+| quarantined | 4 | a rarimo re-release | items 1-3 of the same report |
+| former Circom orphans | 6 | **one physical passport of each configuration** | procurement, not research - and BOUNDED at six |
+| `ID_Card_I` | 1 | an upstream artifact that has never existed | unknown |
+
+**So full coverage is 4 dependencies, of which one is ours to solve by acquiring six documents.** The
+decision that cannot be deferred: **for those 13, either keep the signer as a fallback - which
+reintroduces the trust root the whole exercise removes, for 15% of configurations - or do not support
+them on the chain path.** Given the app signs MuSig2 for SPV, a second trust root covering 15% of
+registrations is the thing to weigh, not the profile count.
+
+**NOT STARTED.** The migration is a money-adjacent identity change and wants its own run with a stated
+prediction (rule 10).

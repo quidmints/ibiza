@@ -1650,11 +1650,6 @@
   },
   "quarantined": [
     {
-      "name": "ID_Card_I",
-      "reason": "No artifact published under this name in any release, so its 14-tuple is unknown and no 6.0 circuit can be built. MEASURED 2026-08-12, and this supersedes the earlier reason: the .sol still in verifiers2/noir for it is a LEGACY ULTRAPLONK verifier (library UltraVerificationKey / abstract BaseUltraVerifier, Aztec 2022 header, zero NUMBER_OF_SUBRELATIONS) surviving from the original fork commit - it was never regenerated. It declares num_inputs = 5 against our 7 public signals. So it is not merely unbuilt: it is structurally incapable of verifying a bb 6.0 ZK-Honk proof.",
-      "verifier_on_disk": "backend/contracts/contracts/passport/verifiers2/noir/NoirRegisterIdentity_ID_Card_I.sol - DELIBERATELY LEFT IN PLACE. It was deleted once and restored on the owner's instruction (b8d1262: \"deleting it was the wrong response to being unbuildable\"), so it is not being removed again without a decision. The evidence has changed since that call - the objection then was that unbuildable is not a reason to delete, and the reason now is incompatibility that has been measured - but that is the owner's call to make, not one to take silently. It is the ONLY non-6.0 verifier left in the tree."
-    },
-    {
       "name": "14_256_1_4_1752_576_1_1496_3_512",
       "generics": {
         "DG1_LEN": 95,
@@ -1717,5 +1712,15 @@
       "contrast": "verify_rsa_pss does NOT have this defect and is the reason the bug is easy to miss: it covers HASH_SIZE 32/48/64 and ends with an UNCONDITIONAL assert(hash[i] == hash_result[i]), so an unhandled size leaves hash_result zeroed and fails CLOSED. PKCS#1 v1.5 nests all of its assertions inside the size blocks and therefore fails OPEN. Structure, not coverage, is what differs.",
       "to_reopen": "Implement a HASH_SIZE==64 block in verify_rsa: PKCS#1 v1.5 EM = 0x00 01 FF..FF 00 || DigestInfo || H, with the SHA-512 DigestInfo 3051300d060960864801650304020305000440 (19 bytes) and a 64-byte hash, expressed against 120-bit limbs the way the existing SHA-256 and SHA-1 blocks are. NOT written here deliberately: it is new padding-verification code on a proof path with no test vector available in this tree, and a subtly wrong constant would fail open exactly like the hole it replaces."
     }
-  ]
+  ],
+  "standalone_circuits": {
+    "ID_Card_I": {
+      "circuit": "backend/circuits/register_identity_light_td1",
+      "verifier": "backend/contracts/contracts/passport/verifiers2/noir/NoirRegisterIdentity_ID_Card_I.sol",
+      "status": "BUILT under bb 6.0 (NUMBER_OF_SUBRELATIONS=31). Replaces the legacy UltraPlonk file that had survived from the original fork.",
+      "why_it_has_no_generics": "It is NOT a 14-generic registerIdentity profile and never was - that is why no artifact was ever published under this name and why its VK matched no profile. register_identity_light takes only dg1 (95 bytes, TD1 = ID card) and sk_identity, so it has no signature type, no hash sizes and no AA parameters to record. It was quarantined as unrecoverable on the assumption it was a profile with a lost tuple; it is a different circuit.",
+      "immune_to_signature_changes": "register_identity_light calls only extract_dg1_commitment, extract_pk_identity_hash and passport_hash. It never reaches verify_signature or extract_dg15_pk_hash, so nothing in the RSA/ECDSA/AA work changes its VK and it does not need rebuilding with the profiles.",
+      "caveat": "This is the path that proves NOTHING about the issuing state and relies on the backend signer. It is what HolderRegistration runs today, so the verifier is needed now; it is also the path to retire once icaoRegistrationVerifier points at a full TD1 profile."
+    }
+  }
 }

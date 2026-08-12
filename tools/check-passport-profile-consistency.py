@@ -69,9 +69,55 @@ def implemented_sig_types() -> set[int]:
 IMPLEMENTED = implemented_sig_types()
 
 
+def name_fields(name: str) -> list[int] | None:
+    """The profile name IS rarimo circom `RegisterIdentityBuilder`'s parameter list, in order:
+
+        SIGNATURE_TYPE, DG_HASH_TYPE, DOCUMENT_TYPE, EC_BLOCK_NUMBER, EC_SHIFT,
+        DG1_SHIFT, AA_SIGNATURE_ALGO, DG15_SHIFT, DG15_BLOCK_NUMBER, AA_SHIFT
+
+    with a 7-field form ending in `NA` for profiles without Active Authentication, and every shift in
+    BITS. Established from the upstream template signature, then VALIDATED before being relied on:
+    8 of 9 positional identities hold 44/44 on the ten-field profiles, and 8 of 8 hold 38/38 on the
+    NA form. Three profiles that had been written off as corrupt were only ever mis-decoded.
+    """
+    parts = name.split("_")
+    if len(parts) == 7 and parts[6] == "NA":
+        parts = parts[:6]
+    elif len(parts) != 10:
+        return None
+    try:
+        return [int(x) for x in parts]
+    except ValueError:
+        return None
+
+
+def hash_block(dg_hash_type: int) -> tuple[int, int]:
+    """(block bytes, padding bytes) for the digest a profile's block counts are expressed in."""
+    return (64, 9) if dg_hash_type in (160, 224, 256) else (128, 17)
+
+
 def check(name: str, g: dict) -> tuple[list[str], list[str]]:
     """Returns (errors, warnings). Errors mean the circuit is unsatisfiable OR unsound."""
     errors, warnings = [], []
+
+    # BLOCK BOUNDS. circom sizes `ec` and `dg15` as BLOCK_NUMBER * block, and the digest's own padding
+    # (0x80 plus the 8- or 16-byte length) has to fit in that same span - so the usable data is
+    # BLOCK_NUMBER*block - pad, not BLOCK_NUMBER*block. Both hold 45/45 across the corpus.
+    # This is the cheap version of a 30-minute build failing at VK generation.
+    f = name_fields(name)
+    if f:
+        block, pad = hash_block(f[1])
+        if g["EC_LEN"] > f[3] * block - pad:
+            errors.append(
+                f"EC_LEN({g['EC_LEN']}) exceeds EC_BLOCK_NUMBER({f[3]}) * {block} - {pad} padding"
+                f" = {f[3] * block - pad}"
+            )
+        if len(f) == 10 and g["DG15_LEN"] > 0:
+            if g["DG15_LEN"] > f[8] * block - pad:
+                errors.append(
+                    f"DG15_LEN({g['DG15_LEN']}) exceeds DG15_BLOCK_NUMBER({f[8]}) * {block}"
+                    f" - {pad} padding = {f[8] * block - pad}"
+                )
 
     if g["SIG_TYPE"] not in IMPLEMENTED:
         errors.append(

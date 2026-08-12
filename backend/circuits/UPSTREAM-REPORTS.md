@@ -188,3 +188,34 @@ detects it). Consumers therefore cannot regenerate these two verifiers to match 
 cannot keep using the 5.1.0 ones either. The profiles become unusable rather than merely stale.
 
 Happy to supply the exact circuit, generics tuple, and container recipe on request.
+
+---
+
+## rarimo/passport-zk-circuits — profile `14_256_1_4_1752_576_1_1496_3_512` cannot be satisfied by any input
+
+**Severity:** the profile is unbuildable as published; no `DG15_LEN` exists that satisfies it.
+
+Decoding the name against `RegisterIdentityBuilder`'s parameter list gives
+`AA_SHIFT = 512 bits = 64 bytes` and `DG15_BLOCK_NUMBER = 3`, with `DG_HASH_TYPE = 256`.
+
+Two requirements collide:
+
+* The Active Authentication reader takes a **fixed 128 bytes** from `AA_SHIFT` (five chunks: four of
+  25 bytes and a last of 28), so the top index touched is `AA_SHIFT + 127 = 191`, forcing
+  `DG15_LEN >= 192`.
+* `dg15` spans `DG15_BLOCK_NUMBER * 64 = 192` bytes, and SHA-256 padding needs 9 of them
+  (`0x80` plus the 8-byte length), so `DG15_LEN <= 183`.
+
+`192 > 183`, so the constraint system is unsatisfiable for every input — not merely for the documents
+we have. More plainly: **no 1024-bit RSA AA key can start at byte 64 and still fit in three blocks.**
+Either `DG15_BLOCK_NUMBER` should be 4, or `AA_SHIFT` should be 256 bits like every other RSA-AA
+profile in the set (all 38 of the ones that work use `AA_SHIFT = 32` bytes).
+
+Both bounds were validated against the corpus before being used to make this claim: the padding cap
+holds 45/45 and the block cap 44/44 across every profile that does build. The identity
+`DG15_LEN >= AA_SHIFT + 128` holds for 37 of 38 RSA-AA profiles, the sole exception being a tuple we
+had derived ourselves and have since corrected.
+
+Two sibling TD1 profiles are affected by the same family of issue but are *not* impossible — they are
+merely under-determined from published material (`21_160_1_2_560_576_NA` needs `EC_LEN`,
+which is a per-document DER length fitting no formula across all 83 profiles we build).

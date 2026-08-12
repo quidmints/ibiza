@@ -443,6 +443,26 @@
       },
       "derived": "DERIVED 2026-08-10, NOT read from a Noir artifact - rarimo publishes none for this profile. Method in TODO sec. 2.18gv: rarimo's CIRCOM release ships a ~2.8 MB -mobile.zip containing circom's generated C++, which declares get_main_input_signal_no(). That is an equation, signals = 8*(DG1_LEN + DG15_LEN + EC_LEN + SA_LEN) + C, with C calibrated per input-shape class from profiles present in BOTH repos. Here signals=4242 and C(N=18,no-AA)=1098 from 11_256_3_2_336_216_NA, giving EC_LEN=208. DG1_SHIFT and EC_SHIFT come from the name (fields 5 and 6 over 8, verified 78/78); SA_LEN from the EC_SHIFT + HASH_ALGO == SA_LEN identity (76/78). \u26a0\ufe0f UNVALIDATED SEMANTICALLY: it satisfies every bounds check, but a wrong offset compiles cleanly and would verify the wrong bytes."
     },
+    "1_256_1_5_2376_336_1_2120_4_512": {
+      "generics": {
+        "DG1_LEN": 95,
+        "DG15_LEN": 229,
+        "EC_LEN": 297,
+        "SA_LEN": 329,
+        "N": 18,
+        "EC_FIELD_SIZE": 0,
+        "DG_HASH_ALGO": 32,
+        "HASH_ALGO": 32,
+        "SIG_TYPE": 1,
+        "DG1_SHIFT": 42,
+        "DG15_SHIFT": 265,
+        "EC_SHIFT": 297,
+        "AA_SIG_TYPE": 1,
+        "AA_SHIFT": 64
+      },
+      "provenance": "TD1. RECOVERED from quarantine - it was never corrupt, it was mis-decoded. DG1_LEN had been 0 (TD1 is 95) and EC_LEN had been overwritten with a shift value, producing the bogus \"DG1_SHIFT == EC_LEN\" signature it was quarantined for. Re-derived via rarimo circom RegisterIdentityBuilder, whose 10 template parameters are the profile name in order; that decoding was validated first (NA form 8/8 at 38/38, 10-field form 8/9 at 44/44). EC_LEN=297 = DG15_SHIFT + DG_HASH_ALGO, the dg15-hash-last pattern holding 41/44, and inside the SHA-256 padding cap of 311. DG15_LEN=229 was already recorded and falls inside the [192,247] window forced by the AA read below and padding above.",
+      "caveat": "Compiling proves the tuple is SELF-CONSISTENT, not that it matches real documents of this class. DG15_LEN is the one field pinned only to a range [192,247] rather than derived; 229 is the recorded value and is used as-is. If proofs fail against a real TD1 of this class, DG15_LEN is the field to revisit first."
+    },
     "1_256_3_3_576_248_NA": {
       "generics": {
         "DG1_LEN": 93,
@@ -1615,63 +1635,44 @@
     {
       "name": "21_160_1_2_560_576_NA",
       "generics": {
-        "DG1_LEN": 0,
+        "DG1_LEN": 95,
         "DG15_LEN": 0,
         "EC_LEN": 70,
-        "SA_LEN": 92,
+        "SA_LEN": 90,
         "N": 6,
         "EC_FIELD_SIZE": 256,
         "DG_HASH_ALGO": 20,
         "HASH_ALGO": 20,
         "SIG_TYPE": 21,
-        "DG1_SHIFT": 70,
+        "DG1_SHIFT": 72,
         "DG15_SHIFT": 0,
-        "EC_SHIFT": 72,
+        "EC_SHIFT": 70,
         "AA_SIG_TYPE": 0,
         "AA_SHIFT": 0
       },
-      "reason": "TWO CORRUPTED FIELDS in rarimo's v0.1.0 artifact, both measured 2026-08-10. This is a fuller diagnosis than the earlier 'DEGENERATE ARTIFACT' note, and a repair was ATTEMPTED AND REVERTED. (1) DG1_LEN=0 - a circuit reading no MRZ. Its correct value IS derivable: 95, the TD1 value, since this is DOCUMENT_TYPE=1 and the one TD1 profile that builds (25_384_1_3_336_256_NA) declares 95 while all 77 TD3 profiles declare 93, matching ICAO geometry (TD1 3x30+5, TD3 2x44+5). Setting it to 95 DID clear the original 'Invalid type found in the entry point' error - and exposed (2). (2) DG1_SHIFT == EC_LEN EXACTLY (70 == 70), which is structurally impossible: `assert(dg1_hash[i] == ec[i + DG1_SHIFT])` then indexes ec[EC_LEN] out of bounds, and beta.26 reports 'Index out of bounds' at not_passports_zk_circuits.nr:118. CONTROL: 0 of the other 78 profiles have DG1_SHIFT == EC_LEN, and their DG1_SHIFT lies in 23..33 (9 distinct values). So the generator wrote EC_LEN into DG1_SHIFT. THE CORRECT DG1_SHIFT IS NOT DERIVABLE - it is one of ~9 plausible small offsets, and a wrong choice COMPILES CLEANLY while checking the DG1 hash at the wrong offset in eContent. That is a silent wrong-statement verifier, so it must not be guessed. Needs the true DER layout, i.e. a real document of this type, or an upstream re-release. See TODO sec. 2.18gj."
+      "reason": "TD1. Generics CORRECTED - the previous ones were mis-decoded, not corrupt upstream: DG1_LEN was 0 (TD1 is 95), and EC_LEN had been filled with a shift value, which is what produced the bogus \"DG1_SHIFT == EC_LEN\" signature this was originally quarantined for. Now blocked on ONE unknown: EC_LEN, the true DER length of the encapsulated content, which is per-document and has no rule (0/83 fit any formula). Bounded to [92,119] by the DG1 read below and the SHA-1 padding cap above. Recoverable from a published artifact or a real TD1 of this class; not from anything in-repo.",
+      "decoder": "Recovered via rarimo circom RegisterIdentityBuilder, whose 10 template parameters ARE the profile name in order. Validated first: the 7-field NA form passes 8/8 checks at 38/38 and the 10-field form 8/9 at 44/44."
     },
     {
       "name": "14_256_1_4_1752_576_1_1496_3_512",
       "generics": {
-        "DG1_LEN": 0,
+        "DG1_LEN": 95,
         "DG15_LEN": 165,
         "EC_LEN": 219,
-        "SA_LEN": 104,
+        "SA_LEN": 251,
         "N": 26,
         "EC_FIELD_SIZE": 0,
         "DG_HASH_ALGO": 32,
         "HASH_ALGO": 32,
         "SIG_TYPE": 14,
-        "DG1_SHIFT": 219,
+        "DG1_SHIFT": 72,
         "DG15_SHIFT": 187,
-        "EC_SHIFT": 72,
+        "EC_SHIFT": 219,
         "AA_SIG_TYPE": 1,
         "AA_SHIFT": 64
       },
-      "reason": "Same two corrupted fields as 21_160_1_2_560_576_NA: DG1_LEN=0 (correct value 95, verified), and DG1_SHIFT == EC_LEN exactly (219 == 219) against a 23..33 range across all 78 working profiles. Repair attempted 2026-08-10 and reverted - DG1_LEN=95 cleared the entry-point error and the build then failed at not_passports_zk_citcuits.nr:118 'Index out of bounds'. NOTE EC_FIELD_SIZE=0 is NOT a defect here: 54 working profiles carry it, including all 3 SIG_TYPE=14 and all 19 SIG_TYPE=1, because it is unused for RSA. See TODO sec. 2.18gj."
-    },
-    {
-      "name": "1_256_1_5_2376_336_1_2120_4_512",
-      "generics": {
-        "DG1_LEN": 0,
-        "DG15_LEN": 229,
-        "EC_LEN": 297,
-        "SA_LEN": 74,
-        "N": 18,
-        "EC_FIELD_SIZE": 0,
-        "DG_HASH_ALGO": 32,
-        "HASH_ALGO": 32,
-        "SIG_TYPE": 1,
-        "DG1_SHIFT": 297,
-        "DG15_SHIFT": 265,
-        "EC_SHIFT": 42,
-        "AA_SIG_TYPE": 1,
-        "AA_SHIFT": 64
-      },
-      "reason": "Same two corrupted fields as 21_160_1_2_560_576_NA: DG1_LEN=0 (correct value 95, verified), and DG1_SHIFT == EC_LEN exactly (297 == 297) against a 23..33 range across all 78 working profiles. Repair attempted 2026-08-10 and reverted. SUGGESTIVE BUT NOT SUFFICIENT: 20_256_3_5_336_248_25_2120_5_1816 shares this profile's EC_LEN=297, SA_LEN=74, DG15_SHIFT=265 and EC_SHIFT=42, and declares DG1_SHIFT=31 - so 31 is a plausible value here. It was NOT applied: a shared EC layout is not proof of a shared DG1 offset, the documents differ in type (TD1 vs TD3), and a wrong offset compiles silently. See TODO sec. 2.18gj.",
-      "reason_note": "EC_FIELD_SIZE=0 is correct for SIG_TYPE=1 (RSA); all 19 such profiles carry it."
+      "reason": "TD1, and PROVABLY IMPOSSIBLE AS PUBLISHED - this is an upstream defect, not a local derivation error. extract_dg15_pk_hash reads a fixed 128 bytes from AA_SHIFT, so AA_SHIFT=64 forces DG15_LEN >= 192. But DG15_BLOCK_NUMBER=3 with SHA-256 caps dg15 at 3*64-9 = 183 once padding is counted. 192 > 183, so no DG15_LEN satisfies both and no 1024-bit AA key fits at offset 64 in three blocks. Either DG15_BLOCK_NUMBER or AA_SHIFT is wrong upstream. Generics still corrected below so the contradiction is stated in the right units.",
+      "decoder": "Recovered via rarimo circom RegisterIdentityBuilder, whose 10 template parameters ARE the profile name in order. Validated first: the 7-field NA form passes 8/8 checks at 38/38 and the 10-field form 8/9 at 44/44."
     },
     {
       "name": "28_384_3_3_576_264_24_2024_4_2792",

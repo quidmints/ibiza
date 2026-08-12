@@ -1,9 +1,21 @@
-# Upstream report: `extract_dg15_pk_hash` has no branch for `AA_SIG_TYPE` 20, 21, 24, 25
+# Upstream reports from regenerating every published passport profile
 
-**For:** `rarimo/passport-zk-circuits-noir`
-**Found:** 2026-08-10, while regenerating every published `registerIdentity_*` profile on a newer nargo.
-**Status:** ready to file. Not filed — `gh` is not installed here and no upstream credentials are
-configured. Two independent items; (2) stands alone and is worth sending even if (1) is declined.
+**Found:** 2026-08-10, regenerating all 78 `registerIdentity_*` profiles on a newer toolchain.
+**Status:** ready to file, none filed — `gh` is not installed here and no upstream credentials are
+configured.
+
+⚠️ **THESE GO TO TWO DIFFERENT PROJECTS. Do not file them as one issue.**
+
+| item | repo | summary |
+|---|---|---|
+| 1 | `rarimo/passport-zk-circuits-noir` | one profile cannot compile: AA key runs 8 bytes past `dg15` |
+| 2 | `rarimo/passport-zk-circuits-noir` | **the same gap silently affects five profiles that DO ship** |
+| 3 | `rarimo/passport-zk-circuits-noir` | optional: self-consistency checks for the generated tuples |
+| 4 | **`AztecProtocol/barretenberg`** | **bb regression** — a circuit 5.1.0 builds, 6.0.0-nightly refuses by 0.4% |
+
+Items 1–3 are independent of each other; (2) is the one with live consequences and stands alone.
+Item 4 is a different project entirely and is the strongest of the four, because it has a clean
+before/after in a single repository's history.
 
 ---
 

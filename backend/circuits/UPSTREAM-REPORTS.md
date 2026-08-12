@@ -219,3 +219,41 @@ had derived ourselves and have since corrected.
 Two sibling TD1 profiles are affected by the same family of issue but are *not* impossible — they are
 merely under-determined from published material (`21_160_1_2_560_576_NA` needs `EC_LEN`,
 which is a per-document DER length fitting no formula across all 83 profiles we build).
+
+---
+
+## rarimo — `extract_dg15_pk_hash` has no branch for `AA_SIG_TYPE 25` (BrainpoolP384r1)
+
+**Severity:** latent wrong-key extraction; the one profile that would exercise it is also unsatisfiable.
+
+`extract_dg15_pk_hash` sets `EC_FIELD_SIZE = 32` and overrides it only for `AA_SIG_TYPE 22` (40) and
+`23` (24). `SIG_TYPE 25` is **BrainpoolP384r1** — confirmed by reading its `verify_signature` branch,
+which builds `BrainpoolP384r1Fr` from four limbs — so its public-key coordinates are **48 bytes**.
+
+With no branch, `AA_SIG_TYPE 25` falls through to 32. The extractor then reads
+
+```
+x = dg15[AA_SHIFT + (HASH_SIZE-1-j) + X_Y_SHIFT]
+y = dg15[AA_SHIFT + (HASH_SIZE-1-j) + X_Y_SHIFT + EC_FIELD_SIZE]
+```
+
+with `X_Y_SHIFT = EC_FIELD_SIZE - HASH_SIZE = 1` instead of `48 - 31 = 17`, and reads `y` at an
+offset 32 bytes after `x` rather than 48. Both coordinates are therefore taken from the wrong bytes,
+and `dg15_pk_hash` does not commit to the actual AA key. It is latent only because
+`20_256_3_5_336_248_25_2120_5_1816` is the sole profile using it.
+
+That profile cannot be repaired by adding the branch, because it is independently unsatisfiable:
+
+| | bytes |
+|---|---|
+| read extent with the correct 48-byte field | `AA_SHIFT(227) + 30 + 17 + 48` = **323** |
+| `dg15` capacity, `DG15_BLOCK_NUMBER(5) * 64 - 9` padding | **311** |
+
+So `DG15_LEN` would have to be at least 323 and at most 311. The published `DG15_LEN` of 283 does not
+satisfy even the incorrect 32-byte read, which needs 291.
+
+Separately, the geometry looks wrong regardless: a dg15 carrying a BrainpoolP384r1 key DER-encodes to
+about 126 bytes with the point starting near byte 30, not byte 227.
+
+**Suggested fix:** add `if (AA_SIG_TYPE == 25) { EC_FIELD_SIZE = 48; }`, and re-derive that profile's
+`AA_SHIFT` and `DG15_BLOCK_NUMBER` — the branch alone does not make it buildable.

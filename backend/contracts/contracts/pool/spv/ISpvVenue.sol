@@ -2,8 +2,16 @@
 pragma solidity 0.8.28;
 
 // Reverse-coupling interfaces: PP declares ONLY the functions it calls on SPV's deployed contracts,
-// matching their real signatures exactly (re-confirmed against SPV HEAD 2026-07-26 — all four
-// signatures below still match). PP's repo does NOT import SPV's source and SPV's repo has zero
+// matching their real signatures exactly (re-confirmed against SPV `3dd439a` 2026-08-13, after the
+// submodule pin advanced 1,362 commits — all four still match, all four are still `external` with
+// no auth gate, and `Basket.mint`'s `auth(msg.sender)` branch still only changes internal
+// accounting rather than gating external callers).
+//
+// ⚠️ THE FORGE SUITE CANNOT VERIFY THIS AND NEVER COULD. There is no SPV remapping and nothing here
+// imports the submodule, so all 489 tests pass identically whether these declarations match SPV or
+// flatly contradict it. The only check is reading those four functions in SPV's source, which is
+// what the date above records. A green suite after a submodule bump says nothing about this file.
+// PP's repo does NOT import SPV's source and SPV's repo has zero
 // references to PP anywhere. PP is the party that knows about SPV's already-deployed, immutable
 // addresses — never the reverse. See ../../../../PP-SPV-BUFFER-DESIGN.md for the full architecture.
 //

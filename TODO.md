@@ -15715,3 +15715,49 @@ consistency checker, and all 88 are distinct.
    (`12_light-verifiers.migration.ts`, `13_light-verifiers-id.migration.ts`), so the
    `Z_NOIR_PASSPORT_` prefix is probably NOT what it uses. Do not assume it.
 4. Only then does the `HolderRegistration` per-zkType lookup become meaningful.
+
+### 2.18gz-td1 — the TD1 registration verifier exists; where the ICAO path actually stands
+
+`RegisterIdentityTd1HonkVerifier.sol` is generated (`codegen-verifiers.sh` target,
+6 public outputs, reported as 14 - the same +8 pairing-point offset every verifier here shows).
+It is what `registerDocumentViaIcao` consumes: pointed at the 93-byte TD3 circuit instead, it
+produces `registrationSmt` leaves `escrow_envelope` can never reproduce, so documents register and
+are then permanently inert (`HolderRegistration.sol:100-110`).
+
+⚠️ **EMITTED BUT NOT PROVEN, and that is not a gap to close by trying harder.** There is no committed
+witness because one needs a real TD1 document, and this repo does not fabricate an ICAO chain to
+pretend otherwise. Its SOD layout constants are inherited from profile `3_160_3_3_336_200_NA`; a real
+card may need a different variant, which is a parameter change, not a redesign.
+
+**The ICAO path's remaining blockers, none of which can be closed end-to-end without a real document:**
+
+| # | blocker | state |
+|---|---|---|
+| 1 | `passportVerifiers` registry is EMPTY | 88 zkTypes computed and recorded in the manifest; nothing registers them, so `registerViaNoir` reverts for every document |
+| 2 | client-side zkType selection | nothing computes which zkType to send; document -> profile -> zkType exists on paper, in no code |
+| 3 | `ID_Card_I`'s key | upstream registers light verifiers in separate migrations, so `Z_NOIR_PASSPORT_` is probably not its prefix - do not guess |
+| 4 | `HolderRegistration` single-address lookup | only meaningful once 1-3 exist |
+
+**That is the honest ceiling.** Every one of these is buildable; none is verifiable end-to-end here.
+Do not let a green suite suggest otherwise - see `ISpvVenue.sol`'s header for the same trap in the
+other direction, where 489 passing tests say nothing about the file they appear to cover.
+
+### 2.18gz-pkcs — the SHA-256 PKCS block leaves 13 DigestInfo bytes unchecked
+
+Found while writing the `HASH_SIZE == 64` block and **not fixed**, so it is booked rather than left
+in a commit message.
+
+`verify_rsa`'s `HASH_SIZE == 32` branch computes `chunk3_remainder` over the DigestInfo bytes that
+share limb 2 with the hash - and then never asserts it. `exp_result[3]` pins only the FIRST SIX
+DigestInfo bytes, so `DigestInfo[6..19]` is unconstrained on that path. (The loop also multiplies by
+`8` rather than `256`, which is further evidence the value was never meant to be used.)
+
+**Why it is not urgent:** forging still requires computing an e-th root, and every profile on this
+path uses e=65537. It is a hardening gap, not an open door.
+
+**Why it is not free either:** 30 live profiles take this path, so fixing it moves 30 VKs and forces
+a regeneration. Worth doing in the same pass as any other `verify_rsa` change - e.g. the `N == 26`
+tail that NP's RSA-3072/SHA-256 documents need (sec. 2.18gz-cov) - and not on its own.
+
+The new SHA-512 block does **not** repeat this: it asserts its DigestInfo bytes explicitly, and all
+18 limbs are covered with no gap, so a wrong constant there fails closed.

@@ -16332,3 +16332,55 @@ expiry", so a parse that returned 0 on bad input would silently promote an expir
 permanent one. That failure direction is tested explicitly.
 
 **Verified:** 504 forge tests, `check-client-abis.py` green.
+
+### 2.18gz-polarity — the Privacy Pools PAPER specifies exclusion proofs; 0xbow's implementation chose inclusion
+
+Researched rather than reasoned, after being asked whether upstream's allowlist is really just
+"everyone not blacklisted".
+
+**THE PAPER OFFERS BOTH, EXPLICITLY.** *Blockchain privacy and regulatory compliance: Towards a
+practical equilibrium* (Buterin, Illum, Nadler, Schär, Soleimani) describes claims as membership
+proofs - *"my withdrawal comes from one of these deposits"* - **or exclusion proofs** - *"my
+withdrawal does not come from one of these deposits"* - with the exclusion method *"leaving out known
+suspicious deposits but keeping all other activity as potential sources"*.
+<https://www.sciencedirect.com/science/article/pii/S2096720923000519>
+
+**0xbow's DEPLOYED code took the inclusion branch:** `withdraw.circom` does
+`ASPRootChecker.leaf <== label`, membership of the DEPOSIT against `ENTRYPOINT.latestActiveRoot()` -
+one root, past its activation delay.
+
+⇒ **Our non-membership design is the paper's OTHER BRANCH, not a departure from Privacy Pools.** That
+is worth recording precisely because it was arrived at independently (2.18cu re-derived the fail-open
+argument from scratch) and could easily be mistaken for divergence.
+
+⚠️ **AND THE DISTINCTION THE QUESTION TURNED ON:** an ASP is free to POPULATE an inclusion set by an
+exclusion rule - "every deposit except flagged ones" - and the protocol never constrains the
+criterion. But that is a POLICY on an INCLUSION MECHANISM, and the mechanism fixes the failure
+direction. Stop publishing, omit someone, or be compelled, and no proof exists. **Same set, opposite
+security property.**
+
+### 2.18gz-donverify — what is actually verifiable about a DON, measured not assumed
+
+**Better than I had assumed:** CRE reports are verified ON-CHAIN. Nodes execute independently, reach
+BFT consensus over OCR, a QUORUM SIGNS one report, and a contract checks those signatures. The
+attestation is a threshold signature checked in the EVM, not a bare claim.
+<https://docs.chain.link/cre> · <https://docs.chain.link/cre/key-terms>
+
+**Worse than I had assumed:** no evidence a specific workflow's DON MEMBERSHIP is publicly
+enumerable. The transparency story - public node addresses, immutable on-chain performance history -
+is documented for PRICE FEEDS. And the operator count is not cleanly public: **94** teams per
+Chainlink Ecosystem versus **53** per DexTrac Prism, with `market.link` deprecated and no replacement
+directory. A two-fold disagreement about how many operators exist IS the answer to "how do we know
+they are decentralised".
+
+⇒ **We can verify THAT a threshold signed. We cannot verify WHO, or that they are independent.**
+Stronger than "trust an ASP", weaker than trustless, and it should be described that way.
+
+**Which makes the ladder concrete:**
+1. **Eliminate the attested fact.** The only step that removes the question. Expiry just moved from
+   an authority to the document (2.18gz-expiry); supersession was always on-chain.
+2. **Challengeability** - anyone can rebuild the leaves from the public register, so an optimistic
+   anchor with a dispute window converts an unverifiable quorum into "one honest watcher suffices".
+   **This is the highest-value unbuilt item in this area.**
+3. Diversify attesters (N-of-M independent anchors).
+4. Keep fail-open polarity and the ragequit bound. Both already hold.

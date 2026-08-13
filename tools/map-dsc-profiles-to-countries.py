@@ -25,6 +25,11 @@ OIDS = {
     "1.2.840.10045.4.3.3":   ("ECDSA",     "SHA-384"),
     "1.2.840.10045.4.3.4":   ("ECDSA",     "SHA-512"),
 }
+HASH_OID = {
+    "1.3.14.3.2.26": "SHA-1", "2.16.840.1.101.3.4.2.1": "SHA-256",
+    "2.16.840.1.101.3.4.2.2": "SHA-384", "2.16.840.1.101.3.4.2.3": "SHA-512",
+    "2.16.840.1.101.3.4.2.4": "SHA-224",
+}
 CURVES = {
     "1.2.840.10045.3.1.7": "secp256r1", "1.3.132.0.34": "secp384r1", "1.3.132.0.35": "secp521r1",
     "1.3.36.3.3.2.8.1.1.7": "brainpoolP256r1", "1.3.36.3.3.2.8.1.1.11": "brainpoolP384r1",
@@ -62,14 +67,28 @@ def children(buf, start, length):
 
 
 def parse(der):
-    """-> (sig_alg_oid, key_alg_oid, key_bits, rsa_exponent, curve_oid)"""
+    """-> (sig_alg_oid, key_alg_oid, key_bits, rsa_exponent, curve_oid, pss_hash_oid)"""
     _, cs, cl, _ = tlv(der, 0)                      # Certificate SEQUENCE
     kids = list(children(der, cs, cl))
     tbs_t, tbs_s, tbs_l = kids[0]
     sig_t, sig_s, sig_l = kids[1]                   # signatureAlgorithm
-    sig_oid = ""
+    sig_oid = ""; pss_hash = ""
     for t, s, l in children(der, sig_s, sig_l):
-        if t == 0x06: sig_oid = oid_str(der[s:s + l]); break
+        if t == 0x06 and not sig_oid:
+            sig_oid = oid_str(der[s:s + l])
+        elif t == 0x30 and sig_oid.endswith("1.1.10"):
+            # RSASSA-PSS-params ::= SEQUENCE { [0] hashAlgorithm, [1] maskGenAlgorithm, ... }
+            # ⚠️ THE DIGEST IS NOT IN THE SIGNATURE OID FOR PSS. Reading only the OID reported every
+            # PSS certificate with an unknown hash - 3,011 of 31,397 here, about 10% of the PKD, and
+            # enough to make Canada look entirely unsupported when it is not.
+            for t2, s2, l2 in children(der, s, l):
+                if t2 == 0xA0:
+                    for t3, s3, l3 in children(der, s2, l2):
+                        if t3 == 0x30:
+                            for t4, s4, l4 in children(der, s3, l3):
+                                if t4 == 0x06 and not pss_hash:
+                                    pss_hash = oid_str(der[s4:s4 + l4])
+                    break
 
     key_oid = curve = ""; bits = 0; exp = 0
     tk = list(children(der, tbs_s, tbs_l))
@@ -111,7 +130,7 @@ def parse(der):
                 pass
         else:
             bits = (len(inner) - 1) * 4             # uncompressed point -> field bits
-    return sig_oid, key_oid, bits, exp, curve
+    return sig_oid, key_oid, bits, exp, curve, pss_hash
 
 
 def unfold(path):
@@ -157,13 +176,15 @@ def main():
         if not dn or "o=dsc" not in dn.lower(): continue
         try:
             der = base64.b64decode(b64)
-            sig, key, bits, exp, curve = parse(der)
+            sig, key, bits, exp, curve, pss_hash = parse(der)
         except Exception:
             bad += 1; continue
         n += 1
         alg, digest = OIDS.get(sig, (sig, "?"))
         if alg == "ECDSA":
             desc = f"ECDSA {CURVES.get(curve, curve or '?')} / {digest}"
+        elif alg == "RSA-PSS":
+            desc = f"{alg}-{bits} e={exp} / {HASH_OID.get(pss_hash, digest)}"
         elif alg.startswith("RSA"):
             desc = f"{alg}-{bits} e={exp} / {digest}"
         else:

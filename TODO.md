@@ -15598,3 +15598,54 @@ each configuration. **This is the honest floor of what can be done from publishe
 
 **9 of 13 addressed, 1 of them by deletion.** The remaining four split into one that is a build away,
 and three-plus-one that need something nobody in this repo can produce.
+
+---
+
+## 2.18gz — ALL 89 CLOSED, and every "impossible" above was wrong
+
+The table above is **superseded**. It recorded 9 of 13, with `ID_Card_I` and the corrupt TD1s as
+"blocked - external input required". Nothing external was ever required: each was a limit of our own
+forked `noir_dl_lib`, read as a property of the document.
+
+**Final: 88 parameterised profiles + `ID_Card_I` = 89, none quarantined.** All regenerated from one
+library state; 89/89 report `NUMBER_OF_SUBRELATIONS = 31`, 0 contain UltraPlonk, manifest and disk
+agree exactly, checker exits 0.
+
+Four **fail-open** defects fixed - signatures that were never checked at all, because every assertion
+sits inside a branch that an unhandled parameter skips:
+
+| defect | effect |
+|---|---|
+| `SIG_TYPE 28` had no `verify_signature` branch | document signature unverified; `verify_secp384r1_ecdsa` was already vendored, never dispatched |
+| `verify_rsa` had no `HASH_SIZE == 64` block | computed `sig^e mod n`, then asserted nothing |
+| `AA_SIG_TYPE 24` read secp224r1 (28 B) as 32 | both coordinates from the wrong bytes |
+| `AA_SIG_TYPE 25` read brainpoolP384r1 (48 B) as 32 | same |
+
+⚠️ **`verify_rsa_pss` has none of these** and the contrast is the lesson: it ends in an
+UNCONDITIONAL assert, so an unimplemented hash size leaves `hash_result` zeroed and fails CLOSED.
+PKCS#1 v1.5 nests its assertions and fails OPEN. **Structure decides the failure direction, not
+coverage** - and coverage is what I checked first.
+
+⚠️ **A `SIG_TYPE` branch changes other profiles' VKs, but NOT all of them.** Measured against the
+pre-work base: 33 of 89 moved - 25 of 28 ECDSA-signature profiles, 5 of 36 RSA-AA, 2 of 24 RSA-no-AA.
+I first claimed "every profile" from a single control that happened to sit in the affected class.
+
+### Booked from the coverage redo (2.18gz-cov)
+
+Coverage against the 31,397 real DSCs in the ICAO PKD is **96.5%**, 46 issuers fully covered. The
+earlier 86.8% was two parser bugs, not real gaps: RSA-PSS carries its digest in the *parameters*, not
+the signature OID (3,011 certs, ~10% of the PKD, which alone made Canada look unsupported), and a
+16-hex prime prefix cannot name a curve - secp384r1's prime starts `ffffffffffffffff` and collides
+with secp224r1's. Both fixed in `tools/map-dsc-profiles-to-countries.py`.
+
+The residual 3.5% is **three distinct classes**, and only one is a circuit gap:
+
+1. **Profile tuple missing, circuit already capable** - IN 312 (brainpoolP384r1/SHA-256), CH 240
+   (brainpoolP256r1/SHA-384 and /SHA-512), SC 44 (secp384r1/SHA-256), AT 62. Those curves ARE
+   implemented and `HASH_ALGO` is a generic, so nothing needs writing - only a tuple we do not have.
+   ⇒ blocked on an artifact, genuinely, unlike everything above.
+2. **`verify_rsa` has no `N == 26` tail in its `HASH_SIZE == 32` block** - NP 118, AT 15
+   (RSA-3072 PKCS + SHA-256). A real code gap. **Do NOT add it speculatively**: no live profile is
+   (PKCS, 32, 26) today, so the tail would be unreachable, and the checker already rejects any
+   profile that would need it.
+3. **brainpoolP224r1 is not implemented at all** - DE 63, AE 42. Needs a curve module and a SIG_TYPE.

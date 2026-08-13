@@ -194,11 +194,19 @@ pub fn verify_rsa<let N_BITS: u32, let N: u32, let HASH_SIZE: u32, let EXP: u32>
         for i in 0..2{
             assert(chunk_3[i + 13] == hashed[i], "pkcs padding failure");
         }
-        let mut chunk3_remainder = 0;
-        let mut current = 1;
+        // THE 13 DigestInfo BYTES SHARING THIS LIMB WITH THE HASH. `exp_result[3]` below pins only
+        // DigestInfo[0..6], so these were previously UNCONSTRAINED: the code accumulated them into a
+        // `chunk3_remainder` and then never asserted it, and multiplied by 8 rather than 256 while
+        // doing so - both signs the value was never meant to be read. That left the algorithm
+        // identifier partly unchecked on the path 30 live profiles take.
+        //
+        // Not a forgery hole on its own: producing a signature over a doctored DigestInfo still
+        // requires an e-th root, and every profile reaching here uses e=65537. It is the hardening
+        // the SHA-512 block below already does, brought back to this one so the two agree.
+        let digest_info_tail: [u8; 13] =
+            [0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20];
         for i in 0..13{
-            chunk3_remainder += (chunk_3[i] as Field) * current;
-            current *= 8;
+            assert(chunk_3[i] == digest_info_tail[i], "pkcs padding failure");
         }
         assert(exp_result[3] == 0xffffffffffffffff003031300d0609, "pkcs padding failure");
         for i in 4..(N - 2){
@@ -208,6 +216,21 @@ pub fn verify_rsa<let N_BITS: u32, let N: u32, let HASH_SIZE: u32, let EXP: u32>
         if (N == 35){
             assert(exp_result[33] == 0xffffffffffffffffffffffffffffff, "pkcs padding failure");
             assert(exp_result[34] == 0x01, "pkcs padding failure");
+        }
+        // RSA3072 with SHA256. Without this tail the top two limbs - the 0x00 0x01 header and the
+        // end of the 0xFF run - go unasserted for N=26, which is the same fail-open shape as a
+        // missing hash block one level down. 185 DSCs need it (NP 118, AT 15 and others, sec.
+        // 2.18gz-cov); no profile carries the tuple yet, so the consistency checker refuses any
+        // (PKCS, 32, 26) profile until one is added, and the tail is what makes that addition
+        // possible rather than blocked.
+        //
+        // ⚠️ The two constants are IDENTICAL to the SHA-1 N==26 tail further down, and that is a
+        // check rather than a coincidence: the top limbs are determined by the modulus size alone,
+        // not by the digest. Derived by constructing the EM and reading its limbs, a method that
+        // reproduces the existing N=18 and N=35 tails above exactly.
+        if (N == 26){
+            assert(exp_result[24] == 0xffffffffffffffffffffffffffffff, "pkcs padding failure");
+            assert(exp_result[25] == 0x1ffffffffffffff, "pkcs padding failure");
         }
         // RSA2048 with SHA256
         if (N == 18){

@@ -16001,3 +16001,39 @@ the run is idempotent, so a window can be safely repeated after a failure.
 
 **What it still cannot do:** prove a document registers. That needs a real travel document. The
 binding is wired and tested; the cryptography is not exercised.
+
+#### 2.18gz-89 — what ID_Card_I actually is, and why our set is 88
+
+Asked a third time why the manifest binds 88 and not 89, I finally looked upstream instead of
+reasoning. "Unrecoverable" was wrong in the way that mattered: **it is published, and byte-identical
+to our copy.**
+
+| | |
+|---|---|
+| upstream `verifiers2/noir/` | **76 numeric profiles + `ID_Card_I`** |
+| ours | **88** |
+| upstream has, we lack | `ID_Card_I` only |
+| we have, upstream lacks | **13** - exactly this session's recoveries |
+
+The 76 is corroborated independently: this repo's own older comments refer to "the 76
+`NoirRegisterIdentity_*.sol`" from the fork import.
+
+**What it is:** a generic ID-card (TD1) registration circuit from the Noir/**UltraPlonk** era. NOT
+country specific - rarimo keeps country circuits in sibling directories (`geo` = Georgia, `mne` =
+Montenegro); this sits in the generic `noir` set.
+
+**Why no 6.0 verifier exists anywhere:** rarimo still ships it as `BaseUltraVerifier`,
+`vk.num_inputs = 5`, VK hash `d5c1a3d1…` - identical to ours. **Nobody migrated it.** Its source
+circuit is in neither noir circuits repo, which publish only `register_identity`,
+`register_identity_light_td1` and the query circuits. Its 5 public signals match no circuit we have
+(6, 6 and 3), so it predates the current output tuple.
+
+⇒ It is one profile short of 89 because there is no circuit to regenerate it from, here or upstream -
+not because the artifact was lost.
+
+⚠️ **ITS zkType IS RECOVERED AND THE CASING IS A TRAP.** rarimo defines
+`Z_NOIR_PASSPORT_ID_CARD_I` - **uppercase** - while the file is `..._ID_Card_I.sol`. So
+`"Z_NOIR_PASSPORT_" + filename` yields `0x5c30d28a…`, a key nothing would ever look up; the real one
+is `0xc1adfa76…`. The 88 numeric profiles contain no letters, so our scheme is safe for them **and
+only for them**. Anything non-numeric added later must take its label from rarimo's
+`scripts/utils/types.ts`, never from the filename.

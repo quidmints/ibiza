@@ -1891,10 +1891,14 @@
   "quarantined": [
     {
       "name": "ID_Card_I",
-      "reason": "UNRECOVERED - and this REOPENS a closure I made on a wrong identification. Its legacy verifier declared vk.num_inputs = 5, which matches NO circuit in this repo: register_identity and register_identity_td1 return 6 public outputs, register_identity_light_td1 returns 3. So it is from a circuit generation we do not have, which is also why its VK matched no published asset.",
+      "reason": "NOT LOST - published upstream and byte-identical to our copy, but never migrated off UltraPlonk by ANYONE. rarimo still ships it as `BaseUltraVerifier` with vk.num_inputs = 5 and the same VK hash d5c1a3d188155b4a470c470501e5c729ec1dfa7a3fd839ee67a74eafb5b596a3. Under a bb 6.0-only app it cannot verify anything, and no 6.0 version exists in either repo.",
       "what_i_got_wrong": "I claimed ID_Card_I WAS register_identity_light_td1 and marked it resolved. The evidence was that MY build of that circuit came out byte-identical to RegisterIdentityLightID256HonkVerifier - which proves those two are the same circuit, and says nothing about the legacy artifact. 5 != 3 refutes it outright, and the count was in my own notes before I drew the conclusion.",
       "still_correct": "Deleting the duplicate I built WAS right: it really was a byte-identical copy of an already tested verifier, occupying a legacy slot. What was wrong is the inference that the slot was therefore covered.",
-      "to_reopen": "Its 14-generic tuple, or an artifact from the generation that emitted 5 public signals. Neither exists here or upstream. It has no zk_type for the same reason - a key for an unknown circuit would bind a verifier nothing can produce proofs for."
+      "to_reopen": "A 6.0 regeneration, which needs the circuit rarimo has not published, or its 14-generic tuple. Its 5 public signals match no circuit we have (register_identity and register_identity_td1 return 6, register_identity_light_td1 returns 3), so it predates the current output tuple.",
+      "zk_type": "0xc1adfa762ad2c4bc45665c7a41a08c33b4fc87d87f1b83b9709768eed85c2895",
+      "zk_type_label": "Z_NOIR_PASSPORT_ID_CARD_I",
+      "zk_type_casing_trap": "\u26a0\ufe0f THE LABEL IS UPPERCASE WHILE THE FILENAME IS MIXED CASE. rarimo defines Z_NOIR_PASSPORT_ID_CARD_I, not ..._ID_Card_I, so \"Z_NOIR_PASSPORT_\" + filename gives 0x5c30d28a591f489f7c7a5b7d18da1d596e1294076ec96f9b438fb3d3697d5951 - a key nothing would ever look up. The 88 numeric profiles have no letters, so the scheme is safe for them and ONLY for them. Anything non-numeric added later must take its label from rarimo scripts/utils/types.ts, not from the file name.",
+      "what_is_it": "A generic ID-card (TD1) registration circuit from the Noir/UltraPlonk era - NOT country specific. rarimo keeps country circuits in sibling directories (`geo`, `mne`); this one sits in the generic `noir` set. Its source circuit is in NEITHER noir circuits repo, which publish only register_identity, register_identity_light_td1 and the query circuits, so nothing here or upstream can regenerate it."
     }
   ]
 }

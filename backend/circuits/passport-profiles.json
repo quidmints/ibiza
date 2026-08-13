@@ -1892,11 +1892,12 @@
   "standalone_circuits": {
     "ID_Card_I": {
       "circuit": "backend/circuits/register_identity_light_td1",
-      "verifier": "backend/contracts/contracts/passport/verifiers2/noir/NoirRegisterIdentity_ID_Card_I.sol",
-      "status": "BUILT under bb 6.0 (NUMBER_OF_SUBRELATIONS=31). Replaces the legacy UltraPlonk file that had survived from the original fork.",
-      "why_it_has_no_generics": "It is NOT a 14-generic registerIdentity profile and never was - that is why no artifact was ever published under this name and why its VK matched no profile. register_identity_light takes only dg1 (95 bytes, TD1 = ID card) and sk_identity, so it has no signature type, no hash sizes and no AA parameters to record. It was quarantined as unrecoverable on the assumption it was a profile with a lost tuple; it is a different circuit.",
-      "immune_to_signature_changes": "register_identity_light calls only extract_dg1_commitment, extract_pk_identity_hash and passport_hash. It never reaches verify_signature or extract_dg15_pk_hash, so nothing in the RSA/ECDSA/AA work changes its VK and it does not need rebuilding with the profiles.",
-      "caveat": "This is the path that proves NOTHING about the issuing state and relies on the backend signer. It is what HolderRegistration runs today, so the verifier is needed now; it is also the path to retire once icaoRegistrationVerifier points at a full TD1 profile."
+      "verifier": "backend/contracts/contracts/passport/verifiers/RegisterIdentityLightID256HonkVerifier.sol",
+      "status": "RESOLVED - NOT by building it. The circuit ALREADY HAD a verifier, in a different directory: contracts/passport/verifiers/RegisterIdentityLightID256HonkVerifier.sol, generated from our own circuits, with a committed bb 6.0 proof fixture and a passing test (RegisterIdentityLightVerifiers.t.sol).",
+      "why_it_has_no_generics": "It is NOT a 14-generic registerIdentity profile and never was - that is why no artifact was ever published under this name and why its VK matched no profile. register_identity_light takes only dg1 (95 bytes, TD1 = ID card) and sk_identity, so it has no signature type, no hash sizes and no AA parameters to record. It was quarantined as unrecoverable on the assumption it was a profile with a lost tuple; it is a different circuit. It is also why it needs no zk_type under the Z_NOIR_PASSPORT_ scheme - it is not one of the parameterised profiles at all.",
+      "caveat": "This is the path that proves NOTHING about the issuing state and relies on the backend signer. It is what HolderRegistration runs today, so the verifier is needed now; it is also the path to retire once icaoRegistrationVerifier points at a full TD1 profile.",
+      "duplicate_removed": "I built register_identity_light_td1 into the legacy verifiers2/noir/ slot and it came out BYTE-IDENTICAL to that file apart from the contract name - same VK_HASH 0x0181df923c753ac435a487255d51bd29cbb3489791be08f1f8956d8d2baae10f, 2518 lines, 2 differing. Deleted. The legacy UltraPlonk file that had occupied the slot was a stale duplicate of an already-covered circuit, and regenerating into it was finding the obituary instead of the live copy.",
+      "coverage_unaffected": "Deleting the duplicate removes no capability: the ID-card light circuit is verified by RegisterIdentityLightID256HonkVerifier, which unlike the copy is actually tested against a real proof."
     }
   }
 }

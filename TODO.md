@@ -16215,3 +16215,29 @@ rather than transliterated.
 
 ⚠️ **Do not describe this as sanctions screening of the USER.** It screens the destination. Claiming
 more would repeat the overstatement 2.18eo already corrected once.
+
+### 2.18gz-select ✅ client-side zkType selection — the document → profile → zkType link now exists in code
+
+It existed on paper and nowhere else: `Registration2.passportVerifiers` is indexed by `zkType` and
+`registerDocumentViaIcao` takes one as a selector, but **nothing computed which zkType a document
+needs**. Both ends were wired and the middle was joined by nobody. I had also assumed this needed a
+real document; it does not — the manifest is the input and its own test-vector set.
+
+* `tools/generate-wallet-profiles.py` emits `src/passport/profiles.generated.ts` from the manifest.
+* `src/passport/profile.ts` — `selectProfile` / `selectZkType`, EXACT match on all fourteen generics.
+* `src/passport/profile.test.ts` — 8 tests, `node --test`, no new deps.
+
+⚠️ **ALL FOURTEEN FIELDS ARE LOAD-BEARING, measured not assumed.** The full tuples are unique across
+all 88, but dropping `DG15_LEN`/`DG15_SHIFT`/`AA_SHIFT`/`EC_FIELD_SIZE` collapses **three pairs** —
+e.g. `1_256_3_4_336_248_1_1496_4_256` vs `..._1_560_4_256`. One pair is pinned in a test so a future
+"simplify the selector" cannot make them silently indistinguishable.
+
+**Selection is exact, never nearest-match.** An unmatched document throws and prints its tuple, which
+is exactly what adding a profile needs. A near match would prove against a circuit whose SOD layout
+disagrees with the document — the "correct-looking and inert" failure `HolderRegistration` already
+warns about for the TD3/TD1 mixup. ~3.5% of PKD signer certificates land here today (2.18gz-cov).
+
+**The generated table is checked, not trusted:** the test re-derives every zkType with keccak rather
+than reading the emitted value. That makes **three independent implementations** agree — Python via
+`cast`, Solidity in `PassportVerifierRegistry.t.sol`, and TypeScript via noble. Two hand-written
+copies went stale in this session alone, so a bundled copy that nothing verifies is a rumour.

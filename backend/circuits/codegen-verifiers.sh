@@ -272,13 +272,14 @@ TARGETS=(
   # `registerDocumentViaIcao` needs a TD1 (95-byte DG1) verifier: pointed at the 93-byte TD3 circuit
   # it produces `registrationSmt` leaves `escrow_envelope` can never reproduce, so documents register
   # and are then permanently inert (`HolderRegistration.sol:100-110`).
-  # 6 public outputs: `register_identity`'s four, plus `icao_root` and `dg1_hash`.
+  # 7 public outputs: `register_identity`'s four, plus `icao_root`, `dg1_hash` and the EXPIRY
+  # (sec. 2.18gz-nocontroller - a document's own expiry needs no authority to attest it).
   # ⚠️ EMITTED BUT NOT PROVEN, and that asymmetry is deliberate. The light circuit has a committed
   # witness; this one cannot, because it needs a real TD1 document and this repo does not fabricate
   # an ICAO chain to pretend otherwise (task 6). Its SOD layout constants are inherited from profile
   # 3_160_3_3_336_200_NA - a real card may need a different variant, which is a parameter change and
   # not a redesign.
-  "register_identity_td1:${CONTRACTS_DIR}/passport/verifiers/RegisterIdentityTd1HonkVerifier.sol:RegisterIdentityTd1HonkVerifier:6"
+  "register_identity_td1:${CONTRACTS_DIR}/passport/verifiers/RegisterIdentityTd1HonkVerifier.sol:RegisterIdentityTd1HonkVerifier:7"
   # DELIBERATELY ABSENT: the recursion tree's own circuits. They are GENERATED per level by
   # build-recursion-tree.py, which pins each level's child VK from the artifact it just built, so
   # they cannot be listed as fixed targets here. That script emits the root's Solidity verifier

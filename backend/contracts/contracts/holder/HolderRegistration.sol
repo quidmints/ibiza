@@ -43,13 +43,14 @@ contract HolderRegistration is RegistrationSimple {
 
     /// Public-input layout of `register_identity`, pinned by its `main` signature. A mismatch here
     /// reads the wrong field while the proof still verifies.
-    uint256 internal constant _ICAO_SIGNALS_COUNT = 6;
+    uint256 internal constant _ICAO_SIGNALS_COUNT = 7;
     uint256 internal constant _ICAO_PUB_DG15_PK_HASH = 0;
     uint256 internal constant _ICAO_PUB_PASSPORT_HASH = 1;
     uint256 internal constant _ICAO_PUB_DG_COMMIT = 2;
     uint256 internal constant _ICAO_PUB_HOLDER_ROOT = 3;
     uint256 internal constant _ICAO_PUB_ICAO_ROOT = 4;
     uint256 internal constant _ICAO_PUB_DG1_HASH = 5;
+    uint256 internal constant _ICAO_PUB_EXPIRY = 6;
 
     /**
      * @notice The ONE verifier accepted on the permissionless path. PINNED, never caller-supplied.
@@ -134,8 +135,12 @@ contract HolderRegistration is RegistrationSimple {
      *   was registered. A caller-supplied type would let someone label a passport a national ID for
      *   free; a hardcoded one mislabelled every TD1 document as a passport, which is what it used
      *   to do.
-     * - **`notAfter`** - fixed to 0. Nothing in the proof attests an expiry, so accepting one would
-     *   be recording a claim the caller made about themselves as though it were established.
+     * - **`notAfter`** - DERIVED FROM THE PROOF, no longer fixed to 0 (sec. 2.18gz-nocontroller).
+     *   The circuit emits the MRZ expiry, which the issuing state stated and signed into the SOD, so
+     *   it is established rather than claimed. It used to be 0 because `register_identity` did not
+     *   attest one - true of that circuit, false of the codebase, since `query.nr` had read the field
+     *   all along. Every document that expires on its own terms is one fewer needing an authority to
+     *   revoke it.
      *
      * ────────────────────────────────────────────────────────────────────────────────────────
      * THE VERIFIER MUST BE THE TD1 ONE (sec. 2.18j / 2.18z / 2.18ac).
@@ -215,6 +220,7 @@ contract HolderRegistration is RegistrationSimple {
         // The OWNER's recorded type for this zkType, not a constant and not the caller's word. A TD1
         // profile registers a national ID; a TD3 profile registers a passport.
         bytes32 docType_ = icaoDocTypes[zkType_];
+        uint64 notAfter_ = _mrzDateToTimestamp(uint256(publicInputs_[_ICAO_PUB_EXPIRY]));
 
         _holderStateKeeper().addDocument(
             documentKey_,
@@ -222,7 +228,7 @@ contract HolderRegistration is RegistrationSimple {
             holderRoot_,
             docType_,
             uint256(publicInputs_[_ICAO_PUB_DG_COMMIT]),
-            0
+            notAfter_
         );
 
         emit DocumentRegistered(holderRoot_, documentKey_, docType_);
@@ -400,6 +406,54 @@ contract HolderRegistration is RegistrationSimple {
      * a general primitive, but on THIS path the guard is load-bearing, and silently skipping it is
      * exactly the shape of hole this function exists to close.
      */
+    /**
+     * @notice The MRZ expiry - six packed ASCII digits, YYMMDD - as epoch seconds.
+     *
+     * ⚠️ THE CENTURY WINDOW IS POLICY AND IS DECIDED HERE, DELIBERATELY. ICAO 9303 does not give a
+     * century for a two-digit year, so somebody must choose. The circuit must NOT: baking a window
+     * into a verifier would freeze it into an artifact that cannot be changed without regenerating
+     * every proof. `YY < 70` maps to 20YY, which covers every document that can still be valid.
+     *
+     * Reverts on a malformed date rather than returning 0, because 0 means "no expiry" in
+     * `HolderStateKeeper` - so a parse failure would silently promote an expiring document to a
+     * permanent one, which is the failure direction that matters.
+     */
+    function _mrzDateToTimestamp(uint256 packed_) internal pure returns (uint64) {
+        uint256 y_;
+        uint256 m_;
+        uint256 d_;
+
+        // Big-endian ASCII: byte 5 is the most significant digit of YY.
+        unchecked {
+            for (uint256 i_ = 0; i_ < 6; ++i_) {
+                uint256 c_ = (packed_ >> (8 * (5 - i_))) & 0xff;
+                require(c_ >= 0x30 && c_ <= 0x39, "HolderRegistration: non-digit in expiry");
+                uint256 v_ = c_ - 0x30;
+                if (i_ < 2) y_ = y_ * 10 + v_;
+                else if (i_ < 4) m_ = m_ * 10 + v_;
+                else d_ = d_ * 10 + v_;
+            }
+        }
+
+        require(m_ >= 1 && m_ <= 12, "HolderRegistration: bad expiry month");
+        require(d_ >= 1 && d_ <= 31, "HolderRegistration: bad expiry day");
+
+        y_ += y_ < 70 ? 2000 : 1900;
+
+        // days_from_civil (Howard Hinnant), exact for any proleptic Gregorian date. The window above
+        // keeps every year >= 1970, so unsigned arithmetic is safe here.
+        unchecked {
+            uint256 yy_ = m_ <= 2 ? y_ - 1 : y_;
+            uint256 era_ = yy_ / 400;
+            uint256 yoe_ = yy_ - era_ * 400;
+            uint256 mp_ = m_ > 2 ? m_ - 3 : m_ + 9; // March-based month, 0..11
+            uint256 doy_ = (153 * mp_ + 2) / 5 + d_ - 1;
+            uint256 doe_ = yoe_ * 365 + yoe_ / 4 - yoe_ / 100 + doy_;
+            uint256 days_ = era_ * 146097 + doe_ - 719468;
+            return uint64(days_ * 86400);
+        }
+    }
+
     function _replayKey(Passport memory passport_) internal pure returns (bytes32) {
         require(passport_.dg1Hash != bytes32(0), "HolderRegistration: zero dg1 hash");
         return passport_.dg1Hash;

@@ -219,13 +219,17 @@ contract HolderRegistrationTest is Test {
      * passport existed.
      */
     function _icaoInputs() internal pure returns (bytes32[] memory inputs_) {
-        inputs_ = new bytes32[](6);
+        inputs_ = new bytes32[](7);
         inputs_[0] = bytes32(uint256(0xD6C5)); // dg15PkHash
         inputs_[1] = bytes32(uint256(0xDEED)); // passportHash -> documentKey
         inputs_[2] = bytes32(uint256(0xC0)); // dgCommit
         inputs_[3] = bytes32(uint256(0xA11CE)); // holderRoot
         inputs_[4] = bytes32(uint256(0xBAD0)); // icaoRoot - not a root the keeper knows
         inputs_[5] = bytes32(uint256(0xD61)); // dg1Hash
+        // expiry: six packed ASCII digits, "300101" = 2030-01-01. A well-formed date, because these
+        // tests assert the ROOT is rejected first - a malformed one would revert in the date parse
+        // and hide the ordering this file exists to pin.
+        inputs_[6] = bytes32(uint256(0x333030313031));
     }
 
     /// THE property test. A root `certificatesSmt` never held must be refused, and refused BEFORE

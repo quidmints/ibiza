@@ -42,7 +42,7 @@ fn main(
 	sig: [Field; 18],
 	sk_identity: Field,
 	icao_root: Field,
-	inclusion_branches: [Field; 80]) -> pub (Field, Field, Field, Field, Field, Field){
+	inclusion_branches: [Field; 80]) -> pub (Field, Field, Field, Field, Field, Field, Field){
 	// beta.13 rejects `[u8; 0]` as an entry-point type, and this profile carries no DG15 (the
 	// generic below is 0), so the parameter is constructed locally instead. Constraints and public
 	// inputs are unchanged; only the witness map loses an empty entry.
@@ -69,7 +69,29 @@ fn main(
 	// bind twice under two holder roots.
 	let dg1_hash = dg1_hash_field::<DG_HASH_ALGO>(passport_hash::<DG_HASH_ALGO, DG1_LEN>(dg1));
 
-	(tmp.0, tmp.1, tmp.2, tmp.3, icao_root, dg1_hash)
+	// THE EXPIRY, so `notAfter` stops being a lie (sec. 2.18gz-nocontroller).
+	//
+	// `HolderRegistration` hardcodes `notAfter = 0` because "nothing in the proof attests an
+	// expiry", and that was true of THIS circuit while being false of the codebase: `query.nr`
+	// has read the field for TD1 all along. A document's expiry is stated by the issuing state and
+	// signed into the SOD, so it needs no authority to attest it - which is why emitting it here
+	// removes a whole class of controller-driven revocation rather than merely adding a field.
+	//
+	// Offsets are the ones `td1_dg1_data_extractor` uses (EXPIRATION_DATE_SHIFT = 43, size 6), read
+	// big-endian into a Field. They are INLINED rather than imported: that extractor is private and
+	// lives in `query.nr`, which the 88 profile circuits also link, and this session measured that
+	// touching shared library code perturbs unrelated verification keys.
+	//
+	// ⚠️ This is the raw YYMMDD digits as bytes, NOT a timestamp. The consumer converts; the circuit
+	// must not, because a century window is policy and would be baked into a verifier if decided here.
+	let mut expiry_date: Field = 0;
+	let mut place: Field = 1;
+	for i in 0..6 {
+		expiry_date += place * dg1[43 + 6 - 1 - i] as Field;
+		place *= 256;
+	}
+
+	(tmp.0, tmp.1, tmp.2, tmp.3, icao_root, dg1_hash, expiry_date)
 }
 
 /// The TD1 permissionless path must agree with the TD1 LIGHT path on `dg1Hash`.

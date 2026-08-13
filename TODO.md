@@ -16304,3 +16304,31 @@ difference matters: "unavoidable" closes the question, "unbuilt" is a task.
 **What would genuinely still need one:** a predicate with no register anywhere and no in-document
 evidence. Having decomposed the one example that was offered, none is currently named - so the
 claim should not be restated until something concrete fails this test.
+
+### 2.18gz-expiry ✅ `notAfter` is derived from the document, not hardcoded 0
+
+The first of 2.18gz-nocontroller's three, and the cheapest: a document that expires on its own terms
+needs no authority to revoke it.
+
+* `register_identity_td1` emits the MRZ expiry as a **7th public output** (offsets from
+  `td1_dg1_data_extractor`: `EXPIRATION_DATE_SHIFT = 43`, size 6). The verifier reports
+  `NUMBER_OF_PUBLIC_INPUTS = 15` = 7 + the 8-element pairing offset every verifier here carries.
+* `registerDocumentViaIcao` converts it and passes it as `notAfter`. `_ICAO_SIGNALS_COUNT` 6 → 7.
+* `MrzExpiry.t.sol` - 7 tests pinned to dates computed with Python `datetime` BEFORE the test was
+  written, the same discipline `mrzKey.test.ts` uses against ICAO's worked example.
+
+⚠️ **THE OFFSETS WERE INLINED, NOT IMPORTED, and that is deliberate.** `td1_dg1_data_extractor` is
+private and lives in `query.nr`, which the 88 profile circuits also link - and this session MEASURED
+that touching shared library code moves unrelated verification keys (the secp384r1 branch moved 33 of
+89). Importing it to save six lines would have forced a full regeneration.
+
+⚠️ **THE CENTURY WINDOW IS IN SOLIDITY, NOT THE CIRCUIT.** ICAO 9303 gives no century for a two-digit
+year, so somebody must choose; baking that choice into a verifier would freeze it into an artifact
+that cannot change without regenerating every proof. `YY < 70 -> 20YY`, asserted at both boundaries
+(69 -> 2069, 70 -> 1970) rather than assumed.
+
+⚠️ **MALFORMED DATES REVERT, THEY DO NOT DEFAULT.** `HolderStateKeeper` reads `notAfter == 0` as "no
+expiry", so a parse that returned 0 on bad input would silently promote an expiring document to a
+permanent one. That failure direction is tested explicitly.
+
+**Verified:** 504 forge tests, `check-client-abis.py` green.

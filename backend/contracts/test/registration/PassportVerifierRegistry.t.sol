@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
+import {DeployPassportVerifiers} from "../../script/DeployPassportVerifiers.s.sol";
 import {Registration2} from "../../contracts/registration/Registration2.sol";
 import {StateKeeper} from "../../contracts/state/StateKeeper.sol";
 import {PoseidonSMT} from "../../contracts/state/PoseidonSMT.sol";
@@ -211,6 +212,51 @@ contract PassportVerifierRegistryTest is Test {
             }
             seen[i] = zkType;
         }
+    }
+
+    /// THE DEPLOY SCRIPT ITSELF, run against the real contracts.
+    ///
+    /// Not a reimplementation of what the script does - the script's own `run()`, so the artifact
+    /// lookup, the `create`, the manifest keccak assertion and the read-back pass are all exercised.
+    /// A script that is only ever reasoned about is the thing that turns out not to work on the day
+    /// it is needed, and the registry it populates went unpopulated precisely because nothing ran.
+    ///
+    /// A THREE-PROFILE WINDOW, deliberately. Each verifier is ~24 KB and the window is what the
+    /// script is built around, so exercising batching is more useful here than paying ~400M gas to
+    /// re-prove the whole-manifest binding that `test_everyManifestProfileCanBeBound` already covers.
+    function test_deployScriptRegistersItsWindow() public {
+        DeployPassportVerifiers deployer = new DeployPassportVerifiers();
+
+        // The script broadcasts as the DEPLOYER key, not as whoever deployed Registration2, and
+        // `updateDependency` gates on `stateKeeper.isOwner(msg.sender)`. So the deploying key has to
+        // be an owner first - which is the operational prerequisite the script now checks up front,
+        // and which this test would otherwise hide by running everything as the owner already.
+        address[] memory deployerKey = new address[](1);
+        deployerKey[0] = DEFAULT_SENDER;
+        stateKeeper.addOwners(deployerKey);
+
+        vm.setEnv("REGISTRATION", vm.toString(address(registration)));
+        vm.setEnv("START", "0");
+        vm.setEnv("COUNT", "3");
+
+        deployer.run();
+
+        string memory json = vm.readFile(MANIFEST);
+        string[] memory names = vm.parseJsonKeys(json, ".profiles");
+
+        for (uint256 i = 0; i < 3; ++i) {
+            address bound = registration.passportVerifiers(_zkType(names[i]));
+
+            assertTrue(bound != address(0), string.concat("script left unbound: ", names[i]));
+            assertGt(bound.code.length, 0, string.concat("bound address has no code: ", names[i]));
+        }
+
+        // Outside the window nothing is touched - otherwise batching would be unsafe to resume.
+        assertEq(
+            registration.passportVerifiers(_zkType(names[3])),
+            address(0),
+            "script registered outside its window"
+        );
     }
 
     /// `parseJson`'s path syntax needs the key quoted, or a profile name would be read as a series

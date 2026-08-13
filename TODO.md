@@ -15968,3 +15968,36 @@ reason - a key for an unknown circuit would bind a verifier nothing can produce 
 ⚠️ **The general shape, since it has now cost two wrong answers in one session:** a byte-identical
 match tells you two things are the same. It tells you nothing about a third thing that merely
 occupies the same NAME or the same SLOT.
+
+### 2.18gz-wiring — ✅ the deployment wiring exists, and is exercised rather than reasoned about
+
+`script/DeployPassportVerifiers.s.sol` deploys each verifier from its compiled artifact and registers
+it under the manifest's `zk_type`, through the real owner-gated `updateDependency`. This is the half
+that never came across with the fork - rarimo's `2_registration.migration.ts` plus
+`10_setup.migration.ts`.
+
+**Data-driven, not an 88-branch switch.** `vm.getCode` keeps the profile list in the manifest, so
+adding or retiring one changes JSON and nothing else. Importing 88 contracts to dispatch on a name
+would also push the script past its own EIP-170 limit.
+
+**It asserts the key rather than trusting it.** The manifest's `zk_type` is checked against the
+chain's own keccak before each registration; a mismatch would not fail loudly at run time, it would
+bind verifiers under keys nothing ever looks up.
+
+**It reads back in a SEPARATE pass, after every write in the window.** A collision or silent
+overwrite only shows up then - an earlier profile still resolving while a later one took its slot.
+Checking each immediately after its own write would never see it.
+
+⚠️ **OPERATIONAL PREREQUISITE, found by running it and now checked FIRST: the deploying key must
+already be a `StateKeeper` owner.** `updateDependency` gates on `stateKeeper.isOwner(msg.sender)`,
+and under `--broadcast` that sender is the deployer key, NOT whoever deployed `Registration2`.
+Without the up-front check the run deploys a ~24 KB verifier, pays for it, and only then reverts with
+"Registration: not an owner" - gas burned, nothing bound. This is exactly what a script that is only
+reasoned about gets wrong.
+
+⚠️ **BATCHING IS MANDATORY, measured not estimated:** a three-profile window costs 12.9M gas, so
+~4.3M per profile and ~380M for all 88, about ten mainnet blocks. `START`/`COUNT` select a window and
+the run is idempotent, so a window can be safely repeated after a failure.
+
+**What it still cannot do:** prove a document registers. That needs a real travel document. The
+binding is wired and tested; the cryptography is not exercised.

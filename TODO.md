@@ -16270,3 +16270,37 @@ retracted - reinstates a controller who must de-anonymise people to match them.
 ⚠️ **Do not describe this as trustless.** "Bounded, auditable, fail-open, and escapable via ragequit"
 is the accurate claim. 2.18cu already concedes the same for predicates with no external register:
 `document.not-current` has no source of truth, so an authority there is unavoidable.
+
+### 2.18gz-nocontroller 🔴 "AN AUTHORITY IS UNAVOIDABLE" IS WRONG — and our own code refutes it
+
+2.18cu conceded a controller for *"predicates with no external register behind them -
+`document.not-current` and its kind"*. I repeated that. **Asked why there should be a central
+authority at all, and the concession does not survive decomposition.**
+
+`document.not-current` is three separate claims, and each has a source of truth:
+
+| component | source of truth | authority? |
+|---|---|---|
+| **expired** | the MRZ itself, signed by the issuing state | **NO** |
+| **superseded by renewal** | our own chain state - `renewDocumentViaNoir` supersedes `oldDocumentKey_` | **NO** |
+| **stolen / lost** | INTERPOL SLTD, a published register | **NO** - anchorable exactly like OFAC |
+
+⚠️ **THE EXPIRY MACHINERY ALREADY EXISTS.** `noir_dl_lib/src/query.nr` extracts the expiry date from
+DG1 at `[70..76)` and has tests asserting it can be withheld selectively. So
+`HolderRegistration`'s *"nothing in the proof attests an expiry, so `notAfter` is fixed to 0"* is true
+of `register_identity` and FALSE of this codebase. A registration circuit that already hashes DG1 can
+output the expiry as a public signal for the cost of a range read.
+
+⇒ **The controller is UNBUILT, not unavoidable.** That is a materially different claim, and the
+difference matters: "unavoidable" closes the question, "unbuilt" is a task.
+
+**Ordered by cost:**
+1. **Expiry as a public signal** from the registration circuit; `notAfter` stops being 0. Cheapest,
+   entirely local, and removes the largest class of stale-document revocations.
+2. **Supersession** already needs no authority - confirm nothing calls `revoke` for it.
+3. **SLTD anchored** by the same pipeline as OFAC. Same fail-open polarity, same ragequit bound, same
+   public-source auditability. This is the "interpol, etc." the owner asked for at the outset.
+
+**What would genuinely still need one:** a predicate with no register anywhere and no in-document
+evidence. Having decomposed the one example that was offered, none is currently named - so the
+claim should not be restated until something concrete fails this test.

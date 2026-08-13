@@ -7,7 +7,15 @@ solc = "0.8.28"
 optimizer = true
 optimizer_runs = 200
 evm_version = "cancun"
-fs_permissions = [{ access = "read-write", path = "./" }]
+fs_permissions = [
+  { access = "read-write", path = "./" },
+  # READ-ONLY, and one file. PassportVerifierRegistry.t.sol cross-checks the zkTypes recorded in the
+  # manifest against Solidity's own keccak - the manifest is written off-chain and the deployment
+  # registers those keys on-chain, so this is the only place the two derivations meet. Granted as a
+  # single read-only path rather than widening to `../`, and NOT hand-copied into the test, because
+  # a mirrored table is exactly the drift that left a stale AA curve width in the checker.
+  { access = "read", path = "../circuits/passport-profiles.json" },
+]
 
 # The generated Honk verifiers are ~24.5KB against EIP-170's 24,576-byte limit - only ~40 bytes of
 # headroom at the project-wide optimizer_runs=200. That is a deployment cliff: any regeneration

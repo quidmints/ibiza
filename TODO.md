@@ -15649,3 +15649,27 @@ The residual 3.5% is **three distinct classes**, and only one is a circuit gap:
    (PKCS, 32, 26) today, so the tail would be unreachable, and the checker already rejects any
    profile that would need it.
 3. **brainpoolP224r1 is not implemented at all** - DE 63, AE 42. Needs a curve module and a SIG_TYPE.
+
+### 2.18gz-signer — removing the backend signer is now blocked on ONE contract change
+
+The profile work has cleared the way for this, so the remaining obstacle is worth stating exactly.
+
+**`registerDocumentViaIcao` already exists and is already signer-free.** It verifies the ICAO chain
+and takes no signature from anyone. The signer survives only in `revokeDocumentViaSigner` and
+`_authenticateDocument`; both registration paths (`registerDocumentViaIcao`, `registerDocumentViaNoir`)
+are clean.
+
+**What it cannot do is serve more than one document class.** `icaoRegistrationVerifier` is a SINGLE
+address (`HolderRegistration.sol:68`, resolved at `:155`), whereas `Registration2` looks its verifier
+up per document with `passportVerifiers[zkType]`. There are now **four live TD1 profiles** -
+`14_256_1_4_...`, `1_256_1_5_...`, `21_160_1_2_...`, `25_384_1_3_...` - and only one can be
+configured at a time, so every holder whose ID card is signed with a different algorithm still has to
+use the light/signer path.
+
+⇒ **The change is to give `HolderRegistration` the same per-`zkType` lookup `Registration2` has.**
+Until then, "remove the signer" cannot mean more than "remove it for one algorithm".
+
+⚠️ The verifier MUST stay a TD1 one. `escrow_envelope` computes `dgCommit` over **95** bytes; pointing
+this at the 93-byte TD3 circuit produces `registrationSmt` leaves escrow can never reproduce, so the
+documents register and can then never obtain a pool identity - correct-looking and inert
+(`HolderRegistration.sol:100-110`). Before today only ONE TD1 profile existed to point it at.

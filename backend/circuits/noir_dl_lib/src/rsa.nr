@@ -250,14 +250,23 @@ pub fn verify_rsa<let N_BITS: u32, let N: u32, let HASH_SIZE: u32, let EXP: u32>
         for i in 0..5{
             assert(chunk_2[i + 10] == hashed[i], "pkcs padding failure");
         }
-        let mut chunk2_remainder = 0;
-
-        let mut current = 1;
+        // THE 10 DigestInfo BYTES SHARING THIS LIMB WITH THE HASH, asserted BYTEWISE.
+        //
+        // What was here accumulated them with `current *= 8` and asserted the sum against
+        // 0xa4212add. The sum is correct - but base 8 with byte-valued digits is LOSSY, so it does
+        // not pin the bytes. Demonstrated collision: 0d2a0e03021a05000414 produces exactly the same
+        // sum as the real 052b0e03021a05000414, so the algorithm identifier could be substituted
+        // while the assertion still passed.
+        //
+        // Not a forgery hole on its own - producing a signature over a doctored DigestInfo still
+        // requires an e-th root, and every profile reaching here uses e=65537 - but a constraint
+        // that admits collisions is not doing the job it appears to. `exp_result[2]` below pins
+        // DigestInfo[0..5]; these ten pin the rest, so all 15 bytes are now fixed.
+        let digest_info_tail: [u8; 10] =
+            [0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a, 0x05, 0x00, 0x04, 0x14];
         for i in 0..10{
-            chunk2_remainder += (chunk_2[i] as Field) * current;
-            current *= 8;
+            assert(chunk_2[i] == digest_info_tail[i], "pkcs padding failure");
         }
-        assert(chunk2_remainder == 0xa4212add, "pkcs padding failure");
         assert(exp_result[2] == 0xffffffffffffffffff003021300906, "pkcs padding failure");
 
         for i in 3..(N - 2){

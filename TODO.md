@@ -16064,3 +16064,33 @@ referenced the changed function.
 **What remains for the signer to actually go:** client-side zkType selection (nothing computes which
 selector to send), and `revokeDocumentViaSigner` / `_authenticateDocument`, which are the only signer
 uses left - both on revocation, not registration.
+
+### 2.18gz-sha1 — the SHA-1 DigestInfo check was COLLIDABLE, and I had left it unexamined
+
+Found only when asked what I had started and not finished. Having fixed the SHA-256 block and written
+the SHA-512 one properly, I never went back to the third PKCS block.
+
+It is **not** the same defect as SHA-256's. SHA-1 *does* assert its remainder -
+`chunk2_remainder == 0xa4212add` - so the bytes are not simply unchecked. **But the accumulation uses
+`current *= 8` instead of `256`**, and base 8 with byte-valued digits is lossy, so the sum does not
+pin the bytes.
+
+**Demonstrated, not argued:** `0d2a0e03021a05000414` produces exactly the same sum as the real
+`052b0e03021a05000414`. The algorithm identifier could therefore be substituted with the assertion
+still passing.
+
+**Severity:** a hardening gap, not an open door. Producing a signature over a doctored DigestInfo
+still requires an e-th root and every profile on this path uses e=65537. But a constraint that admits
+collisions is not doing the job it appears to be doing, and the `*= 8` was almost certainly a typo
+for `*= 256` rather than a deliberate design.
+
+**Fixed bytewise**, so `exp_result[2]` pins `DigestInfo[0..5]` and the new assertions pin the rest -
+all 15 bytes, matching what the SHA-256 and SHA-512 blocks now do.
+
+**Blast radius measured:** exactly the 9 PKCS+SHA-1 profiles rebuilt, nothing else moved, 497 forge
+tests pass and the checker exits 0.
+
+⚠️ **ALL THREE PKCS BLOCKS NOW AGREE.** That is worth stating because the inconsistency between them
+was the tell each time: SHA-256 computed a remainder and never asserted it, SHA-1 asserted a lossy
+one, SHA-512 did not exist at all. Any future hash block should assert its DigestInfo bytewise and
+cover every limb.

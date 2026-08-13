@@ -16241,3 +16241,32 @@ warns about for the TD3/TD1 mixup. ~3.5% of PKD signer certificates land here to
 than reading the emitted value. That makes **three independent implementations** agree — Python via
 `cast`, Solidity in `PassportVerifierRegistry.t.sol`, and TypeScript via noble. Two hand-written
 copies went stale in this session alone, so a bundled copy that nothing verifies is a rumour.
+
+#### 2.18gz-authority — does anchoring the list re-centralise what PP decentralised? Bounded, not eliminated
+
+Asked directly, and the answer should not be a reassurance.
+
+**There IS an authority.** A malicious CRE with a compliant DON quorum can add an entry that is not on
+the source list. Claiming otherwise would overstate it.
+
+**But it is BOUNDED BY `ragequit`, structurally.** That circuit proves only *"I know the secrets behind
+this commitment, and this is its nullifier"* - **nothing about any list, deliberately** - and
+`PrivacyPool.ragequit` enforces `depositors[label] == msg.sender`. So the worst available act is
+forcing a ragequit: the holder reclaims their deposit and surrenders the anonymity it bought. **No
+freeze, no theft.** That is precisely the bound upstream's ASP already has, so the power is relocated
+rather than created.
+
+**Three ways it is weaker than the ASP postman it replaces:**
+1. **Fail direction.** An allowlist fails CLOSED - silence censors. Blacklist non-membership fails
+   OPEN - silence admits. Inaction shrinks a blacklist (2.18cu).
+2. **Censorship must be an affirmative, visible act** - adding an entry that contradicts a public
+   source anyone can rebuild the leaves from - not withholding one silently.
+3. **The workflow is pinned:** ID = `hash(binary, config)`, URL compiled in, every DON runs the same
+   binary. It transcribes rather than decides; discretion needs a pin change, which is visible.
+
+**And the alternative was worse.** Feeding the list into `IdentityRegistry.revoke` - the design 2.18cu
+retracted - reinstates a controller who must de-anonymise people to match them.
+
+⚠️ **Do not describe this as trustless.** "Bounded, auditable, fail-open, and escapable via ragequit"
+is the accurate claim. 2.18cu already concedes the same for predicates with no external register:
+`document.not-current` has no source of truth, so an authority there is unavoidable.

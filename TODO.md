@@ -16136,3 +16136,42 @@ failed with "did not revert as expected" - looking exactly like a broken access 
 documents this for role constants. The constant is now read once in `setUp`.
 
 **Verified:** 497 forge tests, 25 in HolderRegistration, and `check-client-abis.py` green.
+
+### 2.18gz-bracket 🔴 BRACKETING CANNOT WORK AGAINST THIS TREE — 2.18cu's remaining item is blocked on a wrong premise
+
+Found before implementing, by reading `_computeRoot` rather than trusting the design note.
+
+**2.18cu's open item** is "withdrawal-time non-membership against the anchored sanctions root", by
+bracketing: prove `leaf_lo < x < leaf_hi` with both leaves in the tree, hence `x` is absent. It leans
+on `_computeRoot`'s strictly-ascending invariant, which is real (`LeavesNotStrictlySorted` reverts).
+
+**But the invariant is not sufficient, because of how the tree HASHES.**
+`RegistrySourceAnchor._hashSortedPair(a,b)` sorts the pair before hashing, so every internal node is
+**commutative**. A Merkle proof against it establishes membership and **carries no positional
+information at all** - it is the OpenZeppelin `MerkleProof` shape.
+
+**Why that is fatal rather than inconvenient.** Bracketing is sound only if `leaf_lo` and `leaf_hi`
+are **ADJACENT**. Adjacency is a claim about POSITION, and a commutative tree discards position by
+construction. So a prover whose identifier `x` IS on the list can present the leaf below it and the
+leaf above it - both genuinely in the tree, both proofs valid, `lo < x < hi` satisfied - and the
+bracket accepts while `x` is present. **It proves nothing.**
+
+**Two ways out, and they are not equal:**
+
+1. **Make the tree position-binding** - hash `(left, right)` in fixed order with a direction bit, the
+   ordinary Merkle shape. Changes `_computeRoot`, every published root, the CRE that builds the
+   leaves, and `RegistrySourceAnchor`'s "anyone can rebuild and re-verify" property has to be
+   restated. Bracketing then works as designed.
+2. **Key an SMT by the identifier instead** - absence is a leaf of 0, which is exactly the mechanism
+   `2.13e` already uses for identity status and which the withdrawal circuit already carries a term
+   for. No ordering, no adjacency, no bracketing. This is the *same shape* as the merged identity
+   tree the repo already proved out, so it reuses a solved problem rather than a new one.
+
+⚠️ Option 2 is almost certainly right and would make the sanctions predicate structurally identical to
+the identity predicate - which is what "one cohesive thing rather than a separate predicate" asks for.
+It also deletes the ordering invariant from the trust story entirely.
+
+**Not implemented here**, because it changes what the CRE publishes and how roots are anchored, and
+that is a design decision rather than a mechanical edit. **The cost recheck (2.18cu's second open
+item) is moot until this is settled** - there is no point measuring a bracketing term that cannot be
+sound.

@@ -16175,3 +16175,43 @@ It also deletes the ordering invariant from the trust story entirely.
 that is a design decision rather than a mechanical edit. **The cost recheck (2.18cu's second open
 item) is moot until this is settled** - there is no point measuring a bracketing term that cannot be
 sound.
+
+### 2.18gz-unify 🟢 THE COHESIVE PREDICATE IS BUILDABLE — but on ADDRESSES, not names
+
+Owner chose the SMT-keyed-by-identifier route over making the tree position-binding (2.18gz-bracket).
+Working it through settles what the sanctions predicate can and cannot be, and the answer is not the
+one the design notes assumed.
+
+**THE PRIMITIVE IS ALREADY THERE.** `smt_verifier_full` takes `fnc` and already supports EXCLUSION
+via `old_key`/`old_value`/`is_old0` - the circomlib shape. The withdrawal circuit already calls it
+with `fnc = SMT_INCLUSION` for the identity term. Non-membership is **the same call with `fnc` true**.
+So the circuit cost is one more SMT term, structurally identical to the identity one - which is
+exactly "one cohesive thing rather than a separate predicate".
+
+**BUT THE KEY CANNOT BE A NAME, AND THAT IS SETTLED (2.18eo), NOT A NEW OPINION.** A name leaf commits
+to `Reference` - the publisher's own listing number - which no passport contains, so a holder can
+never compute their own leaf. Names are also non-canonical by the source's own admission. **No tree
+shape fixes this**; the SMT change does not unblock it, and neither would bracketing have.
+
+**WHAT IS BUILDABLE: THE WITHDRAWAL RECIPIENT ADDRESS.** `sanctions_lists/identifiers.go` was built
+this session with **no `Reference` field**, precisely so a consumer who knows only an address can
+reconstruct the leaf: `keccak(registryKey ‖ idType ‖ normalisedValue)`, normalisation per chain. That
+is holder-reconstructible by construction, and the withdrawal already knows its recipient.
+
+⇒ **The sanctions predicate is "the address I am withdrawing to is not on the list", not "I am not on
+the list".** That is a weaker claim about the person and a stronger one about the transfer - and it is
+the claim a pool can actually enforce, since the recipient is public and the identifier is exact
+rather than transliterated.
+
+**Remaining work, all of it passport-free:**
+- [ ] CRE publishes the identifier set as a Poseidon SMT keyed by the leaf hash, not a sorted list
+      (the sorted-list root stays for the name registers, which the title path consumes).
+- [ ] `RegistrySourceAnchor` anchors that root; reuse `isValidRoot`'s `MAX_ROOT_AGE` rule so
+      staleness is bounded and inaction stays fail-open (2.18cu's argument survives intact).
+- [ ] Withdrawal circuit: one `smt_verifier_full(..., fnc = true)` term keyed by the recipient
+      address leaf, plus the root as a public signal.
+- [ ] Recheck the opcode estimate against THIS term - the third revision the note asks for, now
+      measurable because the term is finally well-defined.
+
+⚠️ **Do not describe this as sanctions screening of the USER.** It screens the destination. Claiming
+more would repeat the overstatement 2.18eo already corrected once.

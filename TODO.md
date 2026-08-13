@@ -13163,10 +13163,22 @@ instantiated once the proof paths moved to real verifiers, and a dead Groth16 `I
 not belong in the protocol repo).** It is written to be self-contained — an ibiza reader should not
 need to open SPV to act on it. SPV's rows now point here instead of restating it.
 
-**Why an app exists at all.** A QU!D BTC LP's channel is funded by a **2-of-2 taproot output**.
-Today *both* halves are held by the fleet's own process (the vault node and the hop node, same
-binary), so a compromised fleet can spend an LP's UTXO alone. Giving the LP one of those halves is
-the whole point; the app is where that half lives. **Nothing else about the channel changes.**
+**Why an app exists at all.** A QU!D BTC LP's channel is funded by a **2-of-2 taproot output** —
+one half the hop node's, one half the "vault" node's. If one process holds both, a compromised
+fleet can spend an LP's UTXO alone. **The app is a place to put the second half that the fleet
+cannot reach.**
+
+⚠️ **IT IS NOT THE ONLY SUCH PLACE, AND THE SPLIT IS ALREADY BUILT — do not read this section as
+"the both-halves problem is open."** In SPV the vault is an `Option` and its absence *is* the
+security split: in the **LP-hosted** deployment the vault node runs on **the LP's own always-on
+box with the LP's own seed**, the fleet's process has no vault node to pass, and the dead-man
+heartbeat **does not run at all** — exits come from the pre-signed ladder instead. `None` there is
+not a flag the fleet can flip; it is the absence of a seed it never had. That is compiler-enforced,
+not a convention.
+
+⇒ **So the app is the OTHER deployment target of the same one half** — for LPs who will not run a
+box — alongside an always-on host and an enclave. That is exactly why the signer must stay one
+crate with one policy (below) rather than being written into app code.
 
 ### What the app must do — the entire scope, and it is bounded
 
@@ -15771,10 +15783,13 @@ The residual 3.5% is **three distinct classes**, and only one is a circuit gap:
    (brainpoolP256r1/SHA-384 and /SHA-512), SC 44 (secp384r1/SHA-256), AT 62. Those curves ARE
    implemented and `HASH_ALGO` is a generic, so nothing needs writing - only a tuple we do not have.
    ⇒ blocked on an artifact, genuinely, unlike everything above.
-2. **`verify_rsa` has no `N == 26` tail in its `HASH_SIZE == 32` block** - NP 118, AT 15
-   (RSA-3072 PKCS + SHA-256). A real code gap. **Do NOT add it speculatively**: no live profile is
-   (PKCS, 32, 26) today, so the tail would be unreachable, and the checker already rejects any
-   profile that would need it.
+2. ✅ **DONE - `verify_rsa` now has the `N == 26` tail in its `HASH_SIZE == 32` block** (NP 118,
+   AT 15; RSA-3072 PKCS + SHA-256). Landed with the DigestInfo fix in one pass since both touch the
+   same function and share a regeneration. I had argued against adding it as unreachable code; the
+   owner's call was to add it, and it is the right one - the tail is what makes such a profile
+   ADDABLE rather than blocked, and the checker still refuses (PKCS, 32, 26) until a tuple exists,
+   so nothing can slip through unverified in the meantime.
+   ⚠️ STILL BLOCKED ON A TUPLE, like class 1 - the code is no longer the obstacle.
 3. **brainpoolP224r1 is not implemented at all** - DE 63, AE 42. Needs a curve module and a SIG_TYPE.
 
 ### 2.18gz-signer — removing the backend signer is now blocked on ONE contract change
@@ -15864,7 +15879,7 @@ card may need a different variant, which is a parameter change, not a redesign.
 Do not let a green suite suggest otherwise - see `ISpvVenue.sol`'s header for the same trap in the
 other direction, where 489 passing tests say nothing about the file they appear to cover.
 
-### 2.18gz-pkcs — the SHA-256 PKCS block leaves 13 DigestInfo bytes unchecked
+### 2.18gz-pkcs — ✅ DONE. The SHA-256 PKCS block left 13 DigestInfo bytes unchecked
 
 Found while writing the `HASH_SIZE == 64` block and **not fixed**, so it is booked rather than left
 in a commit message.
@@ -15883,3 +15898,37 @@ tail that NP's RSA-3072/SHA-256 documents need (sec. 2.18gz-cov) - and not on it
 
 The new SHA-512 block does **not** repeat this: it asserts its DigestInfo bytes explicitly, and all
 18 limbs are covered with no gap, so a wrong constant there fails closed.
+
+#### 2.18gz-pkcs CLOSED — what landed, and what the constants rest on
+
+Both changes are in `verify_rsa` and shipped together (one function, one regeneration):
+
+* **DigestInfo now constrained.** `exp_result[3]` pinned only `DigestInfo[0..6]`; the remaining 13
+  bytes were accumulated into a `chunk3_remainder` that was never asserted, multiplying by 8 rather
+  than 256 on the way - both signs the value was never meant to be read. Now asserted explicitly, so
+  the SHA-256 path matches what the SHA-512 block already did.
+* **`N == 26` tail added**, closing the fail-open shape one level below a missing hash block.
+
+**Constants derived, not written.** Both come from constructing the EM and reading its 120-bit limbs,
+and the method REPRODUCES THE EXISTING `N=18` AND `N=35` TAILS EXACTLY - which is what makes it
+trustworthy rather than plausible. Two further cross-checks: the derived `N=26` pair is identical to
+the SHA-1 `N==26` tail already in the file (necessarily so - the top limbs depend on modulus size,
+not digest), and the 13 DigestInfo bytes join `exp_result[3]`'s six to cover all 19 with no overlap
+and no gap.
+
+**Blast radius measured, not assumed.** Exactly 29 VKs moved - precisely the predicted set, nothing
+unexpected in either direction - while ECDSA, PSS and PKCS+SHA-1 controls rebuilt BYTE-IDENTICAL.
+That is why 32 profiles were regenerated rather than all 88.
+
+⚠️ **A NEAR-MISS WORTH KEEPING.** The first smoke test used `11_256_3_2_336_216_NA`, which is
+SIG_TYPE 11 - **PSS, not PKCS** - so it never touched the changed code and a green result would have
+been meaningless. Check what a profile DISPATCHES to, not what its name suggests.
+
+**On `NUMBER_OF_SUBRELATIONS = 31`**, since it is the marker used throughout to mean "bb 6.0": it is
+derived, not observed. The sumcheck writes slots 0..30 contiguously across ten relations -
+Permutation 3, LogDerivLookup 3, Arithmetic 2, DeltaRange 4, Elliptic 2, Memory 6, RomLogup 2, Nnf 1,
+PoseidonExternal 4, PoseidonInternal 4 = 31 - and `NUMBER_OF_ALPHAS = 30` agrees (one challenge per
+subrelation after the first). `RomLogup`'s 2 slots account for the ENTIRE 29→31 delta from 5.1.0.
+Three unrelated circuits produce a byte-identical layout, so it is scheme-level, not circuit-level.
+⚠️ "All 107 files say 31" is NOT this check - it proves one toolchain, and would read identically if
+bb emitted a wrong constant everywhere.

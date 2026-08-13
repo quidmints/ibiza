@@ -20,6 +20,7 @@ before/after in a single repository's history.
 ---
 
 ## 1. One profile cannot compile: the AA key runs past `dg15`
+## (STILL VALID UPSTREAM — fixed locally, see the note at the end of this section)
 
 `registerIdentity_20_256_3_5_336_248_25_2120_5_1816` (published in `v0.2.4`) does not compile on
 nargo `1.0.0-beta.26`:
@@ -75,10 +76,27 @@ statement than your prover produces**, silently. It belongs here, from whoever k
 
 ---
 
-## 2. ⚠ The same gap affects five profiles that **do** compile and ship
+## 2. ⚠️ CORRECTED — the gap affects ONE more type, not five profiles
 
-`AA_SIG_TYPE` 20, 21 and 24 also match no branch and take the same 32-byte default. Unlike 25, their
-`dg15` is large enough that the reads stay in bounds — so they compile, emit verifiers, and ship:
+**The original claim here was too broad and is fixed in place.** It said `AA_SIG_TYPE` 20, 21 and 24
+all match no branch and are therefore wrong. **20 and 21 are 32-byte curves (secp256r1,
+brainpoolP256r1), so the 32-byte default is CORRECT for them** — having no branch is not a defect
+when the fall-through value is right.
+
+The real defect is confined to types whose true coordinate width differs from 32:
+
+| `AA_SIG_TYPE` | curve | true width | code used | verdict |
+|---|---|---|---|---|
+| 20 | secp256r1 | 32 | 32 | fine |
+| 21 | brainpoolP256r1 | 32 | 32 | fine |
+| 24 | secp224r1 | **28** | 32 | **wrong — both coordinates read from the wrong offsets** |
+| 25 | brainpoolP384r1 | **48** | 32 | **wrong — same, and its only profile also fails to compile** |
+
+⚠️ **Type 24 fails SILENTLY**, which is why it is the more dangerous of the two: the circuit builds,
+proves, and verifies, while `dg15_pk_hash` commits to something that is not the Active Authentication
+key. Type 25's profile at least refuses to compile.
+
+The profiles that merely "have no branch" and are unaffected are listed below for completeness:
 
 | profile | `AA_SIG_TYPE` |
 |---|---|
@@ -191,36 +209,27 @@ Happy to supply the exact circuit, generics tuple, and container recipe on reque
 
 ---
 
-## rarimo/passport-zk-circuits — profile `14_256_1_4_1752_576_1_1496_3_512` cannot be satisfied by any input
+## ⚠️ RETRACTED — `14_256_1_4_1752_576_1_1496_3_512` is NOT unsatisfiable
 
-**Severity:** the profile is unbuildable as published; no `DG15_LEN` exists that satisfies it.
+**Do not send this. The original claim was wrong and is kept only so the error is not repeated.**
 
-Decoding the name against `RegisterIdentityBuilder`'s parameter list gives
-`AA_SHIFT = 512 bits = 64 bytes` and `DG15_BLOCK_NUMBER = 3`, with `DG_HASH_TYPE = 256`.
+It read: the AA reader takes a fixed 128 bytes from `AA_SHIFT = 64`, forcing `DG15_LEN >= 192`, while
+`DG15_BLOCK_NUMBER = 3` caps it at 183 after SHA-256 padding — therefore no input satisfies it.
 
-Two requirements collide:
+**What is actually true:** the 128-byte read is OUR assumption, not the profile's. It is hardcoded in
+`extract_dg15_pk_hash`, which treats every RSA Active Authentication key as 1024-bit. This profile's
+key is **768-bit**: `AA_SHIFT(64) + modulus(96) + exponent(5) = 165 = DG15_LEN`, exactly, with zero
+slack. The profile is fine; the reader was too narrow. It now selects on whether a 1024-bit key
+physically fits, and the profile builds.
 
-* The Active Authentication reader takes a **fixed 128 bytes** from `AA_SHIFT` (five chunks: four of
-  25 bytes and a last of 28), so the top index touched is `AA_SHIFT + 127 = 191`, forcing
-  `DG15_LEN >= 192`.
-* `dg15` spans `DG15_BLOCK_NUMBER * 64 = 192` bytes, and SHA-256 padding needs 9 of them
-  (`0x80` plus the 8-byte length), so `DG15_LEN <= 183`.
+A supporting argument in the original was also wrong: that no DER layout puts a modulus at offset 64.
+Our own table refutes it — every working ECDSA-AA profile sits far past its bare-SPKI offset (251 vs
+~27, 349 vs ~26). A dg15 prefix is ordinary, so the offset was never evidence of anything.
 
-`192 > 183`, so the constraint system is unsatisfiable for every input — not merely for the documents
-we have. More plainly: **no 1024-bit RSA AA key can start at byte 64 and still fit in three blocks.**
-Either `DG15_BLOCK_NUMBER` should be 4, or `AA_SHIFT` should be 256 bits like every other RSA-AA
-profile in the set (all 38 of the ones that work use `AA_SHIFT = 32` bytes).
-
-Both bounds were validated against the corpus before being used to make this claim: the padding cap
-holds 45/45 and the block cap 44/44 across every profile that does build. The identity
-`DG15_LEN >= AA_SHIFT + 128` holds for 37 of 38 RSA-AA profiles, the sole exception being a tuple we
-had derived ourselves and have since corrected.
-
-Two sibling TD1 profiles are affected by the same family of issue but are *not* impossible — they are
-merely under-determined from published material (`21_160_1_2_560_576_NA` needs `EC_LEN`,
-which is a per-document DER length fitting no formula across all 83 profiles we build).
-
----
+**The lesson, since it recurred four times in one session:** a limit of our own vendored library read
+as a property of the artifact. Before reporting a defect upstream, finish the sentence *"this is
+impossible because \<file\> does \<thing\>"* — if that file is in our tree, it is a task, not a bug
+report.
 
 ## rarimo — `extract_dg15_pk_hash` has no branch for `AA_SIG_TYPE 25` (BrainpoolP384r1)
 
@@ -257,3 +266,24 @@ about 126 bytes with the point starting near byte 30, not byte 227.
 
 **Suggested fix:** add `if (AA_SIG_TYPE == 25) { EC_FIELD_SIZE = 48; }`, and re-derive that profile's
 `AA_SHIFT` and `DG15_BLOCK_NUMBER` — the branch alone does not make it buildable.
+
+---
+
+## Status of these reports (2026-08-13)
+
+**None have been sent** — this repo has no `gh` credentials, so filing is a manual step for the
+owner. What follows is what a reader should know before sending any of them.
+
+| # | subject | still true upstream? | our tree |
+|---|---|---|---|
+| 1 | `AA_SIG_TYPE 25` profile does not compile | **yes** | fixed: branch added, `DG15_LEN` re-derived to 323, profile builds |
+| 2 | AA coordinate widths (types 24 and 25) | **yes** | fixed: 24 → 28 bytes, 25 → 48 |
+| 3 | a self-consistency checker for the tuples | yes, offered | `tools/check-passport-profile-consistency.py` |
+| — | `14_256_1_4` "unsatisfiable" | **NO — retracted** | our reader was too narrow; the profile builds |
+| 5 | `AA_SIG_TYPE 25` has no branch | **yes** | fixed |
+
+⚠️ **Two of these were WRONG when written and are corrected above rather than deleted.** One claimed a
+profile was unsatisfiable when the limitation was in our own reader; the other counted five affected
+profiles when the fall-through value is correct for three of them. Both errors have the same shape — a
+property of our code reported as a property of theirs — and a bug report is the worst place for it,
+since the recipient cannot check our tree.

@@ -34,6 +34,10 @@ import {RegistrationSimple} from "../../contracts/registration/RegistrationSimpl
 /// through the real registration contract, so the signature-recovery, replay-protection, and
 /// Noir-proof-gating logic actually gets exercised, not just the state-transition logic.
 contract HolderRegistrationTest is Test {
+  /// A REAL profile's key, not an arbitrary bytes32: `registerDocumentViaIcao` now takes a zkType
+  /// SELECTOR, and using the genuine one keeps these tests honest about what the caller supplies.
+  bytes32 internal constant ZK_TYPE_TD1 = keccak256("Z_NOIR_PASSPORT_25_384_1_3_336_256_NA");
+
     bytes32 internal constant ICAO = 0x2c50ce3aa92bc3dd0351a89970b02630415547ea83c487befbc8b1795ea90c45;
     uint256 internal constant TREE = 80;
 
@@ -220,28 +224,28 @@ contract HolderRegistrationTest is Test {
     /// THE property test. A root `certificatesSmt` never held must be refused, and refused BEFORE
     /// the proof is looked at - which is what lets this run with no valid proof in existence.
     function test_icao_revertsOnACertificatesRootTheKeeperNeverHeld() public {
-        reg.setIcaoRegistrationVerifier(address(0xBEEF));
+        reg.setIcaoRegistrationVerifier(ZK_TYPE_TD1, address(0xBEEF));
         bytes32[] memory inputs = _icaoInputs();
 
         vm.expectRevert(bytes("HolderRegistration: unknown certificates root"));
-        reg.registerDocumentViaIcao(inputs, hex"1234");
+        reg.registerDocumentViaIcao(ZK_TYPE_TD1, inputs, hex"1234");
     }
 
     /// It reverts on the root even when the verifier is unset, proving the ordering directly: an
     /// unset verifier would revert too, and this shows which check fires first.
     function test_icao_theRootIsCheckedBeforeTheVerifier() public {
         bytes32[] memory inputs = _icaoInputs();
-        assertEq(reg.icaoRegistrationVerifier(), address(0), "precondition: verifier unset");
+        assertEq(reg.icaoRegistrationVerifiers(ZK_TYPE_TD1), address(0), "precondition: verifier unset");
 
         vm.expectRevert(bytes("HolderRegistration: unknown certificates root"));
-        reg.registerDocumentViaIcao(inputs, hex"1234");
+        reg.registerDocumentViaIcao(ZK_TYPE_TD1, inputs, hex"1234");
     }
 
     function test_icao_revertsOnWrongPublicInputCount() public {
         bytes32[] memory short_ = new bytes32[](5);
 
         vm.expectRevert(bytes("HolderRegistration: wrong public input count"));
-        reg.registerDocumentViaIcao(short_, hex"1234");
+        reg.registerDocumentViaIcao(ZK_TYPE_TD1, short_, hex"1234");
     }
 
     /*
@@ -256,18 +260,43 @@ contract HolderRegistrationTest is Test {
         // There is no argument for it and no setter reachable by a stranger; the only way in is
         // `setIcaoRegistrationVerifier`, which is owner-gated. Asserting the shape of the ABI is the
         // point: a `verifier` parameter appearing here later would be the regression.
-        assertEq(reg.icaoRegistrationVerifier(), address(0));
+        assertEq(reg.icaoRegistrationVerifiers(ZK_TYPE_TD1), address(0));
     }
 
     function test_icao_onlyTheOwnerCanSetTheVerifier() public {
         vm.prank(address(0xBAD));
         vm.expectRevert();
-        reg.setIcaoRegistrationVerifier(address(0xBEEF));
+        reg.setIcaoRegistrationVerifier(ZK_TYPE_TD1, address(0xBEEF));
     }
 
-    function test_icao_theVerifierCannotBeSetToZero() public {
+    /// THE POINT OF THE MAPPING: more than one document class on the signer-free path.
+  ///
+  /// Four TD1 profiles are live. With a single `icaoRegistrationVerifier` address only one of them
+  /// could ever use this path; every other holder fell back to the signer-gated one, which is the
+  /// trust root being removed. "Signer-free for one algorithm" is not signer-free.
+  function test_icao_distinctProfilesBindDistinctVerifiers() public {
+    bytes32 other = keccak256("Z_NOIR_PASSPORT_1_256_1_5_2376_336_1_2120_4_512");
+
+    vm.prank(OWNER);
+    reg.setIcaoRegistrationVerifier(ZK_TYPE_TD1, address(0xBEEF));
+    vm.prank(OWNER);
+    reg.setIcaoRegistrationVerifier(other, address(0xCAFE));
+
+    assertEq(reg.icaoRegistrationVerifiers(ZK_TYPE_TD1), address(0xBEEF), "first profile");
+    assertEq(reg.icaoRegistrationVerifiers(other), address(0xCAFE), "second profile");
+
+    // An unregistered selector still resolves to zero, so widening WHICH documents are accepted
+    // does not widen WHO decides what verifies them.
+    assertEq(
+      reg.icaoRegistrationVerifiers(keccak256("Z_NOIR_PASSPORT_not_a_profile")),
+      address(0),
+      "an unregistered zkType must not resolve"
+    );
+  }
+
+  function test_icao_theVerifierCannotBeSetToZero() public {
         vm.expectRevert(bytes("HolderRegistration: zero verifier"));
-        reg.setIcaoRegistrationVerifier(address(0));
+        reg.setIcaoRegistrationVerifier(ZK_TYPE_TD1, address(0));
     }
 
     // ── registerDocumentViaNoir ────────────────────────────────────────────────────────────

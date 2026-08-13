@@ -16037,3 +16037,30 @@ not because the artifact was lost.
 is `0xc1adfa76…`. The 88 numeric profiles contain no letters, so our scheme is safe for them **and
 only for them**. Anything non-numeric added later must take its label from rarimo's
 `scripts/utils/types.ts`, never from the filename.
+
+### 2.18gz-signer ✅ UNBLOCKED — the ICAO path serves every profile, not one
+
+`HolderRegistration.icaoRegistrationVerifier` (one address) is now
+`icaoRegistrationVerifiers` (zkType -> address). **BREAKING ABI CHANGE:**
+`registerDocumentViaIcao` takes a leading `bytes32 zkType_`, and
+`setIcaoRegistrationVerifier` takes `(bytes32, address)`.
+
+**Why it was necessary:** one address serves ONE document class. Four TD1 profiles are live, so every
+holder whose ID card used a different signature algorithm fell back to the signer-gated path - which
+is the trust root being removed. **"Signer-free for one algorithm" is not signer-free.**
+
+⚠️ **THE SECURITY PROPERTY IS UNCHANGED, and the header explaining it is why this nearly went wrong.**
+`HolderRegistration.sol:57-66` documents that the caller must NOT choose the verifier: with the
+signature gone, a caller passing their own contract whose `verify` returns true would register any
+identity. The mapping preserves this exactly - **the caller supplies a KEY, never an address**, and an
+unregistered key resolves to zero and reverts. Widening WHICH documents are accepted does not widen
+WHO decides what verifies them. It is the same shape `Registration2` has always used.
+`test_icao_theVerifierCannotBeChosenByTheCaller` still passes untouched.
+
+**Verified:** 497 forge tests pass (25 in HolderRegistration alone), and
+`tools/check-client-abis.py` is green - 23 declared TypeScript signatures, all matching, so no client
+referenced the changed function.
+
+**What remains for the signer to actually go:** client-side zkType selection (nothing computes which
+selector to send), and `revokeDocumentViaSigner` / `_authenticateDocument`, which are the only signer
+uses left - both on revocation, not registration.

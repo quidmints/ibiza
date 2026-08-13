@@ -64,27 +64,43 @@ contract HolderRegistration is RegistrationSimple {
      * would pass their own contract whose `verify` returns true unconditionally, and register any
      * identity they liked. So on this path the verifier is set once, by the owner, and the caller
      * has no say.
+     *
+     * ────────────────────────────────────────────────────────────────────────────────────────
+     * ONE ADDRESS BECAME A MAPPING, AND THE PROPERTY ABOVE IS UNCHANGED (sec. 2.18gz-signer).
+     *
+     * The caller now supplies a `zkType` SELECTOR, never an address. It resolves only if the owner
+     * registered it and reverts otherwise, so a caller still cannot introduce a verifier of their
+     * own - which is the entire point of the paragraph above. This is how `Registration2` has always
+     * worked: `passport_.zkType` indexes `passportVerifiers`, populated only by the owner.
+     *
+     * WHY IT HAD TO CHANGE: one address serves ONE document class. There are four live TD1 profiles,
+     * and a holder whose ID card is signed with a different algorithm could not use this path at all
+     * - they fell back to the signer-gated one, which is the trust root being removed. A
+     * single-address ICAO path can only ever mean "signer-free for one algorithm".
+     * ────────────────────────────────────────────────────────────────────────────────────────
      */
-    address public icaoRegistrationVerifier;
+    mapping(bytes32 => address) public icaoRegistrationVerifiers;
 
-    event IcaoRegistrationVerifierSet(address verifier);
+    event IcaoRegistrationVerifierSet(bytes32 indexed zkType, address verifier);
 
-    function setIcaoRegistrationVerifier(address verifier_) external {
+    function setIcaoRegistrationVerifier(bytes32 zkType_, address verifier_) external {
         _onlyOwner();
         require(verifier_ != address(0), "HolderRegistration: zero verifier");
-        icaoRegistrationVerifier = verifier_;
+        icaoRegistrationVerifiers[zkType_] = verifier_;
 
-        emit IcaoRegistrationVerifierSet(verifier_);
+        emit IcaoRegistrationVerifierSet(zkType_, verifier_);
     }
 
     /**
      * @notice Register a document with NO signature, against the ICAO chain proven in-circuit.
+     * @param zkType_ selects an OWNER-REGISTERED verifier; it is not an address and cannot be one.
      * @param publicInputs_ `register_identity`'s six public outputs, in circuit order.
      * @param zkPoints_ the Honk proof.
      *
      * WHAT THE CALLER DOES NOT GET TO CHOOSE, and why each one matters:
      *
-     * - **the verifier** - see `icaoRegistrationVerifier`.
+     * - **the verifier** - see `icaoRegistrationVerifiers`. The caller picks a zkType SELECTOR;
+     *   an unregistered one reverts, so it can never introduce a verifier of its own.
      * - **`documentKey`** - taken from the proof's `passportHash`, not from an argument. The signer
      *   path uses `passport_.publicKey`, a caller-supplied field; here it is proof-bound, which is
      *   strictly better and costs nothing.
@@ -105,8 +121,8 @@ contract HolderRegistration is RegistrationSimple {
      * `registrationSmt` leaves escrow can NEVER reproduce, so the documents it registers could
      * never obtain a pool identity - correct-looking and inert.
      *
-     * `register_identity_td1` exists for that reason and is what `icaoRegistrationVerifier` must be
-     * set to. Its `dg1Hash` AND its `dgCommit` are proven to agree with `register_identity_light` at
+     * `register_identity_td1` exists for that reason and is what every zkType registered in
+     * `icaoRegistrationVerifiers` must point at. Its `dg1Hash` AND its `dgCommit` are proven to agree with `register_identity_light` at
      * 95 bytes, which is exactly the agreement escrow depends on.
      * ────────────────────────────────────────────────────────────────────────────────────────
      *
@@ -117,6 +133,7 @@ contract HolderRegistration is RegistrationSimple {
      * wrong root and asserts it reverts on the root, never reaching the verifier.
      */
     function registerDocumentViaIcao(
+        bytes32 zkType_,
         bytes32[] calldata publicInputs_,
         bytes calldata zkPoints_
     ) external virtual {
@@ -152,7 +169,10 @@ contract HolderRegistration is RegistrationSimple {
             "HolderRegistration: unknown certificates root"
         );
 
-        address verifier_ = icaoRegistrationVerifier;
+        // The caller CHOOSES among owner-registered verifiers; it cannot supply one. An unregistered
+        // zkType resolves to zero and reverts here, so the selector widens which documents this path
+        // accepts without widening who decides what verifies them.
+        address verifier_ = icaoRegistrationVerifiers[zkType_];
         require(verifier_ != address(0), "HolderRegistration: icao verifier not set");
         require(
             INoirVerifier(verifier_).verify(zkPoints_, publicInputs_),

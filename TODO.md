@@ -32,8 +32,13 @@ output** before writing artifacts (native `bb verify` + a two-run determinism ch
 either guard — §7 explains what they catch.
 
 ```bash
-export PATH="$HOME/.bb:$PATH"                                  # or codegen reports bb missing
-cd backend/contracts && forge build && forge test              # 430 ✅
+# ⚠️ NOT $HOME/.bb - it held bb 5.1.0 and has been DELETED (sec. 2.18gz). It shadowed the correct
+# binary and silently emitted a 5.1.0 verifier (NUMBER_OF_SUBRELATIONS 29, not 31) which looks fine
+# and which no 6.0 proof can satisfy. arm64-macos ships broken ("bad CPU type") and is deleted too.
+# amd64-macos is the working one, under Rosetta. bb is now on PATH NOWHERE, deliberately: an
+# explicit path cannot silently fall back to a wrong version.
+export PATH="$PWD/backend/circuits/node_modules/@aztec/bb.js/build/amd64-macos:$PATH"
+cd backend/contracts && forge build && forge test              # 489 ✅
 cd backend/circuits/pp && nargo test                           # 87/87 ✅
 cd backend/circuits/noir_dl_lib && nargo test                  # 77/77 ✅
 ./backend/circuits/codegen-verifiers.sh                        # step 4 of 5 — then step 5:

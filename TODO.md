@@ -16379,8 +16379,18 @@ Stronger than "trust an ASP", weaker than trustless, and it should be described 
 **Which makes the ladder concrete:**
 1. **Eliminate the attested fact.** The only step that removes the question. Expiry just moved from
    an authority to the document (2.18gz-expiry); supersession was always on-chain.
-2. **Challengeability** - anyone can rebuild the leaves from the public register, so an optimistic
-   anchor with a dispute window converts an unverifiable quorum into "one honest watcher suffices".
-   **This is the highest-value unbuilt item in this area.**
+2. **Challengeability - but NOT a fraud proof, and the difference is not pedantry.** A fraud proof
+   needs a statement a contract can ADJUDICATE. *"This root does not match OFAC's register"* is not
+   one: the chain cannot fetch OFAC, which is the whole reason an attester exists. A challenger can
+   rebuild the leaves and SEE a divergence; they cannot PROVE it on-chain without publishing the
+   source data there, which relocates the trust rather than removing it. **An earlier version of this
+   line said "optimistic anchor with a dispute window" and was wrong.**
+   ⇒ **What works is a challenge that FREEZES rather than proves:** trip a circuit breaker, revert to
+   the previous root or halt updates pending review. It requires only that someone NOTICE.
+   ⚠️ **And it is safe ONLY because of the polarity.** Freezing a blacklist makes it staler, smaller,
+   more permissive. Freezing an allowlist locks out everyone not already admitted. The same mechanism
+   is a safety valve in one direction and a censorship weapon in the other - so fail-open is not just
+   DoS resistance, it is what makes a non-cryptographic challenge acceptable at all.
+   **Highest-value unbuilt item in this area, in that form.**
 3. Diversify attesters (N-of-M independent anchors).
 4. Keep fail-open polarity and the ragequit bound. Both already hold.

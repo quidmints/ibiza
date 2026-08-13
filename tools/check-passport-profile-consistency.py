@@ -310,6 +310,53 @@ def check(name: str, g: dict, dg15_blocks: int | None = None) -> tuple[list[str]
     return errors, warnings
 
 
+def check_zk_types(live: dict) -> list[str]:
+    """Every profile must carry a zkType, and it must be keccak256 of its label.
+
+    WHY IT IS IN THE MANIFEST AT ALL. `Registration2.passportVerifiers[zkType]` is the only thing that
+    binds a document to a verifier, and NOTHING in this repo populated it - no deploy script, no
+    migration, no test; even `Registration2Mock.mockAddPassportVerifier` is never called. So the 89
+    verifiers were correct, current, and bound to nothing, and `registerViaNoir` reverted with
+    "passport verifier does not exist" for every document.
+
+    The scheme is upstream's, not invented here: rarimo's `scripts/utils/types.ts` defines
+    `Z_NOIR_PASSPORT_<profile> = keccak256(["string"], ["Z_NOIR_PASSPORT_<profile>"])` and
+    `deploy/10_setup.migration.ts` registers each verifier under it.
+
+    The keccak itself is only verified when `cast` is on PATH - the check degrades to structure and
+    uniqueness rather than silently passing, and says which it did.
+    """
+    import shutil
+    import subprocess
+
+    errors = []
+    seen = {}
+    for name, e in sorted(live.items()):
+        label, zk = e.get("zk_type_label"), e.get("zk_type")
+        if not label or not zk:
+            errors.append(f"{name}: no zk_type recorded - it cannot be bound to a verifier")
+            continue
+        if label != "Z_NOIR_PASSPORT_" + name:
+            errors.append(f"{name}: zk_type_label is {label}, expected Z_NOIR_PASSPORT_{name}")
+        if zk in seen:
+            errors.append(f"{name}: zk_type collides with {seen[zk]} - one would shadow the other")
+        seen[zk] = name
+
+    if shutil.which("cast"):
+        bad = 0
+        for name, e in live.items():
+            got = subprocess.run(
+                ["cast", "keccak", e["zk_type_label"]], capture_output=True, text=True
+            ).stdout.strip()
+            if got != e["zk_type"]:
+                errors.append(f"{name}: zk_type {e['zk_type']} != keccak(label) {got}")
+                bad += 1
+        print(f"zkTypes: {len(live)} checked against keccak(label), {bad} mismatched")
+    else:
+        print(f"zkTypes: {len(live)} checked for structure and uniqueness only (cast not on PATH)")
+    return errors
+
+
 def main() -> int:
     m = json.loads(MANIFEST.read_text())
     live = m["profiles"]
@@ -330,6 +377,11 @@ def main() -> int:
         for w in warnings:
             warned += 1
             print(f"warn  {name}: {w}")
+
+    zk_errors = check_zk_types(live)
+    for e in zk_errors:
+        print(f"ERROR {e}")
+    bad_live += len(zk_errors)
 
     print(f"\nchecked {len(live)} live profiles: {bad_live} inconsistent, {warned} warnings")
 

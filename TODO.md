@@ -15673,3 +15673,40 @@ Until then, "remove the signer" cannot mean more than "remove it for one algorit
 this at the 93-byte TD3 circuit produces `registrationSmt` leaves escrow can never reproduce, so the
 documents register and can then never obtain a pool identity - correct-looking and inert
 (`HolderRegistration.sol:100-110`). Before today only ONE TD1 profile existed to point it at.
+
+#### CORRECTION to 2.18gz-signer — it is not "one contract change", and zkType is not groth/noir
+
+I wrote above that the fix is to give `HolderRegistration` the same per-`zkType` lookup
+`Registration2` has. That pointed at a mechanism which is itself unwired, and the correction matters
+more than the original note.
+
+**`zkType` is not a proving-system selector.** It is an operator-assigned `bytes32`, ONE PER VERIFIER
+CONTRACT, set by the owner calling `updateDependency(AddPassportVerifier, abi.encode(zkType, addr))`.
+Upstream has 78 of them for the Noir verifiers alone.
+
+**Nothing in this repo ever populated it.** `zkType` appears in exactly one file. There is no deploy
+directory, no migration, no script, and no test that calls `updateDependency` - and
+`Registration2Mock.mockAddPassportVerifier` exists but is **never called by any test**, a dead setter
+on a mock. `_getPassportVerifier` reverts on zero, so:
+
+⇒ **`registerViaNoir` reverts for every document today.** It is the only entrypoint that verifies the
+ICAO chain, and it cannot execute. The 89 verifiers are correct, current, 6.0 - and bound to nothing.
+`HolderRegistration`'s single `icaoRegistrationVerifier` address is a WORKAROUND for the missing
+registry, not an oversight.
+
+**The scheme does not need inventing - it is upstream's.** `scripts/utils/types.ts` in
+rarimo/passport-contracts defines
+`Z_NOIR_PASSPORT_<profile> = keccak256(["string"], ["Z_NOIR_PASSPORT_<profile>"])`, and
+`deploy/10_setup.migration.ts` registers each verifier under that key. All 88 are now recorded in
+`passport-profiles.json` as `zk_type` / `zk_type_label`, verified against `cast keccak` by the
+consistency checker, and all 88 are distinct.
+
+**Remaining work, in order:**
+1. Deployment wiring that registers all 88 under their recorded `zk_type` (upstream's
+   `deploy/2_registration.migration.ts` + `10_setup.migration.ts` are the model; neither was forked).
+2. Client-side selection: nothing computes which `zkType` to send for a given document. The binding
+   document -> profile -> zkType exists on paper now but in no code.
+3. `ID_Card_I` needs its own key - upstream registers light verifiers separately
+   (`12_light-verifiers.migration.ts`, `13_light-verifiers-id.migration.ts`), so the
+   `Z_NOIR_PASSPORT_` prefix is probably NOT what it uses. Do not assume it.
+4. Only then does the `HolderRegistration` per-zkType lookup become meaningful.

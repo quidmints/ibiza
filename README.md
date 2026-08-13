@@ -94,9 +94,9 @@ and separate tooling. That is not a tidiness problem:
 
 - **Two verifiers on the same withdrawal cannot share a proof.** A withdrawal that must check both
   identity and note membership pays for two verifications and two calldata payloads.
-- **Groth16 needs a per-circuit trusted setup.** Every passport profile — **81 of them** — is a
-  separate ceremony. Honk needs a *universal* SRS instead: **one setup, already performed, shared by
-  every circuit.** Not "no ceremony" — one instead of 81, and a public one rather than a vendor's.
+- **Groth16 needs a per-circuit trusted setup.** Every passport profile — **88 of them** — would be
+  a separate ceremony. Honk needs a *universal* SRS instead: **one setup, already performed, shared
+  by every circuit.** Not "no ceremony" — one instead of 88, and a public one rather than a vendor's.
 - **A shared hash is required for the fusion to work at all.** The identity tree and the pool's
   commitment tree must agree on Poseidon, or a single proof cannot span both.
 
@@ -104,12 +104,24 @@ So everything was ported to **Noir + UltraHonk**: one prover, one verifier shape
 ceremony, and one Poseidon shared across circuits, Solidity (`poseidon-solidity`) and the wallet
 (`@iden3/js-crypto`) — each cross-checked against the others rather than assumed compatible.
 
-**The SOURCE migration is complete — zero `.circom` files remain.** What is NOT complete is the
-verifier and wiring layer: 6 Groth16-era per-passport verifiers remain, and they are exactly the 6
-profiles that still lack a Noir twin — the other 29 had twins and have been deleted. **Do not read "one toolchain" as finished end-to-end** — see `TODO.md`.
+**Both migrations are now complete — zero `.circom` files and zero Groth16 verifiers remain.** All
+17 Groth16-era per-passport verifiers were deleted along with the Circom entrypoints that called
+them; every passport profile has a Noir twin, and all 88 are generated from a single bb 6.0 library
+state (`NUMBER_OF_SUBRELATIONS = 31`, no UltraPlonk anywhere in the tree).
+
+**What is still NOT complete is the WIRING, and it is a harder gap than the counting suggests.**
+`Registration2.passportVerifiers` is empty: no deploy script, no migration, nothing calls
+`updateDependency`. `_getPassportVerifier` reverts on zero, so **`registerViaNoir` — the only
+entrypoint that verifies the ICAO chain — reverts for every document today.** The 88 verifiers are
+correct, current, and bound to nothing.
 
 Verifiers are bound by address at deploy time rather than by symbol, so a reference count cannot
-distinguish a live verifier from an unwired one. Those 6 are unresolved, not known dead.
+distinguish a live verifier from an unwired one; that is exactly how an empty registry stayed
+invisible. Each profile's registry key is now recorded in `backend/circuits/passport-profiles.json`
+as `zk_type` — `keccak256("Z_NOIR_PASSPORT_" + profile)`, upstream's scheme — and
+`test/registration/PassportVerifierRegistry.t.sol` binds the whole manifest through the real
+owner-gated entrypoint to prove the set registers and resolves. **Do not read "one toolchain" as
+finished end-to-end** — see `TODO.md` sec. 2.18gz.
 
 ### Where the verifier count comes from
 
@@ -118,9 +130,9 @@ We use rarimo's proving system. Their circuit design is a separate question, and
 | | stack | verifiers needed |
 |---|---|---|
 | Privacy Pools side | Noir / UltraHonk | 3 |
-| rarimo passport side | Noir / UltraHonk | 79 |
+| rarimo passport side | Noir / UltraHonk | 88 |
 
-Same proving system, 26x the verifiers. PP's circuits keep one shape for every user. rarimo bakes each
+Same proving system, 29x the verifiers. PP's circuits keep one shape for every user. rarimo bakes each
 document's array lengths in as compile-time generics, so every combination of `DG1_LEN/EC_LEN/SA_LEN/N`
 compiles to its own circuit, and each circuit needs its own verifier.
 
@@ -130,7 +142,7 @@ exist because `EC_LEN` is a compile-time constant. So does the `EC_LEN` hunt rec
 verifiers needed roughly 33 GiB to build. PP runs on the same stack with three verifiers and no
 manifest.
 
-Size classes would cut this down. `TODO.md` sec. 2.18df has the measurement: 78 profiles compile to
+Size classes would cut this down. `TODO.md` sec. 2.18df has the measurement: the profiles compile to
 five distinct circuit sizes, spanning 2^18 to 2^25, with 58 of them sharing 2^18. Merging within a
 class costs nothing in proving time, since cost follows the padded power of two. Merging across
 classes would make a common passport pay the worst case, 128x.
@@ -150,7 +162,7 @@ An earlier version of this section quoted `write_vk` figures as though a phone p
 | proving an aggregation batch | a batcher, on a server | per batch | 12.16M gates, roughly 28 GB, minutes, paid from PP's relay fee |
 
 The 33 GB was a one-time cost and it is already paid. It is why the build needs a 32 GB swapfile, set
-up in `backend/circuits/build-passport-verifiers-docker.sh`. All 79 passport profiles and the 10 light
+up in `backend/circuits/build-passport-verifiers-docker.sh`. All 88 passport profiles and the 10 light
 verifiers are done. It comes back only when a circuit changes.
 
 Registration is where the on-device question sits. Withdrawal is 44k gates and fits a budget phone.
@@ -166,7 +178,7 @@ backend and record peak RSS and wall clock.
 
 ### How the proving system was chosen
 
-The trusted setup decided it. Groth16 wants a ceremony for every circuit. At 79 shapes that means 79
+The trusted setup decided it. Groth16 wants a ceremony for every circuit. At 88 shapes that means 88
 ceremonies, and in practice it means using rarimo's, because we cannot run that many. Honk uses one
 universal ceremony shared across the ecosystem, which many parties have scrutinised, and whose
 compromise would be a public event.
@@ -178,7 +190,7 @@ grounds.
 
 Halo2 circuits are hand-written Rust against a low-level API. Noir is a language, and the `EC_LEN` work
 in `TODO.md` was tractable because the circuit reads like code. There was also nothing to inherit. Our
-migration was a port; rarimo publishes Noir circuits, and 79 passport shapes came across mechanically.
+migration was a port; rarimo publishes Noir circuits, and the passport shapes came across mechanically.
 In Halo2 someone would author each one with no upstream to diff against. Barretenberg also ships
 prebuilt AARs for on-device proving through `@rarimo/rarime-rn-sdk`.
 
@@ -442,4 +454,6 @@ circuits still build on stock beta.26, which is why the accommodation above was 
   the cause.
 - **regenerate only what changed** — re-proving unchanged circuits is churn, and `title_holder`
   currently fails when re-proved (TODO.md).
-- **not covered by the script:** `aggregate_withdrawals` and the 76 `NoirRegisterIdentity_*.sol`.
+- **not covered by the script:** `aggregate_withdrawals`. The 88 `NoirRegisterIdentity_*.sol` have
+  their own generator, `build-passport-verifiers-docker.sh`, because five of them need a 2^25 CRS
+  and cannot be built natively on macOS.

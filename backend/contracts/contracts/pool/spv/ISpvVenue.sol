@@ -2,10 +2,14 @@
 pragma solidity 0.8.28;
 
 // Reverse-coupling interfaces: PP declares ONLY the functions it calls on SPV's deployed contracts,
-// matching their real signatures exactly (re-confirmed against SPV `3dd439a` 2026-08-13, after the
-// submodule pin advanced 1,362 commits — all four still match, all four are still `external` with
-// no auth gate, and `Basket.mint`'s `auth(msg.sender)` branch still only changes internal
-// accounting rather than gating external callers).
+// matching their real signatures exactly (re-confirmed against SPV `main` 2026-08-13, after the
+// submodule advanced 1,362 commits — all four still match, all four are still `external` with no
+// auth gate, and `Basket.mint`'s `auth(msg.sender)` branch still only changes internal accounting
+// rather than gating external callers).
+//
+// ⚠️ THE SUBMODULE TRACKS `main` (see `.gitmodules`) — it is not pinned to a release, and SPV commits
+// daily. So "re-confirmed on <date>" is the only meaningful currency here; a commit hash would read
+// as a guarantee the tracking arrangement does not give.
 //
 // ⚠️ THE FORGE SUITE CANNOT VERIFY THIS AND NEVER COULD. There is no SPV remapping and nothing here
 // imports the submodule, so all 489 tests pass identically whether these declarations match SPV or

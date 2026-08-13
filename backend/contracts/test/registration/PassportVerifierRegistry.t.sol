@@ -154,6 +154,47 @@ contract PassportVerifierRegistryTest is Test {
         }
     }
 
+    /// THE WHOLE MANIFEST BINDS, not just one profile.
+    ///
+    /// This is what the deployment has to do, run against the real owner-gated entrypoint: every
+    /// profile in the manifest registered under its recorded zkType, and every one resolving
+    /// afterwards. A per-profile test proves a key works; only this proves the SET does - that no
+    /// two keys collide at scale and that nothing silently overwrites a neighbour.
+    ///
+    /// ONE REAL VERIFIER, BOUND 88 TIMES, and that is deliberate rather than a shortcut. Deploying
+    /// 88 distinct ~24 KB verifiers here would test Foundry's code-size handling, not the registry;
+    /// what is under test is the KEY-TO-ADDRESS binding, and reusing one genuinely deployed contract
+    /// exercises it without inventing a placeholder address.
+    function test_everyManifestProfileCanBeBound() public {
+        string memory json = vm.readFile(MANIFEST);
+        string[] memory names = vm.parseJsonKeys(json, ".profiles");
+        assertGt(names.length, 80, "manifest parsed too few profiles - it is probably not being read");
+
+        address verifier = address(new NoirRegisterIdentity_1_160_3_3_576_200_NA());
+
+        for (uint256 i = 0; i < names.length; ++i) {
+            bytes32 zkType = vm.parseJsonBytes32(
+                json, string.concat(".profiles.", _quote(names[i]), ".zk_type")
+            );
+            registration.updateDependency(
+                Registration2.MethodId.AddPassportVerifier, abi.encode(zkType, verifier)
+            );
+        }
+
+        // Read back AFTER every write: a collision would only show up here, as an earlier profile
+        // still resolving while a later one silently took its slot.
+        for (uint256 i = 0; i < names.length; ++i) {
+            bytes32 zkType = vm.parseJsonBytes32(
+                json, string.concat(".profiles.", _quote(names[i]), ".zk_type")
+            );
+            assertEq(
+                registration.passportVerifiers(zkType),
+                verifier,
+                string.concat("profile did not resolve after the full set was bound: ", names[i])
+            );
+        }
+    }
+
     /// Every zkType is distinct: a collision would let one profile shadow another's verifier, and
     /// the shadowed one would then verify proofs against the wrong circuit.
     function test_manifestZkTypesAreDistinct() public view {

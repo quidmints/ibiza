@@ -13157,6 +13157,128 @@ still compiles is a deployment hazard), plus `VerifierMock`/`FailingVerifierMock
 instantiated once the proof paths moved to real verifiers, and a dead Groth16 `IVerifier` import in
 `State.sol` implying a Groth16 path that no longer exists.
 
+## 3b. The QU!D LP signer app — what the phone must do
+
+**This section moved here from the SPV repo's queue (2026-08-13, owner's call: the app spec does
+not belong in the protocol repo).** It is written to be self-contained — an ibiza reader should not
+need to open SPV to act on it. SPV's rows now point here instead of restating it.
+
+**Why an app exists at all.** A QU!D BTC LP's channel is funded by a **2-of-2 taproot output**.
+Today *both* halves are held by the fleet's own process (the vault node and the hop node, same
+binary), so a compromised fleet can spend an LP's UTXO alone. Giving the LP one of those halves is
+the whole point; the app is where that half lives. **Nothing else about the channel changes.**
+
+### What the app must do — the entire scope, and it is bounded
+
+1. **Hold ONE secp256k1 key**, derived at a hardened path off the **LP's own BIP-39 seed**. Not a
+   new custody party, not a new backup burden: a lost phone restores from words the LP already
+   writes down. This adds **no loss mode beyond the one every Bitcoin user already manages.**
+2. **Run N MuSig2 sessions in ONE interactive ceremony at channel open** — the pre-signed exit
+   ladder — and then **never come online again.** The app is not a node and must not become one.
+3. That is all. It is a one-time ceremony participant, not a service.
+
+### ⚠️ The key is TEE-WRAPPED AT REST, NOT TEE-SIGNED — and the difference is not a detail
+
+**No mainstream phone TEE can sign secp256k1.** Apple's Secure Enclave is **P-256 only** (the API
+is literally `SecureEnclave.P256`); Android StrongBox documents **ECDSA/ECDH P-256** only, and
+Keystore never names secp256k1. Samsung Blockchain Keystore *is* the exception — real secp256k1
+inside TrustZone, still shipping — but it is **one vendor on one hardware line, so it can be an
+optimisation for some LPs and never a protocol requirement.**
+
+⇒ The key is **AES-wrapped at rest** by iOS Keychain / Android Keystore and unwrapped into app
+memory only to sign. So **the exposure is a compromised app process or OS, not device theft** — and
+because the ladder is signed **once, at open, and never again**, that unwrap happens *once in the
+channel's life* rather than on every refresh. ⚠️ **Do not cite "phone TEEs can't do secp256k1" as a
+reason to drop the phone route.** The signing limit is real; the security conclusion drawn from it
+was wrong when it was first written down.
+
+### 🔴 The one failure that would be silent and total: MuSig2 NONCE REUSE
+
+Signing **two different messages under the same secnonce leaks the LP's secret key outright.** The
+fleet sees both partial signatures, so it recovers the key and **holds both halves again** — the
+entire design defeated **with every on-chain byte still looking correct.** No test, explorer or
+audit of the chain state would show anything wrong.
+
+⇒ **Use the same `musig2` crate the hop uses (conduition)**, whose `FirstRound`/`SecondRound` types
+**consume `self`**, making reuse a *compile error* rather than a review item. Delete secnonces after
+use; persist nothing replayable. This is the case where a guard earns its place: the violation is
+silent and produces plausible-but-wrong output.
+
+### ⛔ What the app must NOT be
+
+- **NOT the home of the validating signer.** That signer already exists as a Rust crate in SPV
+  (`quid-ln/quid-ln/src/validating_signer.rs`). The app is a **deployment target**, one of three —
+  compiled to phone via UniFFI, **or** a small always-on LP-hosted signer, **or** an enclave.
+  Building the policy engine *into* app code (a) bakes in an availability ceiling that cannot later
+  be lifted — phone asleep ⇒ channel cannot forward ⇒ **the LP earns nothing**, and every swap-in is
+  a commitment update — and (b) forks an audited policy engine into application code. Keep it one
+  crate, one policy; deployment stays an LP's **choice**, not an architectural commitment.
+- **NOT Greenlight.** Greenlight is hosted **Core Lightning**; this stack is a vendored **LDK** fork.
+  Adopting it means a second Lightning implementation, Blockstream as an operational dependency for
+  every LP, and CLN negotiating a simple-taproot funding output it does not establish.
+- **NOT fleet-hosted.** That is circular — it is the compromised-image problem again.
+- **NOT a replacement for the website.** The site keeps the **EVM leg** (LP signature, position
+  monitoring, redemption) and **drives the app as a signer over WalletConnect**, exactly as it would
+  drive a hardware wallet. **Only the BTC key ceremony at open needs the app.**
+
+### MuSig2 is non-negotiable — do not "simplify" it away
+
+An earlier SPV conclusion said *"do not require MuSig2 from the LP"* (because Ledger is the only
+hardware wallet that does it, and no browser extension does). **That was withdrawn and must not be
+acted on.** The funding output is built per **BIP-327 + BOLT simple-taproot-channels**: a
+key-path-only aggregate over an **EMPTY merkle root**, byte-matched on-chain as `0x5120||Q`. MuSig2
+is not a signing-UX layer on top — **it IS the channel model.** A script tree is not a partial
+retreat either: a non-empty merkle root **changes `Q`** and breaks the byte-match with what LDK
+produces. The only fallback is legacy P2WSH ECDSA 2-of-2, i.e. abandoning taproot.
+
+**The lesson worth keeping:** the signing surface is a *consequence* of the channel model, never an
+input to it. That conclusion was reached by optimising for "works with wallets that exist today" and
+letting it outrank a load-bearing dependency nobody had checked.
+
+### Liveness — losing the phone must never cost an LP its BTC
+
+- **FUNDS: safe without the app, by construction.** The exit ladder is pre-signed at open and its
+  bytes are **public on-chain** (`DeadManExitEmitted`), so once a CLTV matures **anyone may
+  broadcast** — no key, no phone, no LP participation. **No key-management scheme can cost an LP its
+  BTC**, which is exactly what lets the key's home be chosen on service grounds alone.
+- **REKEY: the LP never acts.** The rekey shape is *LP half immutable, hop half rotates*, so a lost
+  phone does not block a fleet image upgrade.
+- **WHAT IS ACTUALLY LOST:** the ability to co-sign **new** state — splices, cooperative closes, new
+  ladder rungs. **Degraded service, never lost funds.**
+- 🔴 **THE RESIDUAL, AND IT IS THE LIVENESS DIAL: THE LADDER IS FINITE.** A long-lived channel that
+  exhausts its rungs with no phone can no longer splice and must exit. ⇒ **"Increase liveness" =
+  DEEPEN THE LADDER**, and the cost is asymmetric in our favour: rungs are signed **once, at open,
+  in one ceremony, and cost nothing at runtime.** **Depth must be a deploy parameter, not a
+  constant, and it should be generous.**
+
+### Optional third layer — social recovery, and its place is exact
+
+`unforgettable`-style social recovery (phones co-present for a shared history, recovering each
+other's keys) **restores SERVICE faster.** It must **NEVER** be on the funds path. It carries a
+quorum trust assumption, which is fine for *"my channel can splice again sooner"* and unacceptable
+for *"my BTC is recoverable"*. Strictly optional, strictly off the safety path.
+
+### ⛔ Two key-derivation shortcuts, both rejected with reasons — do not re-propose
+
+- **Deriving the BTC key from an EVM signature** (`k = keccak(sig)` over a fixed message, the usual
+  "no new backup" trick). ECDSA is **deterministic under RFC-6979**, so **one phished signature on
+  that message hands over the Bitcoin funding key forever.** It trades a backup burden for a
+  phishing surface on a key that cannot be rotated without a rekey splice.
+- **Reusing the LP's on-chain payout key** (`btcRecipientOf`) as the funding half. One key as both
+  payout destination and funding half converts a **degraded-service** event into a **fund-loss**
+  event, and stacks plain BIP-340 signatures with MuSig2 partials on one secret.
+
+### 🔴 Execute these two checks BEFORE building — they gate the design, and one already bit
+
+1. **Does the VLS policy set + `vls-proxy` cover simple-taproot / MuSig2 channels?** VLS's policies
+   were written for legacy + anchor channels, and MuSig2 is non-negotiable here.
+2. **Where does simple-taproot-channel support in the vendored LDK fork actually come from?** That
+   fork's patch list is entirely operational — onion-messenger queuing, logging, zero-conf,
+   monitor-sync bypass, a handshake helper, offers `best_block` — **nothing taproot or MuSig2.** So
+   it is **UNESTABLISHED**, and it is the same class of load-bearing dependency that the withdrawn
+   "drop MuSig2" conclusion got wrong. **Settle (2) first: it decides whether (1) is even the right
+   question.**
+
 ## 4. Decisions someone has to make
 
 - **The ASP retroactive lever.** `PrivacyPool` now accepts any historical ASP root, safe *only*

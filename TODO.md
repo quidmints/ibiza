@@ -13168,17 +13168,23 @@ one half the hop node's, one half the "vault" node's. If one process holds both,
 fleet can spend an LP's UTXO alone. **The app is a place to put the second half that the fleet
 cannot reach.**
 
-⚠️ **IT IS NOT THE ONLY SUCH PLACE, AND THE SPLIT IS ALREADY BUILT — do not read this section as
-"the both-halves problem is open."** In SPV the vault is an `Option` and its absence *is* the
-security split: in the **LP-hosted** deployment the vault node runs on **the LP's own always-on
-box with the LP's own seed**, the fleet's process has no vault node to pass, and the dead-man
-heartbeat **does not run at all** — exits come from the pre-signed ladder instead. `None` there is
-not a flag the fleet can flip; it is the absence of a seed it never had. That is compiler-enforced,
-not a convention.
+**Where this actually stands — the mechanism is built, the deployment is not.** SPV's dead-man
+heartbeat takes the vault half as an `Option`, and its absence *is* the security split: on `None`
+the heartbeat **disables itself** rather than finding another route to the half, and it must never
+re-derive one locally. That is compiler-enforced and covered by a structural test.
+⚠️ **But SPV's daemon passes `Some(vault)` UNCONDITIONALLY — no flag, config or binary starts the
+fleet without a vault seed. So in every deployment shipping today, one process still reaches both
+halves.** The `Option` is the *mechanism* for the split, not evidence the split is live; SPV's own
+daemon says so in a comment (*"the fleet runs both halves in-process"*).
 
-⇒ **So the app is the OTHER deployment target of the same one half** — for LPs who will not run a
-box — alongside an always-on host and an enclave. That is exactly why the signer must stay one
-crate with one policy (below) rather than being written into app code.
+⇒ **Two things are outstanding, and only one of them is this app:**
+1. **SPV's side — a vault-only deployment mode + LP seed provisioning**, so a fleet can actually be
+   run with no vault seed. Tracked there, not here.
+2. **This app** — one of the two homes for the LP-held half, for LPs who will not run an always-on
+   box. (The other is that box; a third is an enclave.)
+
+That is exactly why the signer must stay **one crate with one policy** (below) rather than being
+written into app code: the same half has to be hostable in all three places.
 
 ### What the app must do — the entire scope, and it is bounded
 

@@ -15938,3 +15938,33 @@ subrelation after the first). `RomLogup`'s 2 slots account for the ENTIRE 29→3
 Three unrelated circuits produce a byte-identical layout, so it is scheme-level, not circuit-level.
 ⚠️ "All 107 files say 31" is NOT this check - it proves one toolchain, and would read identically if
 bb emitted a wrong constant everywhere.
+
+#### CORRECTION to 2.18gz — ID_Card_I is NOT the light circuit, and is REOPENED
+
+Asked twice why the manifest binds 88 and not 89, I twice gave an answer built on a wrong
+identification. Recording it because the closure was mine and the evidence against it was already in
+my own notes.
+
+**The claim:** `ID_Card_I` is `register_identity_light_td1`, therefore already covered by
+`RegisterIdentityLightID256HonkVerifier`, therefore resolved.
+
+**The evidence I used:** my build of `register_identity_light_td1` came out byte-identical to that
+verifier. **That proves those two are the same circuit and says nothing whatever about the legacy
+artifact** - a fact about B and C, offered as a fact about A.
+
+**What refutes it:** the legacy verifier declares `vk.num_inputs = 5`. Our circuits return **6**
+(`register_identity`), **6** (`register_identity_td1`) and **3** (`register_identity_light_td1`).
+Five matches none of them, so it is from a circuit generation this repo does not have - which is also
+why its VK matched no published asset, a fact recorded in the manifest before I overrode it.
+
+**What was still right:** deleting the duplicate I built. It really was a byte-identical copy of an
+already-tested verifier sitting in a legacy slot. The error is the inference that a filled slot meant
+a covered circuit.
+
+⇒ **88 live + 1 quarantined = 89.** The 89th is genuinely unrecovered: it needs its 14-generic tuple,
+or an artifact from the generation that emitted 5 public signals. It has no `zk_type` for the same
+reason - a key for an unknown circuit would bind a verifier nothing can produce proofs for.
+
+⚠️ **The general shape, since it has now cost two wrong answers in one session:** a byte-identical
+match tells you two things are the same. It tells you nothing about a third thing that merely
+occupies the same NAME or the same SLOT.

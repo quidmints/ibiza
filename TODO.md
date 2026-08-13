@@ -16094,3 +16094,19 @@ tests pass and the checker exits 0.
 was the tell each time: SHA-256 computed a remainder and never asserted it, SHA-1 asserted a lossy
 one, SHA-512 did not exist at all. Any future hash block should assert its DigestInfo bytewise and
 cover every limb.
+
+#### 2.18gz-89 ⛔ ID_Card_I — WON'T DO (owner, 2026-08-13)
+
+Closed, not blocked. **Do not spend more time on it.**
+
+Its class is covered five ways: TD1 went from **1 profile to 5** this session - SIG_TYPE 1, 14, 21, 25
+plus `register_identity_td1` - spanning RSA-PKCS, RSA-PSS, brainpoolP256, brainpoolP384 and secp192,
+with and without Active Authentication. `ID_Card_I` would add a sixth SOD *layout*, not a capability,
+and it appears in no country's DSC set because it identifies a layout rather than an algorithm.
+
+Its circuit is published nowhere - rarimo ships the verifier, never the instantiation - so **not even
+rarimo can regenerate it**, which is why they still ship the untouched UltraPlonk file. The only
+routes to its tuple are a physical card of that class or an upstream answer. Neither is engineering.
+
+**The signal that would reopen it:** a real TD1 card failing to register because its layout matches
+none of the five. The tuple falls out of that document. Before that, it is speculation.

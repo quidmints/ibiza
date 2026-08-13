@@ -1898,7 +1898,10 @@
       "zk_type": "0xc1adfa762ad2c4bc45665c7a41a08c33b4fc87d87f1b83b9709768eed85c2895",
       "zk_type_label": "Z_NOIR_PASSPORT_ID_CARD_I",
       "zk_type_casing_trap": "\u26a0\ufe0f THE LABEL IS UPPERCASE WHILE THE FILENAME IS MIXED CASE. rarimo defines Z_NOIR_PASSPORT_ID_CARD_I, not ..._ID_Card_I, so \"Z_NOIR_PASSPORT_\" + filename gives 0x5c30d28a591f489f7c7a5b7d18da1d596e1294076ec96f9b438fb3d3697d5951 - a key nothing would ever look up. The 88 numeric profiles have no letters, so the scheme is safe for them and ONLY for them. Anything non-numeric added later must take its label from rarimo scripts/utils/types.ts, not from the file name.",
-      "what_is_it": "A generic ID-card (TD1) registration circuit from the Noir/UltraPlonk era - NOT country specific. rarimo keeps country circuits in sibling directories (`geo`, `mne`); this one sits in the generic `noir` set. Its source circuit is in NEITHER noir circuits repo, which publish only register_identity, register_identity_light_td1 and the query circuits, so nothing here or upstream can regenerate it."
+      "what_is_it": "A generic ID-card (TD1) registration circuit from the Noir/UltraPlonk era - NOT country specific. rarimo keeps country circuits in sibling directories (`geo`, `mne`); this one sits in the generic `noir` set. Its source circuit is in NEITHER noir circuits repo, which publish only register_identity, register_identity_light_td1 and the query circuits, so nothing here or upstream can regenerate it.",
+      "status": "WONT DO (owner, 2026-08-13) - closed, not blocked. Do not spend more time on it.",
+      "why_closed": "Its document class is already covered FIVE ways. TD1 coverage went from 1 profile to 5 this session (SIG_TYPE 1, 14, 21, 25 plus register_identity_td1), spanning RSA-PKCS, RSA-PSS, brainpoolP256, brainpoolP384 and secp192, with and without Active Authentication. ID_Card_I would add a sixth SOD LAYOUT, not a new capability, and no issuer in the ICAO PKD is known to need it - it is a layout identifier, not an algorithm, so it appears in no country DSC set.",
+      "if_it_ever_matters": "A real TD1 card failing to register with a layout none of the five match. The tuple falls out of that failing document; nothing else recovers it. Chasing it before that signal is speculation."
     }
   ]
 }

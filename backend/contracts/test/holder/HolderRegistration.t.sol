@@ -38,6 +38,12 @@ contract HolderRegistrationTest is Test {
   /// SELECTOR, and using the genuine one keeps these tests honest about what the caller supplies.
   bytes32 internal constant ZK_TYPE_TD1 = keccak256("Z_NOIR_PASSPORT_25_384_1_3_336_256_NA");
 
+  /// Read ONCE, never inside a test that pranks. `DOC_NATIONAL_ID` is an external call and
+  /// would consume a single-shot `vm.prank` before the call under test ever runs - the same trap
+  /// TitleLedger.t.sol documents for role constants. Two tests failed with "did not revert as
+  /// expected" for exactly this reason before it was hoisted.
+  bytes32 internal DOC_NATIONAL_ID;
+
     bytes32 internal constant ICAO = 0x2c50ce3aa92bc3dd0351a89970b02630415547ea83c487befbc8b1795ea90c45;
     uint256 internal constant TREE = 80;
 
@@ -65,6 +71,7 @@ contract HolderRegistrationTest is Test {
         smt.__PoseidonSMT_init(address(sk), address(evidenceRegistry), TREE);
         certs.__PoseidonSMT_init(address(sk), address(evidenceRegistry), TREE);
         sk.__StateKeeper_init(OWNER, address(smt), address(certs), ICAO);
+        DOC_NATIONAL_ID = sk.DOC_NATIONAL_ID();
 
         reg = HolderRegistration(_proxy(address(new HolderRegistration())));
         address[] memory signers = new address[](1);
@@ -224,7 +231,7 @@ contract HolderRegistrationTest is Test {
     /// THE property test. A root `certificatesSmt` never held must be refused, and refused BEFORE
     /// the proof is looked at - which is what lets this run with no valid proof in existence.
     function test_icao_revertsOnACertificatesRootTheKeeperNeverHeld() public {
-        reg.setIcaoRegistrationVerifier(ZK_TYPE_TD1, address(0xBEEF));
+        reg.setIcaoRegistrationVerifier(ZK_TYPE_TD1, address(0xBEEF), DOC_NATIONAL_ID);
         bytes32[] memory inputs = _icaoInputs();
 
         vm.expectRevert(bytes("HolderRegistration: unknown certificates root"));
@@ -266,7 +273,7 @@ contract HolderRegistrationTest is Test {
     function test_icao_onlyTheOwnerCanSetTheVerifier() public {
         vm.prank(address(0xBAD));
         vm.expectRevert();
-        reg.setIcaoRegistrationVerifier(ZK_TYPE_TD1, address(0xBEEF));
+        reg.setIcaoRegistrationVerifier(ZK_TYPE_TD1, address(0xBEEF), DOC_NATIONAL_ID);
     }
 
     /// THE POINT OF THE MAPPING: more than one document class on the signer-free path.
@@ -278,9 +285,9 @@ contract HolderRegistrationTest is Test {
     bytes32 other = keccak256("Z_NOIR_PASSPORT_1_256_1_5_2376_336_1_2120_4_512");
 
     vm.prank(OWNER);
-    reg.setIcaoRegistrationVerifier(ZK_TYPE_TD1, address(0xBEEF));
+    reg.setIcaoRegistrationVerifier(ZK_TYPE_TD1, address(0xBEEF), DOC_NATIONAL_ID);
     vm.prank(OWNER);
-    reg.setIcaoRegistrationVerifier(other, address(0xCAFE));
+    reg.setIcaoRegistrationVerifier(other, address(0xCAFE), DOC_NATIONAL_ID);
 
     assertEq(reg.icaoRegistrationVerifiers(ZK_TYPE_TD1), address(0xBEEF), "first profile");
     assertEq(reg.icaoRegistrationVerifiers(other), address(0xCAFE), "second profile");
@@ -296,7 +303,7 @@ contract HolderRegistrationTest is Test {
 
   function test_icao_theVerifierCannotBeSetToZero() public {
         vm.expectRevert(bytes("HolderRegistration: zero verifier"));
-        reg.setIcaoRegistrationVerifier(ZK_TYPE_TD1, address(0));
+        reg.setIcaoRegistrationVerifier(ZK_TYPE_TD1, address(0), DOC_NATIONAL_ID);
     }
 
     // ── registerDocumentViaNoir ────────────────────────────────────────────────────────────
@@ -369,7 +376,7 @@ contract HolderRegistrationTest is Test {
         RegistrationSimple.Passport memory p2 = _passport(222, bytes32(uint256(2)), bytes32(uint256(0xB0B0)), bytes32(0));
 
         reg.registerDocumentViaNoir(holderRoot, p1, sk.DOC_PASSPORT(), 0, _sign(SIGNER_PK, p1), "");
-        reg.registerDocumentViaNoir(holderRoot, p2, sk.DOC_NATIONAL_ID(), 0, _sign(SIGNER_PK, p2), "");
+        reg.registerDocumentViaNoir(holderRoot, p2, DOC_NATIONAL_ID, 0, _sign(SIGNER_PK, p2), "");
 
         assertEq(sk.getActiveDocumentCount(bytes32(holderRoot)), 2);
     }
@@ -430,7 +437,7 @@ contract HolderRegistrationTest is Test {
         RegistrationSimple.Passport memory p2 = _passport(222, bytes32(uint256(2)), bytes32(uint256(0xB0B0)), shared);
 
         reg.registerDocumentViaNoir(holderRoot, p1, sk.DOC_PASSPORT(), 0, _sign(SIGNER_PK, p1), "");
-        reg.registerDocumentViaNoir(holderRoot, p2, sk.DOC_NATIONAL_ID(), 0, _sign(SIGNER_PK, p2), "");
+        reg.registerDocumentViaNoir(holderRoot, p2, DOC_NATIONAL_ID, 0, _sign(SIGNER_PK, p2), "");
 
         assertEq(sk.getActiveDocumentCount(bytes32(holderRoot)), 2);
     }
@@ -475,7 +482,7 @@ contract HolderRegistrationTest is Test {
         reg.registerDocumentViaNoir(holderRoot, p1, sk.DOC_PASSPORT(), 0, _sign(SIGNER_PK, p1), "");
 
         RegistrationSimple.Passport memory anchor = _passport(222, bytes32(uint256(2)), bytes32(uint256(0xB0B0)), bytes32(uint256(0xBB)));
-        reg.registerDocumentViaNoir(holderRoot, anchor, sk.DOC_NATIONAL_ID(), 0, _sign(SIGNER_PK, anchor), "");
+        reg.registerDocumentViaNoir(holderRoot, anchor, DOC_NATIONAL_ID, 0, _sign(SIGNER_PK, anchor), "");
 
         RegistrationSimple.Passport memory replay = _passport(444, dg1, bytes32(uint256(0xE0E0)), bytes32(uint256(0xEE)));
         bytes32 docPassport = sk.DOC_PASSPORT();

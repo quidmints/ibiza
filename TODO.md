@@ -16110,3 +16110,29 @@ routes to its tuple are a physical card of that class or an upstream answer. Nei
 
 **The signal that would reopen it:** a real TD1 card failing to register because its layout matches
 none of the five. The tuple falls out of that document. Before that, it is speculation.
+
+### 2.18gz-doctype — every ICAO-registered document was labelled a passport, including ID cards
+
+Found by auditing my OWN change from earlier this session rather than by a test failing.
+
+`registerDocumentViaIcao` hardcoded `docType` to `DOC_PASSPORT`, justified in-file as
+*"`register_identity` IS the passport circuit"*. But another comment in the SAME file insists **the
+verifier must be the TD1 one** - and TD1 is the ID-card layout. Both comments were locally correct
+and jointly wrong: **national IDs were being recorded as passports**, and `DOC_NATIONAL_ID` existed
+in `HolderStateKeeper` the whole time.
+
+Making the path multi-profile did not create this; it multiplied it across four TD1 profiles and made
+it impossible to keep ignoring.
+
+**Fixed by recording the type where the verifier is recorded.** `setIcaoRegistrationVerifier` now
+takes `(zkType, verifier, docType)` and `registerDocumentViaIcao` reads `icaoDocTypes[zkType_]`. The
+caller still supplies neither - which is the property the surrounding comment exists to protect - and
+a profile's document type is not a guess: the circom name's third field is `DOCUMENT_TYPE`, 1 for TD1
+and 3 for TD3.
+
+⚠️ **A DOCUMENTED TRAP CAUGHT ME WHILE FIXING IT.** Passing `sk.DOC_NATIONAL_ID()` as an argument
+after `vm.prank` consumed the single-shot prank before the call under test, so two owner-gating tests
+failed with "did not revert as expected" - looking exactly like a broken access check. `TitleLedger.t.sol`
+documents this for role constants. The constant is now read once in `setUp`.
+
+**Verified:** 497 forge tests, 25 in HolderRegistration, and `check-client-abis.py` green.

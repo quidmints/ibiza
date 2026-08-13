@@ -81,14 +81,37 @@ contract HolderRegistration is RegistrationSimple {
      */
     mapping(bytes32 => address) public icaoRegistrationVerifiers;
 
-    event IcaoRegistrationVerifierSet(bytes32 indexed zkType, address verifier);
+    /**
+     * @notice The document type each registered zkType produces. SET BY THE OWNER, never by the
+     *         caller, for exactly the reason the verifier is.
+     *
+     * ⚠️ THIS EXISTS BECAUSE THE PATH WAS MISLABELLING EVERY DOCUMENT IT REGISTERED. `docType` was
+     * hardcoded to `DOC_PASSPORT` on the reasoning that "`register_identity` IS the passport
+     * circuit" - but the verifier on this path MUST be the TD1 one (see below), and TD1 is the
+     * ID-card layout. So national IDs were being recorded as passports. The contradiction sat in
+     * two comments in this same file, each correct on its own.
+     *
+     * A profile knows which it is: the circom name's third field is DOCUMENT_TYPE, 1 for TD1 and 3
+     * for TD3, and it is recorded per profile in `passport-profiles.json`. Since the owner already
+     * chooses which verifier a zkType resolves to, it records the document type in the same call -
+     * the caller gains no say, which is the property the paragraph below protects.
+     */
+    mapping(bytes32 => bytes32) public icaoDocTypes;
 
-    function setIcaoRegistrationVerifier(bytes32 zkType_, address verifier_) external {
+    event IcaoRegistrationVerifierSet(bytes32 indexed zkType, address verifier, bytes32 docType);
+
+    function setIcaoRegistrationVerifier(
+        bytes32 zkType_,
+        address verifier_,
+        bytes32 docType_
+    ) external {
         _onlyOwner();
         require(verifier_ != address(0), "HolderRegistration: zero verifier");
+        require(docType_ != bytes32(0), "HolderRegistration: zero doc type");
         icaoRegistrationVerifiers[zkType_] = verifier_;
+        icaoDocTypes[zkType_] = docType_;
 
-        emit IcaoRegistrationVerifierSet(zkType_, verifier_);
+        emit IcaoRegistrationVerifierSet(zkType_, verifier_, docType_);
     }
 
     /**
@@ -107,8 +130,10 @@ contract HolderRegistration is RegistrationSimple {
      * - **the anti-replay key** - `dg1Hash`, the same value `_replayKey` uses on the signer path.
      *   sec. 2.18i added that output to the circuit precisely so the two paths cannot key on
      *   different values and let one passport bind twice under two holder roots.
-     * - **`docType`** - fixed to `DOC_PASSPORT`. `register_identity` IS the passport circuit; a
-     *   caller-supplied type would let someone label a passport a national ID for free.
+     * - **`docType`** - taken from `icaoDocTypes[zkType_]`, recorded by the OWNER when the verifier
+     *   was registered. A caller-supplied type would let someone label a passport a national ID for
+     *   free; a hardcoded one mislabelled every TD1 document as a passport, which is what it used
+     *   to do.
      * - **`notAfter`** - fixed to 0. Nothing in the proof attests an expiry, so accepting one would
      *   be recording a claim the caller made about themselves as though it were established.
      *
@@ -187,16 +212,20 @@ contract HolderRegistration is RegistrationSimple {
 
         bytes32 documentKey_ = publicInputs_[_ICAO_PUB_PASSPORT_HASH];
 
+        // The OWNER's recorded type for this zkType, not a constant and not the caller's word. A TD1
+        // profile registers a national ID; a TD3 profile registers a passport.
+        bytes32 docType_ = icaoDocTypes[zkType_];
+
         _holderStateKeeper().addDocument(
             documentKey_,
             dg1Hash_,
             holderRoot_,
-            _holderStateKeeper().DOC_PASSPORT(),
+            docType_,
             uint256(publicInputs_[_ICAO_PUB_DG_COMMIT]),
             0
         );
 
-        emit DocumentRegistered(holderRoot_, documentKey_, _holderStateKeeper().DOC_PASSPORT());
+        emit DocumentRegistered(holderRoot_, documentKey_, docType_);
     }
 
     /**

@@ -11,6 +11,28 @@ or superseded, NOT that it never existed - check the archive before concluding a
 
 ## Live now — opened or reopened 2026-08-13..15, not yet in the numbered scheme
 
+### ⚖️ TRIAGE — order this work by whether a wrong outcome is PROVABLY WRONG AFTERWARDS
+
+Derived from the UMA/Polymarket failure (see the sortition item). Attacker payoff scales with what is
+being decided; defender payoff is fixed. No quorum size fixes that. **What separates a safe mechanism
+from an unsafe one is not the incentive, it is whether a bad outcome can be CONTRADICTED BY EVIDENCE
+after the fact.** Ranked by size of the un-contradictable surface:
+
+| # | predicate | ground truth | external claim surface |
+|---|---|---|---|
+| 1 | **non-association** (`label ∉ tainted`) | **the chain itself** - propagation is deterministic and anyone can recompute it | **only the SEED set**, and it is small |
+| 2 | **sanctions non-membership** | the published register - anyone can rebuild the leaves | the whole register, but public |
+| 3 | **Court on transcription fidelity** | same as (2): does this leaf match the source | none of its own |
+| 4 | **governance votes** (removal, citizenship) | **NONE - it is a judgment** | unbounded |
+
+⇒ **Build in that order.** (1) has the smallest un-contradictable core of anything here and needs NO
+CRE at all beyond anchoring a small seed - which makes it a better first target than the sanctions
+work I had queued ahead of it.
+⇒ **(4) is blocked on economics that may have no solution**, not on engineering. Do not extend Court
+to carry a governance ruling until "what does a wrong ruling cost, and who bears it" has an answer.
+That is the Polymarket shape: high value, no anchor, apathetic panel.
+
+
 - [ ] **Port SORTITION to a per-jurisdiction citizen pool.** ⚠️ We are NOT importing the `quid` folder,
       and UMA is not used at all - an earlier version of this item said to pin the workflow ID in
       `UMA.onReport`, which was wrong twice over. The only thing that transfers is the mechanism:

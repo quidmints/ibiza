@@ -114,6 +114,24 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
       registry. `setTaintRoot` is entrypoint-gated and defaults to 0 (empty).
 - [ ] **`court.sol` ← blacklist disputes.** Jurisdiction is TRANSCRIPTION FIDELITY, not designation
       validity. Blocked on the sanctions predicate existing (2.18gz-unify).
+- [ ] 🔑 **THE LP-SIDE SIGNER — ibiza's half of the SPV fleet split (SPV §E166-3, §E175).** The fleet
+      RELAYS consent and provably cannot manufacture it: `VaultRegistry.LpConsent { auth, exits }`
+      goes DORMANT on absence, a conflicting re-bind is REFUSED not overwritten, and both halves need
+      the LP funding key which §E175-a removed from the fleet. `quid-lp-daemon` landed on the SPV side
+      (683 passed) and holds the LP funding half; **nothing produces the consent, and that is here.**
+      Two pieces:
+        * **`auth.lp_sig`** - an EVM signature over `openAuthDigest`. Small; the wallet already signs.
+        * **`exits` ladder** - one pre-signed spend of the 2-of-2 PER RUNG, each requiring an
+          INTERACTIVE MuSig2 session between the LP's vault node and the fleet's hop at open.
+      ⚠️ **DO NOT HAND-ROLL MuSig2.** `@noble/curves` is already present with BIP-340 `schnorr` (and
+      FROST), so the primitives exist - but BIP-327 nonce handling is where reuse silently leaks the
+      private key, and this signs spends of a live 2-of-2. Use an audited BIP-327 implementation, or
+      justify in writing why none fits.
+      ⚠️ **Nothing named `LpConsent`, `OpenAuth`, `lp_sig` or "pre-signed ladder" exists anywhere in
+      ibiza** - not in the wallet, not in TODO, not in the archive. This is greenfield here, and the
+      spec lives in SPV's QUEUE.md §E166-3 rather than in an ibiza section.
+      ⚠️ It gates SPV Phases 2-3. 1(a) and 1(b) landed; 1(c) is largely covered by the LP-provisioned
+      seed, which the fleet cannot derive and `MigrationAuth` cannot reach.
 - [ ] **Secret ballot for removal-by-electorate and citizenship renunciation** - rarime's vote extended;
       PP for mixing, SPV for yield. The 'final fold', gated on the 6909 basket and the links.
 - [ ] **Modularise `iran-constitutional-monarchy` into a bilateral parliament.** Open first question:

@@ -327,7 +327,8 @@ contract WithdrawEndToEndTest is EscrowFixtureBase {
       WALLET_STATE_ROOT,
       uint256(2), // state_tree_depth
       E2E_IDENTITY_ROOT,
-      E2E_CONTEXT
+      E2E_CONTEXT,
+      0 // taint root - EMPTY set, which admits everyone (2.18gz-unify)
     ];
   }
 

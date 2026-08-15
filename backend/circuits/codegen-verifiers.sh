@@ -249,7 +249,10 @@ CONTRACTS_DIR="${CIRCUITS_DIR}/../contracts/contracts"
 
 # circuit_dir : destination .sol : generated contract name : number of public inputs
 TARGETS=(
-  "withdraw_identity:${CONTRACTS_DIR}/pool/verifiers/WithdrawalHonkVerifier.sol:WithdrawalHonkVerifier:7"
+  # 8 public signals: seven, plus the TAINT ROOT carrying non-association (sec. 2.18gz-unify).
+  # Miscounting here does not fail loudly at generation - it produces a fixture the verifier
+  # rejects for the wrong reason, which is what the length assertion below exists to catch.
+  "withdraw_identity:${CONTRACTS_DIR}/pool/verifiers/WithdrawalHonkVerifier.sol:WithdrawalHonkVerifier:8"
   "title_holder:${CONTRACTS_DIR}/title/TitleHolderHonkVerifier.sol:TitleHolderHonkVerifier:2"
   "ragequit:${CONTRACTS_DIR}/pool/verifiers/RagequitHonkVerifier.sol:RagequitHonkVerifier:4"
   # 11 public inputs: controller_x/y, commitment, registration_root, c1_x/y, sealed[5].

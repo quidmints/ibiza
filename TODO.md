@@ -96,8 +96,22 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
       is acceptable is policy, not cryptography, and may differ for a small jurisdiction.
       ✅ Composes with the secret ballot: being SELECTED can stay private too, and how one voted is
       separate again. Selection privacy and ballot privacy are independent properties.
-- [ ] **Non-association predicate** - the PP paper's exclusion proof over deposit `label`s. Distinct from
-      sanctions non-membership (provenance vs destination); same `smt_verifier_full(fnc=true)` primitive.
+- [x] ✅ **Non-association predicate — LANDED on the single-withdrawal path.** `label ∉ tainted`, proven
+      in-circuit as an eighth public signal. The PP paper's EXCLUSION branch, where 0xbow deployed
+      membership. Third use of `smt_verifier_full`: identity uses `fnc=false`, this uses `fnc=true`.
+      * The taint root is SUBSTITUTED by `PrivacyPool`, never read from the proof - a prover-supplied
+        root would let them prove exclusion from an empty tree of their own and make it vacuous.
+      * `taintRoot = 0` means EMPTY, and empty admits everyone: the bootstrap and the fail-open
+        failure mode in one. Proven feasible first by
+        `smt::test_exclusion_against_an_empty_tree_is_the_zero_witness`, which is what made the
+        committed fixtures updatable with zeros instead of needing a taint tree built first.
+- [ ] 🔴 **The BATCH path does not carry it.** `aggregate_withdrawals` still folds SEVEN signals, so a
+      batched withdrawal bypasses non-association. Closing the path was tried and REVERTED: it deleted
+      the guard coverage (nullifier reuse, context binding, proof rejection) and traded a known gap for
+      untested code. Regenerate the aggregation circuit with EIGHT signals and widen `PUB_LEN` in both
+      batch libraries **before enabling batching on a pool with a non-empty taint root.**
+- [ ] Anchor the taint root: seed set + deterministic propagation, and a setter path from the
+      registry. `setTaintRoot` is entrypoint-gated and defaults to 0 (empty).
 - [ ] **`court.sol` ← blacklist disputes.** Jurisdiction is TRANSCRIPTION FIDELITY, not designation
       validity. Blocked on the sanctions predicate existing (2.18gz-unify).
 - [ ] **Secret ballot for removal-by-electorate and citizenship renunciation** - rarime's vote extended;

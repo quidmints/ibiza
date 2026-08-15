@@ -45,6 +45,11 @@ import {ProofLib} from '../../contracts/pool/lib/ProofLib.sol';
  * instruction from when the two were concatenated into one file.
  */
 contract WithdrawalHonkVerifierTest is Test {
+  /// An EMPTY taint set, which is what the committed fixture proves against. Zero is not a
+  /// placeholder here - it is the bootstrap value, and an empty taint set admits everyone, which is
+  /// the fail-open polarity the non-association predicate is built on (sec. 2.18gz-unify).
+  uint256 internal constant EMPTY_TAINT = 0;
+
   using ProofLib for ProofLib.WithdrawProof;
 
   INoirVerifier internal verifier;
@@ -79,19 +84,20 @@ contract WithdrawalHonkVerifierTest is Test {
       STATE_ROOT,
       STATE_TREE_DEPTH,
       IDENTITY_ROOT,
-      CONTEXT
+      CONTEXT,
+      0 // taint root - EMPTY set, which admits everyone (2.18gz-unify)
     ];
   }
 
   /// @notice The baseline: a genuine proof verifies on-chain through the production plumbing.
   function test_VerifiesRealProof() public view {
     ProofLib.WithdrawProof memory _p = _withdrawProof();
-    assertTrue(verifier.verify(_p.proof, _p.publicInputsBytes32(_p.context())));
+    assertTrue(verifier.verify(_p.proof, _p.publicInputsBytes32(_p.context(), EMPTY_TAINT)));
 
     // ISOLATED GAS, for the aggregation comparison (sec. 2.4). Measures ONLY the verify call, so it
     // is directly comparable to AggregationProofOnChain's per-withdrawal figure.
     {
-      bytes32[] memory _pubs = _p.publicInputsBytes32(_p.context());
+      bytes32[] memory _pubs = _p.publicInputsBytes32(_p.context(), EMPTY_TAINT);
       uint256 _g0 = gasleft();
       verifier.verify(_p.proof, _pubs);
       console.log('single withdrawal verify() gas:', _g0 - gasleft());
@@ -110,7 +116,8 @@ contract WithdrawalHonkVerifierTest is Test {
       STATE_ROOT,
       STATE_TREE_DEPTH,
       IDENTITY_ROOT,
-      CONTEXT
+      CONTEXT,
+      EMPTY_TAINT
     ];
     assertEq(_p.newCommitmentHash(), NEW_COMMITMENT);
     assertEq(_p.existingNullifierHash(), EXISTING_NULLIFIER_HASH);
@@ -158,7 +165,7 @@ contract WithdrawalHonkVerifierTest is Test {
 
     // The proof is untouched and genuine - only the context the caller supplies differs, exactly as
     // it would if this proof were lifted and re-submitted against another processooor.
-    bytes32[] memory _inputs = _p.publicInputsBytes32(CONTEXT + 1);
+    bytes32[] memory _inputs = _p.publicInputsBytes32(CONTEXT + 1, EMPTY_TAINT);
     try verifier.verify(_p.proof, _inputs) returns (bool _ok) {
       assertFalse(_ok, 'a genuine proof verified under a context it was not made for');
     } catch {
@@ -168,7 +175,7 @@ contract WithdrawalHonkVerifierTest is Test {
     // ...and the same call with the correct derivation still passes, so the rejection above is the
     // binding doing its job and not the substitution being broken outright.
     assertTrue(
-      verifier.verify(_p.proof, _p.publicInputsBytes32(CONTEXT)), 'the correct context stopped verifying'
+      verifier.verify(_p.proof, _p.publicInputsBytes32(CONTEXT, EMPTY_TAINT)), 'the correct context stopped verifying'
     );
   }
 
@@ -231,14 +238,15 @@ contract WithdrawalHonkVerifierTest is Test {
       W_STATE_ROOT,
       W_STATE_TREE_DEPTH,
       W_IDENTITY_ROOT,
-      W_CONTEXT
+      W_CONTEXT,
+      EMPTY_TAINT
     ];
   }
 
   /// @notice The end-to-end case: a proof over a WALLET-ASSEMBLED witness verifies on-chain.
   function test_VerifiesWalletAssembledWitness() public view {
     ProofLib.WithdrawProof memory _p = _walletProof();
-    assertTrue(verifier.verify(_p.proof, _p.publicInputsBytes32(_p.context())));
+    assertTrue(verifier.verify(_p.proof, _p.publicInputsBytes32(_p.context(), EMPTY_TAINT)));
   }
 
   /// @notice Guards BOTH fixtures against silently regressing to the degenerate size-1 shape this
@@ -284,7 +292,7 @@ contract WithdrawalHonkVerifierTest is Test {
 
   /// @dev A rejection is either `false` or a revert (SumcheckFailed etc.) - both are correct.
   function _assertRejects(ProofLib.WithdrawProof memory _p) internal view {
-    bytes32[] memory _inputs = _p.publicInputsBytes32(_p.context());
+    bytes32[] memory _inputs = _p.publicInputsBytes32(_p.context(), EMPTY_TAINT);
     try verifier.verify(_p.proof, _inputs) returns (bool _ok) {
       assertFalse(_ok);
     } catch {

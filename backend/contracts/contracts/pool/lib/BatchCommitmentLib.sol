@@ -32,7 +32,7 @@ pragma solidity 0.8.28;
  *      would agree for most inputs and disagree for the roughly one in 2^-2 that exceed p.
  */
 library BatchCommitmentLib {
-    /// @notice Public signals per withdrawal - `ProofLib.WithdrawProof.pubSignals` is `uint256[7]`.
+    /// @notice Public signals per withdrawal - `ProofLib.WithdrawProof.pubSignals` is `uint256[8]`.
     uint256 internal constant PUB_LEN = 7;
 
     /// @notice BN254's scalar field order, the modulus every public input lives in.

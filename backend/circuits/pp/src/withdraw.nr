@@ -32,6 +32,10 @@ pub global IDENTITY_TREE_DEPTH: u32 = 32;
 /// can prove and a registered one cannot.
 global SMT_INCLUSION: bool = false;
 
+/// `fnc = 1` selects EXCLUSION - proving a key is ABSENT. Named for the same reason as its twin:
+/// passing `false` here would silently prove the opposite of what the taint check means.
+global SMT_EXCLUSION: bool = true;
+
 /// The value a clean identity carries. Non-zero means revoked, and the value IS the predicate.
 global STATUS_CLEAN: Field = 0;
 
@@ -46,6 +50,13 @@ pub struct WithdrawSignals {
     pub state_tree_depth: Field,
     pub identity_root: Field,
     pub context: Field,
+    /// Root of the TAINT set - deposits whose provenance is disqualifying. The withdrawal proves
+    /// its `label` is NOT in it (sec. 2.18gz-unify).
+    ///
+    /// EXCLUSION, not inclusion, and the polarity is the point: an empty taint set admits everyone,
+    /// so a stalled feed or an unreachable publisher fails OPEN. Upstream PP proved INCLUSION in an
+    /// approved set, which fails closed - stop publishing and nobody withdraws.
+    pub taint_root: Field,
 }
 
 /// The witness a withdrawal is proven against. Grouped into a struct only so both `main`s can pass
@@ -61,6 +72,13 @@ pub struct WithdrawWitness {
     pub out_secret: Field,
     pub revocation_secret: Field,
     pub identity_siblings: [Field; IDENTITY_TREE_DEPTH],
+    /// Exclusion witness for `label` against `taint_root`. For an EMPTY taint set every field is
+    /// zero with `taint_is_old0 = true` - proven in `smt::test_exclusion_against_an_empty_tree_is_
+    /// the_zero_witness`, which is what makes the bootstrap free.
+    pub taint_siblings: [Field; IDENTITY_TREE_DEPTH],
+    pub taint_old_key: Field,
+    pub taint_old_value: Field,
+    pub taint_is_old0: bool,
 }
 
 /// Prove one withdrawal. Constraint-for-constraint the body `withdraw_identity/src/main.nr` carried
@@ -121,4 +139,30 @@ pub fn verify_withdrawal(signals: WithdrawSignals, w: WithdrawWitness) {
         cleared == true,
         "identity is unregistered or revoked, or the inclusion witness is invalid",
     );
+
+    // 5. NOT TAINTED. The deposit's `label` must be ABSENT from the taint set.
+    //
+    // This is the Privacy Pools paper's EXCLUSION branch - "my withdrawal does not come from one of
+    // these deposits" - as opposed to the membership branch 0xbow deployed. Same object, opposite
+    // failure direction: an allowlist that stops being published censors everyone, a blacklist that
+    // stops being published admits everyone.
+    //
+    // KEYED ON `label`, which is already bound into both commitments above, so the prover cannot
+    // present someone else's provenance. That binding is why this costs one SMT term and not a
+    // redesign.
+    //
+    // ⚠️ THIRD USE OF THE SAME PRIMITIVE. Identity uses it with `fnc = false` (inclusion, status
+    // clean); this uses `fnc = true` (exclusion). Sanctions non-membership will be the same call
+    // again against a different tree. One proof shape, three predicates.
+    let untainted = smt_verifier_full::<IDENTITY_TREE_DEPTH>(
+        signals.taint_root,
+        w.label,
+        0,
+        w.taint_old_key,
+        w.taint_old_value,
+        w.taint_is_old0,
+        SMT_EXCLUSION,
+        w.taint_siblings,
+    );
+    assert(untainted == true, "this deposit is in the taint set, or the exclusion witness is invalid");
 }

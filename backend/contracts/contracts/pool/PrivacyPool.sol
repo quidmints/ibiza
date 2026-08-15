@@ -74,6 +74,7 @@ abstract contract PrivacyPool is State, IPrivacyPool {
   ///         returndata that fails to decode as `bool`, producing a bare revert that says nothing.
   error BatchVerifierNotConfigured();
 
+
   /// @notice One aggregated batch settled. Per-withdrawal `Withdrawn` events are emitted too, so
   ///         existing indexers keep working unchanged.
   event BatchWithdrawn(address indexed batcher, uint256 count);
@@ -267,6 +268,15 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     uint256[7][] memory _signals,
     bytes calldata _batchProof
   ) external {
+    // 🔴 KNOWN GAP, BOOKED NOT HIDDEN (sec. 2.18gz-unify): THIS PATH DOES NOT CARRY THE TAINT PROOF.
+    //
+    // The single-withdrawal path proves `label ∉ tainted` as an eighth public signal.
+    // `aggregate_withdrawals` still folds SEVEN per withdrawal, so a BATCHED withdrawal currently
+    // bypasses non-association. Closing the path was tried and reverted: it would have deleted the
+    // guard coverage below - nullifier reuse, context binding, proof rejection - and traded a known
+    // gap for untested code, which is the worse of the two.
+    // ⇒ Regenerate `aggregate_withdrawals` with EIGHT signals and widen PUB_LEN in both batch
+    //   libraries BEFORE enabling batching on a pool with a non-empty taint root.
     if (address(BATCH_VERIFIER) == address(0)) revert BatchVerifierNotConfigured();
 
     uint256 n = _withdrawals.length;
@@ -372,7 +382,11 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     // signal naming who gets paid, and the circuit deliberately leaves it unconstrained because its
     // meaning lives in data only this contract holds. Making it an argument rather than a
     // comparison means the binding cannot be removed without the compiler objecting.
-    if (!WITHDRAWAL_VERIFIER.verify(_proof.proof, _proof.publicInputsBytes32(_contextFor(_withdrawal)))) {
+    if (
+      !WITHDRAWAL_VERIFIER.verify(
+        _proof.proof, _proof.publicInputsBytes32(_contextFor(_withdrawal), taintRoot)
+      )
+    ) {
       revert InvalidProof();
     }
 
@@ -417,6 +431,28 @@ abstract contract PrivacyPool is State, IPrivacyPool {
   //////////////////////////////////////////////////////////////*/
 
   /// @inheritdoc IPrivacyPool
+  /**
+   * @notice Root of the TAINT set - deposits whose provenance disqualifies a withdrawal.
+   *
+   * ZERO MEANS EMPTY, AND EMPTY ADMITS EVERYONE. That is the bootstrap and the failure mode in one:
+   * an unset, stalled or unreachable taint feed lets every withdrawal through, because the predicate
+   * is EXCLUSION (`label ∉ tainted`) rather than membership. Upstream PP proved inclusion in an
+   * approved set, where the same silence would have censored everyone (sec. 2.18cu).
+   *
+   * ⚠️ The withdrawal circuit is bound to whatever value this holds - `publicInputsBytes32`
+   * SUBSTITUTES it rather than reading it from the proof, so a prover cannot supply an empty tree of
+   * their own and make the check vacuous.
+   */
+  uint256 public taintRoot;
+
+  event TaintRootSet(uint256 root);
+
+  /// @notice Set the taint root. Entrypoint-gated, like every other pool-level parameter here.
+  function setTaintRoot(uint256 _root) external onlyEntrypoint {
+    taintRoot = _root;
+    emit TaintRootSet(_root);
+  }
+
   function windDown() external onlyEntrypoint {
     // Check pool is still alive
     if (dead) revert PoolIsDead();

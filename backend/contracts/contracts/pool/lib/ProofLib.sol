@@ -17,7 +17,8 @@ library ProofLib {
    * @notice Struct containing a Noir/Honk proof and public signals for withdrawal verification
    * @dev Withdrawal is identity-based-ASP (backend/circuits/withdraw_identity), Noir/Honk-proved,
    * NOT Groth16 - see State.sol's WITHDRAWAL_VERIFIER (INoirVerifier). `proof` is the serialized
-   * Honk proof (`bb prove_ultra_keccak_honk` output); `pubSignals` is SEVEN slots as of the single
+   * Honk proof (`bb prove_ultra_keccak_honk` output); `pubSignals` is EIGHT slots - seven, plus the
+   * taint root carrying the Privacy Pools EXCLUSION predicate (sec. 2.18gz-unify). As of the single
    * identity tree (sec. 2.13k) - `ASPRoot` + `revocationRoot` collapsed into one
    * `identityRoot`, and `ASPTreeDepth` disappeared with the LeanIMT identity tree, since the SMT's
    * depth is fixed. Converted to `bytes32[]` only at the verifier-call boundary (`publicInputsBytes32`) since
@@ -37,7 +38,7 @@ library ProofLib {
    */
   struct WithdrawProof {
     bytes proof;
-    uint256[7] pubSignals;
+    uint256[8] pubSignals;
   }
 
   /**
@@ -74,13 +75,19 @@ library ProofLib {
    */
   function publicInputsBytes32(
     WithdrawProof memory _p,
-    uint256 context_
+    uint256 context_,
+    uint256 taintRoot_
   ) internal pure returns (bytes32[] memory _publicInputs) {
-    _publicInputs = new bytes32[](7);
+    _publicInputs = new bytes32[](8);
     for (uint256 _i = 0; _i < 6; ++_i) {
       _publicInputs[_i] = bytes32(_p.pubSignals[_i]);
     }
     _publicInputs[6] = bytes32(context_);
+    // ⚠️ SUBSTITUTED, NOT READ FROM THE PROOF - for the same reason as `context_` above, and it
+    // matters more here. A prover-supplied taint root would let them prove exclusion from an EMPTY
+    // tree of their own choosing, and the non-association predicate would be vacuous while looking
+    // enforced. The caller passes the ANCHORED root; the proof is simply bound to whatever it was.
+    _publicInputs[7] = bytes32(taintRoot_);
   }
 
   /**

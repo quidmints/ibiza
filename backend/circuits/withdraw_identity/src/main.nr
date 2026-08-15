@@ -17,10 +17,12 @@
 // By withdrawal time, knowing the escrowed secret IS the proof of clearance - and knowing it
 // authorises nothing else, since spending a note still requires that note's own secrets.
 //
-// PUBLIC I/O pinned to ProofLib.WithdrawProof.pubSignals - SEVEN elements now, down from nine:
+// PUBLIC I/O pinned to ProofLib.WithdrawProof.pubSignals - EIGHT elements: seven, plus the taint
+// root that carries the Privacy Pools EXCLUSION predicate (2.18gz-unify).
 //   [0] new_commitment          [4] state_tree_depth
 //   [1] existing_nullifier_hash [5] identity_root   <- replaces asp_root AND revocation_root
 //   [2] withdrawn_value         [6] context
+//                               [7] taint_root    <- non-association (sec. 2.18gz-unify)
 //   [3] state_root
 // `asp_tree_depth` is gone with the LeanIMT identity tree; the SMT depth is FIXED, so there is no
 // prover-supplied depth to reason about at all.
@@ -41,6 +43,7 @@ fn main(
     state_tree_depth: pub Field,
     identity_root: pub Field,
     context: pub Field,
+    taint_root: pub Field,
     value: Field,
     label: Field,
     nullifier: Field,
@@ -51,6 +54,10 @@ fn main(
     out_secret: Field,
     revocation_secret: Field,
     identity_siblings: [Field; IDENTITY_TREE_DEPTH],
+    taint_siblings: [Field; IDENTITY_TREE_DEPTH],
+    taint_old_key: Field,
+    taint_old_value: Field,
+    taint_is_old0: bool,
 ) {
     verify_withdrawal(
         WithdrawSignals {
@@ -61,6 +68,7 @@ fn main(
             state_tree_depth,
             identity_root,
             context,
+            taint_root,
         },
         WithdrawWitness {
             value,
@@ -73,6 +81,10 @@ fn main(
             out_secret,
             revocation_secret,
             identity_siblings,
+            taint_siblings,
+            taint_old_key,
+            taint_old_value,
+            taint_is_old0,
         },
     );
 }

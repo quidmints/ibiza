@@ -87,7 +87,7 @@ contract PrivacyPoolSimpleTest is Test {
   }
 
   function _emptyWithdrawProof() internal pure returns (ProofLib.WithdrawProof memory p) {
-    p.pubSignals = [uint256(0), 0, 0, 0, 0, 0, 0];
+    p.pubSignals = [uint256(0), 0, 0, 0, 0, 0, 0, 0]; // 8th = taint root (2.18gz-unify)
   }
 
   /// @dev Honk since the sec. 2.5b port - `proof` is bytes, not pA/pB/pC.

@@ -18,14 +18,31 @@ or superseded, NOT that it never existed - check the archive before concluding a
           header, contract pins it to `blockhash(n)` and reads `prevRandao`, mixed over >=3 blocks.
           Caller-supplied but NOT caller-chosen, and no single proposer can steer it. Transfers
           unchanged - it depends only on `blockhash`, not on anything in `quid`.
-        * **selection** - `seed = keccak(seed, i); idx = seed % poolSize`, skipping `hasServed`,
-          capped at `poolSize * 3`. Transfers unchanged.
+        * **selection** - ⛔ **DOES NOT TRANSFER.** `idx = seed % poolSize` both NEEDS the set size to
+          compute and PUBLISHES the chosen indices. The requirement is anonymous selection that
+          reveals neither the members nor the SET SIZE - only that someone in the set was chosen.
+          Replace drawing with SELF-SELECTION: each epoch's RANDAO is a public seed, a citizen
+          computes `PRF(sk, seed)` locally and is selected iff it falls under a threshold, then
+          proves in ONE circuit (a) membership in the jurisdiction's citizen SMT, (b) correct PRF
+          evaluation on that seed, (c) output under threshold. Nobody draws anyone; they discover it.
+          Reuses `smt_verifier_full` - a THIRD instance of the same primitive, beside sanctions
+          non-membership and non-association - and a Poseidon PRF the circuits already do.
         * **opt-in** - in `quid` this is STAKE (`juryPoolSize`, `lockedStake`, slashing). For a
           citizen set it is an opted-in subset of `CitizenRegistry` per jurisdiction.
       ⚠️ **THE INCENTIVE DOES NOT TRANSFER, and that is the real design question.** Sortition without
       stake has no slashing lever, so nothing makes a drawn citizen vote honestly rather than not at
       all. Solve that before porting, not after.
-      ✅ Composes with the secret ballot: being SAMPLED is public, the VOTE is private. Separable.
+      ⚠️ **THE SET SIZE LEAKS THROUGH TURNOUT, and no construction avoids it for free.** With a public
+      fixed threshold, expected committee size = |set| x P, so counting who shows up ESTIMATES the
+      population. Pick two of three: fixed threshold / fixed committee size / hidden population.
+        * fixed threshold -> committee varies with population -> leaks
+        * fixed committee -> threshold calibrated to population -> leaks
+        * hidden or committed threshold, or padding with decoy submissions -> hides size, but the
+          committee size stops being knowable, which breaks any quorum rule that depends on it
+      The leak is bounded - an adversary learns roughly HOW MANY opted in, never WHO - so whether it
+      is acceptable is policy, not cryptography, and may differ for a small jurisdiction.
+      ✅ Composes with the secret ballot: being SELECTED can stay private too, and how one voted is
+      separate again. Selection privacy and ballot privacy are independent properties.
 - [ ] **Non-association predicate** - the PP paper's exclusion proof over deposit `label`s. Distinct from
       sanctions non-membership (provenance vs destination); same `smt_verifier_full(fnc=true)` primitive.
 - [ ] **`court.sol` ← blacklist disputes.** Jurisdiction is TRANSCRIPTION FIDELITY, not designation

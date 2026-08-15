@@ -11,11 +11,21 @@ or superseded, NOT that it never existed - check the archive before concluding a
 
 ## Live now — opened or reopened 2026-08-13..15, not yet in the numbered scheme
 
-- [ ] **`quid`: `UMA.onReport` ignores the workflow ID.** `onReport(bytes calldata, bytes calldata report)`
-      discards the metadata naming the workflow, so it authenticates the FORWARDER and accepts a report
-      from any workflow on that DON - which then auto-disputes assertions. Fix already written in
-      ibiza's `RegistrySourceAnchor.onReport` (offset-checked workflow ID, `UnpinnedWorkflow`). **Urgent,
-      small, proven.**
+- [ ] **Port SORTITION to a per-jurisdiction citizen pool.** ⚠️ We are NOT importing the `quid` folder,
+      and UMA is not used at all - an earlier version of this item said to pin the workflow ID in
+      `UMA.onReport`, which was wrong twice over. The only thing that transfers is the mechanism:
+        * **entropy** - `RandaoLib.getHistoricalRandaoValue(n, headerRlp)`: caller supplies an RLP
+          header, contract pins it to `blockhash(n)` and reads `prevRandao`, mixed over >=3 blocks.
+          Caller-supplied but NOT caller-chosen, and no single proposer can steer it. Transfers
+          unchanged - it depends only on `blockhash`, not on anything in `quid`.
+        * **selection** - `seed = keccak(seed, i); idx = seed % poolSize`, skipping `hasServed`,
+          capped at `poolSize * 3`. Transfers unchanged.
+        * **opt-in** - in `quid` this is STAKE (`juryPoolSize`, `lockedStake`, slashing). For a
+          citizen set it is an opted-in subset of `CitizenRegistry` per jurisdiction.
+      ⚠️ **THE INCENTIVE DOES NOT TRANSFER, and that is the real design question.** Sortition without
+      stake has no slashing lever, so nothing makes a drawn citizen vote honestly rather than not at
+      all. Solve that before porting, not after.
+      ✅ Composes with the secret ballot: being SAMPLED is public, the VOTE is private. Separable.
 - [ ] **Non-association predicate** - the PP paper's exclusion proof over deposit `label`s. Distinct from
       sanctions non-membership (provenance vs destination); same `smt_verifier_full(fnc=true)` primitive.
 - [ ] **`court.sol` ← blacklist disputes.** Jurisdiction is TRANSCRIPTION FIDELITY, not designation

@@ -32,6 +32,22 @@ or superseded, NOT that it never existed - check the archive before concluding a
       ⚠️ **THE INCENTIVE DOES NOT TRANSFER, and that is the real design question.** Sortition without
       stake has no slashing lever, so nothing makes a drawn citizen vote honestly rather than not at
       all. Solve that before porting, not after.
+      🔴 **THE ATTACK ECONOMICS ARE THE SECURITY PARAMETER, and they are the target to beat.** The
+      Polymarket attackers held YES on a US/Ukraine mineral deal - 97% in February, under 10% by
+      April, about to expire worthless. Corrupting the resolution was worth their ENTIRE POSITION,
+      while each honest voter stood to gain a share of routine rewards. **Attacker payoff scales with
+      the stake in the decision; defender payoff is fixed.** No quorum size fixes an unbounded
+      numerator. A sanctions ruling has an unbounded numerator too - removing an address unfreezes
+      arbitrary value, adding one censors arbitrary value - so a fixed-compensation panel is
+      corruptible for a valuable enough address, and an unpaid citizen panel for less.
+      ✅ **WHAT SAVES THE SANCTIONS CASE IS DETECTABILITY, NOT INCENTIVES.** Transcription fidelity has
+      a public ground truth: rule that an entry is absent when it is present, and anyone rebuilding
+      the leaves sees it. The ruling still executes, but it is CONTRADICTABLE, which leaves room for a
+      second-order remedy. Polymarket had no anchor, which is why "a deal was AND was not agreed on
+      27 February" stands as a permanent contradiction nobody can adjudicate after the fact.
+      ⇒ **Court is usable where a wrong ruling is PROVABLY wrong afterwards, and dangerous where it is
+      not.** Sanctions transcription: safe side. Removal of a monarch: judgment, no anchor, high
+      value, same apathy exposure - the Polymarket shape exactly.
       🔴 **DEMONSTRATED, NOT HYPOTHETICAL.** UMA's oracle was manipulated into resolving a Polymarket
       market against reality by attackers who timed the dispute for when attention was low - the
       failure was CHECKED-OUT VOTERS, not broken cryptography. Note the direction of the evidence:

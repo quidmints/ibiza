@@ -107,8 +107,14 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
 - [ ] **Simplify along the `quid` seam.** Measured: quid `Aux+Vogue+VogueCore` = 1,742 lines with **0**
       `isBTC`; SPV `Aux+Vogue+Core` = 4,164 with **358**. quid is a working reference for the §J.2
       consolidation - but it never faced BTC, so it proves the cost, not that one impl serves both.
-- [ ] **`Registration2` certificate paths are untested** - `registerCertificate`, `revokeCertificate`,
-      X509. No document needed.
+- [x] ✅ **`Registration2` certificate paths** - `test/registration/CertificateLifecycle.t.sol`, 5 tests,
+      real contracts. Pins that `revokeCertificate` is PERMISSIONLESS BY DESIGN: it forwards to
+      `StateKeeper.removeCertificate`, which is `onlyRegistration` and requires an expiry in the past,
+      so it needs no authority precisely BECAUSE its precondition is on-chain fact rather than
+      judgment. ⚠️ That is the property most likely to be "fixed" by adding `onlyOwner`; the tests
+      make that fail loudly. Also recorded: `onlyRegistration` is an ALLOWLIST - a Registration2 must
+      be added via `updateRegistrationSet`; pointing it at the keeper is not enough, and only one of
+      the two directions comes from the initializer.
 - [ ] **brainpoolP224r1** (DE 63, AE 42 DSCs). Deliberately unbuilt: unreachable until a tuple exists.
 - [ ] **File the upstream reports.** `backend/circuits/UPSTREAM-REPORTS.md`, corrected; needs `gh` creds.
 

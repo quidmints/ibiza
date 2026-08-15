@@ -479,3 +479,38 @@ fn test_value_zero_inclusion_still_binds_the_root() {
         "key->0 inclusion accepted against the wrong root",
     );
 }
+
+#[test]
+fn test_exclusion_against_an_empty_tree_is_the_zero_witness() {
+    // FEASIBILITY GATE for the non-association predicate (TODO 2.18gz-unify).
+    //
+    // A taint set starts EMPTY, and an empty set must admit everyone - that is the fail-open
+    // polarity the whole design rests on. If exclusion against root 0 needs a constructed witness,
+    // every committed withdrawal fixture would need a real taint tree built first. If the all-zero
+    // witness works, the bootstrap is free and the fixtures take zeros.
+    //
+    // `is_old0 = true` is what tells the state machine the tree is empty; `fnc = true` selects
+    // EXCLUSION.
+    let siblings: [Field; 32] = [0; 32];
+    let ok = smt_verifier_full::<32>(
+        0,          // root of an empty tree
+        123456789,  // any key at all
+        0,
+        0,          // old_key
+        0,          // old_value
+        true,       // is_old0 - the tree is empty
+        true,       // fnc - prove EXCLUSION
+        siblings,
+    );
+    assert(ok, "exclusion from an empty tree must verify with an all-zero witness");
+}
+
+#[test]
+fn test_a_different_key_also_excludes_from_the_empty_tree() {
+    // Not key-specific: if it were, the "free bootstrap" would be an accident of one value.
+    let siblings: [Field; 32] = [0; 32];
+    assert(
+        smt_verifier_full::<32>(0, 987654321, 0, 0, 0, true, true, siblings),
+        "empty-tree exclusion must hold for any key",
+    );
+}

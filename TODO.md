@@ -32,6 +32,21 @@ or superseded, NOT that it never existed - check the archive before concluding a
       ⚠️ **THE INCENTIVE DOES NOT TRANSFER, and that is the real design question.** Sortition without
       stake has no slashing lever, so nothing makes a drawn citizen vote honestly rather than not at
       all. Solve that before porting, not after.
+      🔴 **DEMONSTRATED, NOT HYPOTHETICAL.** UMA's oracle was manipulated into resolving a Polymarket
+      market against reality by attackers who timed the dispute for when attention was low - the
+      failure was CHECKED-OUT VOTERS, not broken cryptography. Note the direction of the evidence:
+      UMA HAD a token-weighted stake lever and it was still insufficient. A citizen panel with no
+      lever at all is strictly weaker. Two further lessons: (1) UMA's "trusted" LABEL on the
+      attackers did the work - **do not add a reputation layer to Court**, it reintroduces exactly
+      that; (2) fixed appeal windows are schedulable, so an attacker picks the moment.
+      ⚠️ **AND THE REMIT SPLIT MATTERS MORE THAN THE INCENTIVE.** Court on SANCTIONS adjudicates
+      transcription fidelity - is this entry in the published register - which has a GROUND TRUTH
+      anyone can rebuild, so an absent or bribed panel can be contradicted by evidence. Removal of a
+      monarch, or a citizenship grant, has NO anchor: it is a judgment, like "was a deal agreed",
+      which is the exact question class that failed. **The engine is sound for the use it was
+      designed for and structurally exposed for the governance use** - and no cryptography closes
+      that gap. Decide what a wrong governance ruling costs, and who bears it, before extending Court
+      to carry one.
       ⚠️ **THE SET SIZE LEAKS THROUGH TURNOUT, and no construction avoids it for free.** With a public
       fixed threshold, expected committee size = |set| x P, so counting who shows up ESTIMATES the
       population. Pick two of three: fixed threshold / fixed committee size / hidden population.

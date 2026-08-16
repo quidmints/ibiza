@@ -120,6 +120,41 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
       registry. `setTaintRoot` is entrypoint-gated and defaults to 0 (empty).
 - [ ] **`court.sol` ← blacklist disputes.** Jurisdiction is TRANSCRIPTION FIDELITY, not designation
       validity. Blocked on the sanctions predicate existing (2.18gz-unify).
+- [ ] 🔴 **`setForwarder` IS THE UNGUARDED TWIN OF `pinWorkflow`, AND IT IS THE TOTAL BYPASS**
+      (owner, 2026-08-16: *"what about what was there removing the point also"* — checked, and it
+      does). §2.15a's four mitigations ALL landed on the workflow axis: `pinWorkflow` is append-only,
+      REFUSES a re-pin of the same id (`WorkflowAlreadyPinned`, so a contested version cannot be
+      quietly re-armed), carries `WORKFLOW_ACTIVATION_DELAY = 24 hours`, and fails open to its
+      predecessor. **`setForwarder` got none of them**: `onlyRole(OWNER_ROLE)`, no timelock, not
+      write-once, effective in the same block.
+      ⇒ The surviving path is one transaction: re-point `forwarder` at an EOA, then have it call
+      `onReport` citing the genuinely pinned workflow id, with any root. The contract concedes it
+      cannot see this (`:187-190`): *"what this contract cannot tell is WHICH address it was given,
+      so the guarantee is conditional on `setForwarder` having been pointed at the genuine
+      deployment."* Friction is `ForwarderSet` firing plus `ROOT_ACTIVATION_DELAY = 1 hour`.
+      ⚠️ **So `notary_registry/main.go`'s claim — *"no single operator can substitute a tampered
+      registry snapshot"* — is NOT what the code enforces.** It enforces "not without emitting an
+      event and waiting an hour". That is detection where prevention is claimed, and it means the
+      multi-node DON story is capped by a single owner key regardless of how many nodes fetch.
+      ⇒ Either timelock `setForwarder` to match `pinWorkflow`, or make it write-once, or verify DON
+      report signatures so the forwarder address stops being the whole trust boundary (the last is
+      already booked separately, sec. 4 *"Verify DON report signatures in RegistrySourceAnchor"*).
+      **Until one of those lands, do not repeat the no-single-operator claim in any document.**
+- [ ] 🔴 **A SECURITY ARGUMENT RESTING ON AN UNBUILT PREMISE — `RegistrySourceAnchor.sol:128-130`.**
+      It explains why the snapshot path needs no contest window: *"Once each DON node verifies the
+      register's TLS session inside the workflow, fabricated DATA becomes impossible rather than
+      merely detectable — so the snapshot path needs no contest window."* **`notary_registry/main.go`
+      does no such thing**: a plain `http.SendRequest` + `cre.ConsensusIdenticalAggregation`, with no
+      TLS session verification, no certificate handling, nothing. Grepped for `tls|x509|cert` — the
+      only hits are the two comment lines admitting scrapers rot.
+      The code is currently SAFER than its own rationale (`ROOT_ACTIVATION_DELAY = 1 hour` exists
+      anyway), which is exactly why this is dangerous: **the next person to read that comment can
+      delete the delay and cite it.** Either build the in-workflow session verification the comment
+      assumes, or rewrite the comment to say the window is load-bearing. Do not leave it asserting a
+      property the workflow does not have.
+      🔗 Bears directly on the TLSNotary question (§2.15a): the current design already WANTS the
+      property TLSNotary provides and asserts it without having it, so "CRE instead of TLSNotary" is
+      not the clean either/or that section framed it as.
 - [ ] 📲 **FUND BY BTC QR, NOT BY AN EVM TRANSACTION — the answer to Phantom's MEV downgrade is to
       remove the broadcast, not to detect it** (owner, 2026-08-16). I had written that for a
       Phantom session "no probe can make the claim true" and stopped there. That was looking for a

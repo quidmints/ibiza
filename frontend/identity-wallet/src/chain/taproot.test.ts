@@ -9,7 +9,7 @@ import test from 'node:test'
 import assert from 'node:assert'
 import { ethers } from 'ethers'
 
-import { taggedHash, tapLeafHash, tapBranch, termsLeafScript, depositMerkleRoot, scriptNum, refundLeafScript } from './taproot.ts'
+import { taggedHash, tapLeafHash, tapBranch, scriptNum, refundLeafScript, termsCommitment, depositLeafScript } from './taproot.ts'
 
 const A = ethers.keccak256(ethers.toUtf8Bytes('leaf-a'))
 const B = ethers.keccak256(ethers.toUtf8Bytes('leaf-b'))
@@ -45,34 +45,6 @@ test('an over-long leaf script is refused rather than mis-prefixed', () => {
   assert.throws(() => tapLeafHash('0x' + 'ab'.repeat(253)), /too long/)
 })
 
-test('the terms leaf is OP_RETURN + PUSH32 and is sensitive to every field', () => {
-  const s = '0x' + '11'.repeat(20)
-  const t = '0x' + '22'.repeat(20)
-  const base = termsLeafScript(s, t, 1000n)
-
-  assert.ok(base.startsWith('0x6a20'), `expected OP_RETURN PUSH32, got ${base.slice(0, 6)}`)
-  assert.strictEqual(ethers.getBytes(base).length, 34)
-
-  // ⚠️ THE POINT OF THE LEAF: changing ANY committed term must change the address. If one of
-  // these ever stops differing, the hop can restate that field and the deposit still matches.
-  assert.notStrictEqual(base, termsLeafScript('0x' + '33'.repeat(20), t, 1000n), 'seller')
-  assert.notStrictEqual(base, termsLeafScript(s, '0x' + '44'.repeat(20), 1000n), 'token')
-  assert.notStrictEqual(base, termsLeafScript(s, t, 1001n), 'minDeliveredUsd')
-})
-
-test('the merkle root changes when either leaf does', () => {
-  const refund = '0x' + 'cd'.repeat(40)
-  const terms = termsLeafScript('0x' + '11'.repeat(20), '0x' + '22'.repeat(20), 7n)
-  const root = depositMerkleRoot(refund, terms)
-
-  assert.notStrictEqual(root, depositMerkleRoot('0x' + 'ce'.repeat(40), terms), 'refund leaf')
-  assert.notStrictEqual(
-    root,
-    depositMerkleRoot(refund, termsLeafScript('0x' + '11'.repeat(20), '0x' + '22'.repeat(20), 8n)),
-    'terms leaf',
-  )
-})
-
 test('scriptNum is little-endian, minimal, and pads only when the top bit is set', () => {
   // Derived from Bitcoin's rule rather than from the implementation, so this is a real check.
   assert.strictEqual(scriptNum(0), '0x00', 'ExitLib returns a single 0x00, not an empty push')
@@ -103,4 +75,31 @@ test('the padded height changes the leaf, so the pad is load-bearing', () => {
 
 test('a wrong-width refund key is refused', () => {
   assert.throws(() => refundLeafScript('0xdeadbeef', 1), /32 bytes/)
+})
+
+test('the deposit leaf commits the terms in front of the refund path, in ONE leaf', () => {
+  const key = '0x' + 'ab'.repeat(32)
+  const s0 = '0x' + '11'.repeat(20)
+  const t0 = '0x' + '22'.repeat(20)
+  const leaf = depositLeafScript(key, 500000, s0, t0, 1000n)
+
+  // PUSH32 <terms> | 75 DROP | PUSH3 20a107 | b1 CLTV | 75 DROP | PUSH32 <key> | ac CHECKSIG
+  const expected =
+    '0x20' + termsCommitment(s0, t0, 1000n).slice(2) + '75' +
+    '0320a107' + 'b175' + '20' + 'ab'.repeat(32) + 'ac'
+  assert.strictEqual(leaf, expected)
+
+  // The refund path is UNCHANGED apart from the prefix — same tail, so spendability is untouched.
+  assert.ok(leaf.endsWith(refundLeafScript(key, 500000).slice(2)), 'refund tail altered')
+})
+
+test('every committed term changes the deposit leaf', () => {
+  const key = '0x' + 'cd'.repeat(32)
+  const s0 = '0x' + '11'.repeat(20)
+  const t0 = '0x' + '22'.repeat(20)
+  const base = depositLeafScript(key, 7, s0, t0, 1000n)
+  assert.notStrictEqual(base, depositLeafScript(key, 7, '0x' + '33'.repeat(20), t0, 1000n), 'seller')
+  assert.notStrictEqual(base, depositLeafScript(key, 7, s0, '0x' + '44'.repeat(20), 1000n), 'token')
+  assert.notStrictEqual(base, depositLeafScript(key, 7, s0, t0, 1001n), 'minDeliveredUsd')
+  assert.notStrictEqual(base, depositLeafScript(key, 8, s0, t0, 1000n), 'cltvHeight')
 })

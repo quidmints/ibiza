@@ -7,12 +7,18 @@
 // USER WAS SHOWN AND ACCEPTED (`token`, `minDeliveredUsd`, `cltvHeight`) — and the quoted address
 // is compared against the result, never mixed into it.
 //
-// ⚠️ **THIS FILE IS THE HASH LAYER ONLY, AND THAT IS DELIBERATE.** Turning a merkle root into a
+// ⚠️ **THIS FILE IS THE HASH LAYER ONLY, AND THAT IS DELIBERATE.** Turning a leaf hash into a
 // `bc1p…` address additionally needs (a) the BIP-341 TapTweak, which is an EC point add over
 // secp256k1, and (b) bech32m. Neither is here, because neither should be hand-rolled —
 // `@scure/btc-signer` (same maintainer as the `@noble/*` packages already in this wallet) is the
 // intended source and is not yet a dependency. **Landing the hashing separately is what lets it
 // be pinned against the Solidity and Rust suites today** rather than waiting on that decision.
+//
+// 🔑 **A LEAF HASH, NOT A MERKLE ROOT — the tree is ONE leaf.** See `depositLeafScript`: the
+// terms are committed by a dropped push inside the refund leaf rather than by a second leaf, so
+// there is no branch to compute. `tapBranch` remains below because it is correct, cross-checked
+// against rust-bitcoin, and BIP-341's own primitive — but **nothing in the deposit path calls
+// it**, and adding a second leaf later should be a deliberate decision, not an accident.
 //
 // ✅ `refundLeafScript` IS now here, TRANSCRIBED from `ExitLib._cltvRefundLeaf` rather than
 // re-derived — including `_scriptNum`, whose minimal little-endian encoding with a sign pad is
@@ -62,31 +68,22 @@ export function tapBranch(a: string, b: string): string {
   return taggedHash('TapBranch', ethers.getBytes(ethers.concat([lo, hi])))
 }
 
-/// The unspendable leaf that commits the swap's TERMS, so the hop cannot restate them.
+/// The 32-byte commitment to a swap's TERMS — who is credited, in what token, for how little.
+/// §T2 in `SPV/docs/actionable/HOP-TRUST-AUDIT.md`.
 ///
-/// `OP_RETURN <32-byte commitment>` — provably unspendable, present purely so the deposit address
-/// commits to who is credited and on what basis. §T2 in `SPV/docs/actionable/HOP-TRUST-AUDIT.md`.
-///
-/// ⚠️ The ABI encoding must match the Solidity side EXACTLY (`abi.encode`, not `encodePacked` —
-/// packed encoding is ambiguous across dynamic types and two different quotes could collide).
-export function termsLeafScript(
+/// ⚠️ `abi.encode`, never `encodePacked`: packed encoding is ambiguous and two different quotes
+/// could collide onto one commitment. Must match the Solidity side exactly.
+export function termsCommitment(
   seller: string,
   token: string,
   minDeliveredUsd: bigint,
 ): string {
-  const commitment = ethers.sha256(
+  return ethers.sha256(
     ethers.AbiCoder.defaultAbiCoder().encode(
       ['address', 'address', 'uint256'],
       [seller, token, minDeliveredUsd],
     ),
   )
-  // 0x6a = OP_RETURN, 0x20 = PUSH32.
-  return ethers.concat(['0x6a20', commitment])
-}
-
-/// The merkle root a two-leaf deposit address commits to.
-export function depositMerkleRoot(refundLeafHex: string, termsLeafHex: string): string {
-  return tapBranch(tapLeafHash(refundLeafHex), tapLeafHash(termsLeafHex))
 }
 
 /// Bitcoin script number: little-endian, minimal width, with a `0x00` pad when the high bit of the
@@ -121,6 +118,45 @@ export function refundLeafScript(userRefund: string, cltvHeight: number): string
   if (key.length !== 32) throw new Error('refundLeafScript: userRefund must be 32 bytes x-only')
   return ethers.hexlify(
     ethers.concat([
+      new Uint8Array([n.length]), n, // PUSH<len> <height, little-endian, minimal>
+      '0xb1',                        // OP_CHECKLOCKTIMEVERIFY
+      '0x75',                        // OP_DROP
+      '0x20', key,                   // PUSH32 <x-only refund key>
+      '0xac',                        // OP_CHECKSIG
+    ]),
+  )
+}
+
+/// The deposit leaf: the CLTV refund path with the swap's terms committed in front of it.
+///
+/// `<termsCommitment> OP_DROP <cltvHeight> OP_CLTV OP_DROP <userRefund> OP_CHECKSIG`
+///
+/// 🔑 **ONE LEAF, NOT TWO — THIS REPLACES THE `tapBranch` DESIGN, and the challenge that produced
+/// it was right.** My first version put the terms in a SECOND, unspendable `OP_RETURN` leaf and
+/// combined the two with a merkle branch. That works and is more machinery than the job needs: a
+/// second leaf means a `tapBranch` on every derivation, a 32-byte sibling in the control block of
+/// every refund spend, and a new primitive maintained in three languages. Pushing the commitment
+/// into the leaf that ALREADY EXISTS costs 34 bytes of witness on the refund path only — the rare
+/// path — and needs no new primitive at all.
+/// ⇒ `taprootOutputKeyWithLeaf(internalX, tapLeafHash(depositLeafScript(...)))` is exactly what
+/// SPV already has. Nothing in the tweak, the control block or the key path moves.
+///
+/// The push is executed and immediately dropped, so spendability is untouched: the refund path is
+/// still "after `cltvHeight`, the holder of `userRefund` may reclaim".
+export function depositLeafScript(
+  userRefund: string,
+  cltvHeight: number,
+  seller: string,
+  token: string,
+  minDeliveredUsd: bigint,
+): string {
+  const n = ethers.getBytes(scriptNum(cltvHeight))
+  const key = bytes(userRefund)
+  if (key.length !== 32) throw new Error('depositLeafScript: userRefund must be 32 bytes x-only')
+  return ethers.hexlify(
+    ethers.concat([
+      '0x20', termsCommitment(seller, token, minDeliveredUsd), // PUSH32 <terms>
+      '0x75',                        // OP_DROP — committed, not consumed
       new Uint8Array([n.length]), n, // PUSH<len> <height, little-endian, minimal>
       '0xb1',                        // OP_CHECKLOCKTIMEVERIFY
       '0x75',                        // OP_DROP

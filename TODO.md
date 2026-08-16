@@ -123,15 +123,29 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
         * **`auth.lp_sig`** - an EVM signature over `openAuthDigest`. Small; the wallet already signs.
         * **`exits` ladder** - one pre-signed spend of the 2-of-2 PER RUNG, each requiring an
           INTERACTIVE MuSig2 session between the LP's vault node and the fleet's hop at open.
-      ⚠️ **DO NOT HAND-ROLL MuSig2.** `@noble/curves` is already present with BIP-340 `schnorr` (and
-      FROST), so the primitives exist - but BIP-327 nonce handling is where reuse silently leaks the
-      private key, and this signs spends of a live 2-of-2. Use an audited BIP-327 implementation, or
-      justify in writing why none fits.
+      ⚠️ **DO NOT HAND-ROLL MuSig2.** BIP-327 nonce handling is where reuse silently leaks the
+      private key, and this signs spends of a live 2-of-2.
+      ✅ **THE LIBRARY QUESTION IS SETTLED, AND THE ANSWER WAS IN A README WE ALREADY SHIP** (checked
+      2026-08-16). `@noble/curves` 2.2.0 exports `schnorr`, `secp256k1_FROST`, `schnorr_FROST` and
+      **no MuSig2** - read off `node_modules/@noble/curves/secp256k1.d.ts`, not assumed. Its own
+      README says where it went: *"MuSig2 signature scheme and BIP324 ElligatorSwift mapping for
+      secp256k1 are available in a separate package"* → **`@scure/btc-signer`**, same maintainer
+      (paulmillr) as the `@noble/curves` + `@noble/hashes` this wallet already depends on.
+      ⇒ **Use `@scure/btc-signer`; adding it is step one**, since `@scure/` is absent from the
+      wallet's `node_modules` today. ⚠️ Confirm its MuSig2 export surface against the INSTALLED
+      package before designing the session flow - this entry cites noble's README, which is evidence
+      the package exists and is the sanctioned route, NOT evidence of its API shape.
+      🔑 **The two pieces are independent and only ONE is Bitcoin.** `auth.lp_sig` is an EVM digest
+      `ethers` can already sign and needs no new dependency; only the `exits` ladder needs BIP-327.
+      Landing `lp_sig` first is real progress that is not blocked on the library question.
       ⚠️ **Nothing named `LpConsent`, `OpenAuth`, `lp_sig` or "pre-signed ladder" exists anywhere in
-      ibiza** - not in the wallet, not in TODO, not in the archive. This is greenfield here, and the
-      spec lives in SPV's QUEUE.md §E166-3 rather than in an ibiza section.
-      ⚠️ It gates SPV Phases 2-3. 1(a) and 1(b) landed; 1(c) is largely covered by the LP-provisioned
-      seed, which the fleet cannot derive and `MigrationAuth` cannot reach.
+      ibiza** - re-verified 2026-08-16: every match in the repo is inside the vendored
+      `backend/contracts/lib/SPV/` submodule, i.e. SPV's own code, not ours. Still greenfield, and
+      the spec lives in SPV's QUEUE.md §E166-3 rather than in an ibiza section.
+      ⚠️ It gates SPV Phases 2-3. **1(a), 1(b) AND 1(c) have all landed** (SPV `09fc4f8c`/`28a80ee3`,
+      2026-08-16): the LP declares `Individual` so it boots on mainnet, a born seed is written out
+      once as a mnemonic, `QUID_SEED` takes it back, and a `family` role gets a K-of-N Shamir split
+      instead. ⇒ **Nothing on the SPV side is holding this item up any more; it is waiting on ibiza.**
 - [ ] **Secret ballot for removal-by-electorate and citizenship renunciation** - rarime's vote extended;
       PP for mixing, SPV for yield. The 'final fold', gated on the 6909 basket and the links.
 - [ ] **Modularise `iran-constitutional-monarchy` into a bilateral parliament.** Open first question:

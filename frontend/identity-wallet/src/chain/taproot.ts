@@ -14,11 +14,11 @@
 // intended source and is not yet a dependency. **Landing the hashing separately is what lets it
 // be pinned against the Solidity and Rust suites today** rather than waiting on that decision.
 //
-// 🔑 **A LEAF HASH, NOT A MERKLE ROOT — the tree is ONE leaf.** See `depositLeafScript`: the
-// terms are committed by a dropped push inside the refund leaf rather than by a second leaf, so
-// there is no branch to compute. `tapBranch` remains below because it is correct, cross-checked
-// against rust-bitcoin, and BIP-341's own primitive — but **nothing in the deposit path calls
-// it**, and adding a second leaf later should be a deliberate decision, not an accident.
+// 🔑 **A LEAF HASH, NOT A MERKLE ROOT — the tree is ONE leaf.** The terms are committed by a
+// dropped push inside the refund leaf (`depositLeafScript`), so there is no branch to compute and
+// no `tapBranch` here. An earlier version had one; it survived the redesign as dead code for a
+// day, which standing rule 1 forbids — if a second leaf is ever wanted, BIP-341's TapBranch is
+// five lines and should be added deliberately rather than found lying around.
 //
 // ✅ `refundLeafScript` IS now here, TRANSCRIBED from `ExitLib._cltvRefundLeaf` rather than
 // re-derived — including `_scriptNum`, whose minimal little-endian encoding with a sign pad is
@@ -61,16 +61,6 @@ export function tapLeafHash(scriptHex: string): string {
     'TapLeaf',
     ethers.getBytes(ethers.concat([new Uint8Array([0xc0, script.length]), script])),
   )
-}
-
-/// BIP-341 TapBranch: combine two child hashes into their parent, children sorted.
-///
-/// 🔑 The sort is consensus, not tidiness — BIP-341 orders children lexicographically so a merkle
-/// path need not record which side each sibling was on. Concatenating in call order computes a
-/// root Bitcoin does not agree with, and the address derived from it is simply never paid.
-export function tapBranch(a: string, b: string): string {
-  const [lo, hi] = BigInt(a) <= BigInt(b) ? [a, b] : [b, a]
-  return taggedHash('TapBranch', ethers.getBytes(ethers.concat([lo, hi])))
 }
 
 /// The 32-byte commitment to a swap's TERMS — who is credited, in what token, for how little.

@@ -9,24 +9,10 @@ import test from 'node:test'
 import assert from 'node:assert'
 import { ethers } from 'ethers'
 
-import { taggedHash, tapLeafHash, tapBranch, scriptNum, refundLeafScript, termsCommitment, depositLeafScript, taprootOutputKey } from './taproot.ts'
+import { taggedHash, tapLeafHash, scriptNum, refundLeafScript, termsCommitment, depositLeafScript, taprootOutputKey } from './taproot.ts'
 
 const A = ethers.keccak256(ethers.toUtf8Bytes('leaf-a'))
 const B = ethers.keccak256(ethers.toUtf8Bytes('leaf-b'))
-const CROSS_VERIFIED =
-  '0x210f9a7d980626b9556bbc01c6a1bbf0a3aa311f8ba36181ae6477a47df8d206'
-
-test('tapBranch matches the value Solidity, python and rust-bitcoin already agree on', () => {
-  assert.strictEqual(tapBranch(A, B), CROSS_VERIFIED)
-})
-
-test('children are sorted, so call order cannot change the parent', () => {
-  assert.strictEqual(tapBranch(A, B), tapBranch(B, A))
-})
-
-test('a branch is not a leaf — the tagged hash must domain-separate', () => {
-  assert.notStrictEqual(tapBranch(A, A), tapLeafHash(A))
-})
 
 test('taggedHash is the BIP-340 construction, not sha256 of the tag and message', () => {
   // Guards the doubled tag hash specifically: dropping one copy is a silent, plausible bug.

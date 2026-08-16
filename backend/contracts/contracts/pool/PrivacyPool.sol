@@ -271,12 +271,16 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     // 🔴 KNOWN GAP, BOOKED NOT HIDDEN (sec. 2.18gz-unify): THIS PATH DOES NOT CARRY THE TAINT PROOF.
     //
     // The single-withdrawal path proves `label ∉ tainted` as an eighth public signal.
-    // `aggregate_withdrawals` still folds SEVEN per withdrawal, so a BATCHED withdrawal currently
-    // bypasses non-association. Closing the path was tried and reverted: it would have deleted the
-    // guard coverage below - nullifier reuse, context binding, proof rejection - and traded a known
-    // gap for untested code, which is the worse of the two.
-    // ⇒ Regenerate `aggregate_withdrawals` with EIGHT signals and widen PUB_LEN in both batch
-    //   libraries BEFORE enabling batching on a pool with a non-empty taint root.
+    // THE GAP SURVIVED THE AGGREGATOR'S RETIREMENT, so do not read this as stale. It used to name
+    // `aggregate_withdrawals`, deleted in `aa50335`; the recursion tree that replaced it inherited
+    // the SAME width - `build-recursion-tree.py` generates a leaf that pins `withdraw_identity` and
+    // folds 2 x SEVEN signals. So a BATCHED withdrawal still bypasses non-association.
+    // Closing the path was tried and reverted: it would have deleted the guard coverage below -
+    // nullifier reuse, context binding, proof rejection - and traded a known gap for untested code,
+    // which is the worse of the two.
+    // ⇒ Widen the LEAF template to EIGHT signals, regenerate every level and the TreeRoot{8,16,32}
+    //   verifiers, and widen PUB_LEN in both batch libraries BEFORE enabling batching on a pool
+    //   with a non-empty taint root.
     if (address(BATCH_VERIFIER) == address(0)) revert BatchVerifierNotConfigured();
 
     uint256 n = _withdrawals.length;

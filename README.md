@@ -159,7 +159,12 @@ An earlier version of this section quoted `write_vk` figures as though a phone p
 |---|---|---|---|
 | `write_vk`, which produces the verification key and the `.sol` verifier | us, at build time | once per circuit, already done | 337 MB at 2^18, around 33 GB at 2^25 |
 | proving a withdrawal | the user's phone | every withdrawal | `withdraw_identity`, 44,176 gates, about 1.3 s on a desktop and 15 to 40 s on a Samsung A16 |
-| proving an aggregation batch | a batcher, on a server | per batch | 12.16M gates, roughly 28 GB, minutes, paid from PP's relay fee |
+| proving a settlement batch | a batcher, on a laptop | per batch | the recursion tree — no node exceeds ~1.54M gates, so peak is **2.11 GB at any depth**, minutes, paid from PP's relay fee |
+
+⚠️ **The batcher stopped being a server.** The flat aggregator this row used to describe — one 2^24
+circuit, 12.7M gates, ~21.7 GB peak — was retired in `aa50335` once the recursion tree matched its gas
+at a third of the memory and with no ceiling. Do not confuse its cost with the `write_vk` row above:
+that one is real, was paid, and is unaffected.
 
 The 33 GB was a one-time cost and it is already paid. It is why the build needs a 32 GB swapfile, set
 up in `backend/circuits/build-passport-verifiers-docker.sh`. All 88 passport profiles and the 10 light
@@ -289,13 +294,22 @@ verification cost is paid once per batch instead of once per withdrawal:
 
 | | gas / withdrawal |
 |---|---|
-| single withdrawal | ~3.1M (approximate — see above) |
-| **batched, N=16** | **~68k** |
-| batched, N=64 | ~41k |
+| solo, no batch | 2,528,007 |
+| batched, N=16 | 173,542 |
+| batched, N=32 | 86,771 |
+| **batched, N=64** | **43,385** |
+| batched, N=128 | 21,692 |
 
-That is a ~45× improvement at N=16, and it is why `aggregate_withdrawals`, `BatchVerifierLib` and
-`PrivacyPool.withdrawBatch` exist. It also forced the toolchain question: recursive ZK proofs need a
-Noir/bb combination that produces them correctly, which is what drove the beta.26 + bb pin.
+**The cost per settlement is FIXED**, so per-withdrawal gas halves every time the batch doubles, and
+the tree has no ceiling on N. That is a ~15× improvement at N=16 and ~58× at N=64.
+
+**Nobody waits for sixteen.** The curve is steepest at the start — the 2nd person in a batch halves
+the cost, the 16th shaves a couple of dollars — so a batch settles with whoever is there. Empty slots
+pad to the next power of two, and settlement skips padding before the duplicate-nullifier check.
+
+This is why the recursion tree, `BatchVerifierLib` and `PrivacyPool.withdrawBatch` exist. It also
+forced the toolchain question: recursive ZK proofs need a Noir/bb combination that produces them
+correctly, which is what drove the beta.26 + bb pin.
 
 Other measured gas work along the way:
 - **keccak batch commitment instead of Poseidon** — the N=16 aggregation circuit fell from
@@ -387,7 +401,7 @@ holder, different document formats.
 | `backend/circuits/{register_identity*,query_identity*}` | **rarimo** (`rarimo/passport-zk-circuits-noir`) |
 | `backend/circuits/noir_dl_lib` | **rarimo**, which itself vendors `noir-lang/noir-bignum` + `noir_bigcurve` |
 | `frontend/identity-wallet` | **rarimo/rarime** wallet |
-| `backend/circuits/{escrow_envelope,title_holder,notary_action,aggregate_withdrawals}` | **ours** |
+| `backend/circuits/{escrow_envelope,title_holder,notary_action}` + the generated recursion-tree levels | **ours** |
 | `backend/contracts/contracts/{title,holder,pool/spv}/**`, `registry/RegistrySourceAnchor.sol` | **ours** |
 | `backend/cre/**`, `tools/**` | **ours** |
 
@@ -454,6 +468,7 @@ circuits still build on stock beta.26, which is why the accommodation above was 
   the cause.
 - **regenerate only what changed** — re-proving unchanged circuits is churn, and `title_holder`
   currently fails when re-proved (TODO.md).
-- **not covered by the script:** `aggregate_withdrawals`. The 88 `NoirRegisterIdentity_*.sol` have
+- **not covered by the script:** the recursion tree, whose leaf and level circuits are generated on
+  demand by `build-recursion-tree.py` rather than checked in. The 88 `NoirRegisterIdentity_*.sol` have
   their own generator, `build-passport-verifiers-docker.sh`, because five of them need a 2^25 CRS
   and cannot be built natively on macOS.

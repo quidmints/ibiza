@@ -105,11 +105,17 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
         failure mode in one. Proven feasible first by
         `smt::test_exclusion_against_an_empty_tree_is_the_zero_witness`, which is what made the
         committed fixtures updatable with zeros instead of needing a taint tree built first.
-- [ ] 🔴 **The BATCH path does not carry it.** `aggregate_withdrawals` still folds SEVEN signals, so a
-      batched withdrawal bypasses non-association. Closing the path was tried and REVERTED: it deleted
-      the guard coverage (nullifier reuse, context binding, proof rejection) and traded a known gap for
-      untested code. Regenerate the aggregation circuit with EIGHT signals and widen `PUB_LEN` in both
-      batch libraries **before enabling batching on a pool with a non-empty taint root.**
+- [ ] 🔴 **The BATCH path does not carry it — and the cause moved, so re-read this before acting.**
+      The item used to name `aggregate_withdrawals`; that circuit was **deleted in `aa50335`** when the
+      flat aggregator was retired for the recursion tree. **The gap survived the migration intact**,
+      because the tree inherited the same width: `build-recursion-tree.py:127` generates a leaf that
+      *"pins `withdraw_identity` and folds 2 x 7 signals"*, and `BatchVerifierLib.PUB_LEN` is still
+      **7**. So a batched withdrawal still bypasses non-association.
+      Closing the path was tried once and REVERTED: it deleted the guard coverage (nullifier reuse,
+      context binding, proof rejection) and traded a known gap for untested code.
+      ⇒ Widen the LEAF template in `build-recursion-tree.py` to EIGHT signals, regenerate every level
+      and the `TreeRoot{8,16,32}` verifiers, and widen `PUB_LEN` in both batch libraries — **before
+      enabling batching on a pool with a non-empty taint root.**
 - [ ] Anchor the taint root: seed set + deterministic propagation, and a setter path from the
       registry. `setTaintRoot` is entrypoint-gated and defaults to 0 (empty).
 - [ ] **`court.sol` ← blacklist disputes.** Jurisdiction is TRANSCRIPTION FIDELITY, not designation

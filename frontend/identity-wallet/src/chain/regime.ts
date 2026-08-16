@@ -17,7 +17,7 @@
 //       external feed is what makes the read informative + the UX near-automatable.
 // ════════════════════════════════════════════════════════════════════════
 
-import { readOne, ZERO_ADDR } from './eth'
+import { readOne, ZERO_ADDR } from './eth.ts'
 
 const SECONDS_PER_YEAR = 365 * 24 * 3600
 // (2026-08-16) TICK UNITS ARE GONE. This brain used to work in Uniswap ticks: the series was

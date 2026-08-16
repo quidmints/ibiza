@@ -16,10 +16,10 @@
 // encode into a runtime throw. Merge them as its own change, with the name collision checked
 // first; do not fold it into the port.
 import { ethers } from 'ethers'
-import { ERC20_ABI, BASKET_ABI, AUX_ABI, VOGUE_ABI, BTCCHANNELS_ABI, LEV_MANAGER_ABI } from './abi'
-import { ethCall, waitTx } from './eth'
-import { isUsdtLike } from './chains'
-import { sendTx } from './protect'
+import { ERC20_ABI, BASKET_ABI, AUX_ABI, VOGUE_ABI, BTCCHANNELS_ABI, LEV_MANAGER_ABI } from './abi.ts'
+import { ethCall, waitTx } from './eth.ts'
+import { isUsdtLike } from './chains.ts'
+import { sendTx } from './protect.ts'
 
 const fmt = (n: number, d = 4) =>
   !isFinite(n) || n === 0 ? '0'

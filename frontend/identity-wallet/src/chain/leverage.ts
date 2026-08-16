@@ -15,9 +15,9 @@
 //   on retrace (same as a plain LP); the cushion's job is the up-move IL.
 // ════════════════════════════════════════════════════════════════════════
 
-import { CONTRACTS } from './chains'
-import { readOne, ZERO_ADDR } from './eth'
-import { ilPercent } from './quant'
+import { CONTRACTS } from './chains.ts'
+import { readOne, ZERO_ADDR } from './eth.ts'
+import { ilPercent } from './quant.ts'
 
 // ── Pure client-side stress math ────────────────────────────────────────
 // IL on a 50/50-style band for a price move of `movePct` (standard 2√k/(1+k)−1

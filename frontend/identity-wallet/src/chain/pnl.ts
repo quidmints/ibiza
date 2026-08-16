@@ -21,9 +21,9 @@
 // ════════════════════════════════════════════════════════════════════════
 
 import { ethers } from 'ethers'
-import { CONTRACTS } from './chains'
-import { readOne, getLogs, blockNumber, padAddr, hasRpc, ZERO_ADDR } from './eth'
-import { fetchMarket } from './market'
+import { CONTRACTS } from './chains.ts'
+import { readOne, getLogs, blockNumber, padAddr, hasRpc, ZERO_ADDR } from './eth.ts'
+import { fetchMarket } from './market.ts'
 
 export interface LpPnl {
   hasPosition: boolean

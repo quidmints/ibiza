@@ -8,7 +8,7 @@
 // The hop URL + bearer token are deployment config (see chains.ts HOP_API). Until
 // they're set the client returns null and the UI shows "swap-in coming online".
 
-import { HOP_API } from './chains'
+import { HOP_API } from './chains.ts'
 
 export interface OnchainSwapInQuote {
   depositAddress: string   // send BTC here

@@ -17,8 +17,8 @@
 // ════════════════════════════════════════════════════════════════════════
 
 import { ethers } from 'ethers'
-import { CONTRACTS, STABLES, INDEXER_URL } from './chains'
-import { getLogs, blockNumber, padAddr, TRANSFER_TOPIC, ZERO_ADDR, iface, readOne } from './eth'
+import { CONTRACTS, STABLES, INDEXER_URL } from './chains.ts'
+import { getLogs, blockNumber, padAddr, TRANSFER_TOPIC, ZERO_ADDR, iface, readOne } from './eth.ts'
 
 export interface StableFlow { symbol: string; netUsd: number; inUsd: number; outUsd: number }
 export interface NetFlow {

@@ -1,8 +1,8 @@
 // Market signal — types + client fetch. The heavy quant runs server-side in
 // /api/market (no CORS, cached); the .tsx consumes this shape.
 
-import type { Regime } from './regime'
-import type { MarketEvent } from './events'
+import type { Regime } from './regime.ts'
+import type { MarketEvent } from './events.ts'
 
 // Long-horizon perspective (the 10-year lookback): today's vol placed against
 // the full history, plus the worst single-day move on record + the event that

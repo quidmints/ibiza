@@ -26,7 +26,7 @@
 //   dependent and higher (≈1.8–8.4), so any K·σ² shown is a conservative FLOOR.
 // ════════════════════════════════════════════════════════════════════════
 
-import type { Regime } from './regime'
+import type { Regime } from './regime.ts'
 
 export const K_LVR = 0.71            // IL-CERT §3 estimate (±2% band, guard ON). Live measurement: K is regime-dependent ≈1.8–8.4 — treat K·σ² as a conservative FLOOR, not measured truth.
 export const LIFETIME_VOL = 0.88     // ETH lifetime annualized vol — the backtest basis (IL-CERT §5)

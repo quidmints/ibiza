@@ -21,36 +21,26 @@
 //   accepted a prompt — a proxy for the thing we care about. Here it probes the configured
 //   endpoint and reports whether it will actually take a private send.
 //
-//   ⚠️ **ALCHEMY'S STANDARD ENDPOINT IS NOT PRIVATE.** `https://eth-mainnet.g.alchemy.com/v2/KEY`
-//   is a general RPC; on Alchemy the privacy comes from their private-transaction METHOD, not
-//   from the URL. That is the opposite of Flashbots Protect / MEV Blocker, where privacy is a
-//   property of the URL and a plain `eth_sendRawTransaction` is already private. Both shapes are
-//   supported below, because assuming either one is how a build silently loses its protection.
-//
-//   ⚠️ **THE VENDOR METHOD'S PARAMETER SHAPE IS UNVERIFIED AND IS TREATED AS SUCH.** Alchemy's
-//   private-transaction reference 404s at both documented URLs as of 2026-08-16 and a search did
-//   not surface the params, so `eth_sendPrivateTransaction`'s exact body is a HYPOTHESIS here,
-//   not a citation. It is therefore (a) off by default, (b) reached only when the probe says the
-//   node knows the method, and (c) marked below with what to confirm. Do not enable it on
-//   mainnet against real value until the shape is checked against live docs.
+//   🔑 **THE RELAY IS FLASHBOTS PROTECT / SUAVE, AND NOTHING ELSE** (owner, 2026-08-16: "we
+//   must use the existing mev protect suave"). An earlier pass added an `alchemy-private` mode
+//   calling `eth_sendPrivateTransaction`; it is DELETED. Two reasons, and the second is the
+//   durable one:
+//     * its parameter shape was never verified — Alchemy's reference 404s at both documented
+//       URLs — so it was speculative code on the write path, which is the worst place for it;
+//     * **Alchemy's standard endpoint is a general RPC: privacy there is a property of the
+//       METHOD.** Flashbots Protect is the opposite — privacy is a property of the URL, so a
+//       plain `eth_sendRawTransaction` is already private and there is no vendor call to get
+//       wrong. One endpoint, one send path, nothing to probe for but reachability.
+//   ⇒ Do not reintroduce a per-vendor send method. If the relay ever changes, change the URL.
 // ════════════════════════════════════════════════════════════════════════
 
 import { ethers } from 'ethers'
 
-/// How a signed transaction reaches a builder.
-///
-/// * `raw` — plain `eth_sendRawTransaction` at the configured URL. Correct, and already private,
-///   for an endpoint whose URL IS the protection (Flashbots Protect, MEV Blocker).
-/// * `alchemy-private` — a vendor method on an endpoint that is otherwise public. ⚠️ See the
-///   header: the parameter shape is unconfirmed.
-export type SendMode = 'raw' | 'alchemy-private'
-
 /// The active relay, exported under its original name because `page.tsx` reads `PROTECT.name`.
 /// Mutated by `configureProtection` rather than replaced, so an imported reference stays live.
-export const PROTECT: { url: string; name: string; mode: SendMode } = {
+export const PROTECT: { url: string; name: string } = {
   url: 'https://rpc.flashbots.net',
   name: 'Ethereum (Flashbots Protect)',
-  mode: 'raw',
 }
 
 let provider: ethers.JsonRpcProvider | null = null
@@ -58,9 +48,10 @@ let signer: ethers.Signer | null = null
 let enabled = false
 let probed = false
 
-/// Point protection at a different endpoint — e.g. Alchemy secure RPC:
-///   configureProtection({ url: `https://eth-mainnet.g.alchemy.com/v2/${key}`,
-///                         name: 'Alchemy (private)', mode: 'alchemy-private' })
+/// Point protection at a different protected endpoint — another Flashbots Protect URL (its
+/// hint/builder query parameters are set here), a SUAVE endpoint, or MEV Blocker. ⚠️ It must be
+/// an endpoint whose URL IS the protection; a general-purpose RPC here silently makes every send
+/// public, and nothing downstream can tell the difference.
 ///
 /// Must be called BEFORE `setSigner`: the signer is bound to the endpoint at install time, so
 /// reconfiguring afterwards would leave it broadcasting to the previous one. That throws rather
@@ -102,34 +93,17 @@ export function protectionEnabled(): boolean {
 /// Establish whether the configured endpoint will take a private send. Idempotent; re-probes
 /// only when `force`.
 ///
-/// 🔑 THE PROBE FOR THE VENDOR METHOD IS `method not found` vs ANY OTHER ERROR, which is a real
-/// discriminator rather than a guess: a node that does not implement a method answers JSON-RPC
-/// −32601, while one that does rejects our deliberately-empty params with an invalid-params
-/// error instead. So "the node knows this method" is answerable WITHOUT sending value and
-/// WITHOUT knowing the parameter shape — which is what lets the unverified shape stay quarantined
-/// behind a fact rather than behind an assumption.
-///
-/// For `raw` there is nothing to probe beyond reachability: the endpoint's URL is the protection,
-/// so a responding node IS the protected path.
+/// 🔑 REACHABILITY IS THE WHOLE PROBE, and that is a consequence of using Protect/SUAVE rather
+/// than a vendor method: the endpoint's URL IS the protection, so a node that answers IS the
+/// protected path. There is no capability to interrogate and nothing to get wrong.
+/// ⚠️ What it CANNOT tell you is whether `PROTECT.url` is genuinely a protected endpoint — point
+/// it at a public RPC and this returns true. That check is `configureProtection`'s caller's job.
 export async function enableProtection(force = false): Promise<boolean> {
   if (probed && !force) return enabled
   probed = true
   try {
-    const p = relayProvider()
-    if (PROTECT.mode === 'raw') {
-      await p.send('eth_chainId', [])
-      enabled = true
-    } else {
-      try {
-        await p.send('eth_sendPrivateTransaction', [])
-        enabled = true // accepted empty params: unexpected, but the method exists
-      } catch (e: any) {
-        const code = e?.error?.code ?? e?.code
-        const msg = String(e?.error?.message ?? e?.message ?? '')
-        const unknownMethod = code === -32601 || /method not (found|supported)/i.test(msg)
-        enabled = !unknownMethod
-      }
-    }
+    await relayProvider().send('eth_chainId', [])
+    enabled = true
   } catch { enabled = false }
   return enabled
 }
@@ -142,11 +116,16 @@ export interface Tx { from?: string; to: string; data?: string; value?: string; 
 /// Takes the SAME hex-string `Tx` the SPA used, so the ~20 ported call sites need no edit; the
 /// conversion to ethers' bigint fields happens here rather than at each of them.
 ///
-/// ⚠️ FALLS BACK TO A PUBLIC-PATH SEND RATHER THAN FAILING, which is what the SPA did too
-/// (`sendTx` called `enableProtection()` and sent regardless of the answer). Liveness wins over
-/// privacy here deliberately — but `protectionEnabled()` then reports FALSE, so the badge tells
-/// the truth instead of the send silently losing its protection. If that trade is ever wrong for
-/// a given action, the caller is the place to refuse, not this function.
+/// 🔑 **THERE IS NO PUBLIC FALLBACK, AND THAT IS A CHANGE FROM THE SPA — the right way round.**
+/// The browser version called `enableProtection()` and then sent REGARDLESS of the answer, so a
+/// declined prompt meant the tx went out over the public mempool anyway; protection was
+/// best-effort because the wallet owned the broadcast. Here the signer is bound to the relay and
+/// nothing else, so if the relay is unreachable the send THROWS. **A write either takes the
+/// protected path or does not happen** — privacy stops being best-effort without anyone having
+/// to remember to check a flag.
+/// ⚠️ So `enableProtection` is now purely a UI signal, not a gate: `sendTx` does not consult its
+/// result, and could not act on it if it did. Do not add a branch here that "falls back" — that
+/// would reintroduce exactly the silent downgrade this shape removes.
 export async function sendTx(tx: Tx): Promise<string> {
   if (!signer) throw new Error('protect: no signer installed (call setSigner first)')
   await enableProtection()
@@ -156,15 +135,6 @@ export async function sendTx(tx: Tx): Promise<string> {
     data: tx.data,
     value: tx.value ? BigInt(tx.value) : undefined,
     gasLimit: tx.gas ? BigInt(tx.gas) : undefined,
-  }
-
-  if (PROTECT.mode === 'alchemy-private' && enabled) {
-    // ⚠️ UNVERIFIED SHAPE — see the file header. `{ tx: <signed hex> }` is the shape to CONFIRM
-    // against Alchemy's live reference (along with whether `maxBlockNumber` / `preferences` are
-    // accepted and whether it is mainnet-only) before this branch is trusted with real value.
-    const populated = await signer.populateTransaction(req)
-    const signed = await signer.signTransaction(populated)
-    return relayProvider().send('eth_sendPrivateTransaction', [{ tx: signed }])
   }
 
   const sent = await signer.sendTransaction(req)

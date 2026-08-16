@@ -137,6 +137,22 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
         3. **A wrong-amount or late deposit needs a stated recovery.** The refund path exists
            (`refund_leaf_encodes_cltv_and_user_key`, `user_refund_script_path_verifies`), so the
            UI should point at it rather than leaving the user with a silent loss.
+        4. 🔴 **THE QUOTED ADDRESS MUST BE RECOMPUTED, NEVER RENDERED — and this became
+           load-bearing on 2026-08-16, so it is not the same requirement it was yesterday.** SPV's
+           §T2 fix commits `seller`, `token` and `minDeliveredUsd` into an unspendable taproot
+           leaf, and **that binding is enforced by THE PAYER CHECKING THE ADDRESS BEFORE SENDING**,
+           not on-chain. (The alternative — deriving `seller` from the x-only refund key — was
+           dropped because Ledger and Phantom separate the BTC and EVM keys by construction; see
+           `SPV/docs/actionable/HOP-TRUST-AUDIT.md`.) ⇒ **A screen that displays whatever
+           `requestOnchainSwapIn` returned provides NO protection at all** while looking exactly
+           like one that does. The wallet must derive `q = internalKey ⊕ TapTweak(merkleRoot)`
+           from the terms it agreed and refuse to show a QR that disagrees.
+           ⚠️ **Needs two things the wallet does not have yet:** bech32m (for the P2TR address —
+           `@scure/base`, same maintainer as the noble packages already here) and taproot tweak /
+           point-add over secp256k1. **Do not hand-roll either.** ⚠️ And it must verify the shape
+           the hop ACTUALLY quotes: today that is the SINGLE-leaf tree (`swapInDepositKey`
+           tweaks by `tapLeafHash(refundLeaf)` alone). Implementing the two-leaf shape before the
+           Solidity and Rust sides land it would reject every real quote.
       ⚠️ **OFFER THE ON-CHAIN RAIL FIRST, NOT THE LIGHTNING ONE, AND THE REASON IS A SECURITY
       DIFFERENCE RATHER THAN A UX ONE.** The on-chain deposit terminates in a Bitcoin proof the
       contract verifies (`settleSwapInProven` — tx + SPV inclusion proof). **The BOLT11 rail does

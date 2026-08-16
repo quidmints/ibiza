@@ -133,7 +133,7 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
       seam already: `(site)/` + `components/castle/*` is the LANDING PAGE (Hero, FeatureA-D,
       SalesLanding, LogosStrip) and is **explicitly excluded**; `(app)/app/page.tsx` +
       `components/app/*` + `lib/*` is the swap/LP app.
-      📌 **MEASURED, and this is the number that matters: of the 17 files (1,765 lines) in
+      📌 **MEASURED, and this is the number that matters: of the 15 files (1,765 lines) in
       `spa/src/lib/`, only TWO touch the browser at all** — `eth.ts` (75 lines) and `protect.ts`
       (63) — **and every hit is `window.ethereum`**, the injected-wallet connector. Five more files
       matched a first grep only on the `'use client'` pragma, which is an inert string off Next.

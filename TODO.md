@@ -140,6 +140,31 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
       report signatures so the forwarder address stops being the whole trust boundary (the last is
       already booked separately, sec. 4 *"Verify DON report signatures in RegistrySourceAnchor"*).
       **Until one of those lands, do not repeat the no-single-operator claim in any document.**
+- [ ] 🔴 **SCRAPER ROT IS UNCOVERED, AND THE PASSPORT BINDING DOES NOT COVER IT — THE DEPENDENCY RUNS
+      THE WRONG WAY** (owner, 2026-08-16: *"no mpc tls, the scraper rot must be handled by the DON
+      being ran as an authorised workflow"* — the workflow half is right; this is the half it leaves
+      open). **DECISION RECORDED: no MPC-TLS, no TLSNotary.** §2.15a's authorised-workflow machinery
+      is the answer to a rogue workflow and it is built: append-only pin, same-id re-pin REFUSED, 24h
+      delay, fail-open, and `onReport` checks the report against the active pin.
+      ⚠️ **But it does nothing about a parser that is wrong the same way on every node**, which is the
+      failure §2.15a itself named and never closed. The intuition that passport-registered notaries
+      supply the cross-check DOES NOT WORK AS WIRED: `TitleLedger.registerNotary` takes
+      `registryProof_`, *"Merkle proof of `notaryDataHash_` in that snapshot's active root"*, so
+      **snapshot membership is a PRECONDITION of registering**. A notary the parser dropped cannot
+      register at all, so she cannot create the contradiction that would expose the drop. The
+      identity check sits DOWNSTREAM of the membership check; for a cross-check it must sit beside it.
+      ⇒ **Admit a passport-proven CLAIM without the Merkle proof**, in a pending state carrying NO
+      notary authority: prove control of `holderRoot` (`pp::title_holder` with a bind context, the
+      mechanism `registerNotary` already uses) and name the claimed `notaryDataHash_`. Absence of
+      that hash from the active root is then a PUBLIC ON-CHAIN CONTRADICTION instead of silence.
+      Fail-closed on authority, fail-loud on the discrepancy — the rule-3 inverse exactly: the check
+      earns its place because the failure it catches is otherwise invisible.
+      ⚠️ Watch the privacy interaction before building: sec. 2.18am made the notary anonymity set
+      load-bearing, and `_notaryTree` replaced two mappings *because they were ENUMERABLE*. A pending
+      claim that names a register entry in the clear re-opens exactly that. The contradiction must be
+      provable without publishing the claimant's entry — settle this first, it is the hard part.
+      🔗 Prerequisite: the `setForwarder` item above. "No fabrication possible" is the premise this
+      design rests on, and it is not currently true.
 - [ ] 🔴 **A SECURITY ARGUMENT RESTING ON AN UNBUILT PREMISE — `RegistrySourceAnchor.sol:128-130`.**
       It explains why the snapshot path needs no contest window: *"Once each DON node verifies the
       register's TLS session inside the workflow, fabricated DATA becomes impossible rather than

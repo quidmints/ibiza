@@ -43,8 +43,20 @@ export const PROTECT: { url: string; name: string } = {
   name: 'Ethereum (Flashbots Protect)',
 }
 
+/// A wallet that signs AND broadcasts on its own — Phantom's `eth_sendTransaction` shape. We
+/// hand it a request and get a hash; where it goes is its decision.
+/// Structural rather than importing `@phantom/react-native-wallet-sdk`, so this module does not
+/// depend on the SDK and a second external wallet needs no change here.
+export interface ExternalWallet {
+  request(args: { method: string; params?: unknown[] }): Promise<any>
+}
+
+type Backend =
+  | { kind: 'local'; signer: ethers.Signer }
+  | { kind: 'external'; wallet: ExternalWallet }
+
 let provider: ethers.JsonRpcProvider | null = null
-let signer: ethers.Signer | null = null
+let backend: Backend | null = null
 let enabled = false
 let probed = false
 
@@ -58,7 +70,7 @@ let probed = false
 /// than rebinding silently, because a signer still pointed at the old URL is exactly the failure
 /// this file exists to prevent and it would not show up anywhere.
 export function configureProtection(opts: Partial<typeof PROTECT>): void {
-  if (signer) {
+  if (backend?.kind === 'local') {
     throw new Error(
       'protect: configureProtection after setSigner would leave the signer bound to the OLD ' +
       'endpoint — configure first, then install the signer',
@@ -81,7 +93,30 @@ function relayProvider(): ethers.JsonRpcProvider {
 /// discarded, so a signer wired to a public RPC cannot be installed here. There is no code path
 /// that keeps it — the bad state is unconstructible rather than detectable.
 export function setSigner(s: ethers.Signer | null): void {
-  signer = s ? s.connect(relayProvider()) : null
+  backend = s ? { kind: 'local', signer: s.connect(relayProvider()) } : null
+  probed = false
+  enabled = false
+}
+
+/// Install an EXTERNAL wallet (Phantom) as the signer instead.
+///
+/// ⚠️ **THIS IS A DELIBERATE DOWNGRADE AND THE UI MUST SAY SO.** Phantom signs and broadcasts in
+/// one call, so we cannot route its transaction through the relay — `protectionEnabled()` goes
+/// false for the session and stays false. Offering it anyway is the right call (a user with
+/// funds already in Phantom should not be forced to move them to use the app), but it must be a
+/// visible trade rather than a silent one.
+/// 📌 If Phantom ever exposes an endpoint-selection call the way browser wallets did with
+/// `wallet_addEthereumChain`, this is where a best-effort upgrade would go — and it would still
+/// be best-effort, so `protectionEnabled` would need a third state rather than flipping true.
+export function setExternalWallet(w: ExternalWallet | null): void {
+  backend = w ? { kind: 'external', wallet: w } : null
+  probed = false
+  enabled = false
+}
+
+/// Which custody the session is using, for the UI to label honestly.
+export function signerKind(): 'local' | 'external' | null {
+  return backend?.kind ?? null
 }
 
 /// Whether the last probe found a working private path. Same meaning to the UI as the SPA's
@@ -101,6 +136,9 @@ export function protectionEnabled(): boolean {
 export async function enableProtection(force = false): Promise<boolean> {
   if (probed && !force) return enabled
   probed = true
+  // An external wallet owns its own broadcast, so there is nothing here to enable and no probe
+  // that could make the claim true. Report the truth rather than the relay's reachability.
+  if (backend?.kind === 'external') { enabled = false; return false }
   try {
     await relayProvider().send('eth_chainId', [])
     enabled = true
@@ -116,27 +154,38 @@ export interface Tx { from?: string; to: string; data?: string; value?: string; 
 /// Takes the SAME hex-string `Tx` the SPA used, so the ~20 ported call sites need no edit; the
 /// conversion to ethers' bigint fields happens here rather than at each of them.
 ///
-/// 🔑 **THERE IS NO PUBLIC FALLBACK, AND THAT IS A CHANGE FROM THE SPA — the right way round.**
-/// The browser version called `enableProtection()` and then sent REGARDLESS of the answer, so a
-/// declined prompt meant the tx went out over the public mempool anyway; protection was
-/// best-effort because the wallet owned the broadcast. Here the signer is bound to the relay and
-/// nothing else, so if the relay is unreachable the send THROWS. **A write either takes the
-/// protected path or does not happen** — privacy stops being best-effort without anyone having
-/// to remember to check a flag.
-/// ⚠️ So `enableProtection` is now purely a UI signal, not a gate: `sendTx` does not consult its
-/// result, and could not act on it if it did. Do not add a branch here that "falls back" — that
-/// would reintroduce exactly the silent downgrade this shape removes.
+/// 🔴 **WHICH GUARANTEE YOU GET DEPENDS ENTIRELY ON WHICH BACKEND IS INSTALLED, and conflating
+/// the two is the mistake this comment exists to stop.** I previously wrote here that "a write
+/// either takes the protected path or does not happen". That is TRUE of `Local` and FALSE of
+/// `External`, and shipping it unqualified would have put a false guarantee next to the code
+/// that breaks it.
+///
+/// * **`Local`** (in-app key) — we sign and we choose the endpoint, so the signer is bound to
+///   the relay and nothing else. An unreachable relay THROWS. Privacy is structural, and no
+///   caller has to remember to check a flag. **Do not add a "fallback" branch to this path** —
+///   that reintroduces exactly the silent downgrade the shape removes.
+/// * **`External`** (Phantom) — the wallet signs AND broadcasts (`eth_sendTransaction`), so the
+///   endpoint is ITS choice, not ours. This is the SPA's original constraint returning verbatim:
+///   *"the dApp can't force the broadcast path per-call"*. It was never a browser problem; it is
+///   a **custody** problem, and it follows the key wherever the key lives.
+///
+/// ⇒ `protectionEnabled()` reports FALSE for `External` for that reason — not because something
+/// failed, but because we cannot honestly claim what we do not control.
 export async function sendTx(tx: Tx): Promise<string> {
-  if (!signer) throw new Error('protect: no signer installed (call setSigner first)')
+  if (!backend) throw new Error('protect: no signer installed (setSigner or setExternalWallet)')
   await enableProtection()
 
-  const req = {
+  if (backend.kind === 'external') {
+    // Passed through as the SAME hex-string shape the wallet expects — no bigint conversion,
+    // because this object is Phantom's `eth_sendTransaction` param, not ethers'.
+    return backend.wallet.request({ method: 'eth_sendTransaction', params: [tx] })
+  }
+
+  const sent = await backend.signer.sendTransaction({
     to: tx.to,
     data: tx.data,
     value: tx.value ? BigInt(tx.value) : undefined,
     gasLimit: tx.gas ? BigInt(tx.gas) : undefined,
-  }
-
-  const sent = await signer.sendTransaction(req)
+  })
   return sent.hash
 }

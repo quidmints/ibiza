@@ -114,6 +114,42 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
       registry. `setTaintRoot` is entrypoint-gated and defaults to 0 (empty).
 - [ ] **`court.sol` ← blacklist disputes.** Jurisdiction is TRANSCRIPTION FIDELITY, not designation
       validity. Blocked on the sanctions predicate existing (2.18gz-unify).
+- [ ] 📲 **FUND BY BTC QR, NOT BY AN EVM TRANSACTION — the answer to Phantom's MEV downgrade is to
+      remove the broadcast, not to detect it** (owner, 2026-08-16). I had written that for a
+      Phantom session "no probe can make the claim true" and stopped there. That was looking for a
+      better DETECTOR when the fix is to delete the thing being detected — SPV standing rule 17,
+      prefer making the bad state unconstructible over making it observable. **If the user funds
+      over Bitcoin there is no EVM transaction of theirs to frontrun, so the custody problem does
+      not arise on the entry path at all**, whoever holds the key.
+      ✅ **AND IT IS ALREADY BUILT — this is a screen, not a mechanism.** `chain/hop.ts` (ported)
+      exposes `requestOnchainSwapIn(seller, token, sats)` → `{ depositAddress, exactSats,
+      minDeliveredUsd, swapId, expiresAt }`, plus `pollSwapIn` (`awaiting_deposit → confirming →
+      settled`), `submitOpenChannel` / `pollOpenChannel`, and `hopApiConfigured`. The Rust side is
+      tested to match (`swap_in_onchain.rs`: the deposit address is a P2TR over the tweaked output
+      key, is deterministic and index-scoped, and a distinct CLTV or user yields a distinct
+      address). That quote object IS the QR payload — `bitcoin:<depositAddress>?amount=<btc>`.
+      🔴 **THREE CONSTRAINTS THE QR MUST RESPECT, and each is a silent failure if it does not.**
+        1. **`exactSats` IS NOT A SUGGESTION.** Its own comment: *"send EXACTLY this (the low-order
+           nonce is how the hop matches it)"*. The amount MUST be in the URI and MUST NOT be
+           user-editable — a rounded send is unmatchable, and it fails as "nothing arrived".
+        2. **`expiresAt` bounds the address.** The screen needs a countdown and must stop
+           presenting the code once it lapses, or a user pays a dead quote.
+        3. **A wrong-amount or late deposit needs a stated recovery.** The refund path exists
+           (`refund_leaf_encodes_cltv_and_user_key`, `user_refund_script_path_verifies`), so the
+           UI should point at it rather than leaving the user with a silent loss.
+      ⚠️ **OFFER THE ON-CHAIN RAIL FIRST, NOT THE LIGHTNING ONE, AND THE REASON IS A SECURITY
+      DIFFERENCE RATHER THAN A UX ONE.** The on-chain deposit terminates in a Bitcoin proof the
+      contract verifies (`settleSwapInProven` — tx + SPV inclusion proof). **The BOLT11 rail does
+      NOT: an HTLC settled inside a channel produces no on-chain transaction to prove, so it
+      still credits through the unproven `settleSwapIn` on the hop's word.** That is SPV
+      §T1-BLOCKED, gated on §E166 item 2 (*"BOLT11 rail gated on an on-chain splice proof so EVERY
+      credit path ends in a Bitcoin proof"*). ⇒ A Lightning invoice in the app is fine, but it is
+      the rail with a trust assumption the other one does not have, and the app should not present
+      them as equivalent while that is true.
+      ⚠️ **THIS NARROWS THE PHANTOM EXPOSURE, IT DOES NOT REMOVE IT.** Redeem, withdraw and the
+      leverage actions are still EVM writes through whatever wallet holds the key, so
+      `signerKind()` and the honest badge still matter — the QR path takes the ENTRY flow (where
+      the value and the MEV surface are largest) off the EVM entirely.
 - [ ] 🏗️ **CONSOLIDATION (owner, 2026-08-16): `backend/` MERGES INTO THE SPV REPO, AND THE SPA's SWAP
       + LP FUNCTIONALITY MOVES INTO REACT NATIVE — the landing page does NOT come.** Measured before
       any file moved; both halves are smaller than they look, for different reasons.

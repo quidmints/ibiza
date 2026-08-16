@@ -9,7 +9,7 @@ import test from 'node:test'
 import assert from 'node:assert'
 import { ethers } from 'ethers'
 
-import { taggedHash, tapLeafHash, tapBranch, scriptNum, refundLeafScript, termsCommitment, depositLeafScript } from './taproot.ts'
+import { taggedHash, tapLeafHash, tapBranch, scriptNum, refundLeafScript, termsCommitment, depositLeafScript, taprootOutputKey } from './taproot.ts'
 
 const A = ethers.keccak256(ethers.toUtf8Bytes('leaf-a'))
 const B = ethers.keccak256(ethers.toUtf8Bytes('leaf-b'))
@@ -102,4 +102,25 @@ test('every committed term changes the deposit leaf', () => {
   assert.notStrictEqual(base, depositLeafScript(key, 7, s0, '0x' + '44'.repeat(20), 1000n), 'token')
   assert.notStrictEqual(base, depositLeafScript(key, 7, s0, t0, 1001n), 'minDeliveredUsd')
   assert.notStrictEqual(base, depositLeafScript(key, 8, s0, t0, 1000n), 'cltvHeight')
+})
+
+test("the taproot tweak matches rust-bitcoin's TaprootBuilder on a shared fixture", () => {
+  // Pinned in quid-hop/src/swap_in_onchain.rs::taproot_output_key_matches_the_wallet. This is the
+  // last cryptographic step of the QR verifier: if the wallet's tweak disagreed with the one that
+  // produced the address, the check would reject every honest quote and accept nothing.
+  const internal = '0x' + '02'.repeat(32)
+  const key = '0x' + 'ab'.repeat(32)
+  assert.strictEqual(
+    taprootOutputKey(internal, tapLeafHash(refundLeafScript(key, 500000))),
+    '0xb6df894fd855150b3df4e36b4ea2deb66b07976431164d501698691f4fa16c65',
+  )
+})
+
+test('the output key moves when any committed term does', () => {
+  const internal = '0x' + '02'.repeat(32)
+  const key = '0x' + 'ab'.repeat(32)
+  const q = (usd: bigint) =>
+    taprootOutputKey(internal, tapLeafHash(
+      depositLeafScript(key, 500000, '0x' + '11'.repeat(20), '0x' + '22'.repeat(20), usd)))
+  assert.notStrictEqual(q(1000n), q(1001n), 'a restated minDeliveredUsd must change the address')
 })

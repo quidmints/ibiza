@@ -30,7 +30,12 @@
 // transcription errors live — but three implementations agreeing is only demonstrated for
 // `tapBranch` so far. Do the same for a full leaf before trusting an address end to end.
 
+import { secp256k1 } from '@noble/curves/secp256k1.js'
 import { ethers } from 'ethers'
+
+import { SECP256K1_N } from './keys.ts'
+
+const Point = secp256k1.Point
 
 const bytes = (hex: string) => ethers.getBytes(hex.startsWith('0x') ? hex : `0x${hex}`)
 
@@ -164,4 +169,24 @@ export function depositLeafScript(
       '0xac',                        // OP_CHECKSIG
     ]),
   )
+}
+
+/// BIP-341 output key: `Q = lift_x_even(internalX) + H_TapTweak(internalX ‖ leafHash)·G`.
+///
+/// 🔑 **THIS IS THE LAST CRYPTOGRAPHIC STEP OF THE QR VERIFIER** — everything after it is
+/// presentation (bech32m over `OP_1 <32-byte Q>`). It is the value the contract computes in
+/// `MuSig2Agg.taprootOutputKeyWithLeaf` and the value the hop's `deposit_for` derives, so a wallet
+/// that computes it independently can tell whether a quoted address is the one the terms imply.
+///
+/// ⚠️ `lift_x` takes the EVEN-y point, per BIP-341 — the same convention `keys.ts` normalises to,
+/// and the reason the `02` prefix below is not a choice.
+/// ⚠️ No new dependency: `@noble/curves` was already here for `schnorr`. `@scure/btc-signer` is
+/// still wanted for bech32m, but the security-relevant number is this one, not its encoding.
+export function taprootOutputKey(internalX: string, leafHash: string): string {
+  const t = BigInt(taggedHash('TapTweak', ethers.getBytes(ethers.concat([internalX, leafHash]))))
+    % SECP256K1_N
+  if (t === 0n) throw new Error('taprootOutputKey: degenerate tweak') // negligible, never silent
+  const P = Point.fromHex(`02${internalX.replace(/^0x/, '')}`)
+  const Q = P.add(Point.BASE.multiply(t))
+  return `0x${Q.toHex(true).slice(2)}` // drop the parity byte: taproot commits x only
 }

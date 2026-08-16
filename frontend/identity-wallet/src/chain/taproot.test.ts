@@ -9,7 +9,7 @@ import test from 'node:test'
 import assert from 'node:assert'
 import { ethers } from 'ethers'
 
-import { taggedHash, tapLeafHash, tapBranch, termsLeafScript, depositMerkleRoot } from './taproot.ts'
+import { taggedHash, tapLeafHash, tapBranch, termsLeafScript, depositMerkleRoot, scriptNum, refundLeafScript } from './taproot.ts'
 
 const A = ethers.keccak256(ethers.toUtf8Bytes('leaf-a'))
 const B = ethers.keccak256(ethers.toUtf8Bytes('leaf-b'))
@@ -71,4 +71,36 @@ test('the merkle root changes when either leaf does', () => {
     depositMerkleRoot(refund, termsLeafScript('0x' + '11'.repeat(20), '0x' + '22'.repeat(20), 8n)),
     'terms leaf',
   )
+})
+
+test('scriptNum is little-endian, minimal, and pads only when the top bit is set', () => {
+  // Derived from Bitcoin's rule rather than from the implementation, so this is a real check.
+  assert.strictEqual(scriptNum(0), '0x00', 'ExitLib returns a single 0x00, not an empty push')
+  assert.strictEqual(scriptNum(1), '0x01')
+  assert.strictEqual(scriptNum(0x7f), '0x7f', 'high bit clear: no pad')
+  assert.strictEqual(scriptNum(0x80), '0x8000', 'high bit SET: pad, or it reads negative')
+  assert.strictEqual(scriptNum(0xff), '0xff00')
+  assert.strictEqual(scriptNum(0x0100), '0x0001', 'little-endian')
+  assert.strictEqual(scriptNum(500000), '0x20a107', '0x07A120 LE, top byte 0x07, no pad')
+  assert.strictEqual(scriptNum(0xffffffff), '0xffffffff00')
+  assert.throws(() => scriptNum(-1), /uint32/)
+  assert.throws(() => scriptNum(0x1_0000_0000), /uint32/)
+})
+
+test('the refund leaf is the exact opcode sequence ExitLib builds', () => {
+  const key = '0x' + 'ab'.repeat(32)
+  const leaf = refundLeafScript(key, 500000)
+  // PUSH3 20a107 | b1 OP_CLTV | 75 OP_DROP | 20 PUSH32 <key> | ac OP_CHECKSIG
+  assert.strictEqual(leaf, '0x0320a107b17520' + 'ab'.repeat(32) + 'ac')
+  assert.strictEqual(ethers.getBytes(leaf).length, 1 + 3 + 1 + 1 + 1 + 32 + 1)
+})
+
+test('the padded height changes the leaf, so the pad is load-bearing', () => {
+  const key = '0x' + 'cd'.repeat(32)
+  assert.notStrictEqual(refundLeafScript(key, 0x80), refundLeafScript(key, 0x0080 + 1))
+  assert.ok(refundLeafScript(key, 0x80).startsWith('0x028000b175'), 'pad byte missing')
+})
+
+test('a wrong-width refund key is refused', () => {
+  assert.throws(() => refundLeafScript('0xdeadbeef', 1), /32 bytes/)
 })

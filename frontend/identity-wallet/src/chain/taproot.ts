@@ -14,11 +14,15 @@
 // intended source and is not yet a dependency. **Landing the hashing separately is what lets it
 // be pinned against the Solidity and Rust suites today** rather than waiting on that decision.
 //
-// ⚠️ **`refundLeafScript` IS NOT HERE EITHER, AND MUST BE TRANSCRIBED, NOT GUESSED.** The refund
-// leaf is `<cltvHeight> OP_CLTV OP_DROP <userRefund> OP_CHECKSIG`, built by
-// `ExitLib._cltvRefundLeaf` in SPV — but the exact minimal-push encoding of `cltvHeight` decides
-// the leaf hash, and a wrong encoding yields a valid-looking leaf that simply is not the one on
-// chain. Copy it from `ExitLib`, byte for byte, and pin it with a shared fixture.
+// ✅ `refundLeafScript` IS now here, TRANSCRIBED from `ExitLib._cltvRefundLeaf` rather than
+// re-derived — including `_scriptNum`, whose minimal little-endian encoding with a sign pad is
+// exactly where a re-derivation goes wrong. Its own comment is the warning: *"a wrong encoding
+// changes the leaf hash and therefore the ADDRESS, silently deriving somewhere no deposit will
+// ever land."*
+// ⚠️ **STILL OWED: a fixture shared with the Solidity and Rust builders.** The tests below pin
+// the opcode sequence and every `scriptNum` edge case from Bitcoin's rule, which is where
+// transcription errors live — but three implementations agreeing is only demonstrated for
+// `tapBranch` so far. Do the same for a full leaf before trusting an address end to end.
 
 import { ethers } from 'ethers'
 
@@ -83,4 +87,45 @@ export function termsLeafScript(
 /// The merkle root a two-leaf deposit address commits to.
 export function depositMerkleRoot(refundLeafHex: string, termsLeafHex: string): string {
   return tapBranch(tapLeafHash(refundLeafHex), tapLeafHash(termsLeafHex))
+}
+
+/// Bitcoin script number: little-endian, minimal width, with a `0x00` pad when the high bit of the
+/// top byte is set (otherwise it reads as negative).
+///
+/// ⚠️ **TRANSCRIBED BYTE FOR BYTE FROM `ExitLib._scriptNum`, NOT RE-DERIVED.** Its own comment:
+/// *"a wrong encoding changes the leaf hash and therefore the ADDRESS, silently deriving somewhere
+/// no deposit will ever land."* Note `v == 0` yields a single `0x00` byte rather than the empty
+/// push Bitcoin would canonically use — **match the counterpart, do not 'fix' it**, because the
+/// only property that matters is agreeing with the code that computes the address on chain.
+export function scriptNum(v: number): string {
+  if (!Number.isInteger(v) || v < 0 || v > 0xffffffff) {
+    throw new Error('scriptNum: expected a uint32')
+  }
+  if (v === 0) return '0x00'
+  let n = 0
+  for (let t = v; t !== 0; t >>>= 8) n++
+  const pad = ((v >>> (8 * (n - 1))) & 0x80) !== 0
+  const out = new Uint8Array(pad ? n + 1 : n) // the pad byte stays 0x00
+  for (let i = 0; i < n; i++) out[i] = (v >>> (8 * i)) & 0xff
+  return ethers.hexlify(out)
+}
+
+/// The spendable CLTV refund leaf: `<cltvHeight> OP_CLTV OP_DROP <userRefund> OP_CHECKSIG`.
+///
+/// ⚠️ Transcribed from `ExitLib._cltvRefundLeaf`, which is itself byte-identical to the Rust
+/// builder. Three implementations must agree on these bytes or the wallet computes an address the
+/// contract does not.
+export function refundLeafScript(userRefund: string, cltvHeight: number): string {
+  const n = ethers.getBytes(scriptNum(cltvHeight))
+  const key = bytes(userRefund)
+  if (key.length !== 32) throw new Error('refundLeafScript: userRefund must be 32 bytes x-only')
+  return ethers.hexlify(
+    ethers.concat([
+      new Uint8Array([n.length]), n, // PUSH<len> <height, little-endian, minimal>
+      '0xb1',                        // OP_CHECKLOCKTIMEVERIFY
+      '0x75',                        // OP_DROP
+      '0x20', key,                   // PUSH32 <x-only refund key>
+      '0xac',                        // OP_CHECKSIG
+    ]),
+  )
 }

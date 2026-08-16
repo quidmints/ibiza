@@ -1,5 +1,7 @@
 import React from "react";
-import { SafeAreaView, ScrollView, Text, View, StyleSheet } from "react-native";
+import { SafeAreaView, ScrollView, Text, View } from "react-native";
+
+import { styles } from "./src/ui/theme";
 
 import { IdentityVault, IdentityVaultConfig } from "./src/identity/IdentityVault";
 import { InMemoryIdentityVaultStore } from "./src/identity/store";
@@ -74,18 +76,3 @@ export default function App() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0f1020" },
-  container: { padding: 20, paddingBottom: 48 },
-  h1: { color: "#fff", fontSize: 26, fontWeight: "800" },
-  subtle: { color: "#8a8ab0", fontSize: 12.5, marginTop: 4, lineHeight: 18 },
-  section: { color: "#cfcff0", fontSize: 15, fontWeight: "700", marginTop: 20, marginBottom: 6 },
-  card: { backgroundColor: "#1a1b35", borderRadius: 12, padding: 14, marginTop: 10 },
-  label: { color: "#9a9ac8", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 },
-  value: { color: "#fff", fontSize: 15, fontWeight: "600", marginTop: 2 },
-  mono: { color: "#7ad7a0", fontSize: 12, fontFamily: "Courier", marginTop: 4 },
-  note: { backgroundColor: "#241a08", borderLeftColor: "#c9851f", borderLeftWidth: 3, borderRadius: 8, padding: 12, marginTop: 22 },
-  noteText: { color: "#e7c98a", fontSize: 12, lineHeight: 18 },
-  bold: { fontWeight: "800", color: "#fff" },
-});

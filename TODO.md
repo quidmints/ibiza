@@ -114,6 +114,40 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
       registry. `setTaintRoot` is entrypoint-gated and defaults to 0 (empty).
 - [ ] **`court.sol` ← blacklist disputes.** Jurisdiction is TRANSCRIPTION FIDELITY, not designation
       validity. Blocked on the sanctions predicate existing (2.18gz-unify).
+- [ ] 🏗️ **CONSOLIDATION (owner, 2026-08-16): `backend/` MERGES INTO THE SPV REPO, AND THE SPA's SWAP
+      + LP FUNCTIONALITY MOVES INTO REACT NATIVE — the landing page does NOT come.** Measured before
+      any file moved; both halves are smaller than they look, for different reasons.
+      **(A) THE BACKEND MERGE HAS A RULE-2 ARGUMENT, WHICH IS STRONGER THAN THE TIDINESS ONE.**
+      `backend/contracts` does NOT import the pinned SPV submodule at all — the coupling is
+      `contracts/pool/spv/ISpvVenue.sol`, where ibiza HAND-DECLARES `ISpvVogue` and `ISpvBasket` as
+      subsets of SPV's real contracts. That is the same interface declared twice in two repos, i.e.
+      exactly what SPV standing rule 2 forbids inside one ("one declaration per interface, in a
+      shared file"), and it is the mechanism behind SPV's *"depends on exactly four Vogue/Basket
+      signatures staying permissionless and stable"*. ⇒ **Merging replaces a hand-copied interface
+      with a real import, and the cross-repo drift risk deletes itself.** Scope: ~128 circuit +
+      ~448 contract source files, plus 8 vendored `lib/` deps whose remappings must be reconciled
+      with SPV's `evm/remappings.txt` (`@openzeppelin/`, `forge-std/` overlap; `@solarity/`,
+      `@rarimo/`, `poseidon-solidity/`, `lean-imt/`, `solady/`, `evidence-registry/` are new).
+      **(B) THE RN PORT IS MOSTLY A MOVE, NOT A REWRITE — because both apps already use `ethers` 6**
+      (SPA `^6.16.0`, wallet `^6.17.0`; no wagmi, no viem, no rainbowkit). The SPA splits on a clean
+      seam already: `(site)/` + `components/castle/*` is the LANDING PAGE (Hero, FeatureA-D,
+      SalesLanding, LogosStrip) and is **explicitly excluded**; `(app)/app/page.tsx` +
+      `components/app/*` + `lib/*` is the swap/LP app.
+      📌 **MEASURED, and this is the number that matters: of the 17 files (1,765 lines) in
+      `spa/src/lib/`, only TWO touch the browser at all** — `eth.ts` (75 lines) and `protect.ts`
+      (63) — **and every hit is `window.ethereum`**, the injected-wallet connector. Five more files
+      matched a first grep only on the `'use client'` pragma, which is an inert string off Next.
+      ⇒ **The chain layer ports as-is; `window.ethereum` is replaced by the signer this wallet
+      already has** (`ethers` + `expo-secure-store`), which is a substitution the LP-signer item
+      below needs anyway. The genuine rewrite is the VIEW layer only: `components/app/*` from
+      DOM+tailwind to RN primitives (tailwind → `nativewind` or plain styles — not yet chosen).
+      ▶️ **THE ONE DECISION THAT ORDERS THIS, and it is not technical:** SPV's tree currently has a
+      second thread committing into it hourly (`Aux.sol`, `Basket.sol`, `SwapLib.sol`, `vault.rs`
+      all moved during one session on 2026-08-16). Dropping ~576 files in while that runs will
+      collide. **Either land (A) in a quiet window with the other thread paused, or do (B) first** —
+      (B) is purely additive, touches only `frontend/identity-wallet`, and is not blocked by (A).
+      ⚠️ **Do NOT start (A) by moving files.** Reconcile the two `remappings.txt` first and prove
+      `forge build` green on the union, or the merge lands as a repo that does not compile.
 - [ ] 🔑 **THE LP-SIDE SIGNER — ibiza's half of the SPV fleet split (SPV §E166-3, §E175).** The fleet
       RELAYS consent and provably cannot manufacture it: `VaultRegistry.LpConsent { auth, exits }`
       goes DORMANT on absence, a conflicting re-bind is REFUSED not overwritten, and both halves need

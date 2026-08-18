@@ -294,6 +294,34 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
       ibiza** - re-verified 2026-08-16: every match in the repo is inside the vendored
       `backend/contracts/lib/SPV/` submodule, i.e. SPV's own code, not ours. Still greenfield, and
       the spec lives in SPV's QUEUE.md §E166-3 rather than in an ibiza section.
+      🔴 **CORRECTION FROM SPV, 2026-08-18 — `auth.lp_sig` NO LONGER EXISTS. DO NOT BUILD IT.**
+      SPV's §E183 item 1 (`7d11fe22`) DELETED `lp_eth` and `lp_sig` from `OpenAuth`; the struct is now
+      `{ btc_recipient, btc_recipient_pop }` and the ABI signature is `(bytes32,bytes)`. **The LP signs
+      NOTHING on the EVM side**: `lpEth` is DERIVED on-chain from `lpPubkey` via
+      `ChannelLib.lpEthOf`, because Bitcoin and the EVM share secp256k1, so the channel key already
+      determines the LP's EVM address. An `lpEth` supplied alongside a signature was a second source
+      of truth for an address the chain can compute, which is the attribution hole that deletion closes.
+      ⇒ **The "two pieces" above are now ONE.** The EVM-signature half — described here as *"small; the
+      wallet already signs"* and as the piece to land first because it is not blocked on the MuSig2
+      library — **is gone entirely.** What remains is the `exits` ladder, which is the BIP-327 half, so
+      **this item is now blocked on `@scure/btc-signer` rather than having an easy first step.** That is
+      a schedule change, not a scope reduction: the easy half did not get done, it stopped existing.
+      📌 What the LP still supplies in `OpenAuth` is `btc_recipient_pop` — a BIP-340 Schnorr
+      proof-of-possession over `btcRecipientPoPDigest(lpEth)`, i.e. a *Bitcoin* signature, not an EVM one.
+      ⛔ **AND THE RELATED VERDICT, REACHED IN SPV AND RECORDED HERE BECAUSE ibiza OWNS THE DECISION:
+      DO NOT ADOPT ERC-7947 (social recovery) FOR `lpEth`.** Three independent reasons:
+        * It **reopens the attribution hole** the deletion above just closed. `_lpPayoutScript(lpEth)`
+          derives the BTC payout FROM `lpEth`, and `btcRecipientOf` is one source of truth for BOTH
+          cooperative-close attribution and the splice path — so **whoever compromises the recovery
+          provider redirects that LP's payouts.**
+        * It is a **trusted off-chain attester accepting a `proof`**, the category ruled out wholesale;
+          the ERC's own security section concedes a malicious provider takes full account control.
+        * It is **redundant, which is the strongest reason.** After §E183 item 1 `lpEth` IS the channel
+          key's address, so an LP proves control of its own identity by signature with no third party.
+          A recovery provider would buy — at the price of a trusted attester — a primitive already owned.
+      ⚠️ Recovery of a LOST key is a different question and is NOT answered by this verdict; it is
+      SPV's `§HANDOFF-2026-08-16-SEED-THREAD` OPEN 1 (an enclave-hosted LP has no recovery path, and
+      needs a migration trust anchor of its own). Do not read "no ERC-7947" as "recovery is solved".
       ⚠️ It gates SPV Phases 2-3. **1(a), 1(b) AND 1(c) have all landed** (SPV `09fc4f8c`/`28a80ee3`,
       2026-08-16): the LP declares `Individual` so it boots on mainnet, a born seed is written out
       once as a mnemonic, `QUID_SEED` takes it back, and a `family` role gets a K-of-N Shamir split

@@ -63,20 +63,31 @@ export function tapLeafHash(scriptHex: string): string {
   )
 }
 
-/// The 32-byte commitment to a swap's TERMS — who is credited, in what token, for how little.
-/// §T2 in `SPV/docs/actionable/HOP-TRUST-AUDIT.md`.
+/// The 32-byte commitment to a swap's TERMS — who is credited, in what token, at WHAT RATE.
+/// §T2, implemented in `SPV/evm/src/imports/ExitLib.sol::termsCommitment`.
+///
+/// ⛔ **THIS COMMITTED `minDeliveredUsd` UNTIL 2026-08-21 AND COULD NOT HAVE WORKED.** The floor is
+/// `swap_in_floor_usd(sats, pricePerBtc, slippageBps)` — it SCALES WITH THE SATS ACTUALLY
+/// DEPOSITED, which nobody knows when this address is derived, because **the address must exist
+/// before the seller can pay it**. Committing it made the address underivable and every settle
+/// would have reverted. SPV hit the same wall and changed sides: what is fixed at registration is
+/// the RATE, so that is what the address commits, and the contract DERIVES the floor from it and
+/// the SPV-proven sats (`ExitLib.settleFloorUsd`). **Strictly stronger** — the hop no longer
+/// SUPPLIES a floor at all, so there is nothing left for it to substitute between quote and settle.
 ///
 /// ⚠️ `abi.encode`, never `encodePacked`: packed encoding is ambiguous and two different quotes
-/// could collide onto one commitment. Must match the Solidity side exactly.
+/// could collide onto one commitment. Must match the Solidity side exactly — four 32-byte words,
+/// with `slippageBps` widened to `uint256` as Solidity's `abi.encode(uint16)` does.
 export function termsCommitment(
   seller: string,
   token: string,
-  minDeliveredUsd: bigint,
+  pricePerBtc: bigint,
+  slippageBps: number,
 ): string {
   return ethers.sha256(
     ethers.AbiCoder.defaultAbiCoder().encode(
-      ['address', 'address', 'uint256'],
-      [seller, token, minDeliveredUsd],
+      ['address', 'address', 'uint256', 'uint256'],
+      [seller, token, pricePerBtc, BigInt(slippageBps)],
     ),
   )
 }
@@ -143,14 +154,15 @@ export function depositLeafScript(
   cltvHeight: number,
   seller: string,
   token: string,
-  minDeliveredUsd: bigint,
+  pricePerBtc: bigint,
+  slippageBps: number,
 ): string {
   const n = ethers.getBytes(scriptNum(cltvHeight))
   const key = bytes(userRefund)
   if (key.length !== 32) throw new Error('depositLeafScript: userRefund must be 32 bytes x-only')
   return ethers.hexlify(
     ethers.concat([
-      '0x20', termsCommitment(seller, token, minDeliveredUsd), // PUSH32 <terms>
+      '0x20', termsCommitment(seller, token, pricePerBtc, slippageBps), // PUSH32 <terms>
       '0x75',                        // OP_DROP — committed, not consumed
       new Uint8Array([n.length]), n, // PUSH<len> <height, little-endian, minimal>
       '0xb1',                        // OP_CHECKLOCKTIMEVERIFY

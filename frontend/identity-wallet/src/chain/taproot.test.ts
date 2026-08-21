@@ -67,11 +67,11 @@ test('the deposit leaf commits the terms in front of the refund path, in ONE lea
   const key = '0x' + 'ab'.repeat(32)
   const s0 = '0x' + '11'.repeat(20)
   const t0 = '0x' + '22'.repeat(20)
-  const leaf = depositLeafScript(key, 500000, s0, t0, 1000n)
+  const leaf = depositLeafScript(key, 500000, s0, t0, 1000n, 100)
 
   // PUSH32 <terms> | 75 DROP | PUSH3 20a107 | b1 CLTV | 75 DROP | PUSH32 <key> | ac CHECKSIG
   const expected =
-    '0x20' + termsCommitment(s0, t0, 1000n).slice(2) + '75' +
+    '0x20' + termsCommitment(s0, t0, 1000n, 100).slice(2) + '75' +
     '0320a107' + 'b175' + '20' + 'ab'.repeat(32) + 'ac'
   assert.strictEqual(leaf, expected)
 
@@ -83,11 +83,13 @@ test('every committed term changes the deposit leaf', () => {
   const key = '0x' + 'cd'.repeat(32)
   const s0 = '0x' + '11'.repeat(20)
   const t0 = '0x' + '22'.repeat(20)
-  const base = depositLeafScript(key, 7, s0, t0, 1000n)
-  assert.notStrictEqual(base, depositLeafScript(key, 7, '0x' + '33'.repeat(20), t0, 1000n), 'seller')
-  assert.notStrictEqual(base, depositLeafScript(key, 7, s0, '0x' + '44'.repeat(20), 1000n), 'token')
-  assert.notStrictEqual(base, depositLeafScript(key, 7, s0, t0, 1001n), 'minDeliveredUsd')
-  assert.notStrictEqual(base, depositLeafScript(key, 8, s0, t0, 1000n), 'cltvHeight')
+  const base = depositLeafScript(key, 7, s0, t0, 1000n, 100)
+  assert.notStrictEqual(base, depositLeafScript(key, 7, '0x' + '33'.repeat(20), t0, 1000n, 100), 'seller')
+  assert.notStrictEqual(base, depositLeafScript(key, 7, s0, '0x' + '44'.repeat(20), 1000n, 100), 'token')
+  assert.notStrictEqual(base, depositLeafScript(key, 7, s0, t0, 1001n, 100), 'pricePerBtc')
+  // (§T2) slippage is a COMMITTED term too — the floor is derived from price AND slippage.
+  assert.notStrictEqual(base, depositLeafScript(key, 7, s0, t0, 1000n, 101), 'slippageBps')
+  assert.notStrictEqual(base, depositLeafScript(key, 8, s0, t0, 1000n, 100), 'cltvHeight')
 })
 
 test("the taproot tweak matches rust-bitcoin's TaprootBuilder on a shared fixture", () => {
@@ -105,8 +107,8 @@ test("the taproot tweak matches rust-bitcoin's TaprootBuilder on a shared fixtur
 test('the output key moves when any committed term does', () => {
   const internal = '0x' + '02'.repeat(32)
   const key = '0x' + 'ab'.repeat(32)
-  const q = (usd: bigint) =>
+  const q = (price: bigint) =>
     taprootOutputKey(internal, tapLeafHash(
-      depositLeafScript(key, 500000, '0x' + '11'.repeat(20), '0x' + '22'.repeat(20), usd)))
-  assert.notStrictEqual(q(1000n), q(1001n), 'a restated minDeliveredUsd must change the address')
+      depositLeafScript(key, 500000, '0x' + '11'.repeat(20), '0x' + '22'.repeat(20), price, 100)))
+  assert.notStrictEqual(q(1000n), q(1001n), 'a restated pricePerBtc must change the address')
 })

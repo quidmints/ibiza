@@ -266,6 +266,58 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
       (B) is purely additive, touches only `frontend/identity-wallet`, and is not blocked by (A).
       ⚠️ **Do NOT start (A) by moving files.** Reconcile the two `remappings.txt` first and prove
       `forge build` green on the union, or the merge lands as a repo that does not compile.
+- [ ] 📡 **THE PHONE MUST POST LIVENESS HEARTBEATS — NEW OBLIGATION FROM SPV, 2026-08-21/22, AND IT IS
+      THE ONE PIECE THAT NEEDS NO BIP-327.** SPV landed `§LP-LIVENESS`: `quid-hop`'s `RoutingGate`
+      drops a channel from BOLT11 route hints unless a recent signed heartbeat exists, and it
+      **FAILS CLOSED** — an unbound channel is treated as unroutable. It ships OFF (`gate = None`)
+      precisely because turning it on before the phone posts anything would strand every swap-in.
+      ⚠️ **SO THIS IS A HARD DEPENDENCY FOR TURNING THE GATE ON, not a nice-to-have.**
+      * **Shape:** `tag ‖ channel_id ‖ height(be) ‖ seq(be)`, tag `QUID-REALM::lp-liveness.v1`,
+        signed as a **65-byte EVM-shaped ECDSA** recoverable signature. `quid-hop/src/liveness.rs`
+        (`Heartbeat::digest`, `recover_heartbeat`) is the reference; recovery must yield the
+        channel's `lpEth`.
+      * ⭐ **NO MuSig2. NO `@scure/btc-signer`.** It is signed by the same secp256k1 channel key the
+        wallet already holds, in the shape `ethers` already produces ⇒ **it can ship WELL AHEAD of
+        the ladder**, which is the only piece genuinely blocked on BIP-327. Landing it first is real
+        progress against the same blocker `lp_sig` used to represent before §E183 deleted it.
+      * ⚠️ **The staleness threshold is DELIBERATELY un-defaulted on the SPV side** — `RoutingGate::new`
+        takes it as a required argument with no default, because it must be DERIVED from the slowest
+        co-sign an LP must complete, not picked. Do not invent one here either.
+      * **Why it exists:** BIP-341 `Prevouts::All` binds every pre-signed exit to the funding
+        outpoint, and rotation invalidates them — so a channel taking traffic while its LP is
+        unreachable accrues rotations nobody can re-arm. The gate blocks the traffic, at the
+        narrowest point, reversibly.
+
+- [ ] 🔑 **REKEY NEEDS AN LP *EVM* SIGNATURE — WHICH CONTRADICTS THE "SIGNS NOTHING ON THE EVM" NOTE
+      BELOW, AND THAT NOTE IS ONLY TRUE OF THE *OPEN*.** SPV's §E182 `rekey` rotates the hop key on a
+      live channel, and `ChannelLib.rekeyAuthBody` gates it on
+      `SignatureChecker.isValidSignatureNow(lpEth, digest, lpSig)`. **If ibiza builds no EVM signing
+      at all on the strength of the §E183 correction, rekey is unimplementable.**
+      * **The exact digest** (read from `ChannelLib.rekeyAuthBody`, not reconstructed from prose):
+        `keccak256(abi.encode(keccak256("BTCChannels.rekey.v1"), block.chainid, address(BTCChannels),
+        channelId, keccak256(rawSpliceTx), keccak256(abi.encode(OpenParams))))`.
+      * ⚠️ The `rekey.v1` tag is load-bearing: it exists so a `splice.v1` signature over the same
+        arguments is NOT accepted here. Sign the tag, do not improvise one.
+      * ✅ `SignatureChecker` means an ERC-1271 / EIP-7702 smart-account signature is acceptable, so
+        this does not force a bare EOA on the phone.
+
+- [ ] 🌐 **THE WEB/APP SPLIT — DO AS MUCH BTC AS POSSIBLE ON THE WEBSITE; GATE THE REST** (owner,
+      2026-08-22: *"react native must be copy of the react we wrote for the ETH SPA … we must be able
+      to do as much as we can with BTC through the website as well, while the app handles what it
+      needs and we just make sure that you cant use certain parts of the web page until you did what
+      you have to with the app"*).
+      ⇒ **The discriminator is not "BTC vs ETH", it is WHAT TOUCHES THE CHANNEL KEY.** Everything
+      that does not — browsing, quoting, positions, swap-in/swap-out *requests*, redemption views —
+      belongs on the web SPA for both assets. Only these need the app, because only these sign with
+      the LP funding half: the **exits ladder** (MuSig2, BIP-327), the **payout-key PoP**
+      (`btcRecipientPoPDigest`, BIP-340), the **rekey consent** above, and the **heartbeats** above.
+      * **Gating rule:** the web page must refuse the LP-side actions until the app has produced the
+        artefact they depend on, rather than letting them start and fail late. The on-chain checks
+        are already the source of truth for "has it been done" — `btcRecipientOf[lpEth] != 0` and the
+        armed-ladder state are readable, so the gate needs no new backend.
+      * ⚠️ **A swapper is NOT an LP.** Swap-in/swap-out users never hold a funding half, so nothing
+        about them should be gated behind the app — gating them would be a self-inflicted funnel loss.
+
 - [ ] 🔑 **THE LP-SIDE SIGNER — ibiza's half of the SPV fleet split (SPV §E166-3, §E175).** The fleet
       RELAYS consent and provably cannot manufacture it: `VaultRegistry.LpConsent { auth, exits }`
       goes DORMANT on absence, a conflicting re-bind is REFUSED not overwritten, and both halves need

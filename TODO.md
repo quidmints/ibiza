@@ -288,18 +288,23 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
         unreachable accrues rotations nobody can re-arm. The gate blocks the traffic, at the
         narrowest point, reversibly.
 
-- [ ] 🔑 **REKEY NEEDS AN LP *EVM* SIGNATURE — WHICH CONTRADICTS THE "SIGNS NOTHING ON THE EVM" NOTE
-      BELOW, AND THAT NOTE IS ONLY TRUE OF THE *OPEN*.** SPV's §E182 `rekey` rotates the hop key on a
-      live channel, and `ChannelLib.rekeyAuthBody` gates it on
-      `SignatureChecker.isValidSignatureNow(lpEth, digest, lpSig)`. **If ibiza builds no EVM signing
-      at all on the strength of the §E183 correction, rekey is unimplementable.**
-      * **The exact digest** (read from `ChannelLib.rekeyAuthBody`, not reconstructed from prose):
-        `keccak256(abi.encode(keccak256("BTCChannels.rekey.v1"), block.chainid, address(BTCChannels),
-        channelId, keccak256(rawSpliceTx), keccak256(abi.encode(OpenParams))))`.
-      * ⚠️ The `rekey.v1` tag is load-bearing: it exists so a `splice.v1` signature over the same
-        arguments is NOT accepted here. Sign the tag, do not improvise one.
-      * ✅ `SignatureChecker` means an ERC-1271 / EIP-7702 smart-account signature is acceptable, so
-        this does not force a bare EOA on the phone.
+- [x] ✅ **REKEY NEEDS NO SIGNATURE AFTER ALL — RETRACTED THE SAME DAY IT WAS FILED (SPV, 2026-08-22).**
+      ⚠️ **DO NOT BUILD EVM SIGNING FOR REKEY. The entry that stood here asked for exactly that and
+      it is now WRONG** — SPV folded the rekey consent into the exit ladder (`§REKEY-FOLD`), so
+      `rekey` no longer takes an `lpSig` and `ChannelLib` no longer verifies one. The digest and its
+      four supporting parameters are deleted; `SignatureChecker` is gone from the tree entirely.
+      🔑 **WHY THE LADDER IS THE CONSENT, and it is stronger than the signature it replaced:** a
+      rotation must carry a fresh `exits` ladder, and every rung is verified as BIP-340 under
+      `Q' = TapTweak(KeyAgg(lpPubkey, NEW hopPubkey))`. **`Q'` DERIVES FROM THE NEW HOP KEY**, so a
+      rung cannot exist unless the LP co-signed a MuSig2 session over exactly this rotation. The
+      signature proved the LP agreed; the ladder proves the LP agreed AND still has an escape after
+      the rotation — which is the property the rotation actually threatens, since BIP-341
+      `Prevouts::All` voids every pre-signed rung the moment the outpoint moves.
+      ⇒ **"THE LP SIGNS NOTHING ON THE EVM" IS NOW TRUE WITHOUT EXCEPTION.** The §E183 correction
+      further down this file needs no caveat; the exception I added has been deleted at the source.
+      ⇒ **NET EFFECT ON THIS REPO: one fewer thing to build**, and the remaining Bitcoin-side work is
+      unchanged — the ladder (BIP-327, the one genuinely blocked item), the payout PoP (BIP-340), and
+      the heartbeats above (no MuSig2, shippable first).
 
 - [ ] 🌐 **THE WEB/APP SPLIT — DO AS MUCH BTC AS POSSIBLE ON THE WEBSITE; GATE THE REST** (owner,
       2026-08-22: *"react native must be copy of the react we wrote for the ETH SPA … we must be able

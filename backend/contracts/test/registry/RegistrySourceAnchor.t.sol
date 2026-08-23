@@ -70,11 +70,8 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
 
     vm.prank(admin);
     anchor.setForwarder(postman);
-    // 🔴 THE SET IS A PROPOSAL NOW, NOT A SWITCH (sec. 2.18gz-fwd). Every test below publishes, so
-    // every one needs the forwarder actually in force — warp past the delay and promote, which is
-    // also the shape a real deployment has to follow.
-    vm.warp(block.timestamp + anchor.FORWARDER_ACTIVATION_DELAY());
-    anchor.promoteForwarder();
+    // The FIRST set is immediate (no incumbent to protect); every later one is a timelocked
+    // proposal — see the sec. 2.18gz-fwd block at the end of this file.
   }
 
   function _expectedKey(bytes32 registryId_, uint256 index_) internal view returns (bytes32) {
@@ -438,7 +435,10 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     vm.warp(block.timestamp + anchor.FORWARDER_ACTIVATION_DELAY());
     assertEq(anchor.activeForwarder(), address(0xBEEF), 'the delay elapsed and it is still not live');
 
-    anchor.promoteForwarder();
+    // The stored slot settles on first use, not on a separate call — see
+    // test_publishingFoldsAnElapsedRepointIntoStorage.
+    vm.prank(address(0xBEEF));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('r'))));
     assertEq(anchor.forwarder(), address(0xBEEF), 'the forwarder was not re-pointed');
     assertEq(anchor.pendingForwarder(), address(0), 'the pending slot was not cleared');
   }
@@ -540,7 +540,6 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     // force or this test proves the wrong refusal — it would pass on `NotForwarder` while claiming
     // to be about `NoActiveWorkflow`.
     vm.warp(block.timestamp + fresh_.FORWARDER_ACTIVATION_DELAY());
-    fresh_.promoteForwarder();
 
     bytes32[] memory leaves_ = new bytes32[](1);
     leaves_[0] = keccak256('a');
@@ -732,38 +731,39 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     assertEq(anchor.snapshotCount(NOTARY_REGISTRY), 1, 'the incumbent was silenced by a proposal');
   }
 
-  /// The delay is the whole instrument, so it is asserted rather than assumed — and asserted one
-  /// second SHORT of it, which is where an off-by-one would live.
-  function test_promoteIsRefusedUntilTheDelayElapses() public {
+  /// The delay is the whole instrument, so the boundary is asserted rather than assumed — and
+  /// asserted one second SHORT of it, which is where an off-by-one would live.
+  function test_theSwitchHappensExactlyOnTheBoundary() public {
     vm.prank(admin);
     anchor.setForwarder(address(0xBEEF));
     uint64 activeFrom_ = anchor.pendingForwarderActiveFrom();
 
     vm.warp(activeFrom_ - 1);
-    vm.expectRevert(abi.encodeWithSelector(RegistrySourceAnchor.ForwarderTimelocked.selector, activeFrom_));
-    anchor.promoteForwarder();
     assertEq(anchor.activeForwarder(), postman, 'it went live a second early');
 
     vm.warp(activeFrom_);
-    anchor.promoteForwarder();
     assertEq(anchor.activeForwarder(), address(0xBEEF), 'it did not go live on the boundary');
   }
 
-  /// ⚠️ PROMOTION IS PERMISSIONLESS BY DESIGN — it decides nothing, it only enacts what the
-  /// timelock already settled, and its precondition is a timestamp the contract reads. Gating it on
-  /// OWNER_ROLE would add an authority to an operation with no discretion in it.
-  function test_anyoneMayPromoteOnceTheDelayHasElapsed() public {
+  /// 🔑 THE STORED SLOT SETTLES ITSELF. `forwarder` folds forward the first time the new address
+  /// publishes, so it never spends long naming an address that is no longer the gate — the stale
+  /// reading that would otherwise get quoted as current. No promotion call, nothing to forget.
+  function test_publishingFoldsAnElapsedRepointIntoStorage() public {
     vm.prank(admin);
     anchor.setForwarder(address(0xBEEF));
     vm.warp(block.timestamp + anchor.FORWARDER_ACTIVATION_DELAY());
+    assertEq(anchor.forwarder(), postman, 'it settled before anyone used it');
 
-    vm.prank(stranger);
-    anchor.promoteForwarder();
-    assertEq(anchor.forwarder(), address(0xBEEF), 'a stranger could not enact the settled change');
+    vm.prank(address(0xBEEF));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('s'))));
+
+    assertEq(anchor.forwarder(), address(0xBEEF), 'the stored slot did not settle');
+    assertEq(anchor.pendingForwarder(), address(0), 'the pending slot was not cleared');
+    assertEq(anchor.pendingForwarderActiveFrom(), 0, 'the pending timestamp was not cleared');
   }
 
   /// 🔑 AND A FORGOTTEN PROMOTION CANNOT STALL PUBLICATION. `activeForwarder` resolves the pending
-  /// value on its own, so the new forwarder works whether or not anybody calls `promoteForwarder`.
+  /// value on its own, so the new forwarder works on its first publication with no prior step.
   /// Without this the housekeeping call would be a liveness dependency dressed as a convenience.
   function test_anUnpromotedForwarderStillWorksOnceItsDelayPassed() public {
     vm.prank(admin);
@@ -784,11 +784,6 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     vm.prank(admin);
     vm.expectRevert(abi.encodeWithSelector(RegistrySourceAnchor.ForwarderUnchanged.selector, postman));
     anchor.setForwarder(postman);
-  }
-
-  function test_promoteWithNothingPendingIsRefused() public {
-    vm.expectRevert(RegistrySourceAnchor.NoPendingForwarder.selector);
-    anchor.promoteForwarder();
   }
 
   /// The proposal is ANNOUNCED with both addresses and the moment it becomes effective — the whole

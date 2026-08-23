@@ -101,10 +101,7 @@ contract TitleLedgerTest is Test, CreReportMetadata {
     bytes32 registrarRole = registry.NOTARY_REGISTRAR();
     vm.prank(admin);
     registry.setForwarder(postman); // publication is an ADDRESS, not a grantable role
-    // ...and a TIMELOCKED one since sec. 2.18gz-fwd: the set is a proposal, so it must be warped
-    // past and enacted before anything here can publish through it.
-    vm.warp(block.timestamp + registry.FORWARDER_ACTIVATION_DELAY());
-    registry.promoteForwarder();
+
     vm.prank(admin);
     registry.grantRole(registrarRole, postman);
 
@@ -351,8 +348,6 @@ contract TitleLedgerTest is Test, CreReportMetadata {
     address publisher = address(0xD044);
     vm.prank(admin);
     freshRegistry.setForwarder(publisher);
-    vm.warp(block.timestamp + freshRegistry.FORWARDER_ACTIVATION_DELAY());
-    freshRegistry.promoteForwarder();
 
     assertEq(freshRegistry.forwarder(), publisher, 'the forwarder is not the publisher');
     assertFalse(

@@ -108,8 +108,6 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
     /// @notice Only the Forwarder may deliver reports.
     error NotForwarder(address caller);
     error ForwarderUnchanged(address forwarder);
-    error NoPendingForwarder();
-    error ForwarderTimelocked(uint64 activeFrom);
 
     /**
      * Where the workflow ID sits in the metadata header CRE prepends to every report.
@@ -232,8 +230,8 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
      * on `forwarder` above (UUPS, no gap, so new variables may only go at the end).
      *
      * `forwarder` keeps its meaning: the address `onReport` accepts. These two are the pending
-     * change, and `activeForwarder()` resolves between them so a forgotten `promoteForwarder` call
-     * cannot stall publication once the delay has elapsed.
+     * change; `activeForwarder()` resolves between them, and `onReport` folds an elapsed change
+     * into `forwarder` on first use so the stored slot settles without anyone calling anything.
      */
     address public pendingForwarder;
     uint64 public pendingForwarderActiveFrom;
@@ -338,34 +336,20 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
         // are rejected by comparing against the address that is actually in force.
         if (forwarder_ == activeForwarder()) revert ForwarderUnchanged(forwarder_);
 
+        // THE FIRST ONE IS IMMEDIATE, AND THAT IS NOT A HOLE. The timelock protects an INCUMBENT:
+        // it exists so a re-point cannot take over publication in the same block. Before any
+        // forwarder exists there is no incumbent, nothing has been anchored, and an OWNER_ROLE
+        // holder at that moment owns a contract with nothing in it. `forwarder` only ever moves
+        // from zero once, so this branch is unreachable after deployment.
+        if (forwarder == address(0)) {
+            emit ForwarderSet(address(0), forwarder_);
+            forwarder = forwarder_;
+            return;
+        }
+
         pendingForwarder = forwarder_;
         pendingForwarderActiveFrom = uint64(block.timestamp + FORWARDER_ACTIVATION_DELAY);
         emit ForwarderProposed(activeForwarder(), forwarder_, pendingForwarderActiveFrom);
-    }
-
-    /**
-     * @notice Make the pending Forwarder the stored one, once its delay has elapsed.
-     *
-     * @dev PERMISSIONLESS BY DESIGN, and it is the same reasoning `Registration2.revokeCertificate`
-     *      uses: this cannot decide anything. It can only enact what the timelock already settled,
-     *      and its precondition - `block.timestamp >= pendingForwarderActiveFrom` - is a fact the
-     *      contract reads rather than a judgement somebody makes. Gating it on `OWNER_ROLE` would
-     *      add an authority to an operation that has no discretion in it.
-     *
-     * @dev ⚠️ CALLING IT IS OPTIONAL, WHICH IS WHY THE GATE DOES NOT DEPEND ON IT.
-     *      `activeForwarder()` resolves the pending value on its own once the delay passes, so a
-     *      forwarder nobody promotes still works. This exists so the STORED state stops disagreeing
-     *      with the effective one - a `forwarder` slot left naming a superseded address is exactly
-     *      the sort of stale reading that gets quoted as current.
-     */
-    function promoteForwarder() external {
-        if (pendingForwarder == address(0)) revert NoPendingForwarder();
-        if (block.timestamp < pendingForwarderActiveFrom) revert ForwarderTimelocked(pendingForwarderActiveFrom);
-
-        emit ForwarderSet(forwarder, pendingForwarder);
-        forwarder = pendingForwarder;
-        pendingForwarder = address(0);
-        pendingForwarderActiveFrom = 0;
     }
 
     /**
@@ -376,13 +360,16 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
      *      the registry in the meantime. Inaction and a contested change both leave publication
      *      running on the previous address.
      *
-     * @dev ⚠️ ZERO BEFORE THE FIRST FORWARDER ACTIVATES, AND THAT IS A DEPLOYMENT FACT WORTH
-     *      PLANNING FOR: `onReport` compares unconditionally, so an unset forwarder accepts NOBODY
-     *      and the first snapshot cannot land until `FORWARDER_ACTIVATION_DELAY` after the first
-     *      `setForwarder`. Deliberately NOT special-cased to activate the first one immediately - a
-     *      branch that skips the timelock is a branch someone can be argued into reaching, and
-     *      fail-closed is the right direction for a publication path. Set the forwarder as the first
-     *      step of deployment and the delay runs while the rest of it happens.
+     * @dev THE STORED SLOT SETTLES ITSELF, so there is no promotion call and nothing to forget.
+     *      `onReport` folds an elapsed change into `forwarder` the first time the new address
+     *      publishes - the gas falls on the party that benefits. An earlier version had a separate
+     *      permissionless `promoteForwarder` with two error types of its own, for a job the
+     *      publication path already passes through.
+     *
+     * @dev ⚠️ ZERO UNTIL THE FIRST `setForwarder`, and `onReport` compares unconditionally, so an
+     *      unset forwarder accepts NOBODY - fail-closed, and stricter than Chainlink's template,
+     *      which accepts EVERY caller while unset. The first set takes effect immediately (see
+     *      `setForwarder`); every one after it is timelocked.
      */
     function activeForwarder() public view returns (address) {
         if (pendingForwarder != address(0) && block.timestamp >= pendingForwarderActiveFrom) {
@@ -455,7 +442,16 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
     /// the result read `snapshots[registryId]` or the `SnapshotAnchored` event, both of which are
     /// what an off-chain consumer has to use regardless.
     function onReport(bytes calldata metadata, bytes calldata report) external override {
-        if (msg.sender != activeForwarder()) revert NotForwarder(msg.sender);
+        address activeFwd_ = activeForwarder();
+        if (msg.sender != activeFwd_) revert NotForwarder(msg.sender);
+        // Fold an elapsed re-point into storage on first use, so `forwarder` and the effective gate
+        // do not drift apart. Costs the new forwarder one write, once.
+        if (activeFwd_ != forwarder) {
+            emit ForwarderSet(forwarder, activeFwd_);
+            forwarder = activeFwd_;
+            pendingForwarder = address(0);
+            pendingForwarderActiveFrom = 0;
+        }
 
         // Length-checked before slicing: a short header would otherwise read whatever follows it,
         // and an identity check that compares the WRONG 32 bytes fails in exactly the direction

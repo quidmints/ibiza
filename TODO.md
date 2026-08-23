@@ -13,89 +13,34 @@ or superseded, NOT that it never existed - check the archive before concluding a
 
 ### ⚖️ TRIAGE — order this work by whether a wrong outcome is PROVABLY WRONG AFTERWARDS
 
-Derived from the UMA/Polymarket failure (see the sortition item). Attacker payoff scales with what is
-being decided; defender payoff is fixed. No quorum size fixes that. **What separates a safe mechanism
-from an unsafe one is not the incentive, it is whether a bad outcome can be CONTRADICTED BY EVIDENCE
-after the fact.** Ranked by size of the un-contradictable surface:
+Derived from the UMA/Polymarket failure. Attacker payoff scales with what is being decided; defender
+payoff is fixed. No quorum size fixes that. **What separates a safe mechanism from an unsafe one is
+not the incentive, it is whether a bad outcome can be CONTRADICTED BY EVIDENCE after the fact.**
+Ranked by size of the un-contradictable surface:
 
 | # | predicate | ground truth | external claim surface |
 |---|---|---|---|
 | 1 | **non-association** (`label ∉ tainted`) | **the chain itself** - propagation is deterministic and anyone can recompute it | **only the SEED set**, and it is small |
 | 2 | **sanctions non-membership** | the published register - anyone can rebuild the leaves | the whole register, but public |
-| 3 | **Court on transcription fidelity** | same as (2): does this leaf match the source | none of its own |
-| 4 | **governance votes** (removal, citizenship) | **NONE - it is a judgment** | unbounded |
 
 ⇒ **Build in that order.** (1) has the smallest un-contradictable core of anything here and needs NO
 CRE at all beyond anchoring a small seed - which makes it a better first target than the sanctions
 work I had queued ahead of it.
-⇒ **(4) is blocked on economics that may have no solution**, not on engineering. Do not extend Court
-to carry a governance ruling until "what does a wrong ruling cost, and who bears it" has an answer.
-That is the Polymarket shape: high value, no anchor, apathetic panel.
+
+⛔ **OUT OF SCOPE, ENTIRELY** (owner, 2026-08-24: *"ignore everything related to court/jury and the
+monarchy stuff completely"*). Removed from this file: the sortition port, `court.sol`, the secret
+ballot, and modularising `iran-constitutional-monarchy`. **Do not re-derive them** — the reasoning
+survives in `TODO-ARCHIVE.md`, and the two ranked rows above are all that is left of the table.
+⭐ **AND DROPPING THEM SIMPLIFIES THE DESIGN RATHER THAN LEAVING A HOLE, which is worth stating so
+nobody re-adds an adjudicator to fill one.** The question those items existed to answer was *"who
+rules on a disputed transcription?"* — and the answer, once you stop looking for a venue, is
+**nobody, because a wrong transcription is contradictable by anyone.** The full leaf set is on-chain
+calldata plus an event, the source is public, and `_computeRoot` derives the root on-chain, so
+rebuilding the snapshot and showing the mismatch needs no standing, no panel and no ruling. **The
+remedy is publication, not adjudication.** ⇒ Removing Court removes an authority; it does not leave
+a gap where one used to be.
 
 
-- [ ] **Port SORTITION to a per-jurisdiction citizen pool.** ⚠️ We are NOT importing the `quid` folder,
-      and UMA is not used at all - an earlier version of this item said to pin the workflow ID in
-      `UMA.onReport`, which was wrong twice over. The only thing that transfers is the mechanism:
-        * **entropy** - `RandaoLib.getHistoricalRandaoValue(n, headerRlp)`: caller supplies an RLP
-          header, contract pins it to `blockhash(n)` and reads `prevRandao`, mixed over >=3 blocks.
-          Caller-supplied but NOT caller-chosen, and no single proposer can steer it. Transfers
-          unchanged - it depends only on `blockhash`, not on anything in `quid`.
-        * **selection** - ⛔ **DOES NOT TRANSFER.** `idx = seed % poolSize` both NEEDS the set size to
-          compute and PUBLISHES the chosen indices. The requirement is anonymous selection that
-          reveals neither the members nor the SET SIZE - only that someone in the set was chosen.
-          Replace drawing with SELF-SELECTION: each epoch's RANDAO is a public seed, a citizen
-          computes `PRF(sk, seed)` locally and is selected iff it falls under a threshold, then
-          proves in ONE circuit (a) membership in the jurisdiction's citizen SMT, (b) correct PRF
-          evaluation on that seed, (c) output under threshold. Nobody draws anyone; they discover it.
-          Reuses `smt_verifier_full` - a THIRD instance of the same primitive, beside sanctions
-          non-membership and non-association - and a Poseidon PRF the circuits already do.
-        * **opt-in** - in `quid` this is STAKE (`juryPoolSize`, `lockedStake`, slashing). For a
-          citizen set it is an opted-in subset of `CitizenRegistry` per jurisdiction.
-      ⚠️ **THE INCENTIVE DOES NOT TRANSFER, and that is the real design question.** Sortition without
-      stake has no slashing lever, so nothing makes a drawn citizen vote honestly rather than not at
-      all. Solve that before porting, not after.
-      🔴 **THE ATTACK ECONOMICS ARE THE SECURITY PARAMETER, and they are the target to beat.** The
-      Polymarket attackers held YES on a US/Ukraine mineral deal - 97% in February, under 10% by
-      April, about to expire worthless. Corrupting the resolution was worth their ENTIRE POSITION,
-      while each honest voter stood to gain a share of routine rewards. **Attacker payoff scales with
-      the stake in the decision; defender payoff is fixed.** No quorum size fixes an unbounded
-      numerator. A sanctions ruling has an unbounded numerator too - removing an address unfreezes
-      arbitrary value, adding one censors arbitrary value - so a fixed-compensation panel is
-      corruptible for a valuable enough address, and an unpaid citizen panel for less.
-      ✅ **WHAT SAVES THE SANCTIONS CASE IS DETECTABILITY, NOT INCENTIVES.** Transcription fidelity has
-      a public ground truth: rule that an entry is absent when it is present, and anyone rebuilding
-      the leaves sees it. The ruling still executes, but it is CONTRADICTABLE, which leaves room for a
-      second-order remedy. Polymarket had no anchor, which is why "a deal was AND was not agreed on
-      27 February" stands as a permanent contradiction nobody can adjudicate after the fact.
-      ⇒ **Court is usable where a wrong ruling is PROVABLY wrong afterwards, and dangerous where it is
-      not.** Sanctions transcription: safe side. Removal of a monarch: judgment, no anchor, high
-      value, same apathy exposure - the Polymarket shape exactly.
-      🔴 **DEMONSTRATED, NOT HYPOTHETICAL.** UMA's oracle was manipulated into resolving a Polymarket
-      market against reality by attackers who timed the dispute for when attention was low - the
-      failure was CHECKED-OUT VOTERS, not broken cryptography. Note the direction of the evidence:
-      UMA HAD a token-weighted stake lever and it was still insufficient. A citizen panel with no
-      lever at all is strictly weaker. Two further lessons: (1) UMA's "trusted" LABEL on the
-      attackers did the work - **do not add a reputation layer to Court**, it reintroduces exactly
-      that; (2) fixed appeal windows are schedulable, so an attacker picks the moment.
-      ⚠️ **AND THE REMIT SPLIT MATTERS MORE THAN THE INCENTIVE.** Court on SANCTIONS adjudicates
-      transcription fidelity - is this entry in the published register - which has a GROUND TRUTH
-      anyone can rebuild, so an absent or bribed panel can be contradicted by evidence. Removal of a
-      monarch, or a citizenship grant, has NO anchor: it is a judgment, like "was a deal agreed",
-      which is the exact question class that failed. **The engine is sound for the use it was
-      designed for and structurally exposed for the governance use** - and no cryptography closes
-      that gap. Decide what a wrong governance ruling costs, and who bears it, before extending Court
-      to carry one.
-      ⚠️ **THE SET SIZE LEAKS THROUGH TURNOUT, and no construction avoids it for free.** With a public
-      fixed threshold, expected committee size = |set| x P, so counting who shows up ESTIMATES the
-      population. Pick two of three: fixed threshold / fixed committee size / hidden population.
-        * fixed threshold -> committee varies with population -> leaks
-        * fixed committee -> threshold calibrated to population -> leaks
-        * hidden or committed threshold, or padding with decoy submissions -> hides size, but the
-          committee size stops being knowable, which breaks any quorum rule that depends on it
-      The leak is bounded - an adversary learns roughly HOW MANY opted in, never WHO - so whether it
-      is acceptable is policy, not cryptography, and may differ for a small jurisdiction.
-      ✅ Composes with the secret ballot: being SELECTED can stay private too, and how one voted is
-      separate again. Selection privacy and ballot privacy are independent properties.
 - [x] ✅ **Non-association predicate — LANDED on the single-withdrawal path.** `label ∉ tainted`, proven
       in-circuit as an eighth public signal. The PP paper's EXCLUSION branch, where 0xbow deployed
       membership. Third use of `smt_verifier_full`: identity uses `fnc=false`, this uses `fnc=true`.
@@ -118,8 +63,6 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
       enabling batching on a pool with a non-empty taint root.**
 - [ ] Anchor the taint root: seed set + deterministic propagation, and a setter path from the
       registry. `setTaintRoot` is entrypoint-gated and defaults to 0 (empty).
-- [ ] **`court.sol` ← blacklist disputes.** Jurisdiction is TRANSCRIPTION FIDELITY, not designation
-      validity. Blocked on the sanctions predicate existing (2.18gz-unify).
 - [ ] 🔴 **`setForwarder` IS THE UNGUARDED TWIN OF `pinWorkflow`, AND IT IS THE TOTAL BYPASS**
       (owner, 2026-08-16: *"what about what was there removing the point also"* — checked, and it
       does). §2.15a's four mitigations ALL landed on the workflow axis: `pinWorkflow` is append-only,
@@ -182,8 +125,11 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
       SIGNAL, not evidence: *"some passport-holder asserts the parse dropped them"*, with a nullifier
       and no name. That is still the entire point — **silence becomes a visible, counted alarm**, and
       the count is a health metric for the parser. Turning a signal into an actionable finding needs
-      selective disclosure under dispute, which is `court.sol`'s transcription-fidelity remit and is
-      booked. ⇒ Three items, one chain: **SMT root → anonymous absence claim → Court on disclosure.**
+      🔴 **AND THERE IS NO ADJUDICATOR TO ESCALATE TO — court/jury is out of scope entirely (see
+      the TRIAGE block).** That is not a gap: the dropped entry is in a PUBLIC register and the
+      anchored leaf set is on-chain, so anyone can rebuild the snapshot and show the entry missing,
+      without standing or a ruling. **The claim's job is to raise the alarm; the proof of the drop is
+      a rebuild anyone can perform.** ⇒ Two items, one chain: **SMT root → anonymous absence claim.**
       🔗 Prerequisite: the `setForwarder` item above. "No fabrication possible" is the premise this
       design rests on, and it is not currently true.
 - [ ] ⭐ **CONFIDENTIAL HTTP IS THE PLUG-IN — TEE-BACKED FETCH, CHAINLINK'S OWN, NOTHING ROLLED**
@@ -581,10 +527,6 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
       2026-08-16): the LP declares `Individual` so it boots on mainnet, a born seed is written out
       once as a mnemonic, `QUID_SEED` takes it back, and a `family` role gets a K-of-N Shamir split
       instead. ⇒ **Nothing on the SPV side is holding this item up any more; it is waiting on ibiza.**
-- [ ] **Secret ballot for removal-by-electorate and citizenship renunciation** - rarime's vote extended;
-      PP for mixing, SPV for yield. The 'final fold', gated on the 6909 basket and the links.
-- [ ] **Modularise `iran-constitutional-monarchy` into a bilateral parliament.** Open first question:
-      does the jury engine land inside `SupremeCourt`, or beside it as a `Court` it appoints into?
 - [ ] **Simplify along the `quid` seam.** Measured: quid `Aux+Vogue+VogueCore` = 1,742 lines with **0**
       `isBTC`; SPV `Aux+Vogue+Core` = 4,164 with **358**. quid is a working reference for the §J.2
       consolidation - but it never faced BTC, so it proves the cost, not that one impl serves both.

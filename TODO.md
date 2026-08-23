@@ -191,6 +191,35 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
       `big_curve`/`bignum`/`sigver` for ECDSA over arbitrary curves. **A TLS server chain is RSA or
       ECDSA over P-256/P-384 with SHA-256/384 — every one of those primitives is present and
       exercised.** Do not scope this as new cryptography.
+      🔴 **MEASURED 2026-08-24, AND IT KILLS OPTION (a) OUTRIGHT: THE CRE HTTP CAPABILITY CANNOT
+      EXPOSE THE TLS SESSION, SO IN-WORKFLOW VERIFICATION IS NOT "UNBUILT" — IT IS UNBUILDABLE.**
+      `cre-sdk-go/capabilities/networking/http@v1.4.0`'s `Response` has exactly four fields:
+      `StatusCode`, `Headers`, `Body`, `MultiHeaders`. **No peer certificates, no TLS state.** The
+      only certificate type in the whole capability is `MtlsAuth` — OUR client cert for mutual TLS,
+      the opposite direction. The node runtime performs the handshake and hands the workflow bytes.
+      ⇒ **No amount of Go in the workflow fixes this**, and that includes TLSNotary or DECO: a
+      workflow cannot open its own socket, it must go through the capability. **The notary has to
+      live OUTSIDE CRE**, and CRE becomes transport rather than the security property.
+      ⇒ **SO `RegistrySourceAnchor.sol:128-130` MUST BE REWRITTEN TO SAY THE WINDOW IS LOAD-BEARING**
+      — the sibling item below offers "either build the in-workflow verification the comment assumes,
+      or rewrite the comment". **The first option does not exist. Rewrite it.**
+      ⇒ **AND THE FORWARDER TIMELOCK STAYS**, for every source that does not sign its own data. It is
+      not a stopgap for something arriving shortly; it is the only thing between one owner key and a
+      fabricated snapshot.
+      ✅ **THE ICAO PATH IS ALREADY THE RIGHT SHAPE, AND IT IS THE TEMPLATE.** `icao_master_list`
+      verifies **CMS SignedData** signed by `C=UN, O=United Nations` against a pinned hash, using Go
+      stdlib (`crypto/x509`, `encoding/asn1`) — hand-parsed because `go.mozilla.org/pkcs7`'s
+      `Verify()` fails on the genuine file. **That source signs its own data, so it needs no DON
+      authority at all**, which is why "remove the role from the ICAO path entirely" is a separate
+      and much easier item. ⇒ **The generalisation is not "notarize the TLS", it is "prefer sources
+      that sign".** Where a register offers a signed feed, take it; the TLS question only arises for
+      registers that publish bare files.
+      ❓ **MULTIPLE DONs DO NOT HELP HERE, and it is worth saying because it is easy to over-credit**
+      (owner asked, 2026-08-24). More DONs buy LIVENESS and censorship-resistance — a second DON can
+      publish when the first will not. They buy nothing for AUTHENTICITY, because none of them can
+      see the TLS session either; N nodes agreeing on bytes they cannot attribute is still
+      `ConsensusIdenticalAggregation`, just wider. **Independence of attestor from prover matters
+      only once there IS an attestor, and inside CRE there cannot be one.**
       ⛔ **DO NOT ROLL OUR OWN** (owner, 2026-08-24: *"chainlink CRE workflows are extendable with
       external modules... im sure someone on github already did TLS"* — correct on both).
         * **TLSNotary** (`github.com/tlsnotary/tlsn`) — the mature Rust implementation. Prover and

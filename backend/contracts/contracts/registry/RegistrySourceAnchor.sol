@@ -96,6 +96,9 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
     /// @notice Carries the PREVIOUS address too, so a re-point is visible as a re-point rather than
     ///         having to be inferred from a second identical-looking event.
     event ForwarderSet(address indexed previousForwarder, address indexed forwarder);
+    /// Emitted when a change is PROPOSED. The window between this and `ForwarderSet` is the whole
+    /// point: a watcher sees the re-point coming instead of finding it already done.
+    event ForwarderProposed(address indexed activeForwarder, address indexed proposed, uint64 activeFrom);
 
     error ZeroWorkflowId();
     error WorkflowAlreadyPinned(bytes32 workflowId);
@@ -104,6 +107,9 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
     error MalformedReportMetadata(uint256 length);
     /// @notice Only the Forwarder may deliver reports.
     error NotForwarder(address caller);
+    error ForwarderUnchanged(address forwarder);
+    error NoPendingForwarder();
+    error ForwarderTimelocked(uint64 activeFrom);
 
     /**
      * Where the workflow ID sits in the metadata header CRE prepends to every report.
@@ -139,6 +145,31 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
      * same-block censorship lever.
      */
     uint256 public constant WORKFLOW_ACTIVATION_DELAY = 24 hours;
+
+    /**
+     * How long a newly proposed Forwarder waits before `onReport` will accept it (sec. 2.18gz-fwd).
+     *
+     * 🔴 WHY THIS EXISTS: `setForwarder` WAS THE UNGUARDED TWIN OF `pinWorkflow`, AND IT WAS THE
+     * TOTAL BYPASS. Every mitigation §2.15a landed went on the workflow axis - append-only, no
+     * re-pin, a 24-hour delay, fail-open to the predecessor - and this path got none of them. The
+     * surviving attack was ONE transaction: re-point `forwarder` at an EOA, then have it call
+     * `onReport` citing the genuinely pinned workflow id, with any root. The contract could not see
+     * it, because what it checks is which ADDRESS called, and that address had just been chosen.
+     *
+     * ⚠️ AND IT CAPPED THE WHOLE DON STORY AT ONE KEY. `notary_registry/main.go` claims *"no single
+     * operator can substitute a tampered registry snapshot"*; what the code enforced was "not
+     * without emitting an event and waiting an hour" - detection where prevention is claimed, no
+     * matter how many nodes fetch.
+     *
+     * ⛔ THE STRONGER FIX IS NOT AVAILABLE, AND THE REASON IS IN THIS FILE. §2.18cp preferred
+     * verifying DON signatures here; `forwarder`'s own docblock explains why that cannot be built -
+     * THE SIGNATURES NEVER ARRIVE. `onReport(bytes,bytes)` is the entire surface and the metadata is
+     * a fixed 109-byte header with no room for a signature set. Write-once is also ruled out: it was
+     * tried, and it broke Chainlink's documented simulation-to-production migration (sec. 2.18fg).
+     * ⇒ A TIMELOCK IS WHAT IS LEFT, and it is the same instrument `pinWorkflow` already uses for the
+     * same kind of act - changing which code, or which address, this anchor believes.
+     */
+    uint256 public constant FORWARDER_ACTIVATION_DELAY = 24 hours;
 
     // Same BN254/SNARK scalar field every other statement key in this fusion is reduced into
     // (Entrypoint._aspStatementKey, EvidenceRegistry.BABY_JUB_JUB_PRIME_FIELD) - duplicated
@@ -195,6 +226,17 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
      *      silently reinterpret existing state.
      */
     address public forwarder;
+
+    /**
+     * The proposed Forwarder and the moment it becomes acceptable - APPENDED, per the storage note
+     * on `forwarder` above (UUPS, no gap, so new variables may only go at the end).
+     *
+     * `forwarder` keeps its meaning: the address `onReport` accepts. These two are the pending
+     * change, and `activeForwarder()` resolves between them so a forgotten `promoteForwarder` call
+     * cannot stall publication once the delay has elapsed.
+     */
+    address public pendingForwarder;
+    uint64 public pendingForwarderActiveFrom;
 
     /// Full leaf set for every published snapshot - the on-chain data-availability layer
     /// `_computeRoot`'s output is checked against. Anyone can rebuild and independently re-verify
@@ -291,8 +333,62 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
      */
     function setForwarder(address forwarder_) external onlyRole(OWNER_ROLE) {
         if (forwarder_ == address(0)) revert ZeroAddress();
-        emit ForwarderSet(forwarder, forwarder_);
-        forwarder = forwarder_;
+        // Re-proposing the CURRENT forwarder would reset nothing and mean nothing, but re-proposing
+        // a PENDING one would restart its clock - the same quiet-re-arm `pinWorkflow` refuses. Both
+        // are rejected by comparing against the address that is actually in force.
+        if (forwarder_ == activeForwarder()) revert ForwarderUnchanged(forwarder_);
+
+        pendingForwarder = forwarder_;
+        pendingForwarderActiveFrom = uint64(block.timestamp + FORWARDER_ACTIVATION_DELAY);
+        emit ForwarderProposed(activeForwarder(), forwarder_, pendingForwarderActiveFrom);
+    }
+
+    /**
+     * @notice Make the pending Forwarder the stored one, once its delay has elapsed.
+     *
+     * @dev PERMISSIONLESS BY DESIGN, and it is the same reasoning `Registration2.revokeCertificate`
+     *      uses: this cannot decide anything. It can only enact what the timelock already settled,
+     *      and its precondition - `block.timestamp >= pendingForwarderActiveFrom` - is a fact the
+     *      contract reads rather than a judgement somebody makes. Gating it on `OWNER_ROLE` would
+     *      add an authority to an operation that has no discretion in it.
+     *
+     * @dev ⚠️ CALLING IT IS OPTIONAL, WHICH IS WHY THE GATE DOES NOT DEPEND ON IT.
+     *      `activeForwarder()` resolves the pending value on its own once the delay passes, so a
+     *      forwarder nobody promotes still works. This exists so the STORED state stops disagreeing
+     *      with the effective one - a `forwarder` slot left naming a superseded address is exactly
+     *      the sort of stale reading that gets quoted as current.
+     */
+    function promoteForwarder() external {
+        if (pendingForwarder == address(0)) revert NoPendingForwarder();
+        if (block.timestamp < pendingForwarderActiveFrom) revert ForwarderTimelocked(pendingForwarderActiveFrom);
+
+        emit ForwarderSet(forwarder, pendingForwarder);
+        forwarder = pendingForwarder;
+        pendingForwarder = address(0);
+        pendingForwarderActiveFrom = 0;
+    }
+
+    /**
+     * @notice The address `onReport` accepts right now.
+     *
+     * @dev FAILS OPEN TO THE PREDECESSOR, exactly as `activeWorkflowId` does: a proposed forwarder
+     *      does not displace the working one until its delay elapses, so a re-point cannot silence
+     *      the registry in the meantime. Inaction and a contested change both leave publication
+     *      running on the previous address.
+     *
+     * @dev ⚠️ ZERO BEFORE THE FIRST FORWARDER ACTIVATES, AND THAT IS A DEPLOYMENT FACT WORTH
+     *      PLANNING FOR: `onReport` compares unconditionally, so an unset forwarder accepts NOBODY
+     *      and the first snapshot cannot land until `FORWARDER_ACTIVATION_DELAY` after the first
+     *      `setForwarder`. Deliberately NOT special-cased to activate the first one immediately - a
+     *      branch that skips the timelock is a branch someone can be argued into reaching, and
+     *      fail-closed is the right direction for a publication path. Set the forwarder as the first
+     *      step of deployment and the delay runs while the rest of it happens.
+     */
+    function activeForwarder() public view returns (address) {
+        if (pendingForwarder != address(0) && block.timestamp >= pendingForwarderActiveFrom) {
+            return pendingForwarder;
+        }
+        return forwarder;
     }
 
     /**
@@ -359,7 +455,7 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
     /// the result read `snapshots[registryId]` or the `SnapshotAnchored` event, both of which are
     /// what an off-chain consumer has to use regardless.
     function onReport(bytes calldata metadata, bytes calldata report) external override {
-        if (msg.sender != forwarder) revert NotForwarder(msg.sender);
+        if (msg.sender != activeForwarder()) revert NotForwarder(msg.sender);
 
         // Length-checked before slicing: a short header would otherwise read whatever follows it,
         // and an identity check that compares the WRONG 32 bytes fails in exactly the direction

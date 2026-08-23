@@ -70,6 +70,11 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
 
     vm.prank(admin);
     anchor.setForwarder(postman);
+    // 🔴 THE SET IS A PROPOSAL NOW, NOT A SWITCH (sec. 2.18gz-fwd). Every test below publishes, so
+    // every one needs the forwarder actually in force — warp past the delay and promote, which is
+    // also the shape a real deployment has to follow.
+    vm.warp(block.timestamp + anchor.FORWARDER_ACTIVATION_DELAY());
+    anchor.promoteForwarder();
   }
 
   function _expectedKey(bytes32 registryId_, uint256 index_) internal view returns (bytes32) {
@@ -424,7 +429,18 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
 
     vm.prank(admin);
     anchor.setForwarder(address(0xBEEF));
+
+    // 🔴 THE RE-POINT DOES NOT TAKE EFFECT IN THIS BLOCK, AND THAT IS THE FIX. Same-block was the
+    // total bypass: re-point at an EOA and publish from it in one transaction.
+    assertEq(anchor.activeForwarder(), postman, 'the re-point took effect immediately');
+    assertEq(anchor.pendingForwarder(), address(0xBEEF), 'the proposal was not recorded');
+
+    vm.warp(block.timestamp + anchor.FORWARDER_ACTIVATION_DELAY());
+    assertEq(anchor.activeForwarder(), address(0xBEEF), 'the delay elapsed and it is still not live');
+
+    anchor.promoteForwarder();
     assertEq(anchor.forwarder(), address(0xBEEF), 'the forwarder was not re-pointed');
+    assertEq(anchor.pendingForwarder(), address(0), 'the pending slot was not cleared');
   }
 
   /// The re-point must actually MOVE the authority, not merely record a new address - the old
@@ -433,6 +449,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
   function test_repointingRevokesTheOldForwarder() public {
     vm.prank(admin);
     anchor.setForwarder(address(0xBEEF));
+    vm.warp(block.timestamp + anchor.FORWARDER_ACTIVATION_DELAY());
 
     vm.prank(postman); // the ADDRESS THAT USED TO BE the forwarder
     vm.expectRevert(abi.encodeWithSelector(RegistrySourceAnchor.NotForwarder.selector, postman));
@@ -519,6 +536,11 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     );
     vm.prank(admin);
     fresh_.setForwarder(postman);
+    // The forwarder gate runs BEFORE the workflow gate, so the forwarder has to be genuinely in
+    // force or this test proves the wrong refusal — it would pass on `NotForwarder` while claiming
+    // to be about `NoActiveWorkflow`.
+    vm.warp(block.timestamp + fresh_.FORWARDER_ACTIVATION_DELAY());
+    fresh_.promoteForwarder();
 
     bytes32[] memory leaves_ = new bytes32[](1);
     leaves_[0] = keccak256('a');
@@ -668,5 +690,115 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     vm.prank(postman);
     vm.expectRevert(RegistrySourceAnchor.LeavesNotStrictlySorted.selector);
     anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(registryId, leaves));
+  }
+
+  /*
+   * ════════════════════════════════════════════════════════════════════════════════════════
+   *   sec. 2.18gz-fwd — THE FORWARDER TIMELOCK. `setForwarder` WAS THE TOTAL BYPASS.
+   *
+   *   Every mitigation §2.15a landed went on the WORKFLOW axis; `setForwarder` got none of them,
+   *   and the surviving attack was one transaction: re-point at an EOA, then publish from it
+   *   citing the genuinely pinned workflow id. The contract could not see it, because what it
+   *   checks is which ADDRESS called and that address had just been chosen.
+   * ════════════════════════════════════════════════════════════════════════════════════════
+   */
+
+  /// 🔴 THE TEST THIS WHOLE CHANGE EXISTS FOR. One transaction re-points, the next publishes — and
+  /// it must now fail. If this ever passes, the anchor is back to one owner key with no delay, and
+  /// `notary_registry/main.go`'s "no single operator can substitute a tampered snapshot" is false
+  /// again regardless of how many DON nodes fetch.
+  function test_theOneTransactionBypassIsClosed() public {
+    address evilEoa_ = address(0xE0A);
+
+    vm.prank(admin);
+    anchor.setForwarder(evilEoa_);
+
+    // Same block: the EOA holds a genuine pin and a well-formed header, and is still refused.
+    vm.prank(evilEoa_);
+    vm.expectRevert(abi.encodeWithSelector(RegistrySourceAnchor.NotForwarder.selector, evilEoa_));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('fabricated'))));
+
+    assertEq(anchor.snapshotCount(NOTARY_REGISTRY), 0, 'a fabricated snapshot landed');
+  }
+
+  /// ⚠️ AND THE WINDOW IS NOT A BLACKOUT. `activeWorkflowId` fails open to its predecessor and this
+  /// must too, or a re-point becomes a same-block CENSORSHIP lever instead of a takeover one.
+  function test_theOldForwarderKeepsPublishingDuringTheWindow() public {
+    vm.prank(admin);
+    anchor.setForwarder(address(0xBEEF));
+
+    vm.prank(postman);
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('y'))));
+    assertEq(anchor.snapshotCount(NOTARY_REGISTRY), 1, 'the incumbent was silenced by a proposal');
+  }
+
+  /// The delay is the whole instrument, so it is asserted rather than assumed — and asserted one
+  /// second SHORT of it, which is where an off-by-one would live.
+  function test_promoteIsRefusedUntilTheDelayElapses() public {
+    vm.prank(admin);
+    anchor.setForwarder(address(0xBEEF));
+    uint64 activeFrom_ = anchor.pendingForwarderActiveFrom();
+
+    vm.warp(activeFrom_ - 1);
+    vm.expectRevert(abi.encodeWithSelector(RegistrySourceAnchor.ForwarderTimelocked.selector, activeFrom_));
+    anchor.promoteForwarder();
+    assertEq(anchor.activeForwarder(), postman, 'it went live a second early');
+
+    vm.warp(activeFrom_);
+    anchor.promoteForwarder();
+    assertEq(anchor.activeForwarder(), address(0xBEEF), 'it did not go live on the boundary');
+  }
+
+  /// ⚠️ PROMOTION IS PERMISSIONLESS BY DESIGN — it decides nothing, it only enacts what the
+  /// timelock already settled, and its precondition is a timestamp the contract reads. Gating it on
+  /// OWNER_ROLE would add an authority to an operation with no discretion in it.
+  function test_anyoneMayPromoteOnceTheDelayHasElapsed() public {
+    vm.prank(admin);
+    anchor.setForwarder(address(0xBEEF));
+    vm.warp(block.timestamp + anchor.FORWARDER_ACTIVATION_DELAY());
+
+    vm.prank(stranger);
+    anchor.promoteForwarder();
+    assertEq(anchor.forwarder(), address(0xBEEF), 'a stranger could not enact the settled change');
+  }
+
+  /// 🔑 AND A FORGOTTEN PROMOTION CANNOT STALL PUBLICATION. `activeForwarder` resolves the pending
+  /// value on its own, so the new forwarder works whether or not anybody calls `promoteForwarder`.
+  /// Without this the housekeeping call would be a liveness dependency dressed as a convenience.
+  function test_anUnpromotedForwarderStillWorksOnceItsDelayPassed() public {
+    vm.prank(admin);
+    anchor.setForwarder(address(0xBEEF));
+    vm.warp(block.timestamp + anchor.FORWARDER_ACTIVATION_DELAY());
+
+    assertEq(anchor.forwarder(), postman, 'the stored slot should still name the predecessor');
+
+    vm.prank(address(0xBEEF));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('z'))));
+    assertEq(anchor.snapshotCount(NOTARY_REGISTRY), 1, 'an unpromoted forwarder could not publish');
+  }
+
+  /// Re-proposing the address already in force is refused — it would be a no-op that emits a
+  /// `ForwarderProposed` a watcher has to investigate, and re-proposing a PENDING one would restart
+  /// its clock, which is the quiet re-arm `pinWorkflow` refuses for the same reason.
+  function test_reproposingTheActiveForwarderIsRefused() public {
+    vm.prank(admin);
+    vm.expectRevert(abi.encodeWithSelector(RegistrySourceAnchor.ForwarderUnchanged.selector, postman));
+    anchor.setForwarder(postman);
+  }
+
+  function test_promoteWithNothingPendingIsRefused() public {
+    vm.expectRevert(RegistrySourceAnchor.NoPendingForwarder.selector);
+    anchor.promoteForwarder();
+  }
+
+  /// The proposal is ANNOUNCED with both addresses and the moment it becomes effective — the whole
+  /// value of the window is that a watcher sees the re-point coming rather than finding it done.
+  function test_aProposalIsAnnouncedWithItsActivationTime() public {
+    vm.expectEmit(true, true, false, true, address(anchor));
+    emit RegistrySourceAnchor.ForwarderProposed(
+      postman, address(0xBEEF), uint64(block.timestamp + anchor.FORWARDER_ACTIVATION_DELAY())
+    );
+    vm.prank(admin);
+    anchor.setForwarder(address(0xBEEF));
   }
 }

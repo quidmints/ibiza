@@ -165,6 +165,35 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
       provable without publishing the claimant's entry — settle this first, it is the hard part.
       🔗 Prerequisite: the `setForwarder` item above. "No fabrication possible" is the premise this
       design rests on, and it is not currently true.
+- [ ] 🔴 **ONLY ONE WORKFLOW CAN EVER PUBLISH, AND TWO NEED TO — PINNING ONE SILENTLY DISABLES THE
+      OTHER** (found 2026-08-24 answering *"how does the contract check that the DON is running the
+      latest workflow"*).
+      **`activeWorkflowId()` returns exactly ONE id** — it scans `workflowVersions` backwards and
+      returns the newest whose `activeFrom` has elapsed — and `onReport` requires
+      `reported_ == active_`. So the anchor accepts reports from a single workflow at a time.
+      ⚠️ **BUT TWO WORKFLOWS WRITE ON-CHAIN**: `cre/notary_registry/main.go` and
+      `cre/sanctions_lists/main.go` (checked; `icao_master_list` has no write path, which is its own
+      booked item). They are separate Go modules producing separate binaries, and a workflow id is
+      `hash(binary, config)` — so **two distinct ids, one accepted.** Pin the sanctions workflow and
+      every notary report reverts `UnpinnedWorkflow`, and vice versa.
+      ⇒ **AND IT CONTRADICTS THE CONTRACT'S OWN DESIGN INTENT.** Its header says snapshots are *"keyed
+      by `registryId` rather than hardwired to one list"* because *"more are expected"*. The data
+      model is many registries; the workflow gate is one. The two were never reconciled.
+      ⚠️ **IT WILL PRESENT AS "THE SANCTIONS ROOT STOPPED UPDATING"**, days after the pin that caused
+      it, with a revert reason naming a workflow id nobody recognises.
+      ▶️ **FIX: PIN PER `registryId`.** `activeWorkflowId(bytes32 registryId)`, so each list names the
+      code entitled to publish it — which is what the pin was always for. ⚠️ **STORAGE: the file
+      commits to append-only (UUPS, no gap), so `workflowVersions` cannot change type in place.**
+      Either append `mapping(bytes32 => WorkflowVersion[])` and treat the existing array as a
+      registry-agnostic fallback, or — if nothing is deployed yet, which the zeroed `CONTRACTS` and
+      the unwritten deployment sequence both suggest — change it outright and say so. **That is a
+      deployment-state question, not a design one; settle it before writing the code.**
+      📌 Answers the second half of the same question: **the contract cannot check what the DON is
+      RUNNING.** It checks what the report CLAIMS, and the claim is backed by DON signatures verified
+      at the Forwarder. Pin a new version and the old one stops being accepted after
+      `WORKFLOW_ACTIVATION_DELAY`, so **deploy the new workflow to the DON FIRST, then pin** — pinning
+      first buys a 24-hour window and then a stall.
+
 - [ ] 🔑 **THERE ARE NO UNSIGNED SOURCES — AND THAT IS THE ROOT FIX THAT DELETES THE FORWARDER
       ENTIRELY** (owner, 2026-08-24: *"there is an even more elegant fix and there should be no
       unsigned sources"*).

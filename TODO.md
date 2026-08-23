@@ -165,6 +165,49 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
       provable without publishing the claimant's entry — settle this first, it is the hard part.
       🔗 Prerequisite: the `setForwarder` item above. "No fabrication possible" is the premise this
       design rests on, and it is not currently true.
+- [ ] 🔑 **THERE ARE NO UNSIGNED SOURCES — AND THAT IS THE ROOT FIX THAT DELETES THE FORWARDER
+      ENTIRELY** (owner, 2026-08-24: *"there is an even more elegant fix and there should be no
+      unsigned sources"*).
+      ⭐ **THE OBSERVATION THAT REFRAMES EVERYTHING: "unsigned source" IS A CATEGORY THAT DOES NOT
+      EXIST.** OFAC, the Ukrainian notary registry, the ICAO PKD — every one is served over **TLS**,
+      and the server's certificate chain SIGNS THE SESSION. The signature is already there; it is
+      simply not carried to the chain. I had split sources into "source-signed (ICAO) ⇒ no authority
+      needed" and "unsigned (OFAC, notary) ⇒ the DON must attest". **That split is wrong. The second
+      category is empty.**
+      ⇒ **IF THE REPORT CARRIES A PROOF THAT HOST X's CERTIFICATE AUTHENTICATED THESE BYTES AT TIME
+      T, THE CALLER BECOMES IRRELEVANT.** `forwarder`, `NotForwarder`, `setForwarder`, the
+      `FORWARDER_ACTIVATION_DELAY` I just added, `promoteForwarder`, and `pinWorkflow`'s role in
+      CORRECTNESS all delete. **Publication becomes permissionless**, and the DON drops to what it is
+      actually good for — **liveness, not correctness**. That is the split §2.18cu's polarity argument
+      implies and this is what makes it real rather than asserted.
+      🔴 **SO THE TIMELOCK I LANDED (`499de9d`) IS THE CLAMP, AND THIS IS THE ROOT** — standing rule
+      17, a root fix makes the previous fix DELETABLE. Keep the timelock until this lands: the
+      one-transaction bypass is real today and a circuit is not a week's work. But do not mistake it
+      for the answer, and delete it when this arrives rather than leaving both.
+      ✅ **AND MOST OF THE MACHINERY IS ALREADY BUILT HERE, WHICH IS WHY THIS IS CHEAPER THAN IT
+      SOUNDS.** X.509 chain verification IS the passport capability pointed at a different PKI:
+      `register_identity/src/main.nr` already verifies **CSCA → DSC → SOD** across 88 profiles, and
+      `noir_dl_lib` carries `rsa.nr` (PKCS#1 v1.5), `rsa_pss.nr`, `sha1/224/384/512.nr`, and
+      `big_curve`/`bignum`/`sigver` for ECDSA over arbitrary curves. **A TLS server chain is RSA or
+      ECDSA over P-256/P-384 with SHA-256/384 — every one of those primitives is present and
+      exercised.** Do not scope this as new cryptography.
+      ▶️ **WHAT IS GENUINELY NEW, and it is the transcript half, not the certificate half:**
+        1. **Binding the RESPONSE BYTES to the session.** A verified cert chain proves who the server
+           is; it does not prove what it sent. That needs the handshake-key derivation and AEAD
+           transcript — the TLSNotary/zkTLS part, and the real work.
+        2. **Anchoring the CA roots.** One authority survives, and it is the **Web PKI** — the trust
+           root of the entire internet rather than one owner key. Not zero, and say so plainly rather
+           than claiming trustlessness.
+        3. **Freshness.** Bind `T` and reject stale transcripts, or an old snapshot replays as current.
+      ⭐ **ONE SIMPLIFICATION WORTH NAMING, because it makes this far easier than the usual zkTLS
+      case: THE DATA IS PUBLIC.** Standard TLS notarization spends most of its complexity hiding the
+      response from the notary while proving things about it. **We do not need to hide anything** —
+      OFAC's list is published. So the selective-disclosure machinery drops out and what remains is
+      authentication only.
+      ⚠️ **THIS SUPERSEDES THE "source-signed vs unsigned" FRAMING WHEREVER IT APPEARS**, including
+      the ICAO-path item below and sec. 4's *"permissionless for unsigned sources"* — that phrasing
+      encodes the empty category. Every path is the same path once the transcript is proven.
+
 - [ ] 🔴 **A SECURITY ARGUMENT RESTING ON AN UNBUILT PREMISE — `RegistrySourceAnchor.sol:128-130`.**
       It explains why the snapshot path needs no contest window: *"Once each DON node verifies the
       register's TLS session inside the workflow, fabricated DATA becomes impossible rather than

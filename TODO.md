@@ -191,6 +191,36 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
       `big_curve`/`bignum`/`sigver` for ECDSA over arbitrary curves. **A TLS server chain is RSA or
       ECDSA over P-256/P-384 with SHA-256/384 — every one of those primitives is present and
       exercised.** Do not scope this as new cryptography.
+      ⛔ **DO NOT ROLL OUR OWN** (owner, 2026-08-24: *"chainlink CRE workflows are extendable with
+      external modules... im sure someone on github already did TLS"* — correct on both).
+        * **TLSNotary** (`github.com/tlsnotary/tlsn`) — the mature Rust implementation. Prover and
+          Verifier run **MPC-TLS** together during the session; the Verifier acts as **Attestor**,
+          and the Prover then makes a presentation *"which can be verified by anyone who trusts the
+          Attestor"*.
+        * **DECO** — Chainlink's OWN ZKP+TLS oracle protocol (Ari Juels et al.), and CRE is
+          Chainlink's orchestration layer, so DECO-inside-CRE is the vendor-native path. Check it
+          before reaching for anything else.
+      🔴 **AND THE SEARCH CORRECTED MY CLAIM THAT THIS "DELETES THE FORWARDER". IT DEPENDS ENTIRELY
+      ON WHERE THE PROOF LANDS, and these are two different projects:**
+        * **(a) TLS verified INSIDE the workflow.** DON nodes attest; the report still arrives via
+          the Forwarder. This makes `RegistrySourceAnchor.sol:128-130`'s claim TRUE — fabricated
+          data becomes impossible rather than detectable — and is the cheap version. **It does NOT
+          remove the Forwarder, and the timelock is still load-bearing under it.**
+        * **(b) The ATTESTATION REACHES THE CONTRACT.** ⭐ **This is available, and the trick is that
+          the DON signatures are not the only payload: `onReport(bytes metadata, bytes report)` —
+          the METADATA is a fixed 109-byte header we cannot extend, but the REPORT IS OURS TO
+          DEFINE.** Put the TLSNotary presentation in it and verify the attestor signature on-chain,
+          and data authenticity stops depending on who called. **Then the Forwarder, `NotForwarder`,
+          `setForwarder` and the timelock all delete.**
+      ⚠️ **(b) DOES NOT REACH ZERO AUTHORITIES, AND SAYING SO IS THE POINT.** TLSNotary is
+      attestor-based by construction — verification is *"by anyone who trusts the Attestor"*. So (b)
+      swaps "trust the DON's plain HTTP fetch" for "trust an attestor set's MPC-TLS attestation".
+      That is a real gain ONLY IF THE ATTESTOR SET IS INDEPENDENT OF THE DON; if the DON attests to
+      itself the argument is circular and nothing was bought.
+      ❓ **UNVERIFIED, AND IT DECIDES THE ON-CHAIN COST:** which signature scheme and curve the
+      attestor uses. If secp256k1/P-256 the verification is `ecrecover` or the ECDSA the passport
+      circuits already do; anything exotic changes the estimate. **Read the tlsn source, not the
+      docs — the protocol pages did not say.**
       ▶️ **WHAT IS GENUINELY NEW, and it is the transcript half, not the certificate half:**
         1. **Binding the RESPONSE BYTES to the session.** A verified cert chain proves who the server
            is; it does not prove what it sent. That needs the handshake-key derivation and AEAD

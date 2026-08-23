@@ -163,6 +163,27 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
       load-bearing, and `_notaryTree` replaced two mappings *because they were ENUMERABLE*. A pending
       claim that names a register entry in the clear re-opens exactly that. The contradiction must be
       provable without publishing the claimant's entry — settle this first, it is the hard part.
+      ✅ **SETTLED 2026-08-24, AND THE ANSWER IS THAT IT CANNOT BE BUILT AGAINST THE CURRENT ROOT.**
+      Proving "my entry is ABSENT" without naming it is a non-membership proof, and
+      `RegistrySourceAnchor._computeRoot` cannot support one. Both halves checked in the code:
+        * **leaves ARE strictly sorted** — `leaves_[i_] <= leaves_[i_ - 1]` reverts
+          `LeavesNotStrictlySorted`, so an ordering exists at the leaf level;
+        * **but internal nodes use `_hashSortedPair`** (`a < b ? H(a,b) : H(b,a)`), which is
+          COMMUTATIVE, so a proof path does not reveal whether a sibling sat left or right.
+      ⇒ **Bracketing is therefore unsound**: you can prove a leaf is IN the tree, but you cannot
+      prove two leaves are ADJACENT, and adjacency is the whole content of a sorted-tree absence
+      proof. The commutative hash destroys exactly the positional information the proof needs.
+      🔗 ⇒ **THIS IS DOWNSTREAM OF AN ITEM ALREADY BOOKED FOR THE SANCTIONS WORK — one change serves
+      both.** *"CRE publishes the identifier set as a Poseidon SMT keyed by the leaf hash, not a
+      sorted list"* is the prerequisite; an SMT gives non-membership by construction, and it keeps
+      the dedup that `LeavesNotStrictlySorted` currently provides (one leaf per key, structurally).
+      **Do the SMT root first. The pending-claim path is not independently buildable.**
+      ▶️ **AND WHEN IT IS BUILT, BE HONEST ABOUT WHAT THE CLAIM IS.** A ZK absence proof yields a
+      SIGNAL, not evidence: *"some passport-holder asserts the parse dropped them"*, with a nullifier
+      and no name. That is still the entire point — **silence becomes a visible, counted alarm**, and
+      the count is a health metric for the parser. Turning a signal into an actionable finding needs
+      selective disclosure under dispute, which is `court.sol`'s transcription-fidelity remit and is
+      booked. ⇒ Three items, one chain: **SMT root → anonymous absence claim → Court on disclosure.**
       🔗 Prerequisite: the `setForwarder` item above. "No fabrication possible" is the premise this
       design rests on, and it is not currently true.
 - [ ] ⭐ **CONFIDENTIAL HTTP IS THE PLUG-IN — TEE-BACKED FETCH, CHAINLINK'S OWN, NOTHING ROLLED**

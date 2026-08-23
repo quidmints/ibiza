@@ -90,9 +90,22 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
         uint64 activeFrom;
     }
 
-    WorkflowVersion[] public workflowVersions;
+    /**
+     * PINNED PER `registryId`, NOT GLOBALLY (sec. 2.18gz-wf).
+     *
+     * 🔴 IT WAS ONE LIST FOR THE WHOLE CONTRACT, AND THAT SILENTLY DISABLED EVERY REGISTRY BUT ONE.
+     * `activeWorkflowId()` returned a single id — the newest activated — and `onReport` demanded
+     * equality, so exactly one workflow could ever publish. But `cre/notary_registry` and
+     * `cre/sanctions_lists` BOTH write on-chain, as separate binaries with separate ids. Pinning
+     * one made every report from the other revert `UnpinnedWorkflow`, days later, as "the sanctions
+     * root stopped updating".
+     * ⇒ It also contradicted this contract's own header, which says snapshots are keyed by
+     * `registryId` *"rather than hardwired to one list"* because *"more are expected"*. The data
+     * model was many registries; the workflow gate was one. Now both are per-registry.
+     */
+    mapping(bytes32 => WorkflowVersion[]) public workflowVersions;
 
-    event WorkflowPinned(bytes32 indexed workflowId, uint256 index, uint64 activeFrom);
+    event WorkflowPinned(bytes32 indexed registryId, bytes32 indexed workflowId, uint256 index, uint64 activeFrom);
     /// @notice Carries the PREVIOUS address too, so a re-point is visible as a re-point rather than
     ///         having to be inferred from a second identical-looking event.
     event ForwarderSet(address indexed previousForwarder, address indexed forwarder);
@@ -278,22 +291,25 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
      * @notice Pin the CRE workflow whose output this anchor accepts.
      * @dev Append-only and timelocked; reuses OWNER_ROLE rather than adding a publisher authority.
      */
-    function pinWorkflow(bytes32 workflowId_) external onlyRole(OWNER_ROLE) returns (uint256 index_) {
+    function pinWorkflow(bytes32 registryId_, bytes32 workflowId_)
+        external onlyRole(OWNER_ROLE) returns (uint256 index_)
+    {
         if (workflowId_ == bytes32(0)) revert ZeroWorkflowId();
+        WorkflowVersion[] storage versions_ = workflowVersions[registryId_];
 
         // Re-pinning the SAME id would reset its timelock, which is how a contested version gets
         // quietly re-armed. The list is append-only in both senses: nothing is removed, and nothing
         // already named can be renamed.
-        for (uint256 i = 0; i < workflowVersions.length; ++i) {
-            if (workflowVersions[i].workflowId == workflowId_) revert WorkflowAlreadyPinned(workflowId_);
+        for (uint256 i = 0; i < versions_.length; ++i) {
+            if (versions_[i].workflowId == workflowId_) revert WorkflowAlreadyPinned(workflowId_);
         }
 
-        index_ = workflowVersions.length;
+        index_ = versions_.length;
         uint64 activeFrom_ = uint64(block.timestamp + WORKFLOW_ACTIVATION_DELAY);
-        workflowVersions.push(
+        versions_.push(
             WorkflowVersion({workflowId: workflowId_, pinnedAt: uint64(block.timestamp), activeFrom: activeFrom_})
         );
-        emit WorkflowPinned(workflowId_, index_, activeFrom_);
+        emit WorkflowPinned(registryId_, workflowId_, index_, activeFrom_);
     }
 
     /**
@@ -395,16 +411,17 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
         return interfaceId_ == type(IReceiver).interfaceId || super.supportsInterface(interfaceId_);
     }
 
-    function activeWorkflowId() public view returns (bytes32) {
-        for (uint256 i = workflowVersions.length; i > 0; --i) {
-            WorkflowVersion storage v_ = workflowVersions[i - 1];
+    function activeWorkflowId(bytes32 registryId_) public view returns (bytes32) {
+        WorkflowVersion[] storage versions_ = workflowVersions[registryId_];
+        for (uint256 i = versions_.length; i > 0; --i) {
+            WorkflowVersion storage v_ = versions_[i - 1];
             if (v_.activeFrom <= block.timestamp) return v_.workflowId;
         }
         return bytes32(0);
     }
 
-    function workflowVersionCount() external view returns (uint256) {
-        return workflowVersions.length;
+    function workflowVersionCount(bytes32 registryId_) external view returns (uint256) {
+        return workflowVersions[registryId_].length;
     }
 
     /// @notice CRE report-callback entrypoint: decodes a (bytes32 registryId, bytes32[] leaves)
@@ -458,12 +475,16 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
         // that looks like a healthy rejection.
         if (metadata.length < REPORT_METADATA_LENGTH) revert MalformedReportMetadata(metadata.length);
 
+        // DECODED BEFORE THE WORKFLOW CHECK, because the pin is per-`registryId` and the registry is
+        // in the report rather than the header. Decoding is not a trust step - the authorization is
+        // the forwarder comparison above, and the workflow check is still what gates publication.
+        (bytes32 registryId_, bytes32[] memory leavesMem_) = abi.decode(report, (bytes32, bytes32[]));
+
         bytes32 reported_ = bytes32(metadata[REPORT_WORKFLOW_ID_OFFSET:REPORT_WORKFLOW_ID_OFFSET + 32]);
-        bytes32 active_ = activeWorkflowId();
+        bytes32 active_ = activeWorkflowId(registryId_);
         if (active_ == bytes32(0)) revert NoActiveWorkflow();
         if (reported_ != active_) revert UnpinnedWorkflow(reported_, active_);
 
-        (bytes32 registryId_, bytes32[] memory leavesMem_) = abi.decode(report, (bytes32, bytes32[]));
         _publishSnapshot(registryId_, leavesMem_);
     }
 
@@ -477,7 +498,7 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
         // snapshots are attributable to auditable code, so publishing must be impossible until a
         // version is active. Without this line `pinWorkflow` would be a public statement of intent
         // with no bearing on what the anchor accepts - the shape sec. 2.18bg calls theatre.
-        if (activeWorkflowId() == bytes32(0)) revert NoActiveWorkflow();
+        if (activeWorkflowId(registryId_) == bytes32(0)) revert NoActiveWorkflow();
 
         root_ = _computeRoot(leaves_);
 

@@ -168,7 +168,7 @@ contract TitleLedgerTest is Test, CreReportMetadata {
   /// exactly what the pin exists to refuse.
   function _activateWorkflow(RegistrySourceAnchor anchor_, address owner_) internal {
     vm.prank(owner_);
-    anchor_.pinWorkflow(keccak256('notary_registry.wasm@test'));
+    anchor_.pinWorkflow(REGISTRY_ID, keccak256('notary_registry.wasm@test'));
     vm.warp(block.timestamp + anchor_.WORKFLOW_ACTIVATION_DELAY() + 1);
   }
 

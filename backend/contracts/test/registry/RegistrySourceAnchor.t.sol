@@ -106,8 +106,14 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
   /// Every test that publishes needs this now - a snapshot with no auditable workflow behind it is
   /// exactly what the pin exists to refuse.
   function _activateWorkflow(RegistrySourceAnchor anchor_, address owner_) internal {
-    vm.prank(owner_);
-    anchor_.pinWorkflow(keccak256('notary_registry.wasm@test'));
+    // 🔴 PINNED PER REGISTRY SINCE sec. 2.18gz-wf. When the pin was global, one call armed every
+    // registry — which is exactly the defect: pinning for one list silently governed the others.
+    // Tests that publish to a second registry must now arm it too, and three of them failed on
+    // this change for precisely that reason.
+    vm.startPrank(owner_);
+    anchor_.pinWorkflow(NOTARY_REGISTRY, keccak256('notary_registry.wasm@test'));
+    anchor_.pinWorkflow(OTHER_REGISTRY, keccak256('notary_registry.wasm@test'));
+    vm.stopPrank();
     vm.warp(block.timestamp + anchor_.WORKFLOW_ACTIVATION_DELAY() + 1);
   }
 
@@ -561,11 +567,11 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
       )
     );
     vm.prank(admin);
-    fresh_.pinWorkflow(keccak256('v1'));
+    fresh_.pinWorkflow(NOTARY_REGISTRY, keccak256('v1'));
 
-    assertEq(fresh_.activeWorkflowId(), bytes32(0), 'active before its delay elapsed');
+    assertEq(fresh_.activeWorkflowId(NOTARY_REGISTRY), bytes32(0), 'active before its delay elapsed');
     vm.warp(block.timestamp + fresh_.WORKFLOW_ACTIVATION_DELAY() + 1);
-    assertEq(fresh_.activeWorkflowId(), keccak256('v1'), 'never became active');
+    assertEq(fresh_.activeWorkflowId(NOTARY_REGISTRY), keccak256('v1'), 'never became active');
   }
 
   /*
@@ -575,10 +581,10 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
    */
   function test_aNewPinDoesNotSilenceThePreviousVersionDuringItsDelay() public {
     vm.prank(admin);
-    anchor.pinWorkflow(keccak256('v2'));
+    anchor.pinWorkflow(NOTARY_REGISTRY, keccak256('v2'));
 
     assertEq(
-      anchor.activeWorkflowId(),
+      anchor.activeWorkflowId(NOTARY_REGISTRY),
       keccak256('notary_registry.wasm@test'),
       'the previous version stopped working the moment a new one was pinned'
     );
@@ -593,7 +599,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
         RegistrySourceAnchor.WorkflowAlreadyPinned.selector, keccak256('notary_registry.wasm@test')
       )
     );
-    anchor.pinWorkflow(keccak256('notary_registry.wasm@test'));
+    anchor.pinWorkflow(NOTARY_REGISTRY, keccak256('notary_registry.wasm@test'));
   }
 
   /// NO NEW AUTHORITY: pinning reuses OWNER_ROLE. A postman - who may publish snapshots - must not
@@ -601,13 +607,13 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
   function test_pinningIsOwnerOnlyAndNotAvailableToThePostman() public {
     vm.prank(postman);
     vm.expectRevert();
-    anchor.pinWorkflow(keccak256('v3'));
+    anchor.pinWorkflow(NOTARY_REGISTRY, keccak256('v3'));
   }
 
   function test_theZeroWorkflowIdIsRefused() public {
     vm.prank(admin);
     vm.expectRevert(RegistrySourceAnchor.ZeroWorkflowId.selector);
-    anchor.pinWorkflow(bytes32(0));
+    anchor.pinWorkflow(NOTARY_REGISTRY, bytes32(0));
   }
 
   // ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -668,6 +674,11 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
   /// is never passed in; `_computeRoot` derives it, and the fixture's value is only the expectation.
   function test_theGoSnapshotPublishesAndYieldsTheSameRoot() public {
     (bytes32 registryId, bytes32 goRoot, bytes32[] memory leaves) = _sanctionsFixture();
+    // The sanctions fixture publishes to its OWN registryId, which needs its own pin now that the
+    // gate is per-registry — the point of the change.
+    vm.prank(admin);
+    anchor.pinWorkflow(registryId, keccak256('notary_registry.wasm@test'));
+    vm.warp(block.timestamp + anchor.WORKFLOW_ACTIVATION_DELAY() + 1);
     assertEq(leaves.length, 7, 'fixture did not carry the expected leaf count');
 
     vm.prank(postman);
@@ -683,6 +694,11 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
   /// `publishSnapshot` that ignored ordering entirely would pass the test above.
   function test_theGoOrderingIsWhatMakesItPublishable() public {
     (bytes32 registryId, , bytes32[] memory leaves) = _sanctionsFixture();
+    // The sanctions fixture publishes to its OWN registryId, which needs its own pin now that the
+    // gate is per-registry — the point of the change.
+    vm.prank(admin);
+    anchor.pinWorkflow(registryId, keccak256('notary_registry.wasm@test'));
+    vm.warp(block.timestamp + anchor.WORKFLOW_ACTIVATION_DELAY() + 1);
 
     (leaves[0], leaves[1]) = (leaves[1], leaves[0]);
 
@@ -795,5 +811,87 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     );
     vm.prank(admin);
     anchor.setForwarder(address(0xBEEF));
+  }
+
+  /*
+   * ════════════════════════════════════════════════════════════════════════════════════════
+   *   sec. 2.18gz-wf — THE PIN IS PER `registryId`. IT USED TO BE GLOBAL, AND THAT SILENTLY
+   *   DISABLED EVERY REGISTRY BUT ONE.
+   *
+   *   `cre/notary_registry` and `cre/sanctions_lists` both write on-chain as separate binaries
+   *   with separate workflow ids. With one global pin, arming either made every report from the
+   *   other revert `UnpinnedWorkflow` — days later, presenting as "the sanctions root stopped
+   *   updating", with a revert naming an id nobody recognised.
+   * ════════════════════════════════════════════════════════════════════════════════════════
+   */
+
+  /// 🔴 THE TEST THE CHANGE EXISTS FOR: two registries, two workflows, both publishing. Under the
+  /// old global pin the second `pinWorkflow` displaced the first and one of these reverted.
+  function test_twoRegistriesWithDifferentWorkflowsBothPublish() public {
+    RegistrySourceAnchor fresh_ = _freshAnchor();
+    bytes32 wfA_ = keccak256('notary_registry.wasm@v1');
+    bytes32 wfB_ = keccak256('sanctions_lists.wasm@v1');
+
+    vm.startPrank(admin);
+    fresh_.pinWorkflow(NOTARY_REGISTRY, wfA_);
+    fresh_.pinWorkflow(OTHER_REGISTRY, wfB_);
+    vm.stopPrank();
+    vm.warp(block.timestamp + fresh_.WORKFLOW_ACTIVATION_DELAY() + 1);
+
+    vm.startPrank(postman);
+    fresh_.onReport(_metadata(wfA_), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('a'))));
+    fresh_.onReport(_metadata(wfB_), abi.encode(OTHER_REGISTRY, _oneLeafSet(keccak256('b'))));
+    vm.stopPrank();
+
+    assertEq(fresh_.snapshotCount(NOTARY_REGISTRY), 1, 'registry A could not publish');
+    assertEq(fresh_.snapshotCount(OTHER_REGISTRY), 1, 'registry B could not publish');
+  }
+
+  /// ...and the gate still BITES per registry: A's workflow cannot publish B's list.
+  function test_aWorkflowCannotPublishAnotherRegistrysList() public {
+    RegistrySourceAnchor fresh_ = _freshAnchor();
+    bytes32 wfA_ = keccak256('notary_registry.wasm@v1');
+    bytes32 wfB_ = keccak256('sanctions_lists.wasm@v1');
+
+    vm.startPrank(admin);
+    fresh_.pinWorkflow(NOTARY_REGISTRY, wfA_);
+    fresh_.pinWorkflow(OTHER_REGISTRY, wfB_);
+    vm.stopPrank();
+    vm.warp(block.timestamp + fresh_.WORKFLOW_ACTIVATION_DELAY() + 1);
+
+    vm.prank(postman);
+    vm.expectRevert(abi.encodeWithSelector(RegistrySourceAnchor.UnpinnedWorkflow.selector, wfA_, wfB_));
+    fresh_.onReport(_metadata(wfA_), abi.encode(OTHER_REGISTRY, _oneLeafSet(keccak256('x'))));
+  }
+
+  /// An unpinned registry publishes NOTHING, rather than inheriting some other registry's pin.
+  /// Fail-closed per list is the whole point of moving the gate.
+  function test_anUnpinnedRegistryIsRefused() public {
+    RegistrySourceAnchor fresh_ = _freshAnchor();
+    bytes32 wfA_ = keccak256('notary_registry.wasm@v1');
+
+    vm.prank(admin);
+    fresh_.pinWorkflow(NOTARY_REGISTRY, wfA_);
+    vm.warp(block.timestamp + fresh_.WORKFLOW_ACTIVATION_DELAY() + 1);
+
+    assertEq(fresh_.activeWorkflowId(OTHER_REGISTRY), bytes32(0), 'an unpinned registry looks armed');
+
+    vm.prank(postman);
+    vm.expectRevert(RegistrySourceAnchor.NoActiveWorkflow.selector);
+    fresh_.onReport(_metadata(wfA_), abi.encode(OTHER_REGISTRY, _oneLeafSet(keccak256('x'))));
+  }
+
+  /// A fresh anchor with its forwarder live and NO workflow pinned anywhere.
+  function _freshAnchor() internal returns (RegistrySourceAnchor fresh_) {
+    fresh_ = RegistrySourceAnchor(
+      address(
+        new ERC1967Proxy(
+          address(new RegistrySourceAnchor()),
+          abi.encodeCall(RegistrySourceAnchor.initialize, (address(registry), admin))
+        )
+      )
+    );
+    vm.prank(admin);
+    fresh_.setForwarder(postman); // first set is immediate — see the forwarder block above
   }
 }

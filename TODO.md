@@ -193,12 +193,18 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
         3. **DECO is the non-TEE alternative** (three-party handshake, ZK proof about session data,
            oracle verifies without seeing the raw data). Different trust assumption — cryptographic
            rather than hardware. Price both.
-      ⛔ **CUSTOM CAPABILITY AUTHORING IS NOT AVAILABLE TODAY, so do not plan on it.** Chainlink's own
-      wording: pre-built capabilities now, and *"the longer-term plan is to enable anyone to create
-      and deploy their own capabilities"*. The docs have no authoring guide. CRE **is** extensible by
-      design — that part of the owner's note is right — but it is a roadmap item, and building on an
-      unavailable extension point is not a plan. **Confidential HTTP is available and does the job**,
-      which is why it supersedes writing one.
+      ⚠️ **CORRECTION — I CLAIMED "AUTHORING IS NOT AVAILABLE" AND THAT WAS TOO STRONG** (owner:
+      *"authoring isnt open yet would be false"*). It rested on a docs page not mentioning it, which
+      is absence-of-evidence, not evidence. **The mechanism is real and open-source: LOOPP, the
+      node's out-of-process plugin architecture** — `smartcontractkit/chainlink` issue #21635
+      (*"[CRE] Confidential workflow execution"*) describes the engine detecting confidential
+      workflows and *"delegating execution to an enclave via a new LOOP capability"*. ⇒ **The honest
+      split: authoring a capability against LOOPP is open; DEPLOYING one onto Chainlink's production
+      DONs self-serve is the roadmap item.** Two different claims and I ran them together.
+      ⇒ ⭐ **AND IT MAKES ONE OPTION REAL THAT I HAD WRITTEN OFF: IF WE RUN OUR OWN DON, WE CHOOSE
+      THE CAPABILITY SET** — and could author a TLS-notarizing one. Not alien to this team; SPV
+      already operates an enclave fleet. Price it against Confidential HTTP rather than assuming
+      it is out of reach.
       ❓ **STILL UNVERIFIED AND IT BLOCKS ANY QUORUM DESIGN: IS `donId` AUTHENTICATED?** The metadata
       header carries it at offset 37 (4 bytes), and a cross-DON quorum would count distinct ids. **If
       the Forwarder does not bind `donId` to the signing key set that produced the report, one DON

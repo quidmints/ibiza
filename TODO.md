@@ -165,6 +165,46 @@ That is the Polymarket shape: high value, no anchor, apathetic panel.
       provable without publishing the claimant's entry — settle this first, it is the hard part.
       🔗 Prerequisite: the `setForwarder` item above. "No fabrication possible" is the premise this
       design rests on, and it is not currently true.
+- [ ] ⭐ **CONFIDENTIAL HTTP IS THE PLUG-IN — TEE-BACKED FETCH, CHAINLINK'S OWN, NOTHING ROLLED**
+      (owner, 2026-08-24: *"find a trustworthy thing we can plug right into the workflow SDK"* and
+      *"you can write your own capability for CRE, it is extendable"*).
+      🔴 **I CLOSED THIS DOOR TOO EARLY AND WAS WRONG.** I checked the vendored SDK, found three
+      capabilities (`blockchain/evm`, `networking/http`, `scheduler/cron`), and concluded there was
+      "no plug point". **The CRE docs list a fourth: CONFIDENTIAL HTTP.**
+      ✅ **WHAT IT IS, AND WHY IT IS THE ANSWER TO COLLUSION:** the HTTPS request executes **inside a
+      TEE** (Intel SGX / AMD SEV) in a hardened cloud environment, with the DON providing threshold
+      decryption of long-term secrets and **cryptographically verifying enclave integrity**. ⇒ A
+      corrupt NODE OPERATOR cannot fabricate the response, because the fetch happened inside an
+      enclave they can neither read nor tamper with. That is a materially different trust model from
+      `ConsensusIdenticalAggregation`, which only says a majority agreed.
+      🔑 **AND THIS TEAM IS UNUSUALLY WELL PLACED TO EVALUATE IT**, which is worth saying because it
+      is normally the objection: SPV's entire seed-custody design is SGX/SEV sealing, MRENCLAVE
+      binding, attestation and `require_backend_for_role`. **The same caveats we already apply to our
+      own enclaves apply here** — TEE trust is not cryptographic trust, SGX has real breaks, and
+      attestation freshness matters. Evaluate it the way `quid-hop::seed` evaluates a backend, not as
+      a black box.
+      ▶️ **THREE THINGS TO SETTLE BEFORE COMMITTING TO IT:**
+        1. **It is not in the vendored SDK.** `cre-sdk-go` here carries only the three above. Find the
+           capability module and version; this may need an SDK bump.
+        2. **Does the enclave attestation reach OUR CONTRACT, or only the DON?** If only the DON, the
+           Forwarder is still the trust boundary and the timelock still stands. The docs say the DON
+           verifies enclave integrity — which reads like the latter. **Confirm, because it decides
+           whether the Forwarder deletes.**
+        3. **DECO is the non-TEE alternative** (three-party handshake, ZK proof about session data,
+           oracle verifies without seeing the raw data). Different trust assumption — cryptographic
+           rather than hardware. Price both.
+      ⛔ **CUSTOM CAPABILITY AUTHORING IS NOT AVAILABLE TODAY, so do not plan on it.** Chainlink's own
+      wording: pre-built capabilities now, and *"the longer-term plan is to enable anyone to create
+      and deploy their own capabilities"*. The docs have no authoring guide. CRE **is** extensible by
+      design — that part of the owner's note is right — but it is a roadmap item, and building on an
+      unavailable extension point is not a plan. **Confidential HTTP is available and does the job**,
+      which is why it supersedes writing one.
+      ❓ **STILL UNVERIFIED AND IT BLOCKS ANY QUORUM DESIGN: IS `donId` AUTHENTICATED?** The metadata
+      header carries it at offset 37 (4 bytes), and a cross-DON quorum would count distinct ids. **If
+      the Forwarder does not bind `donId` to the signing key set that produced the report, one DON
+      forges k ids and a quorum buys nothing.** The docs do not say. Read `KeystoneForwarder`, not the
+      documentation, before designing on it.
+
 - [ ] 🔴 **ONLY ONE WORKFLOW CAN EVER PUBLISH, AND TWO NEED TO — PINNING ONE SILENTLY DISABLES THE
       OTHER** (found 2026-08-24 answering *"how does the contract check that the DON is running the
       latest workflow"*).

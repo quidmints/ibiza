@@ -820,7 +820,33 @@ derived from the document. What remains is the product decision in items 2-3, no
 ### 2.18db KECCAK vs POSEIDON IS PRINCIPLED - but self-proved non-membership breaks the split (user, 2026-08-04)
 <sub>archive: `TODO-ARCHIVE.md` line 10664</sub>
 
-- [ ] Decide the sanctions root's hash by measuring both sides, AFTER inlining Poseidon. Do not pick
+- [x] ✅ **DECIDED BY THE MEASUREMENT THAT WAS ALREADY SITTING THERE (2026-08-24).** The item asked
+      for a measurement rather than a preference, and `test/registry/SanctionsRootHashCost.t.sol` —
+      which inlines Poseidon, exactly as the item required — answers it. **Run it; do not re-derive:**
+        * keccak pair hash **239 gas** · Poseidon pair hash **29,113 gas** — **121×**
+        * a tree over N leaves is N−1 pair hashes:
+          N=1,000 → keccak **238,761** / Poseidon **29,083,887**;
+          N=17,000 → keccak **4,062,761** / Poseidon **494,891,887**
+        * calldata floor alone at N=17,000: **8,704,000 gas**
+      ⛔ **AN ETHEREUM BLOCK IS 30,000,000 GAS.** A Poseidon root over the OFAC SDN is **~16.5 whole
+      blocks of hashing**, and even 1,000 leaves is a full block. ⇒ **`_computeRoot` CANNOT BE
+      POSEIDON AT ANY REALISTIC LIST SIZE.** Not a tuning question — off by more than an order of
+      magnitude at the smallest plausible input.
+      ⇒ **SO THE POSEIDON SMT ROOT MUST BE ANCHORED AS A CLAIM, NOT COMPUTED**, which is what sec. 4's
+      *"CRE publishes the identifier set as a Poseidon SMT keyed by the leaf hash"* already says. This
+      measurement is why it is the only option rather than a preference.
+      🔑 **AND THAT IS SAFE FOR EXACTLY THE REASON COURT'S REMOVAL RESTS ON: the root is not
+      trusted, it is CHECKABLE.** Keep publishing the full leaf set for data availability so anyone
+      can rebuild the Poseidon SMT off-chain and contradict a wrong root; `ROOT_ACTIVATION_DELAY` is
+      the window to do it in. **Not-computed is not the same as not-verified**, and conflating the two
+      is how this decision gets reopened.
+      ⚠️ **THE REMAINING COST IS DATA AVAILABILITY, ALREADY BOOKED ELSEWHERE.** 8.7M gas of calldata
+      per refresh at SDN scale is real; sec. 2.18dm's *"consider EIP-4844 blobs for the signal
+      calldata at large N"* is the answer, and it now has a second reason to exist.
+      ❓ Still open and NOT settled by this: whether the on-chain keccak root stays ALONGSIDE the
+      anchored Poseidon one. Keeping both costs 4M gas of hashing at SDN scale and buys *"the leaf set
+      provably corresponds to a root this contract derived"*. **Measure whether that property is worth
+      4M gas before assuming either way.**
 
 ### 2.18cz WHAT FOLDS AND WHAT CANNOT - and 7 profiles we are missing (user, 2026-08-04)
 <sub>archive: `TODO-ARCHIVE.md` line 10693</sub>

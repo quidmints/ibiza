@@ -8,6 +8,7 @@ import { ethers } from 'ethers'
 
 import { bootChain, useLocalKey, useExternalWallet, clearSigner } from './boot.ts'
 import { hasRpc } from './eth.ts'
+import { CONTRACTS, setContracts } from './chains.ts'
 import { protectionEnabled, signerKind, PROTECT, sendTx } from './protect.ts'
 import { normaliseKey, evmAddressFromXOnly } from './keys.ts'
 
@@ -74,4 +75,22 @@ test('a write with no signer refuses rather than silently doing nothing', async 
   clearSigner()
   bootChain({ rpcUrl: 'http://127.0.0.1:8545' })
   await assert.rejects(() => sendTx({ to: '0x' + '11'.repeat(20) }), /no signer installed/)
+})
+
+test('addresses are injected at boot, and a malformed one is refused not zeroed', () => {
+  clearSigner()
+  const aux = '0x' + '1'.repeat(40)
+  bootChain({ rpcUrl: 'http://127.0.0.1:8545', contracts: { aux } })
+  assert.strictEqual(CONTRACTS.aux, aux)
+
+  // ⚠️ A typo'd address coerced to ZERO would read as "not deployed" and render an empty screen
+  // — a config bug wearing a chain bug's clothes. It must throw instead.
+  assert.throws(() => setContracts({ basket: '0xnope' }), /not a 20-byte address/)
+  assert.strictEqual(CONTRACTS.basket, '0x0000000000000000000000000000000000000000')
+})
+
+test('unset addresses stay zero, which the read path treats as not-deployed', () => {
+  assert.strictEqual(CONTRACTS.vogue, '0x0000000000000000000000000000000000000000')
+  // and the public token facts are defaulted, not injected
+  assert.match(CONTRACTS.weth, /^0xC02aaA39/)
 })

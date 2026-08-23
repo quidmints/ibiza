@@ -33,50 +33,57 @@ export const CHAIN_HEX = '0x1'
 export const CHAIN_NAME = 'Ethereum'
 export const EXPLORER = 'https://etherscan.io'
 
-// Contract addresses. The BASE layer is the COMMITTED deployment record
-// (evm/deployments/l1.json, written by DeployL1_s on every run — dry-runs
-// included). The SPA is deno-deployed from the commit that carries that file
-// (surfaced in-app as the build stamp, NEXT_PUBLIC_COMMIT), so the running JS
-// is pinned to the recorded deploy. A NEXT_PUBLIC_* env still OVERRIDES per
-// address at build time (the local anvil-fork e2e — spa/.env.local).
-// NOTE: must use STATIC `process.env.NEXT_PUBLIC_*` member access — Next.js only
-// inlines those at build; a dynamic `process.env[k]` is NOT replaced (→ undefined),
-// which would silently zero every address.
+// Contract addresses — SUPPLIED AT RUNTIME, not compiled in.
 //
-// 🔴 PORT NOTE (2026-08-16) — THIS IMPORT IS THE CONCRETE CASE FOR MERGING backend/ INTO SPV.
-// In the SPA, `../../../evm/deployments/l1.json` was a path INSIDE ONE REPO: the deploy record
-// and the app that reads it moved together, by construction. From ibiza's wallet the only way to
-// reach it is through the PINNED submodule, so the addresses this app dials are now the ones
-// frozen at the submodule commit, and a redeploy in SPV does NOT reach the app until somebody
-// bumps the pin. They are byte-identical today (checked); nothing makes them stay that way.
-// ⇒ When the repos merge, this becomes a relative path again and the drift window closes. Until
-// then, BUMP THE SUBMODULE AFTER ANY DEPLOY or the app talks to the previous addresses.
+// 🔴 **THIS USED TO IMPORT SPV's `evm/deployments/l1.json` THROUGH A PINNED SUBMODULE, AND THAT
+// GLUE IS DELETED (2026-08-19).** The import was a build-time dependency on another repo's deploy
+// record: a redeploy in SPV did not reach this app until somebody bumped the submodule, and when
+// the submodule went away the wallet stopped compiling. Owner's call — "bad glue".
 //
-// ⚠️ AND THE OVERRIDES BELOW ARE INERT HERE. `NEXT_PUBLIC_*` is a Next build-time inlining
-// convention; Expo does not do it, so every `process.env.NEXT_PUBLIC_X` is `undefined` and each
-// `ok(...)` falls through to the deployment record. That FAILS SAFE — the recorded address is
-// the right default — but it means the per-address override used by the anvil-fork e2e does not
-// work in the app, and pointing this build at a local fork needs the wallet's own env mechanism
-// (`react-native-dotenv`) wiring in deliberately. Do not assume setting the old var did anything.
-import l1 from '../../../../backend/contracts/lib/SPV/evm/deployments/l1.json'
+// ⇒ **The wallet now has NO build-time dependency on SPV.** Addresses default to the zero address,
+// which every read path already treats as "not deployed" (`eth.ts:readOne` returns null for
+// `ZERO_ADDR`), so an unconfigured app renders empty rather than dialling a wrong contract. The
+// SPV integration comes back as a WIRING step — `bootChain({ contracts })` — once SPV's addresses
+// are ready, with no code change here.
+//
+// ⚠️ The old `process.env.NEXT_PUBLIC_*` overrides are gone with it, and they were already inert:
+// `NEXT_PUBLIC_*` is a Next build-time inlining convention that Expo does not perform, so every
+// one of them read `undefined`. Pointing a build at a local anvil fork is now `setContracts`,
+// which actually works, rather than an env var that silently did nothing.
 const ZERO = '0x0000000000000000000000000000000000000000'
-const ok = (v: string | undefined, fallback: string): string =>
-  v && /^0x[0-9a-fA-F]{40}$/.test(v) ? v : fallback
-const dep = (v: string | undefined): string => ok(v, ZERO)
+
+const isAddress = (v: string | undefined): v is string =>
+  !!v && /^0x[0-9a-fA-F]{40}$/.test(v)
+
 export const CONTRACTS: Contracts = {
-  basket:      ok(process.env.NEXT_PUBLIC_BASKET,       dep(l1.basket)),
-  aux:         ok(process.env.NEXT_PUBLIC_AUX,          dep(l1.aux)),
-  vogue:       ok(process.env.NEXT_PUBLIC_VOGUE,        dep(l1.vogue)),
-  vogueCore:   ok(process.env.NEXT_PUBLIC_VOGUE_CORE,   dep(l1.core)),
-  btcChannels: ok(process.env.NEXT_PUBLIC_BTC_CHANNELS, dep(l1.btcChannels)),
-  levManager:  ok(process.env.NEXT_PUBLIC_LEV_MANAGER,  dep(l1.levManager)),
-  weth:        ok(process.env.NEXT_PUBLIC_WETH,         '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'),
-  // The one BTC ERC20: BitGo WBTC, what Aux.WBTC() returns. Used only as the
-  // V4 pricing leg / SOR inventory — never user-facing (BTC delivery is native).
-  wbtc:        ok(process.env.NEXT_PUBLIC_WBTC,         '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599'),
-  // weETH (ether.fi) — the collateral the weETH-leverage venues pledge. Mainnet
-  // default; env-overridable for the anvil-fork e2e.
-  weeth:       ok(process.env.NEXT_PUBLIC_WEETH,        '0xCd5fE23C85820F7B72D0926FC9b05b43E359b7ee'),
+  // Deployed per-environment; zero until `setContracts` is called.
+  basket: ZERO,
+  aux: ZERO,
+  vogue: ZERO,
+  vogueCore: ZERO,
+  btcChannels: ZERO,
+  levManager: ZERO,
+  // Public token addresses, not deploy records — these are facts about mainnet, so they are
+  // defaulted rather than injected. Override for a fork like any other entry.
+  weth: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
+  // The one BTC ERC20: BitGo WBTC, what Aux.WBTC() returns. Used only as the pricing leg —
+  // never user-facing, since BTC delivery is native.
+  wbtc: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599',
+  // weETH (ether.fi) — the collateral the weETH-leverage venues pledge.
+  weeth: '0xCd5fE23C85820F7B72D0926FC9b05b43E359b7ee',
+}
+
+/// Install deployed addresses. Mutates in place rather than replacing, so modules that imported
+/// `CONTRACTS` keep a live reference — the same reason `PROTECT` is mutated in `protect.ts`.
+///
+/// ⚠️ Malformed entries are REJECTED, not coerced to zero. A typo'd address that silently became
+/// `ZERO` would read as "not deployed" and render an empty screen, which looks like a chain
+/// problem rather than a config one.
+export function setContracts(next: Partial<Contracts>): void {
+  for (const [k, v] of Object.entries(next)) {
+    if (!isAddress(v)) throw new Error(`setContracts: ${k} is not a 20-byte address: ${v}`)
+    ;(CONTRACTS as unknown as Record<string, string>)[k] = v
+  }
 }
 
 // WBTC has 8 decimals. swap-out minOut is denominated in these raw WBTC units
@@ -151,11 +158,16 @@ export const ETH_VENUES: EthVenue[] = [
 // NOTE: static `process.env.NEXT_PUBLIC_*` member access is REQUIRED — Next.js
 // only inlines those at build; a dynamic `process.env[k]` is NOT replaced.
 export interface LevVenue { id: number; label: string; address: string; collateral: 'WETH' | 'weETH'; blurb: string }
+// ⚠️ SAME INERT-ENV PROBLEM AS `CONTRACTS` HAD, AND NOT YET FIXED THE SAME WAY. These read
+// `process.env.NEXT_PUBLIC_LEV_VENUE_*`, which Expo never inlines, so every address is `undefined`
+// and **`LEV_VENUES` is empty in the app today** — the UI correctly shows no lev venues rather
+// than wrong ones. When lev venues are wired, give them the `setContracts` treatment (runtime
+// injection) rather than restoring env reads that cannot work here.
 const levVenue = (
   id: number, label: string, env: string | undefined,
   collateral: 'WETH' | 'weETH', blurb: string,
 ): LevVenue | null => {
-  const address = ok(env, ZERO)
+  const address = isAddress(env) ? env : ZERO
   return address === ZERO ? null : { id, label, address, collateral, blurb }
 }
 export const LEV_VENUES: LevVenue[] = [

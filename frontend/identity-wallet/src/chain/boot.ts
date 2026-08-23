@@ -22,6 +22,7 @@
 import { ethers } from 'ethers'
 
 import { setRpcTransport } from './eth.ts'
+import { setContracts, type Contracts } from './chains.ts'
 import { configureProtection, setSigner, setExternalWallet, type ExternalWallet } from './protect.ts'
 import { normaliseKey, type NormalisedKey } from './keys.ts'
 
@@ -33,6 +34,10 @@ export interface ChainConfig {
   /// downstream can tell. Omit to keep `protect.ts`'s default.
   relayUrl?: string
   relayName?: string
+  /// Deployed contract addresses. Absent until SPV's deploy record is wired back in — every
+  /// unset entry stays the zero address, which the read path renders as "not deployed" rather
+  /// than dialling something wrong.
+  contracts?: Partial<Contracts>
 }
 
 /// Install the read transport and point protection at its relay. Idempotent, and safe to call
@@ -40,6 +45,7 @@ export interface ChainConfig {
 /// user chooses a custody path.
 export function bootChain(cfg: ChainConfig): void {
   setRpcTransport(new ethers.JsonRpcProvider(cfg.rpcUrl))
+  if (cfg.contracts) setContracts(cfg.contracts)
   // BEFORE any signer — see rule one.
   if (cfg.relayUrl || cfg.relayName) {
     configureProtection({

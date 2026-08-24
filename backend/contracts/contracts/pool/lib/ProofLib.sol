@@ -76,7 +76,7 @@ library ProofLib {
   function publicInputsBytes32(
     WithdrawProof memory _p,
     uint256 context_,
-    uint256 taintRoot_
+    uint256 blacklistRoot_
   ) internal pure returns (bytes32[] memory _publicInputs) {
     _publicInputs = new bytes32[](8);
     for (uint256 _i = 0; _i < 6; ++_i) {
@@ -87,7 +87,7 @@ library ProofLib {
     // matters more here. A prover-supplied taint root would let them prove exclusion from an EMPTY
     // tree of their own choosing, and the non-association predicate would be vacuous while looking
     // enforced. The caller passes the ANCHORED root; the proof is simply bound to whatever it was.
-    _publicInputs[7] = bytes32(taintRoot_);
+    _publicInputs[7] = bytes32(blacklistRoot_);
   }
 
   /**

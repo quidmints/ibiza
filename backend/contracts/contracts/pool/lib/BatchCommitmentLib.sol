@@ -36,7 +36,7 @@ pragma solidity 0.8.28;
  */
 library BatchCommitmentLib {
     /// @notice Public signals per withdrawal - `ProofLib.WithdrawProof.pubSignals` is `uint256[8]`.
-    uint256 internal constant PUB_LEN = 7;
+    uint256 internal constant PUB_LEN = 8;
 
     /// @notice BN254's scalar field order, the modulus every public input lives in.
     uint256 internal constant FIELD_MODULUS =

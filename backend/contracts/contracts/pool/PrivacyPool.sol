@@ -265,7 +265,7 @@ abstract contract PrivacyPool is State, IPrivacyPool {
    */
   function withdrawBatch(
     Withdrawal[] calldata _withdrawals,
-    uint256[7][] memory _signals,
+    uint256[8][] memory _signals,
     bytes calldata _batchProof
   ) external {
     // 🔴 KNOWN GAP, BOOKED NOT HIDDEN (sec. 2.18gz-unify): THIS PATH DOES NOT CARRY THE TAINT PROOF.
@@ -342,7 +342,7 @@ abstract contract PrivacyPool is State, IPrivacyPool {
 
     uint256 settled;
     for (uint256 i; i < n; ++i) {
-      uint256[7] memory s = _signals[i];
+      uint256[8] memory s = _signals[i];
       if (s[2] == 0) continue; // padding - see the loop above
       ++settled;
 
@@ -388,7 +388,7 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     // comparison means the binding cannot be removed without the compiler objecting.
     if (
       !WITHDRAWAL_VERIFIER.verify(
-        _proof.proof, _proof.publicInputsBytes32(_contextFor(_withdrawal), taintRoot)
+        _proof.proof, _proof.publicInputsBytes32(_contextFor(_withdrawal), blacklistRoot)
       )
     ) {
       revert InvalidProof();
@@ -447,14 +447,14 @@ abstract contract PrivacyPool is State, IPrivacyPool {
    * SUBSTITUTES it rather than reading it from the proof, so a prover cannot supply an empty tree of
    * their own and make the check vacuous.
    */
-  uint256 public taintRoot;
+  uint256 public blacklistRoot;
 
-  event TaintRootSet(uint256 root);
+  event BlacklistRootSet(uint256 root);
 
   /// @notice Set the taint root. Entrypoint-gated, like every other pool-level parameter here.
-  function setTaintRoot(uint256 _root) external onlyEntrypoint {
-    taintRoot = _root;
-    emit TaintRootSet(_root);
+  function setBlacklistRoot(uint256 _root) external onlyEntrypoint {
+    blacklistRoot = _root;
+    emit BlacklistRootSet(_root);
   }
 
   function windDown() external onlyEntrypoint {

@@ -24,7 +24,7 @@ import {BatchCommitmentLib} from 'contracts/pool/lib/BatchCommitmentLib.sol';
  * Regenerate with `python3 build-recursion-tree.py 16`.
  */
 contract BatchCommitmentTest is Test {
-  uint256 internal constant PUB_LEN = 7;
+  uint256 internal constant PUB_LEN = 8;
   uint256 internal constant FIELD_MODULUS =
     21888242871839275222246405745257275088548364400416034343698204186575808495617;
 

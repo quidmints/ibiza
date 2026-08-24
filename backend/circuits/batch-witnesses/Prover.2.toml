@@ -15,3 +15,14 @@ out_nullifier = "184536426176836863027645693905616239586858044145348264079012830
 out_secret = "8207136374254117949823581602116891130519183801233445062309593937566084018430"
 revocation_secret = "4463519523669804767024371377051119706145106944687429795632178696591053375033"
 identity_siblings = ["14773217681715367074998351357781213809720552480779019711378973761898976060125", "3656446498897085398119255230539721416421367607161717930552819810436484415391", "20542685208544848941568801778970184187380404959584678048444731717529766443231", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"]
+
+# BLACKLIST EXCLUSION — the EMPTY-tree witness (sec. 2.18gz-unify).
+# `blacklist_root = 0` is an empty exclusion set, which admits everyone: the bootstrap state and the
+# fail-open direction in one. The all-zero witness with `is_old0 = true` verifies against it FOR ANY
+# KEY, proven by `smt::test_exclusion_against_an_empty_tree_is_the_zero_witness` — which is why the
+# key change from `label` to `blacklist_key(DOMAIN_LABEL, label)` does not invalidate these.
+blacklist_root = "0"
+blacklist_siblings = ["0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"]
+blacklist_old_key = "0"
+blacklist_old_value = "0"
+blacklist_is_old0 = true

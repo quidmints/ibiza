@@ -36,7 +36,7 @@ import {MockEntrypoint} from './PrivacyPoolSimple.t.sol';
  * in for the cryptography.
  */
 contract WithdrawBatchEntrypointTest is Test {
-  uint256 internal constant PUB_LEN = 7;
+  uint256 internal constant PUB_LEN = 8;
   uint256 internal constant CONTEXT_SLOT = 6;
   /// BN254 scalar field - the pool rejects a precommitment at or above it.
   uint256 internal constant FIELD =

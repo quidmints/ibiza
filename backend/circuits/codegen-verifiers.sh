@@ -481,7 +481,9 @@ echo
 echo "==> Done. Verify with:"
 echo "    cd ${CONTRACTS_DIR}/.. && forge build --sizes && forge test"
 echo
-echo "    Both verifiers must stay under the EIP-170 24,576-byte runtime limit. As of the last run"
-echo "    they were 24,491 bytes - only ~85 bytes of headroom, already with optimizer_runs = 1"
-echo "    scoped to them. A circuit whose public-input count or log-size grows WILL push a verifier"
-echo "    over it, and the failure appears only at deploy time - check --sizes after every run."
+echo "    Every verifier must stay under the EIP-170 24,576-byte runtime limit, and the failure"
+echo "    appears only at deploy time - so check --sizes after every run."
+echo "    MEASURED 2026-08-24: WithdrawalHonkVerifier 17,183 (margin 7,393); TreeRoot8/16/32 all"
+echo "    17,744 (margin 6,832). ~7KB of headroom, NOT the ~85 bytes this note used to claim -"
+echo "    that figure read the MARGIN column of an unrelated \`Address\` row and scared people off"
+echo "    changes that fit easily. Re-measure rather than trusting either number."

@@ -29,7 +29,7 @@ import {INoirVerifier} from "../../interfaces/verifiers/INoirVerifier.sol";
  *      `BatchCommitmentTest`.
  */
 library BatchVerifierLib {
-    uint256 internal constant PUB_LEN = 7;
+    uint256 internal constant PUB_LEN = 8;
 
     /// @notice The aggregation proof did not verify against the recomputed commitment.
     error InvalidBatchProof();

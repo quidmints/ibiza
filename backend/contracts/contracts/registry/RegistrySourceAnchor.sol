@@ -210,7 +210,7 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
          * `_hashSortedPair` is commutative, so a path never reveals whether a sibling sat left or
          * right, and adjacency — the whole content of a sorted-tree absence proof — is unprovable.
          * The blacklist predicate is EXCLUSION, so it needs a structure that can prove absence.
-         * ⚠️ **ZERO IS LEGAL AND MEANS EMPTY**, matching `taintRoot`'s polarity: an empty exclusion
+         * ⚠️ **ZERO IS LEGAL AND MEANS EMPTY**, matching `blacklistRoot`'s polarity: an empty exclusion
          * set admits everyone, so a publisher who goes quiet cannot censor. It is also the bootstrap
          * state and the fail-open failure mode in one, which is why it is emitted rather than
          * silently defaulted.

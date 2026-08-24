@@ -17,6 +17,7 @@
 use crate::commitment::commitment_hasher;
 use crate::envelope::secret_commitment;
 use crate::lean_imt::lean_imt_inclusion;
+use crate::blacklist::{blacklist_key, DOMAIN_LABEL};
 use crate::smt::smt_verifier_full;
 
 /// SMT depth of the identity registry. MUST equal IdentityRegistry's constructor `treeHeight_` and
@@ -56,7 +57,7 @@ pub struct WithdrawSignals {
     /// EXCLUSION, not inclusion, and the polarity is the point: an empty taint set admits everyone,
     /// so a stalled feed or an unreachable publisher fails OPEN. Upstream PP proved INCLUSION in an
     /// approved set, which fails closed - stop publishing and nobody withdraws.
-    pub taint_root: Field,
+    pub blacklist_root: Field,
 }
 
 /// The witness a withdrawal is proven against. Grouped into a struct only so both `main`s can pass
@@ -72,13 +73,13 @@ pub struct WithdrawWitness {
     pub out_secret: Field,
     pub revocation_secret: Field,
     pub identity_siblings: [Field; IDENTITY_TREE_DEPTH],
-    /// Exclusion witness for `label` against `taint_root`. For an EMPTY taint set every field is
-    /// zero with `taint_is_old0 = true` - proven in `smt::test_exclusion_against_an_empty_tree_is_
+    /// Exclusion witness for `label` against `blacklist_root`. For an EMPTY taint set every field is
+    /// zero with `blacklist_is_old0 = true` - proven in `smt::test_exclusion_against_an_empty_tree_is_
     /// the_zero_witness`, which is what makes the bootstrap free.
-    pub taint_siblings: [Field; IDENTITY_TREE_DEPTH],
-    pub taint_old_key: Field,
-    pub taint_old_value: Field,
-    pub taint_is_old0: bool,
+    pub blacklist_siblings: [Field; IDENTITY_TREE_DEPTH],
+    pub blacklist_old_key: Field,
+    pub blacklist_old_value: Field,
+    pub blacklist_is_old0: bool,
 }
 
 /// Prove one withdrawal. Constraint-for-constraint the body `withdraw_identity/src/main.nr` carried
@@ -151,18 +152,28 @@ pub fn verify_withdrawal(signals: WithdrawSignals, w: WithdrawWitness) {
     // present someone else's provenance. That binding is why this costs one SMT term and not a
     // redesign.
     //
-    // ⚠️ THIRD USE OF THE SAME PRIMITIVE. Identity uses it with `fnc = false` (inclusion, status
-    // clean); this uses `fnc = true` (exclusion). Sanctions non-membership will be the same call
-    // again against a different tree. One proof shape, three predicates.
+    // ⚠️ SECOND USE OF THE SAME PRIMITIVE, AND THE LAST ONE THIS PREDICATE NEEDS. Identity uses it
+    // with `fnc = false` (inclusion, status clean); this uses `fnc = true` (exclusion).
+    // 🔑 **AN EARLIER NOTE HERE SAID SANCTIONS WOULD BE "THE SAME CALL AGAIN AGAINST A DIFFERENT
+    // TREE - one proof shape, three predicates". IT IS ONE TREE AND ONE PREDICATE.** The key is
+    // domain-separated (`blacklist.nr`), so chainalysis taint, address taint and sanctioned
+    // documents are all non-membership in ONE root: one anchor, one activation window, and adding a
+    // country's register is a DATA change rather than a code change.
+    // ⚠️ The domain is not decoration - a passport number and a pool label are both `Field`s, and
+    // without it a sanctioned document number could collide with an innocent label and blacklist it
+    // while the tree stayed CORRECT.
     let untainted = smt_verifier_full::<IDENTITY_TREE_DEPTH>(
-        signals.taint_root,
-        w.label,
+        signals.blacklist_root,
+        blacklist_key(DOMAIN_LABEL, w.label),
         0,
-        w.taint_old_key,
-        w.taint_old_value,
-        w.taint_is_old0,
+        w.blacklist_old_key,
+        w.blacklist_old_value,
+        w.blacklist_is_old0,
         SMT_EXCLUSION,
-        w.taint_siblings,
+        w.blacklist_siblings,
     );
-    assert(untainted == true, "this deposit is in the taint set, or the exclusion witness is invalid");
+    assert(
+        untainted == true,
+        "this deposit's label is blacklisted, or the exclusion witness is invalid",
+    );
 }

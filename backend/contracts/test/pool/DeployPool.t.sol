@@ -62,7 +62,7 @@ contract DeployPoolTest is Test {
   function test_BatchingIsReachableOnADeployedPool() public {
     PrivacyPoolSimple pool = _simple(batchVerifier);
     IPrivacyPool.Withdrawal[] memory ws = new IPrivacyPool.Withdrawal[](0);
-    uint256[7][] memory s = new uint256[7][](0);
+    uint256[8][] memory s = new uint256[8][](0);
     // NOT BatchVerifierNotConfigured - that is the distinction being asserted.
     vm.expectRevert(bytes4(keccak256('EmptyBatch()')));
     pool.withdrawBatch(ws, s, '');
@@ -74,7 +74,7 @@ contract DeployPoolTest is Test {
     PrivacyPoolSimple pool = _simple(address(0));
     assertEq(address(pool.BATCH_VERIFIER()), address(0));
     IPrivacyPool.Withdrawal[] memory ws = new IPrivacyPool.Withdrawal[](1);
-    uint256[7][] memory s = new uint256[7][](1);
+    uint256[8][] memory s = new uint256[8][](1);
     vm.expectRevert(PrivacyPool.BatchVerifierNotConfigured.selector);
     pool.withdrawBatch(ws, s, '');
   }

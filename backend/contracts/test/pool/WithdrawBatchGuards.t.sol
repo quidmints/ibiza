@@ -29,7 +29,7 @@ import {INoirVerifier} from 'contracts/interfaces/verifiers/INoirVerifier.sol';
  * ACCEPTED, valid proof of a DIFFERENT statement REFUSED, garbage REFUSED). Standing rule: never mock.
  */
 contract WithdrawBatchGuardsTest is Test {
-  uint256 internal constant PUB_LEN = 7;
+  uint256 internal constant PUB_LEN = 8;
   uint256 internal constant MAX_BATCH = 16;
 
   function _signals(uint256 n) internal pure returns (uint256[PUB_LEN][] memory s) {

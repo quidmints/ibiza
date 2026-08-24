@@ -98,11 +98,13 @@ a gap where one used to be.
       reverts at compile time and nothing fails a Solidity test; it fails when someone tries to
       prove.** That is the exact shape of failure this repo's rules exist to prevent, so **do not
       land any prefix of this list.**
-      ⚠️ **PREREQUISITE, AND IT IS AN ENVIRONMENT ONE: `bb` IS NOT INSTALLED.** It was removed
-      deliberately earlier (broken binaries: an arm64-macos build that reported "bad CPU type", and a
-      `~/.bb` that silently served 5.1.0 and produced `NUMBER_OF_SUBRELATIONS = 29`). `codegen-verifiers.sh`
-      needs it. **Reinstall the pinned build and confirm it reports 31 subrelations BEFORE touching
-      any of the above** — a wrong `bb` regenerates four verifiers that look fine and verify nothing.
+      ✅ **CORRECTION — `bb` IS INSTALLED AND WAS ALL ALONG.** I ran `which bb`, got nothing, and
+      called it a blocker. It is an **npm package, not a PATH binary**, which
+      `codegen-verifiers.sh:51` states outright: *"bb 6.0.0-nightly — an npm package, NOT bbup"*.
+      It lives at `backend/circuits/node_modules/.bin/bb`, pinned in that directory's
+      `devDependencies`, and reports **6.0.0-nightly.20260804** — the exact `REQUIRED_BB`. ⇒ **Invoke
+      it by path.** Same mistake shape as the capability search: absence from where I looked, read as
+      absence.
       ▶️ **AND ONE PART IS BLOCKED BEYOND THE TOOLCHAIN:** the `DOMAIN_DOCUMENT` term needs the
       identity leaf BOUND to a document nullifier (sec. 4's *"bind the leaf to a document nullifier
       (trap 6), not to `sk_identity`"*), or a prover names any clean document and the term is

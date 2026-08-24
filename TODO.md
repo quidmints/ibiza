@@ -278,8 +278,22 @@ a gap where one used to be.
       **137 `Digital Currency Address - TRX`**, plus XMR and XBT, and the type string is a prefix
       match that already admits `- ETH`. What is missing is Poseidon keying (`identifierLeafHash` is
       keccak, for the anchor's dense tree — a different tree), the wiring, and the circuit term.
-      🔴 **DOMAIN_DOCUMENT NEEDS A THIRD FIELD AND TWO NORMALISATIONS, AND BOTH ARE SILENT-FAILURE
-      HAZARDS — this is the finding, not the parsing:**
+      ✅ **BOTH NORMALISATIONS ARE DONE AND PINNED BY MEASUREMENT — `documents.go`** (`398b738`).
+      `Egypt`→`EGY` via a table seeded from the feed, and `1084010`→`1084010<<` in the MRZ's
+      nine-character `<`-padded field. The expected identifier was computed by the WALLET's Poseidon
+      over a TD1 DG1 at the offsets `td1_dg1_data_extractor` reads, and that derivation is itself
+      pinned to the circuit — `nargo execute` solves the escrow witness only when the two agree — so
+      the padding rule is now fixed across **three** languages. Falsified before being trusted:
+      dropping the padding, and padding with spaces, each fail the conformance test. Over-length
+      numbers are refused rather than truncated; `IdentifierSet` gained the optional `CountryField`;
+      verified end to end against `testdata/ofac_ids_excerpt.xml` (4 rows, 3 keyed, 1 skipped).
+      ⚠️ **AND THE EXPORT CARRIES A PASSPORT WITH NO ISSUING STATE** (its `idNumber` is `19820215`,
+      a date). It cannot be keyed — the key takes both arguments — so it is skipped and **counted**.
+      For an exclusion predicate a dropped listing is a FALSE NEGATIVE, and failing the whole
+      publication over one unmappable country halts every withdrawal instead. Neither is free, so
+      omissions are made countable rather than silent. **That count is not yet surfaced anywhere the
+      operator sees — booking it here rather than calling the trade-off handled.**
+      🔴 **STILL OPEN — the original wording, kept because these were the hazards:**
         1. **`idCountry` IS A COUNTRY NAME, THE MRZ CARRIES ISO ALPHA-3.** Published: `Egypt`, `Iran`.
            The circuit hashes the MRZ's three bytes — `EGY`, `IRN`. A mapping is required, OFAC's
            naming is not ISO, and `IdentifierSet` has no third field to carry it.

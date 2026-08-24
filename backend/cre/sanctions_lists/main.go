@@ -72,7 +72,6 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 
@@ -120,16 +119,6 @@ func fetchAndDecode(sr *http.SendRequester, registryKey, url string) ([]ListedSu
 		return nil, fmt.Errorf("%s fetch: %w", registryKey, err)
 	}
 	return decodeSubjects(registryKey, resp.Body)
-}
-
-var (
-	bytes32Type, _      = abi.NewType("bytes32", "", nil)
-	bytes32ArrayType, _ = abi.NewType("bytes32[]", "", nil)
-)
-
-var snapshotABI = abi.Arguments{
-	{Type: bytes32Type},      // registryId
-	{Type: bytes32ArrayType}, // leaves
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -182,7 +171,7 @@ func onSchedule(config *Config, runtime cre.Runtime, _ *cron.Payload) (string, e
 	logger.Info(fmt.Sprintf("[%s] %d rows, %d leaves, root %s",
 		spec.Key, len(*subjectsPtr), len(leaves), common.BytesToHash(root[:]).Hex()))
 
-	payload, err := snapshotABI.Pack(registryID, leaves)
+	payload, err := snapshotABI.Pack(registryID, smtRootUnpublished, leaves)
 	if err != nil {
 		return "", fmt.Errorf("abi pack: %w", err)
 	}

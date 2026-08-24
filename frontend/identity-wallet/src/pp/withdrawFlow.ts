@@ -20,7 +20,12 @@
 //     witness that cannot be proven.
 
 import type { RecoveredNote } from "./discovery.ts";
-import { buildWithdrawalWitness, nextWithdrawalIndex, type WithdrawWitness } from "./withdrawWitness.ts";
+import {
+  buildWithdrawalWitness,
+  nextWithdrawalIndex,
+  type BlacklistWitness,
+  type WithdrawWitness,
+} from "./withdrawWitness.ts";
 import type { IdentityWitness } from "./identityProof.ts";
 import type { MasterKeys } from "./notes.ts";
 import type { StateTree } from "./stateTree.ts";
@@ -49,6 +54,16 @@ export interface PoolContext {
   leafIndexOf: (note: RecoveredNote) => bigint;
   notes: RecoveredNote[];
   identity: IdentityWitness;
+  /**
+   * The blacklist root and the two exclusion witnesses proven against it.
+   *
+   * Carried on the pool alongside `identity` because it is the same kind of thing: state fetched
+   * from chain that every leg of one withdrawal must agree on. A batch settles against ONE root, so
+   * legs built from different snapshots could never be folded together.
+   */
+  blacklist: BlacklistWitness;
+  /** The document this identity was escrowed against - see WithdrawWitnessParams.documentId. */
+  documentId: bigint;
 }
 
 /**
@@ -148,6 +163,8 @@ export function prepareWithdrawal(params: PrepareParams): PreparedWithdrawal {
         withdrawnValue: leg.withdrawnValue,
         context: leg.context,
         identity: pool.identity,
+        blacklist: pool.blacklist,
+        documentId: pool.documentId,
         revocationSecret,
         // Must match what discovery will later count, or the change note is unrecoverable.
         withdrawalIndex: nextWithdrawalIndex(pool.notes, selected.label),

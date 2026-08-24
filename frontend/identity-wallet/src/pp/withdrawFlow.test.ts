@@ -59,6 +59,16 @@ function poolOf(scope: bigint, notes: RecoveredNote[]) {
     leafIndexOf: (n: RecoveredNote) => BigInt(notes.indexOf(n) + 1),
     notes,
     identity: { identityRoot: 0xabcdefn, siblings: Array<bigint>(IDENTITY_TREE_DEPTH).fill(0n) },
+    // A NON-ZERO root, because the pool refuses zero - a fixture built against an empty tree could
+    // never settle, so using one here would make these tests pass on a shape production rejects.
+    // The exclusion witnesses are still the empty-subtree form: absence is what they must show, and
+    // these tests are about note selection and leg planning, not about SMT paths.
+    blacklist: {
+      root: 0xb1acn,
+      label: { siblings: Array<bigint>(IDENTITY_TREE_DEPTH).fill(0n), oldKey: 0n, oldValue: 0n, isOld0: true },
+      document: { siblings: Array<bigint>(IDENTITY_TREE_DEPTH).fill(0n), oldKey: 0n, oldValue: 0n, isOld0: true },
+    },
+    documentId: 0xd0cn,
   };
 }
 
@@ -124,7 +134,7 @@ test("a native withdrawal prepares one leg with a complete witness", () => {
   assert.strictEqual(prepared.legs.length, 1);
   const leg = prepared.legs[0]!;
   assert.strictEqual(leg.selected, notes[1], "did not pick the smallest covering note");
-  assert.strictEqual(leg.witness.pubSignals.length, 7);
+  assert.strictEqual(leg.witness.pubSignals.length, 8);
   // The witness must carry THIS leg's context, or the pool rejects it.
   assert.strictEqual(leg.witness.pubSignals[6], leg.context);
   assert.strictEqual(BigInt(leg.witness.inputs.withdrawn_value as string), ETH);

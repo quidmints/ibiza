@@ -162,7 +162,12 @@ function identityWitnessCount() {
 /** Write a Noir Prover.toml from an inputs map. */
 function writeProverToml(outPath, inputs) {
   const toml = Object.entries(inputs).map(([k, v]) =>
-    Array.isArray(v) ? `${k} = [${v.map((x) => `"${x}"`).join(', ')}]` : `${k} = "${v}"`
+    // A BOOLEAN MUST NOT BE QUOTED. Noir reads `is_old0 = true`; `is_old0 = "true"` fails to
+    // deserialize, and the message names the argument rather than the quoting, so it reads as a
+    // missing field. Every other input is a decimal string by convention.
+    Array.isArray(v)
+      ? `${k} = [${v.map((x) => `"${x}"`).join(', ')}]`
+      : typeof v === 'boolean' ? `${k} = ${v}` : `${k} = "${v}"`
   ).join('\n') + '\n';
   fs.writeFileSync(outPath, toml);
   return outPath;

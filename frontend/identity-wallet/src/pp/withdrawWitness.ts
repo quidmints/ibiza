@@ -36,6 +36,36 @@ import { babyJub, Poseidon } from "@iden3/js-crypto";
  *  is rejected here with a real explanation instead. */
 const MAX_VALUE = 1n << 128n;
 
+/**
+ * One SMT non-membership witness: the path proving a key is ABSENT from the blacklist.
+ *
+ * `oldKey`/`oldValue` describe the leaf that occupies the position the queried key would take -
+ * proving absence by showing what IS there instead. `isOld0` says that position is empty, which is
+ * the whole witness when the subtree is unoccupied.
+ */
+export interface ExclusionWitness {
+  siblings: bigint[];
+  oldKey: bigint;
+  oldValue: bigint;
+  isOld0: boolean;
+}
+
+/**
+ * The blacklist root and the two exclusions proven against it.
+ *
+ * ONE ROOT, TWO KEYS, and that is the design rather than an economy. Provenance taint and a
+ * sanctions listing are not two systems with two roots and two activation windows: they are
+ * domain-separated keys in a single tree, so a new country's register joins by being inserted
+ * rather than by being coded for.
+ */
+export interface BlacklistWitness {
+  root: bigint;
+  /** Exclusion of the deposit's label - `blacklist_key(DOMAIN_LABEL, label)`. */
+  label: ExclusionWitness;
+  /** Exclusion of the escrowed document - `blacklist_key(DOMAIN_DOCUMENT, documentId)`. */
+  document: ExclusionWitness;
+}
+
 export interface WithdrawWitnessParams {
   /** The unspent note being spent. Must come from discoverNotes(), not be hand-built. */
   note: RecoveredNote;
@@ -72,8 +102,28 @@ export interface WithdrawWitnessParams {
    */
   identity: IdentityWitness;
 
-  /** The escrowed revocation secret. Its Poseidon commitment is the registry key. */
+  /** The escrowed revocation secret. Hashed WITH the document id to give the registry key. */
   revocationSecret: bigint;
+  /**
+   * `document_identifier(issuing_state, document_number)` for the document this identity was
+   * escrowed against.
+   *
+   * ⚠️ NOT A FREE CHOICE, even though it is a private witness. It is hashed into the identity leaf,
+   * so naming a different document produces a leaf that is not in `identityRoot` and the proof fails
+   * at the inclusion step. Supplying the WRONG one is therefore an unprovable witness, not a
+   * successful lie - but it fails with an identity error rather than a document one, which is worth
+   * knowing when debugging.
+   */
+  documentId: bigint;
+  /**
+   * The blacklist root and the two exclusion witnesses proven against it - one for the deposit's
+   * LABEL, one for the escrowed DOCUMENT. One tree, two domain-separated keys.
+   *
+   * REQUIRED. There is deliberately no empty-tree default here: the pool refuses a zero root, so a
+   * witness built against one could never settle, and defaulting would turn that into a proving-time
+   * surprise instead of a compile-time one.
+   */
+  blacklist: BlacklistWitness;
   /**
    * Which withdrawal this is FOR THIS LABEL, in the wallet's derivation convention.
    *
@@ -89,7 +139,8 @@ export interface WithdrawWitnessParams {
 export interface WithdrawWitness {
   /** Noir input map, keyed by main()'s parameter names. Decimal strings — Noir accepts decimal or
    *  0x-hex for Field; decimal avoids any ambiguity about leading-zero padding. */
-  inputs: Record<string, string | string[]>;
+  /** Noir prover inputs. Booleans stay booleans - see fixture-common: toml must not quote them. */
+  inputs: Record<string, string | string[] | boolean>;
   /** ProofLib.WithdrawProof.pubSignals, in pinned order. */
   pubSignals: bigint[];
   /** The change note's secrets — persist/re-derive these; they own the remainder. */
@@ -130,6 +181,8 @@ export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawW
     masterKeys,
     identity,
     revocationSecret,
+    documentId,
+    blacklist,
     withdrawnValue,
     context,
     withdrawalIndex,
@@ -161,11 +214,15 @@ export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawW
     throw new Error("buildWithdrawalWitness: context must be a nonzero BN254 field element");
   }
 
-  // ── Identity: derive the registry key from the escrowed secret ──────────────────────────────
-  // The key is Poseidon(revocation_secret) - the SAME value escrow_envelope committed to and
-  // IdentityRegistry stored. sk_identity is NOT used here at all any more: identity is proven ONCE,
-  // at escrow. See sec. 2.13k.
-  const commitment = Poseidon.hash([revocationSecret]);
+  // ── Identity: derive the registry key from the escrowed secret AND its document ─────────────
+  // The key is Poseidon(revocation_secret, document_id) - the SAME value escrow_envelope committed
+  // to and IdentityRegistry stored. sk_identity is NOT used here at all any more: identity is proven
+  // ONCE, at escrow. See sec. 2.13k.
+  //
+  // ⚠️ THE SECOND FIELD IS WHAT MAKES THE SANCTIONS TERM MEAN ANYTHING. Committing to the secret
+  // alone let a withdrawal prove "some registered identity" and then name any document at all for
+  // the blacklist check. Binding it here is what forces the document checked to be the one escrowed.
+  const commitment = Poseidon.hash([revocationSecret, documentId]);
 
   // ── State-tree membership ───────────────────────────────────────────────────────────────────
   const stateProof = stateTree.proof(stateLeafIndex, MAX_TREE_DEPTH);
@@ -205,11 +262,12 @@ export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawW
     BigInt(stateProof.depth),
     identity.identityRoot,
     context,
+    blacklist.root,
   ];
 
   const dec = (v: bigint) => v.toString(10);
 
-  const inputs: Record<string, string | string[]> = {
+  const inputs: Record<string, string | string[] | boolean> = {
     // public
     new_commitment: dec(newCommitment),
     existing_nullifier_hash: dec(existingNullifierHash),
@@ -232,6 +290,19 @@ export function buildWithdrawalWitness(params: WithdrawWitnessParams): WithdrawW
     // inclusion path proving its commitment sits in the registry carrying the CLEAN status.
     revocation_secret: dec(revocationSecret),
     identity_siblings: identity.siblings.map(dec),
+    // public - the one blacklist root both exclusion terms are proven against
+    blacklist_root: dec(blacklist.root),
+    // private - exclusion of the deposit's LABEL
+    blacklist_siblings: blacklist.label.siblings.map(dec),
+    blacklist_old_key: dec(blacklist.label.oldKey),
+    blacklist_old_value: dec(blacklist.label.oldValue),
+    blacklist_is_old0: blacklist.label.isOld0,
+    // private - exclusion of the escrowed DOCUMENT, same root, different domain
+    document_id: dec(documentId),
+    document_siblings: blacklist.document.siblings.map(dec),
+    document_old_key: dec(blacklist.document.oldKey),
+    document_old_value: dec(blacklist.document.oldValue),
+    document_is_old0: blacklist.document.isOld0,
   };
 
   return { inputs, pubSignals, changeNote, newCommitment };

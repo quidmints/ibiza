@@ -72,6 +72,14 @@ const build = (over: Record<string, unknown> = {}) => {
     context: 0x123456789abcdefn,
     identity: { identityRoot: 0xabcdefn, siblings: Array<bigint>(IDENTITY_TREE_DEPTH).fill(0n) },
     revocationSecret: 0xdeadbeefn,
+    // Non-zero root: the pool refuses zero, so a fixture proving against an empty tree describes a
+    // withdrawal that could never settle. Exclusion witnesses stay in the empty-subtree form.
+    blacklist: {
+      root: 0xb1acn,
+      label: { siblings: Array<bigint>(IDENTITY_TREE_DEPTH).fill(0n), oldKey: 0n, oldValue: 0n, isOld0: true },
+      document: { siblings: Array<bigint>(IDENTITY_TREE_DEPTH).fill(0n), oldKey: 0n, oldValue: 0n, isOld0: true },
+    },
+    documentId: 0xd0cn,
     withdrawalIndex: 0n,
     ...over,
   } as Parameters<typeof buildWithdrawalWitness>[0]);
@@ -92,6 +100,7 @@ test("the input keys are EXACTLY withdraw_identity::main's parameters", () => {
     "state_tree_depth",
     "identity_root",
     "context",
+    "blacklist_root",
     // private
     "value",
     "label",
@@ -103,12 +112,22 @@ test("the input keys are EXACTLY withdraw_identity::main's parameters", () => {
     "out_secret",
     "revocation_secret",
     "identity_siblings",
+    // the blacklist predicate: ONE root, two domain-separated exclusions
+    "blacklist_siblings",
+    "blacklist_old_key",
+    "blacklist_old_value",
+    "blacklist_is_old0",
+    "document_id",
+    "document_siblings",
+    "document_old_key",
+    "document_old_value",
+    "document_is_old0",
   ].sort();
 
   assert.deepStrictEqual(Object.keys(build().inputs).sort(), CIRCUIT_PARAMS);
 });
 
-test("pubSignals is the seven public parameters, in the circuit's declaration order", () => {
+test("pubSignals is the eight public parameters, in the circuit's declaration order", () => {
   // ProofLib.WithdrawProof.pubSignals is positional: a reordering here pairs each value with the
   // wrong meaning on-chain, and `context` landing anywhere but [6] breaks the recipient binding.
   const w = build();
@@ -123,21 +142,30 @@ test("pubSignals is the seven public parameters, in the circuit's declaration or
       i.state_tree_depth,
       i.identity_root,
       i.context,
+      // [7] the blacklist root. BOTH exclusion terms are proven against this one value - the
+      // domains separate the keys, not the trees, so a second root would defeat the point.
+      i.blacklist_root,
     ],
   );
-  assert.strictEqual(w.pubSignals.length, 7);
+  assert.strictEqual(w.pubSignals.length, 8);
 });
 
 test("the fixed-size arrays match the circuit's declared lengths", () => {
   const w = build();
   assert.strictEqual((w.inputs.state_siblings as string[]).length, MAX_TREE_DEPTH);
   assert.strictEqual((w.inputs.identity_siblings as string[]).length, IDENTITY_TREE_DEPTH);
+  assert.strictEqual((w.inputs.blacklist_siblings as string[]).length, IDENTITY_TREE_DEPTH);
+  assert.strictEqual((w.inputs.document_siblings as string[]).length, IDENTITY_TREE_DEPTH);
 });
 
 test("every scalar input is a plain decimal string", () => {
   // Noir accepts decimal or 0x-hex, but mixing them is how a leading-zero or width assumption slips
   // in unnoticed. The module documents decimal; this asserts it.
   for (const [k, v] of Object.entries(build().inputs)) {
+    // The SMT `is_old0` flags are genuinely boolean and must reach the toml unquoted, so they are
+    // outside this convention rather than an exception to it - `is_old0 = "true"` fails to
+    // deserialize, and the error names the argument rather than the quoting.
+    if (typeof v === "boolean") continue;
     for (const s of Array.isArray(v) ? v : [v]) {
       assert.match(s, /^\d+$/, `${k} is not a decimal string: ${s}`);
     }
@@ -214,6 +242,14 @@ test("a leaf index pointing at the wrong commitment is refused", () => {
         context: 0x1234n,
         identity: { identityRoot: 1n, siblings: Array<bigint>(IDENTITY_TREE_DEPTH).fill(0n) },
         revocationSecret: 1n,
+        // Non-zero root: the pool refuses zero, so a fixture proving against an empty tree describes a
+        // withdrawal that could never settle. Exclusion witnesses stay in the empty-subtree form.
+        blacklist: {
+          root: 0xb1acn,
+          label: { siblings: Array<bigint>(IDENTITY_TREE_DEPTH).fill(0n), oldKey: 0n, oldValue: 0n, isOld0: true },
+          document: { siblings: Array<bigint>(IDENTITY_TREE_DEPTH).fill(0n), oldKey: 0n, oldValue: 0n, isOld0: true },
+        },
+        documentId: 0xd0cn,
         withdrawalIndex: 0n,
       }),
     /Wrong index, or a stale tree/,

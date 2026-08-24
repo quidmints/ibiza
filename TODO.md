@@ -224,12 +224,39 @@ a gap where one used to be.
       append-only, no owner, the same shape that already bounds `IncorrectASPRoot` — instead of an
       entrypoint setter. **Do this with the Go SMT builder, not after it:** the anchor is where the
       root lands, so wiring the pool to read it is the same change as publishing a real one.
+      🔴 **ESCROW IS TD1-ONLY, SO A PASSPORT BOOKLET CAN BE REGISTERED AND THEN NOT ESCROWED**
+      (found 2026-08-24 while binding the document; PRE-EXISTING, not caused by that change).
+      `register_identity` is TD3 (`DG1_LEN = 93`, the booklet) and `register_identity_td1` is TD1
+      (`95`, the card) — but there is exactly ONE `escrow_envelope`, and it is `95`. A 93-byte DG1
+      does not type-check against it, so the TD3 half of the registration path has no escrow and
+      therefore no withdrawal.
+      ⚠️ **THE DOCUMENT BINDING MAKES THIS SHARPER RATHER THAN CAUSING IT.** `td1_document_fields`
+      is `[u8; 95]` deliberately: the document number sits at MRZ `[5..14)` on a card and `[49..58)`
+      on a booklet, so a TD3 buffer read with TD1 offsets returns NAME bytes — a key that verifies
+      consistently and matches no register ever. The length in the signature is what makes that
+      uncompilable rather than silent, and the TD3 accessor is one three-line function
+      (`dg1_data_extractor` already returns citizenship and doc_number for `[u8; 93]`) — the work is
+      a second escrow circuit, not the extraction.
+      ▶️ Settle whether TD3 escrow is wanted at all before building it: if the product is card-only,
+      `register_identity`'s TD3 path is the thing to delete, and the asymmetry is the tell either way.
       ▶️ **`DOMAIN_ADDRESS` IS DERIVED AND LISTED BUT NEVER PROVEN.** The fixture's listed set
       includes a sanctioned address key, and `blacklist.nr` defines the domain, but no circuit term
       queries it — a withdrawal proves its LABEL and its DOCUMENT are absent, not its recipient.
       Adding it is one more `smt_verifier_full` call against the same root plus four witness fields;
       the open question is WHICH address a withdrawal should be judged on (`processooor`, the
       relayer, or the payout recipient), and that is a design decision, not a coding one.
+      ▶️ **THE REGENERATION SEQUENCE IS NOW A COMMITTED SCRIPT: `tools/regenerate-fixtures.sh`.**
+      Every chain in it was reconstructed by hand at least once during 2026-08-24, and one
+      (`withdraw_e2e.proof`) could not be reconstructed at all until an emitter was added. Order is
+      load-bearing — identity leaves are escrow PROOFS' public inputs, so a leaf-construction change
+      invalidates everything downstream, and rebuilding out of order yields artifacts that verify
+      individually and cannot settle together.
+      ⚠️ **AND ONE THING IN IT CANNOT BE MADE CONSISTENT: each recursion tree needs a witness set
+      generated at ITS OWN count.** Padding lives in the WITNESSES (`--count 5` pads to 8 with three
+      zero-value members; `--count 32` is 32 real ones), so `batch-witnesses/` cannot simultaneously
+      reproduce n8, n16 and n32. It is left holding the 32-member set, which is what the repo tracks
+      — meaning a fresh checkout can rebuild n32 and will silently rebuild n8 WITHOUT padding.
+      `test_APaddedBatchReproducesItsRoot` is the only thing that catches that.
       ▶️ **REMAINING, AND IT IS THE WHOLE ITEM: a Poseidon SMT builder in Go.** No such dependency is
       in `sanctions_lists/go.mod` today. It must match the Noir `smt` library's node-hashing
       convention **exactly**, and per *"don't roll your own"* the Poseidon itself should come from

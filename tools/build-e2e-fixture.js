@@ -56,6 +56,17 @@ const keys = masterKeysFromMnemonic(common.MNEMONIC);
 
 const REVOCATION_SECRET = common.REVOCATION_SECRET;
 
+// ── the blacklist predicate ───────────────────────────────────────────────────────────────────
+// Shared with the other two generators via fixture-common: all three prove against ONE tree, and a
+// key built a second way is absent from it in the only sense that matters.
+const { Poseidon } = require(path.join(BUILD, 'pp/withdrawWitness.js'));
+const { DOMAIN_LABEL, DOMAIN_DOCUMENT, makeBlacklistKey, documentIds, loadBlacklistWitness } = common;
+const blacklistKey = makeBlacklistKey(Poseidon);
+const FIXTURES_DIR = path.join(__dirname, '..', 'backend', 'contracts', 'test', 'fixtures');
+const E2E_QUERIES_PATH = path.join(FIXTURES_DIR, 'e2e_blacklist_queries.json');
+const E2E_BL_WITNESS_PATH = path.join(FIXTURES_DIR, 'e2e_blacklist_witness.json');
+const E2E_DOCUMENT_ID = documentIds()[0];
+
 const SCOPE = need('scope');
 
 // ── PASS 1: the four precommitments this SCOPE implies ──────────────────────────────────────
@@ -139,10 +150,31 @@ for (let i = 0; i < 4; i++) {
   stateTree.insert(commitment(VALUE, lbl, s));
 }
 
+// Phase 1: this generator's label arrives as --label, so the queries are emitted here rather than
+// up front like the batch generator's.
+if (argv.includes('--queries')) {
+  const hex = (k) => '0x' + k.toString(16).padStart(64, '0');
+  const queries = [
+    blacklistKey(DOMAIN_LABEL, note.label),
+    blacklistKey(DOMAIN_DOCUMENT, E2E_DOCUMENT_ID),
+  ].map(hex);
+  fs.writeFileSync(E2E_QUERIES_PATH, JSON.stringify(queries, null, 2) + '\n');
+  console.log(`Wrote ${queries.length} queries to ${E2E_QUERIES_PATH}`);
+  console.log('Next:  BLACKLIST_QUERIES=test/fixtures/e2e_blacklist_queries.json \\');
+  console.log('       BLACKLIST_WITNESS=test/fixtures/e2e_blacklist_witness.json \\');
+  console.log('       forge test --match-test test_EmitBlacklistWitnessFixture');
+  process.exit(0);
+}
+
+const { root: E2E_BL_ROOT, exclusionAt: e2eExclusionAt } =
+  loadBlacklistWitness(E2E_BL_WITNESS_PATH, 2);
+
 const w = buildWithdrawalWitness({
   note, stateLeafIndex: LEAF_INDEX, stateTree,
   masterKeys: keys, identity, revocationSecret: REVOCATION_SECRET,
   withdrawnValue: WITHDRAWN, context: CONTEXT, withdrawalIndex: 0n,
+  documentId: E2E_DOCUMENT_ID,
+  blacklist: { root: E2E_BL_ROOT, label: e2eExclusionAt(0), document: e2eExclusionAt(1) },
 });
 
 const eq = (a, b, m) => { if (a !== b) throw new Error(`${m}: ${a} != ${b}`); };

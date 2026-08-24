@@ -203,6 +203,25 @@ a gap where one used to be.
       "0"` and would all need a real root.** That is the cost of the choice, not an argument against
       it. `TestUnpublishedSmtRootIsTheEmptyTree` pins the zero so whichever way this goes is a
       deliberate edit to an asserted value.
+      🔴 **AND A SECOND HALF NOBODY HAD BOOKED: THE ROOT'S SOURCE IS A CENSORSHIP LEVER.**
+      `PrivacyPool.blacklistRoot` is set by the ENTRYPOINT. Gating a withdrawal on a mutable
+      third-party value is a lever whichever way the zero case is decided — fail-open let a stalled
+      feed admit everyone, fail-closed lets an unset one halt everyone — and
+      `test_NoGovernanceLeverCanBlockAWithdrawal` enumerates exactly one third-party revert, a claim
+      that **went stale the day `setBlacklistRoot` landed** and was corrected only now.
+      ✅ Bounded so far: zero is refused at the setter, so the cost-free halt (re-empty a live root)
+      is gone, and a stalled feed keeps its last good root instead of emptying it.
+      ⛔ **NOT CLOSED: a hostile entrypoint can still publish a root nobody holds a witness against,
+      which halts withdrawals just as well.** The fix is to source the root from the CRE anchor —
+      append-only, no owner, the same shape that already bounds `IncorrectASPRoot` — instead of an
+      entrypoint setter. **Do this with the Go SMT builder, not after it:** the anchor is where the
+      root lands, so wiring the pool to read it is the same change as publishing a real one.
+      ▶️ **`DOMAIN_ADDRESS` IS DERIVED AND LISTED BUT NEVER PROVEN.** The fixture's listed set
+      includes a sanctioned address key, and `blacklist.nr` defines the domain, but no circuit term
+      queries it — a withdrawal proves its LABEL and its DOCUMENT are absent, not its recipient.
+      Adding it is one more `smt_verifier_full` call against the same root plus four witness fields;
+      the open question is WHICH address a withdrawal should be judged on (`processooor`, the
+      relayer, or the payout recipient), and that is a design decision, not a coding one.
       ▶️ **REMAINING, AND IT IS THE WHOLE ITEM: a Poseidon SMT builder in Go.** No such dependency is
       in `sanctions_lists/go.mod` today. It must match the Noir `smt` library's node-hashing
       convention **exactly**, and per *"don't roll your own"* the Poseidon itself should come from

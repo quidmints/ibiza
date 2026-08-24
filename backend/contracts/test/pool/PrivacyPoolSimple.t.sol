@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Test} from 'forge-std/Test.sol';
+import {BlacklistRootFixture} from './helpers/BlacklistRootFixture.sol';
 import {PoseidonT4} from 'poseidon/PoseidonT4.sol';
 
 import {PrivacyPoolSimple} from '../../contracts/pool/implementations/PrivacyPoolSimple.sol';
@@ -65,6 +66,13 @@ contract PrivacyPoolSimpleTest is Test {
       address(entrypoint),
       address(0) // no aggregation verifier: this suite does not exercise withdrawBatch
     );
+
+    // The pool refuses a ZERO blacklist root: an empty exclusion tree is a valid non-membership
+    // proof for every key, so accepting one would let every withdrawal through the moment the feed
+    // was unset. Publishing a root is therefore a precondition for settling anything, and every
+    // suite has to do it. See PrivacyPool._activeBlacklistRoot.
+    vm.prank(address(entrypoint));
+    pool.setBlacklistRoot(BlacklistRootFixture.read(vm));
 
     vm.deal(address(entrypoint), 0); // deposits are relayed as msg.value from the caller, not the entrypoint's own balance
     vm.deal(depositor, 0);

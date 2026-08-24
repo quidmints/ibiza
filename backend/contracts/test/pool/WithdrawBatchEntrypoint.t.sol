@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Test} from 'forge-std/Test.sol';
+import {BlacklistRootFixture} from './helpers/BlacklistRootFixture.sol';
 import {PrivacyPoolSimple} from 'contracts/pool/implementations/PrivacyPoolSimple.sol';
 import {PrivacyPool} from 'contracts/pool/PrivacyPool.sol';
 import {IPrivacyPool} from 'contracts/pool/interfaces/IPrivacyPool.sol';
@@ -64,6 +65,16 @@ contract WithdrawBatchEntrypointTest is Test {
       address(entrypoint),
       address(0)
     );
+
+    // Both pools need a published root: the pool refuses a ZERO one, because an empty exclusion
+    // tree is a valid non-membership proof for every key and would admit everyone the moment the
+    // feed was unset. `poolWithoutAggregation` gets one too - its rejections must be about the
+    // MISSING AGGREGATION VERIFIER, and an unset root would make them fire earlier for an unrelated
+    // reason, turning a real assertion into a vacuous one.
+    vm.startPrank(address(entrypoint));
+    pool.setBlacklistRoot(BlacklistRootFixture.read(vm));
+    poolWithoutAggregation.setBlacklistRoot(BlacklistRootFixture.read(vm));
+    vm.stopPrank();
   }
 
   // ── helpers ───────────────────────────────────────────────────────────────────────────────

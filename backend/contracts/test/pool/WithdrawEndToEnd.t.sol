@@ -96,6 +96,10 @@ contract WithdrawEndToEndTest is EscrowFixtureBase {
 
   uint256 internal constant FIELD = Constants.SNARK_SCALAR_FIELD;
   uint256 internal constant DEPOSIT_VALUE = 1 ether;
+  /// What the e2e fixture withdraws. A literal because the generator is told it BEFORE any proof
+  /// exists; `WITHDRAWN` is the same number read back OUT of the emitted signals, and
+  /// `test_WalletMirrorsMatchTheChain` is where the two are required to agree.
+  uint256 internal constant E2E_WITHDRAWN_PLAN = 0.3 ether;
 
   /// holderRoot for sk_identity = 1234 (pp/src/identity_asp.nr's published vector), as the wallet's
   /// RarimeUtils.getProfileKey derives it: Poseidon(babyJub.mulPointEScalar(Base8, 1234)).
@@ -157,30 +161,62 @@ contract WithdrawEndToEndTest is EscrowFixtureBase {
     }
   }
 
-  /// Computed OFF-CHAIN by the wallet - see test_WalletMirrorsMatchTheChain.
-  uint256 internal constant WALLET_STATE_ROOT =
-    17647775993228371937828414909900047898638566776413106032397089864943146310076;
-  /// The identity registry's root after setUp's three genuine registrations. Committed so a change
-  /// in registration order or content shows up as a STALE FIXTURE rather than as an unexplained
-  /// proof rejection. Cross-checked against the live registry in test_WalletMirrorsMatchTheChain.
-  ///
-  /// MOVED WITH THE COMMITMENT DERIVATION (sec. 2.18a): the tree is keyed on
-  /// `Poseidon(revocation_secret)` and that secret is now derived from `sk_identity` rather than
-  /// chosen, so every leaf key changed. The state root and context above did NOT move, which is
-  /// the check that this was a key-derivation change and not a deployment-order one.
-  uint256 internal constant E2E_IDENTITY_ROOT =
-    2910739936757023150025232640645754432456838469272402593742390097823972605304;
+  /* ────────────────────────────────────────────────────────────────────────────────────────────
+   * THE PROVED WITHDRAWAL'S PUBLIC SIGNALS (test/fixtures/withdraw_e2e.proof).
+   *
+   * READ FROM THE FIXTURE the generator wrote them into, not pinned. The old comment here claimed
+   * pinning made a change "show up as a STALE FIXTURE rather than as an unexplained proof
+   * rejection" - and the opposite happened. When the identity leaves began binding their document,
+   * every leaf key moved and these constants became the unexplained rejection: `InvalidIdentityRoot`
+   * on three tests, `SumcheckFailed` elsewhere, and a revocation test failing with "grace window
+   * closed immediately" because it asked the registry about a root that no longer existed.
+   *
+   * A pinned number only announces staleness if something compares it to the source. Nothing did.
+   * `test_WalletMirrorsMatchTheChain` still performs exactly that comparison, and now it is the
+   * ONLY place the pairing is asserted rather than assumed.
+   * ──────────────────────────────────────────────────────────────────────────────────────────── */
+  uint256 internal WALLET_STATE_ROOT;
+  uint256 internal E2E_IDENTITY_ROOT;
+  uint256 internal WITHDRAWN;
+  uint256 internal E2E_NEW_COMMITMENT;
+  uint256 internal E2E_NULLIFIER_HASH;
+  uint256 internal E2E_CONTEXT;
+  uint256 internal E2E_BLACKLIST_ROOT;
 
-  // ── the proved withdrawal (test/fixtures/withdraw_e2e.proof) ────────────────────────────────
-  uint256 internal constant WITHDRAWN = 300000000000000000;
-  uint256 internal constant E2E_NEW_COMMITMENT =
-    7031891398791970800414930823347530208578030685559810783551693782385841142526;
-  uint256 internal constant E2E_NULLIFIER_HASH =
-    15290910983522090939153476761957425103311695243444399647157808844235598158968;
-  uint256 internal constant E2E_CONTEXT =
-    16421636434921514101164844418780783785449995672727086439500565456823744804800;
+  /// True once the emitted signals were found. See the bootstrap note below.
+  bool internal e2eSignalsLoaded;
+
+  /**
+   * ⚠️ TOLERATES ITS OWN ABSENCE, AND THAT IS NOT DEFENSIVENESS - IT BREAKS A CYCLE.
+   *
+   * `test_EmitE2EFixtureParams` exists so the e2e fixture can be rebuilt, and the rebuild writes
+   * this file. But that test runs AFTER `setUp`, so on a clean regeneration `setUp` would be
+   * reading a file that the run it is part of has not written yet, and the emitter could never
+   * execute. Requiring the file here would make the fixture permanently unrebuildable - the exact
+   * property this whole exercise was undertaken to fix.
+   *
+   * A missing file is therefore a legitimate state, and only the tests that CONSUME the signals may
+   * insist on it. They do, in `_e2eProof`, with a message naming the generator - rather than failing
+   * as `InvalidProof` against eight zeros, which names nothing.
+   */
+  function _loadE2ESignals() internal {
+    if (!vm.isFile('test/fixtures/withdraw_e2e_pubsignals.json')) return;
+    bytes32[] memory sig_ = vm.parseJsonBytes32Array(
+      vm.readFile('test/fixtures/withdraw_e2e_pubsignals.json'), '$'
+    );
+    require(sig_.length == 8, 'e2e fixture does not carry eight public signals');
+    E2E_NEW_COMMITMENT = uint256(sig_[0]);
+    E2E_NULLIFIER_HASH = uint256(sig_[1]);
+    WITHDRAWN = uint256(sig_[2]);
+    WALLET_STATE_ROOT = uint256(sig_[3]);
+    E2E_IDENTITY_ROOT = uint256(sig_[5]);
+    E2E_CONTEXT = uint256(sig_[6]);
+    E2E_BLACKLIST_ROOT = uint256(sig_[7]);
+    e2eSignalsLoaded = true;
+  }
 
   function setUp() public {
+    _loadE2ESignals();
     registry = new MockEvidenceRegistry();
 
     Entrypoint impl = new Entrypoint();
@@ -236,7 +272,13 @@ contract WithdrawEndToEndTest is EscrowFixtureBase {
     // the root the generator built its exclusion witnesses from, which is why it is read from the
     // same file rather than written out here.
     vm.prank(address(entrypoint));
-    pool.setBlacklistRoot(BlacklistRootFixture.read(vm));
+    // The root THIS FIXTURE proved against, not merely a valid one. `withdraw` substitutes the
+    // pool's root into the verifier's public inputs, so any other value - including a correct root
+    // from a different snapshot - yields `InvalidProof`, which reads as a broken circuit.
+    // During a regeneration the emitted signals do not exist yet, so fall back to the shared tree's
+    // root: the pool refuses zero, and it must be constructible before the fixture it will later
+    // verify has been built. The fallback is a REAL root from the same tree, never a placeholder.
+    pool.setBlacklistRoot(e2eSignalsLoaded ? E2E_BLACKLIST_ROOT : BlacklistRootFixture.read(vm));
 
     // Four real deposits through the real pool, so the state tree has genuine depth.
     for (uint256 i = 0; i < PRECOMMITMENTS.length; i++) {
@@ -354,11 +396,27 @@ contract WithdrawEndToEndTest is EscrowFixtureBase {
     vm.serializeUint(json, 'leafIndex', OUR_NOTE_INDEX);
     vm.serializeUint(json, 'stateRoot', pool.currentRoot());
     vm.serializeUint(json, 'stateTreeDepth', pool.currentTreeDepth());
-    string memory out = vm.serializeUint(json, 'identityRoot', uint256(identityRegistry.root()));
+    vm.serializeUint(json, 'identityRoot', uint256(identityRegistry.root()));
+
+    // The three the generator needs that are PLANNED here rather than observed: what the note holds,
+    // what this withdrawal takes, and the context binding it to its recipient. The context is
+    // derived by the pool's own rule over the exact struct the withdrawal will be settled with -
+    // computing it any other way is how a fixture ends up bound to a recipient nobody uses.
+    vm.serializeUint(json, 'value', DEPOSIT_VALUE);
+    vm.serializeUint(json, 'withdrawn', E2E_WITHDRAWN_PLAN);
+    string memory out = vm.serializeUint(
+      json, 'context',
+      uint256(keccak256(abi.encode(IPrivacyPool.Withdrawal({processooor: recipient, data: ''}), pool.SCOPE()))) % FIELD
+    );
     vm.writeJson(out, 'test/fixtures/e2e_params.json');
   }
 
   function _e2eProof() internal view returns (ProofLib.WithdrawProof memory _p) {
+    require(
+      e2eSignalsLoaded,
+      'no withdraw_e2e_pubsignals.json - regenerate with tools/build-e2e-fixture.js (see '
+      'test_EmitE2EFixtureParams for its arguments)'
+    );
     _p.proof = vm.readFileBinary('test/fixtures/withdraw_e2e.proof');
     _p.pubSignals = [
       E2E_NEW_COMMITMENT,
@@ -368,7 +426,7 @@ contract WithdrawEndToEndTest is EscrowFixtureBase {
       uint256(2), // state_tree_depth
       E2E_IDENTITY_ROOT,
       E2E_CONTEXT,
-      0 // taint root - EMPTY set, which admits everyone (2.18gz-unify)
+      E2E_BLACKLIST_ROOT // [7] the populated blacklist this fixture proves exclusion against
     ];
   }
 

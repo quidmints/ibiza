@@ -266,7 +266,35 @@ a gap where one used to be.
       tree does not contain. That is strictly worse than the zero it replaces: zero HALTS withdrawals
       loudly (the pool refuses it), whereas a name-keyed root passes silently while listing nobody the
       predicate can see. This is the §VACUOUS-BOUNDS shape arriving through a data feed.
-      ⇒ **The remaining item is a document-number parser per source, not a tree.**
+      ⇒ **AND THE REMAINING ITEM IS NARROWER THAN "A PARSER" — HALF OF IT IS ALREADY BUILT AND
+      UNWIRED** (surveyed 2026-08-24 against `testdata/ofac_ids_excerpt.xml`, the real export).
+      `identifiers.go` already declares `IdentifierSet{Path, TypeField, ValueField, TypePrefix}`,
+      already walks the NESTED `sdnList/sdnEntry/idList/id` the row parser cannot see, and already
+      normalises per chain — folding case for hex chains only, because XBT/TRX/XMR/LTC/BCH are base58
+      or bech32 where **case is significant and `ToUpper` silently corrupts the address**. Its header
+      reaches the same conclusion this row did independently: a name-keyed tree is *"TRUE FOR
+      EVERYONE"*. `decodeIdentifiers` is **not called from `main.go`.**
+      ▶️ **DOMAIN_ADDRESS is therefore the SHORT path, and it has a real feed:** the excerpt carries
+      **137 `Digital Currency Address - TRX`**, plus XMR and XBT, and the type string is a prefix
+      match that already admits `- ETH`. What is missing is Poseidon keying (`identifierLeafHash` is
+      keccak, for the anchor's dense tree — a different tree), the wiring, and the circuit term.
+      🔴 **DOMAIN_DOCUMENT NEEDS A THIRD FIELD AND TWO NORMALISATIONS, AND BOTH ARE SILENT-FAILURE
+      HAZARDS — this is the finding, not the parsing:**
+        1. **`idCountry` IS A COUNTRY NAME, THE MRZ CARRIES ISO ALPHA-3.** Published: `Egypt`, `Iran`.
+           The circuit hashes the MRZ's three bytes — `EGY`, `IRN`. A mapping is required, OFAC's
+           naming is not ISO, and `IdentifierSet` has no third field to carry it.
+        2. **THE MRZ FIELD IS NINE CHARACTERS, `<`-PADDED; OFAC PUBLISHES THE BARE NUMBER.** Measured
+           lengths in the excerpt: 4, 4, 6, 7, 8, 9. `td1_dg1_data_extractor` reads all nine bytes, so
+           `1084010` is hashed as `1084010<<` in-circuit and as `1084010` from the feed.
+        ⛔ **Either mistake produces a tree that matches nothing, and NOTHING ANNOUNCES IT** — the
+        root anchors, the proofs verify, and every listed person passes. Same shape as publishing over
+        the name leaves, reached from the normalisation side instead.
+        ▶️ Also filter on `idType == "Passport"` exactly: the same `idList` carries
+        `Secondary sanctions risk:`, `Email Address` and `Gender` rows, whose `idNumber` is prose.
+      ⏸️ **BLOCKED ON A DECISION, NOT ON WORK: which address a withdrawal is judged on** — the
+      `processooor`, the relayer, or the payout recipient. Until that is settled the DOMAIN_ADDRESS
+      term cannot be written, and publishing an address-keyed root before the term exists would be
+      the same silent-pass hole as the name leaves.
       ▶️ **AND WHEN IT IS BUILT, BE HONEST ABOUT WHAT THE CLAIM IS.** A ZK absence proof yields a
       SIGNAL, not evidence: *"some passport-holder asserts the parse dropped them"*, with a nullifier
       and no name. That is still the entire point — **silence becomes a visible, counted alarm**, and

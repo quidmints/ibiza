@@ -173,10 +173,10 @@ function writeProverToml(outPath, inputs) {
   return outPath;
 }
 
-/** The seven public signals, named, for logging a generated witness. */
+/** The eight public signals, named, for logging a generated witness. */
 const PUBLIC_SIGNAL_NAMES = [
   'new_commitment', 'existing_nullifier_hash', 'withdrawn_value', 'state_root',
-  'state_tree_depth', 'identity_root', 'context',
+  'state_tree_depth', 'identity_root', 'context', 'blacklist_root',
 ];
 
 function logPublicSignals(pubSignals) {

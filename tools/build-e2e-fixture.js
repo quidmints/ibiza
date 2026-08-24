@@ -187,5 +187,12 @@ if (w.pubSignals[4] === 0n) throw new Error('DEGENERATE: state tree depth 0, no 
 const out = path.join(__dirname, '..', 'backend', 'circuits', 'withdraw_identity', 'Prover.e2e.toml');
 common.writeProverToml(out, w.inputs);
 
+// The signals, beside the proof they belong to, for the same reason build-withdrawal-fixture.js
+// writes its own: pinned in a test they go stale as `SumcheckFailed()`, which names nothing.
+fs.writeFileSync(
+  path.join(FIXTURES_DIR, 'withdraw_e2e_pubsignals.json'),
+  JSON.stringify(w.pubSignals.map((v) => '0x' + v.toString(16).padStart(64, '0')), null, 2) + '\n',
+);
+
 console.log('e2e witness written. Public signals:');
 common.logPublicSignals(w.pubSignals);

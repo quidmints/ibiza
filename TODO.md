@@ -224,21 +224,29 @@ a gap where one used to be.
       append-only, no owner, the same shape that already bounds `IncorrectASPRoot` — instead of an
       entrypoint setter. **Do this with the Go SMT builder, not after it:** the anchor is where the
       root lands, so wiring the pool to read it is the same change as publishing a real one.
-      🔴 **ESCROW IS TD1-ONLY, SO A PASSPORT BOOKLET CAN BE REGISTERED AND THEN NOT ESCROWED**
-      (found 2026-08-24 while binding the document; PRE-EXISTING, not caused by that change).
-      `register_identity` is TD3 (`DG1_LEN = 93`, the booklet) and `register_identity_td1` is TD1
-      (`95`, the card) — but there is exactly ONE `escrow_envelope`, and it is `95`. A 93-byte DG1
-      does not type-check against it, so the TD3 half of the registration path has no escrow and
-      therefore no withdrawal.
-      ⚠️ **THE DOCUMENT BINDING MAKES THIS SHARPER RATHER THAN CAUSING IT.** `td1_document_fields`
-      is `[u8; 95]` deliberately: the document number sits at MRZ `[5..14)` on a card and `[49..58)`
-      on a booklet, so a TD3 buffer read with TD1 offsets returns NAME bytes — a key that verifies
-      consistently and matches no register ever. The length in the signature is what makes that
-      uncompilable rather than silent, and the TD3 accessor is one three-line function
-      (`dg1_data_extractor` already returns citizenship and doc_number for `[u8; 93]`) — the work is
-      a second escrow circuit, not the extraction.
-      ▶️ Settle whether TD3 escrow is wanted at all before building it: if the product is card-only,
-      `register_identity`'s TD3 path is the thing to delete, and the asymmetry is the tell either way.
+      ⛔ **"ESCROW IS TD1-ONLY" IS THE DESIGN, NOT A GAP — AND THE ROW THAT SAID OTHERWISE WAS
+      WRONG WITHIN AN HOUR OF BEING WRITTEN (self-corrected 2026-08-24).** It read *"a passport
+      booklet can be registered and then never escrowed"* and asked whether to build TD3 escrow or
+      delete the TD3 registration path. **Both halves were wrong, and the answer was already written
+      in the tree.** `register_identity_td1`'s own header states it: *"Everything else on the live
+      path is TD1 at 95 — `register_identity_light_td1`, `escrow_envelope`, and the wallet, whose
+      vendored rarime circuit registry points exclusively at `.../id_cards/`."* And that circuit was
+      added FOR EXACTLY THE CONDITION THE ROW "FOUND": *"a document registered through the 93-byte
+      circuit produces a `registrationSmt` leaf that `escrow_envelope` can never reproduce … So the
+      permissionless path registered documents that could not reach the pool. **This closes that.**"*
+      ▶️ **Confirmed by call-site grep, not by reading headers:** outside `contracts/passport/
+      verifiers/` the only referenced family is `RegisterIdentityLight**ID***` (the TD1 one). The
+      non-ID TD3 verifiers are present as files and referenced nowhere.
+      ⇒ **TD1 at 95 is the live path end to end. `td1_document_fields` taking `[u8; 95]` is correct,
+      and the TD1 MRZ fixture is the representative one, not a narrowing.**
+      🔎 **THE ONLY RESIDUAL, and it is cleanup rather than correctness:** `register_identity` (TD3,
+      93) still sits in OUR `backend/circuits/`, not under `lib/`, and its verifier family is
+      unreferenced. Whether that is deliberate vendored parity with rarimo's contracts or dead weight
+      is unsettled — and per the standing rule, an unreferenced circuit is NOT automatically litter:
+      `git log -S` it before touching anything.
+      ⚠️ **THE LESSON IS THE ONE THIS FILE KEEPS RE-LEARNING: AN ASYMMETRY IS NOT A DEFECT UNTIL YOU
+      HAVE READ WHY IT IS THERE.** Two circuits differing by one constant looked like an oversight;
+      the constant is the whole point, and the file that explains it was one `sed -n '1,20p'` away.
       ▶️ **`DOMAIN_ADDRESS` IS DERIVED AND LISTED BUT NEVER PROVEN.** The fixture's listed set
       includes a sanctioned address key, and `blacklist.nr` defines the domain, but no circuit term
       queries it — a withdrawal proves its LABEL and its DOCUMENT are absent, not its recipient.

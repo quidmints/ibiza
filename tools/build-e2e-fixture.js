@@ -71,13 +71,20 @@ const SCOPE = need('scope');
 
 // ── PASS 1: the four precommitments this SCOPE implies ──────────────────────────────────────
 if (argv.includes('--precommitments')) {
-  console.log('// Wallet-derived precommitments for SCOPE ' + SCOPE);
-  console.log('uint256[4] internal PRECOMMITMENTS = [');
-  for (let i = 0; i < 4; i++) {
-    const s = depositSecrets(keys, SCOPE, BigInt(i));
-    console.log(`  ${precommitment(s)}${i < 3 ? ',' : ''}`);
-  }
-  console.log('];');
+  // WRITTEN, NOT PRINTED FOR PASTING. These are a function of SCOPE, and SCOPE is a function of the
+  // pool's address - so ANY constructor change moves them. Pinned in the test they went stale
+  // silently and surfaced three steps downstream as `state_root disagrees with the chain`, which
+  // points at the tree rather than at the deposits that built it.
+  const values = [];
+  for (let i = 0; i < 4; i++) values.push(precommitment(depositSecrets(keys, SCOPE, BigInt(i))));
+  fs.writeFileSync(
+    path.join(FIXTURES_DIR, 'e2e_precommitments.json'),
+    JSON.stringify({
+      scope: '0x' + SCOPE.toString(16).padStart(64, '0'),
+      precommitments: values.map((v) => '0x' + v.toString(16).padStart(64, '0')),
+    }, null, 2) + '\n',
+  );
+  console.log(`Wrote 4 precommitments for SCOPE ${SCOPE}`);
   process.exit(0);
 }
 
@@ -101,6 +108,18 @@ if (argv.includes('--ragequit')) {
   ].join('\n') + '\n';
   fs.writeFileSync(
     path.join(__dirname, '..', 'backend', 'circuits', 'ragequit', 'Prover.e2e.toml'), toml);
+  // WRITTEN, NOT PRINTED FOR PASTING - same reason as the precommitments above. All three are
+  // functions of SCOPE, so a constructor change moves them, and pinned in the test they surface as
+  // `OnlyOriginalDepositor` (the label no longer names a deposit this depositor made), which points
+  // at authorisation rather than at a stale fixture.
+  const hex = (v) => '0x' + v.toString(16).padStart(64, '0');
+  fs.writeFileSync(
+    path.join(FIXTURES_DIR, 'ragequit_e2e_pubsignals.json'),
+    JSON.stringify({
+      scope: hex(SCOPE),
+      commitment: hex(c), nullifierHash: hex(nh), value: hex(value), label: hex(label),
+    }, null, 2) + '\n',
+  );
   console.log('ragequit witness written:');
   console.log(`  RQ_COMMITMENT     = ${c}`);
   console.log(`  RQ_NULLIFIER_HASH = ${nh}`);

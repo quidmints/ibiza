@@ -112,6 +112,19 @@ if [[ "$STAGE" == "e2e" || "$STAGE" == "all" ]]; then
         --identity-root $(get identityRoot) --context $(get context)
         --value $(get value) --withdrawn $(get withdrawn)"
 
+  # ⚠️ TWO PASSES, AND THE FIRST ONE IS EXPECTED TO BE WRONG. The four deposits are wallet-derived
+  # from SCOPE, and SCOPE is a function of the pool's ADDRESS - so the scope cannot be known until
+  # the pool exists, and the pool's deposits cannot be right until the scope is known. Pass one
+  # deposits placeholders and learns the scope; pass two deposits the real ones and the state root
+  # the generator cross-checks against finally matches.
+  step "e2e: derive this scope's precommitments, then re-read the parameters"
+  node tools/build-e2e-fixture.js --build "$BUILD" --scope "$(get scope)" --precommitments
+  (cd backend/contracts && forge test --match-test test_EmitE2EFixtureParams >/dev/null)
+  ARGS="--build $BUILD --scope $(get scope) --label $(get label) --leaf-index $(get leafIndex)
+        --state-root $(get stateRoot) --state-depth $(get stateTreeDepth)
+        --identity-root $(get identityRoot) --context $(get context)
+        --value $(get value) --withdrawn $(get withdrawn)"
+
   step "e2e: blacklist queries -> witnesses -> prover inputs"
   # shellcheck disable=SC2086
   node tools/build-e2e-fixture.js $ARGS --queries
@@ -129,6 +142,26 @@ if [[ "$STAGE" == "e2e" || "$STAGE" == "all" ]]; then
    bb verify -t evm -k target/vk -p target/_e2e/proof -i target/_e2e/public_inputs >/dev/null
    cp target/_e2e/proof ../../contracts/test/fixtures/withdraw_e2e.proof
    echo "  withdraw_e2e.proof verified")
+
+  # ⚠️ RAGEQUIT IS PART OF THIS STAGE, NOT A SEPARATE CONCERN. Its commitment, nullifier hash and
+  # label are all derived from the SAME scope, so it goes stale with exactly the same changes - and
+  # it fails as `OnlyOriginalDepositor`, which points at authorisation rather than at a fixture. It
+  # was missing from this script until the anchor change moved SCOPE and three ragequit tests broke.
+  step "ragequit: witness, prove, install"
+  node tools/build-e2e-fixture.js --build "$BUILD" --scope "$(get scope)" --ragequit
+  (cd backend/circuits/ragequit
+   nargo compile >/dev/null
+   bb write_vk -t evm -b target/ragequit.json -o target >/dev/null
+   bb write_solidity_verifier -t evm -k target/vk \
+     -o ../../contracts/contracts/pool/verifiers/RagequitHonkVerifier.sol >/dev/null
+   perl -pi -e 's/^contract HonkVerifier is/contract RagequitHonkVerifier is/' \
+     ../../contracts/contracts/pool/verifiers/RagequitHonkVerifier.sol
+   cp Prover.e2e.toml Prover.toml
+   nargo execute rq_e2e >/dev/null
+   bb prove -t evm -b target/ragequit.json -w target/rq_e2e.gz -k target/vk -o target/_rq >/dev/null
+   bb verify -t evm -k target/vk -p target/_rq/proof -i target/_rq/public_inputs >/dev/null
+   cp target/_rq/proof ../../contracts/test/fixtures/ragequit_e2e.proof
+   echo "  ragequit_e2e.proof verified")
 fi
 
 # ── the recursion trees ─────────────────────────────────────────────────────────────────────────

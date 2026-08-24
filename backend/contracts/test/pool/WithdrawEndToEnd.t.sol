@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Test} from 'forge-std/Test.sol';
+import {BlacklistAnchorFixture} from './helpers/BlacklistAnchorFixture.sol';
 import {BlacklistRootFixture} from './helpers/BlacklistRootFixture.sol';
 import {ERC1967Proxy} from '@oz/proxy/ERC1967/ERC1967Proxy.sol';
 import {IEvidenceRegistry} from '@rarimo/evidence-registry/interfaces/IEvidenceRegistry.sol';
@@ -81,7 +82,7 @@ contract MockEvidenceRegistry is IEvidenceRegistry {
  * changes (it is derived from the deployed address, so ANY change to deployment order in setUp
  * invalidates the fixture — test_ScopeMatchesFixture pins that).
  */
-contract WithdrawEndToEndTest is EscrowFixtureBase {
+contract WithdrawEndToEndTest is EscrowFixtureBase, BlacklistAnchorFixture {
   Entrypoint internal entrypoint;
   IdentityRegistry internal identityRegistry;
   HolderStateKeeperMock internal stateKeeper;
@@ -114,12 +115,50 @@ contract WithdrawEndToEndTest is EscrowFixtureBase {
    * degeneracy removed from the verifier fixtures; re-introducing it here would make this test
    * verify a Merkle path it never actually walks.
    */
-  uint256[4] internal PRECOMMITMENTS = [
-    130057558160235592511055446676943016014093381401877549806303212122208039886,
-    10628472012802191424235906145265078701485565840597635313540335553880462567724,
-    6196614239054392184399340120842402753896919304195442741949196984892521157213,
-    961821015248050687755360829681989756125935114364007114347328514489660411156
-  ];
+  /**
+   * The four deposits this suite makes, READ FROM THE FIXTURE the generator wrote them into.
+   *
+   * ⚠️ THEY ARE A FUNCTION OF `SCOPE`, WHICH IS A FUNCTION OF THE POOL'S ADDRESS - so ANY change to
+   * the constructor moves them. Pinned here as literals they went stale silently, and the symptom
+   * appeared three steps downstream in the generator as `state_root disagrees with the chain`, which
+   * points at the tree rather than at the deposits that built it.
+   *
+   * Wallet-derived (seed + scope), so Solidity cannot compute them; reading them is the only option
+   * that does not require someone to notice and re-paste.
+   */
+  uint256[4] internal PRECOMMITMENTS;
+
+  /// True once the emitted precommitments were found - see the bootstrap note on `_loadE2ESignals`.
+  bool internal precommitmentsLoaded;
+
+  /**
+   * ⚠️ TOLERATES ABSENCE FOR THE SAME REASON `_loadE2ESignals` does, and there is a second reason
+   * here: the file is generated FOR a scope, and the scope is only knowable once the pool exists.
+   * The first pass of a regeneration therefore deposits placeholders, learns SCOPE, and the second
+   * pass deposits the real ones. Requiring the file would make that first pass impossible.
+   *
+   * ⛔ THE SCOPE IS CHECKED, not assumed. A file generated for a DIFFERENT pool is worse than a
+   * missing one: it deposits successfully and produces leaves nothing can reconstruct.
+   */
+  function _loadPrecommitments(uint256 scope_) internal {
+    if (!vm.isFile('test/fixtures/e2e_precommitments.json')) {
+      // Placeholder deposits: enough to build a tree, not expected to reconstruct. REDUCED mod the
+      // scalar field, because the pool rejects anything at or above it and a raw keccak clears that
+      // bound about half the time - an unreduced placeholder fails as `InvalidPrecommitmentHash`,
+      // which reads as a broken deposit rather than as the bootstrap value it is.
+      for (uint256 i = 0; i < 4; i++) PRECOMMITMENTS[i] = uint256(keccak256(abi.encode('bootstrap', i))) % FIELD;
+      return;
+    }
+    string memory raw_ = vm.readFile('test/fixtures/e2e_precommitments.json');
+    if (uint256(vm.parseJsonBytes32(raw_, '.scope')) != scope_) {
+      for (uint256 i = 0; i < 4; i++) PRECOMMITMENTS[i] = uint256(keccak256(abi.encode('bootstrap', i))) % FIELD;
+      return; // generated for another pool; regenerate rather than silently mismatching
+    }
+    bytes32[] memory pre_ = vm.parseJsonBytes32Array(raw_, '.precommitments');
+    require(pre_.length == 4, 'e2e_precommitments.json must carry four values');
+    for (uint256 i = 0; i < 4; i++) PRECOMMITMENTS[i] = uint256(pre_[i]);
+    precommitmentsLoaded = true;
+  }
 
   /// Ours is index 1 - deliberately not first or last, so its inclusion path has siblings on both
   /// sides rather than riding the LeanIMT's carry-up-on-empty edge case.
@@ -217,6 +256,26 @@ contract WithdrawEndToEndTest is EscrowFixtureBase {
 
   function setUp() public {
     _loadE2ESignals();
+
+    // ⚠️ THE ROOT IS PUBLISHED THROUGH A REAL ANCHOR, BECAUSE THE POOL NO LONGER ACCEPTS ONE.
+    // It pulls from `RegistrySourceAnchor` precisely so nobody can choose the value - a test
+    // included. This suite verifies REAL proofs, so the published root must be the one the fixture's
+    // exclusion witnesses were built against: `withdraw` substitutes it into the verifier's public
+    // inputs, and any other value - including a perfectly valid root from a different snapshot -
+    // yields `InvalidProof`, which reads as a broken circuit rather than a mismatched number.
+    //
+    // During a regeneration the emitted signals do not exist yet, so fall back to the shared tree's
+    // root. That fallback is a REAL root from the same tree, never a placeholder.
+    _deployBlacklistAnchor(e2eSignalsLoaded ? E2E_BLACKLIST_ROOT : BlacklistRootFixture.read(vm));
+
+    // ⚠️ DEPLOYED FIRST, AND THE ORDER IS LOAD-BEARING. Publishing a snapshot warps time twice to
+    // clear the workflow and root activation delays, and `EscrowFixtureBase` requires
+    // `block.timestamp == FIXTURE_TIMESTAMP` exactly when it binds documents - its leaf values
+    // include the timestamp. Doing this afterwards moves the clock out from under that binding and
+    // fails with a message about leaf values, which points nowhere near the cause. Running first is
+    // safe because the later warp to FIXTURE_TIMESTAMP is far FORWARD of these, so the snapshot
+    // stays active.
+
     registry = new MockEvidenceRegistry();
 
     Entrypoint impl = new Entrypoint();
@@ -256,31 +315,17 @@ contract WithdrawEndToEndTest is EscrowFixtureBase {
     );
 
     withdrawalVerifier = new WithdrawalHonkVerifier();
+
     pool = new PrivacyPoolSimple(
       address(entrypoint), address(withdrawalVerifier), address(new RagequitHonkVerifier()),
       address(identityRegistry),
-      address(0) // no aggregation verifier: this suite does not exercise withdrawBatch
+      address(0), // no aggregation verifier: this suite does not exercise withdrawBatch
+      address(blacklistAnchor), BLACKLIST_REGISTRY
     );
 
-    // The pool refuses a ZERO blacklist root: an empty exclusion tree proves non-membership for
-    // every key, so accepting one would admit every withdrawal the moment the feed was unset.
-    // Publishing a root is a precondition for settling anything.
-    //
-    // ⚠️ THIS SUITE VERIFIES REAL PROOFS, so the value is not free: `withdraw` SUBSTITUTES it into
-    // the verifier's public inputs, and a root the fixture was not proven against yields
-    // `InvalidProof` - which reads as a broken circuit rather than a mismatched number. It must be
-    // the root the generator built its exclusion witnesses from, which is why it is read from the
-    // same file rather than written out here.
-    vm.prank(address(entrypoint));
-    // The root THIS FIXTURE proved against, not merely a valid one. `withdraw` substitutes the
-    // pool's root into the verifier's public inputs, so any other value - including a correct root
-    // from a different snapshot - yields `InvalidProof`, which reads as a broken circuit.
-    // During a regeneration the emitted signals do not exist yet, so fall back to the shared tree's
-    // root: the pool refuses zero, and it must be constructible before the fixture it will later
-    // verify has been built. The fallback is a REAL root from the same tree, never a placeholder.
-    pool.setBlacklistRoot(e2eSignalsLoaded ? E2E_BLACKLIST_ROOT : BlacklistRootFixture.read(vm));
-
     // Four real deposits through the real pool, so the state tree has genuine depth.
+    _loadPrecommitments(pool.SCOPE());
+    _loadRagequitSignals(pool.SCOPE());
     for (uint256 i = 0; i < PRECOMMITMENTS.length; i++) {
       uint256 label = uint256(keccak256(abi.encodePacked(pool.SCOPE(), pool.nonce() + 1))) % FIELD;
       vm.deal(address(entrypoint), DEPOSIT_VALUE);
@@ -624,15 +669,38 @@ contract WithdrawEndToEndTest is EscrowFixtureBase {
    * The note is deposit index 0, deliberately NOT the one the withdrawal spends (index 1), so the
    * two end-to-end paths cannot mask each other.
    */
-  uint256 internal constant RQ_COMMITMENT =
-    17975503696435785383825560335987043444961350313588353426419281924309605667268;
-  uint256 internal constant RQ_NULLIFIER_HASH =
-    8804420519297481257523323779945157586225041386282682497066402836735884193743;
-  uint256 internal constant RQ_VALUE = 1 ether;
-  uint256 internal constant RQ_LABEL =
-    15657487282795624093814845682454643069651346009494294240642302522288600992635;
+  /**
+   * The ragequit fixture's public signals, READ FROM THE FIXTURE like every other one here.
+   *
+   * ⚠️ ALL THREE ARE FUNCTIONS OF `SCOPE`. Pinned as literals they went stale when the constructor
+   * changed, and surfaced as `OnlyOriginalDepositor` - which points at AUTHORISATION rather than at
+   * a stale number, because a label from the old scope names a deposit this depositor never made.
+   */
+  uint256 internal RQ_COMMITMENT;
+  uint256 internal RQ_NULLIFIER_HASH;
+  uint256 internal RQ_VALUE;
+  uint256 internal RQ_LABEL;
+  bool internal ragequitSignalsLoaded;
+
+  /// Tolerates absence for the bootstrap reason given on `_loadE2ESignals`, and checks the scope for
+  /// the reason given on `_loadPrecommitments`: a fixture built for another pool is worse than none.
+  function _loadRagequitSignals(uint256 scope_) internal {
+    if (!vm.isFile('test/fixtures/ragequit_e2e_pubsignals.json')) return;
+    string memory raw_ = vm.readFile('test/fixtures/ragequit_e2e_pubsignals.json');
+    if (uint256(vm.parseJsonBytes32(raw_, '.scope')) != scope_) return;
+    RQ_COMMITMENT = uint256(vm.parseJsonBytes32(raw_, '.commitment'));
+    RQ_NULLIFIER_HASH = uint256(vm.parseJsonBytes32(raw_, '.nullifierHash'));
+    RQ_VALUE = uint256(vm.parseJsonBytes32(raw_, '.value'));
+    RQ_LABEL = uint256(vm.parseJsonBytes32(raw_, '.label'));
+    ragequitSignalsLoaded = true;
+  }
 
   function _ragequitProof() internal view returns (ProofLib.RagequitProof memory _p) {
+    require(
+      ragequitSignalsLoaded,
+      'no ragequit_e2e_pubsignals.json for this SCOPE - regenerate with '
+      'tools/regenerate-fixtures.sh e2e'
+    );
     _p.proof = vm.readFileBinary('test/fixtures/ragequit_e2e.proof');
     _p.pubSignals = [RQ_COMMITMENT, RQ_NULLIFIER_HASH, RQ_VALUE, RQ_LABEL];
   }

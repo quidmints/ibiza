@@ -2,6 +2,8 @@
 pragma solidity 0.8.28;
 
 import {Test} from 'forge-std/Test.sol';
+import {BlacklistAnchorFixture} from './helpers/BlacklistAnchorFixture.sol';
+import {BlacklistRootFixture} from './helpers/BlacklistRootFixture.sol';
 import {DeployLib} from 'contracts/pool/lib/DeployLib.sol';
 import {PrivacyPoolSimple} from 'contracts/pool/implementations/PrivacyPoolSimple.sol';
 import {PrivacyPoolComplex} from 'contracts/pool/implementations/PrivacyPoolComplex.sol';
@@ -26,7 +28,7 @@ import {MockEntrypoint} from './PrivacyPoolSimple.t.sol';
  * merely present. It deliberately does NOT deploy the identity/state layer: those have their own
  * constructors and suites, and the gap being closed here is the pool layer.
  */
-contract DeployPoolTest is Test {
+contract DeployPoolTest is Test, BlacklistAnchorFixture {
   MockEntrypoint internal entrypoint;
   address internal withdrawalVerifier;
   address internal ragequitVerifier;
@@ -37,11 +39,15 @@ contract DeployPoolTest is Test {
     withdrawalVerifier = address(new NoirVerifierMock());
     ragequitVerifier = address(new NoirVerifierMock());
     batchVerifier = address(new NoirVerifierMock());
+    // A pool cannot be deployed without a blacklist source now - which is the point of this suite:
+    // it asserts DeployLib can build a pool a real deployment could use.
+    _deployBlacklistAnchor(BlacklistRootFixture.read(vm));
   }
 
   function _simple(address aggregation_) internal returns (PrivacyPoolSimple) {
     return DeployLib.deploySimplePool(
-      address(entrypoint), withdrawalVerifier, ragequitVerifier, address(entrypoint), aggregation_
+      address(entrypoint), withdrawalVerifier, ragequitVerifier, address(entrypoint), aggregation_,
+      address(blacklistAnchor), BLACKLIST_REGISTRY
     );
   }
 
@@ -83,7 +89,8 @@ contract DeployPoolTest is Test {
   function test_ComplexPoolCanBeDeployed() public {
     address asset = address(0xC0FFEE);
     PrivacyPoolComplex pool = DeployLib.deployComplexPool(
-      address(entrypoint), withdrawalVerifier, ragequitVerifier, asset, address(entrypoint), batchVerifier
+      address(entrypoint), withdrawalVerifier, ragequitVerifier, asset, address(entrypoint), batchVerifier,
+      address(blacklistAnchor), BLACKLIST_REGISTRY
     );
     assertEq(pool.ASSET(), asset);
     assertEq(address(pool.BATCH_VERIFIER()), batchVerifier);

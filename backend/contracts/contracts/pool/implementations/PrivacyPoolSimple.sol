@@ -32,9 +32,11 @@ contract PrivacyPoolSimple is PrivacyPool, IPrivacyPoolSimple {
     address _withdrawalVerifier,
     address _ragequitVerifier,
     address _identityRegistry,
-    address _aggregationVerifier
+    address _aggregationVerifier,
+    address _blacklistAnchor,
+    bytes32 _blacklistRegistryId
   ) PrivacyPool(
-    _entrypoint, _withdrawalVerifier, _ragequitVerifier, Constants.NATIVE_ASSET, _identityRegistry, _aggregationVerifier
+    _entrypoint, _withdrawalVerifier, _ragequitVerifier, Constants.NATIVE_ASSET, _identityRegistry, _aggregationVerifier, _blacklistAnchor, _blacklistRegistryId
   ) {}
 
   /**

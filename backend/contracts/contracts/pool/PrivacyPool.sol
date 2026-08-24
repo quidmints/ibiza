@@ -23,6 +23,7 @@ import {INoirVerifier} from '../interfaces/verifiers/INoirVerifier.sol';
 import {BatchVerifierLib} from './lib/BatchVerifierLib.sol';
 import {ProofLib} from './lib/ProofLib.sol';
 import {IIdentityRegistry} from '../interfaces/registry/IIdentityRegistry.sol';
+import {IBlacklistAnchor} from '../interfaces/registry/IBlacklistAnchor.sol';
 
 import {IPrivacyPool} from 'interfaces/IPrivacyPool.sol';
 
@@ -187,9 +188,14 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     address _ragequitVerifier,
     address _asset,
     address _identityRegistry,
-    address _batchVerifier
+    address _batchVerifier,
+    address _blacklistAnchor,
+    bytes32 _blacklistRegistryId
   ) State(_asset, _entrypoint, _withdrawalVerifier, _ragequitVerifier) {
     if (_identityRegistry == address(0)) revert ZeroIdentityRegistry();
+    if (_blacklistAnchor == address(0)) revert ZeroBlacklistAnchor();
+    BLACKLIST_ANCHOR = IBlacklistAnchor(_blacklistAnchor);
+    BLACKLIST_REGISTRY_ID = _blacklistRegistryId;
     IDENTITY_REGISTRY = IIdentityRegistry(_identityRegistry);
     // Deliberately NOT rejected when zero - see BATCH_VERIFIER. It was previously never
     // assigned at all, which left `withdrawBatch` permanently unreachable.
@@ -367,7 +373,7 @@ abstract contract PrivacyPool is State, IPrivacyPool {
 
       // ⚠️ THE BATCH MUST *CHECK* THE BLACKLIST ROOT BECAUSE IT CANNOT *SUBSTITUTE* IT.
       //
-      // `withdraw` feeds the pool's `blacklistRoot` straight into the verifier's public inputs, so a
+      // `withdraw` feeds the anchor's active root straight into the verifier's public inputs, so a
       // prover there has no say in it. The aggregation verifier takes ONE public input - the batch
       // commitment - so there is nothing to substitute into: `s[7]` is whatever the prover folded in.
       // Without this line a batcher proves non-membership against an EMPTY tree OF THEIR OWN and the
@@ -452,74 +458,56 @@ abstract contract PrivacyPool is State, IPrivacyPool {
 
   /// @inheritdoc IPrivacyPool
   /**
-   * @notice Root of the TAINT set - deposits whose provenance disqualifies a withdrawal.
+   * @notice Where the blacklist root comes from, and the registry within it.
    *
-   * ZERO MEANS EMPTY AND EMPTY ADMITS EVERYONE, WHICH IS WHY ZERO IS NOW REFUSED. The predicate is
-   * EXCLUSION (`label ∉ blacklisted`), so an unset, stalled or unreachable feed would let every
-   * withdrawal through while still "passing". Upstream PP proved inclusion in an approved set, where
-   * the same silence censors everyone instead (sec. 2.18cu) - same silence, opposite direction, and
-   * only one of the two is safe to leave unhandled.
-   *
-   * ⇒ Reading this value goes through `_activeBlacklistRoot()`, which reverts on zero. Withdrawals
-   * halt until a root is published rather than proceeding unchecked. Deposits are unaffected.
-   *
-   * ⚠️ Substitution protects only the SINGLE path - `publicInputsBytes32` feeds this value into the
-   * verifier so a prover cannot swap it. The BATCH path has no public input to substitute into and
-   * must compare `s[7]` against this value explicitly.
+   * IMMUTABLE ON PURPOSE. A settable source is the same lever as a settable root wearing one more
+   * layer: whoever can re-point this can choose the value it returns. Changing either means
+   * deploying a new pool, which is a decision with a diff rather than a transaction.
    */
-  uint256 public blacklistRoot;
+  IBlacklistAnchor public immutable BLACKLIST_ANCHOR;
+  bytes32 public immutable BLACKLIST_REGISTRY_ID;
 
-  event BlacklistRootSet(uint256 root);
-
+  error ZeroBlacklistAnchor();
   error BlacklistRootUnset();
   error BlacklistRootMismatch(uint256 supplied, uint256 active);
 
+
   /**
-   * @notice The blacklist root every withdrawal is proven against, or revert.
+   * @notice The blacklist root every withdrawal is proven against.
    *
-   * ⛔ ZERO IS REFUSED, AND THAT IS A DELIBERATE CHOICE OF FAILURE DIRECTION. An empty tree is a
-   * valid exclusion root for EVERY key, so a pool that accepted zero would let every withdrawal
-   * through the moment the feed was unset, stalled or unreachable - the predicate would still
-   * "pass", which is the worst kind of hole because nothing looks broken.
+   * ⛔ PULLED FROM THE ANCHOR, NEVER SET HERE, AND THAT IS THE WHOLE POINT OF THIS FUNCTION.
    *
-   * Refusing it converts that silence into a HALT: withdrawals stop until a root is published. A
-   * stalled feed is then loud and reversible; the alternative is quiet and not.
+   * It used to be a storage field written by `setBlacklistRoot(uint256)` under `onlyEntrypoint`.
+   * Refusing a zero closed the fail-open hole and refusing to re-zero removed the cost-free halt,
+   * but neither touched the real problem: ONE ADDRESS CHOSE THE VALUE. A hostile entrypoint could
+   * publish a root nobody holds an exclusion witness against, and every withdrawal in the pool stops
+   * - a pause flag in everything but name, on a contract whose central claim is that no such lever
+   * exists (`test_NoGovernanceLeverCanBlockAWithdrawal`).
    *
-   * ⚠️ THIS IS WHY THE POOL IS NOT WITHDRAWABLE BEFORE THE FIRST `setBlacklistRoot`. That is not a
-   * bootstrap oversight to be patched with a zero default - it is the guarantee. Deposits are
-   * unaffected.
+   * The anchor is the same shape that already bounds `IncorrectASPRoot`: append-only, no owner, and
+   * fed by a DON through a forwarder that is itself timelocked. Nobody can aim it at an individual,
+   * and nobody can choose its value.
+   *
+   * ⚠️ THE REVERTS ARE LOAD-BEARING AND MUST NOT BE CAUGHT. The anchor reverts when no snapshot
+   * exists or none has cleared its activation delay. For an EXCLUSION predicate that is correct:
+   * an absent set proves non-membership for every key, so swallowing the revert and continuing with
+   * zero would admit everyone - the exact hole this replaced. Withdrawals halt until a root is
+   * published; deposits are unaffected.
+   *
+   * ⚠️ WHAT THIS DOES NOT BUY. Liveness now depends on the feed having published once and the
+   * activation delay having elapsed. A stalled feed keeps the last ACTIVE root rather than emptying
+   * it, so staleness admits a newly-listed key and never everyone. That is the residual, and it is
+   * a property of gating on a rotating root at all - not of where the root comes from.
    *
    * A `private view` rather than a modifier: one routine and two call sites, instead of the body
    * inlined at each.
    */
   function _activeBlacklistRoot() private view returns (uint256 root_) {
-    root_ = blacklistRoot;
+    root_ = uint256(BLACKLIST_ANCHOR.latestActiveSmtRoot(BLACKLIST_REGISTRY_ID));
+    // Belt-and-braces: the anchor documents that a snapshot may legally carry a zero SMT root, which
+    // for an exclusion predicate means an empty set. It announces nothing when it happens, so the
+    // failure would be silent and would admit everyone - which is what earns this check its place.
     if (root_ == 0) revert BlacklistRootUnset();
-  }
-
-  /// @notice Set the taint root. Entrypoint-gated, like every other pool-level parameter here.
-  function setBlacklistRoot(uint256 _root) external onlyEntrypoint {
-    // ⛔ THE ROOT CANNOT BE ZEROED, AND THAT IS A CENSORSHIP CONSTRAINT, NOT A SANITY CHECK.
-    //
-    // Refusing zero at the READ side (`_activeBlacklistRoot`) closes the fail-open. Refusing it here
-    // is the other half: without it the entrypoint could re-empty a live root, and because the read
-    // side halts on zero, that would be a PAUSE FLAG - one address able to stop every withdrawal in
-    // the pool at will. The whole point of `test_NoGovernanceLeverCanBlockAWithdrawal` is that no
-    // such lever exists.
-    //
-    // ⚠️ IT DOES NOT MAKE THE ROOT HARMLESS, AND THE REMAINING EXPOSURE SHOULD BE READ HONESTLY: a
-    // hostile entrypoint can still publish a NON-ZERO root nobody holds an exclusion witness
-    // against, which halts withdrawals just as effectively. That lever arrived with the blacklist
-    // feature itself, not with the fail-closed read - it is inherent in gating withdrawal on a
-    // mutable third-party value. Bounding it properly means sourcing this from the CRE anchor
-    // instead of an entrypoint setter, which is a design change and is booked, not done here.
-    //
-    // What this line buys is that the DEGENERATE halt - the one costing nothing and needing no
-    // fabricated tree - is unavailable, and that a stalled feed keeps the last good root rather than
-    // emptying it. Staleness admits a newly-listed address; it does not admit everyone.
-    if (_root == 0) revert BlacklistRootUnset();
-    blacklistRoot = _root;
-    emit BlacklistRootSet(_root);
   }
 
   function windDown() external onlyEntrypoint {

@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Test} from 'forge-std/Test.sol';
+import {BlacklistAnchorFixture} from './helpers/BlacklistAnchorFixture.sol';
 import {BlacklistRootFixture} from './helpers/BlacklistRootFixture.sol';
 import {PoseidonT4} from 'poseidon/PoseidonT4.sol';
 
@@ -43,7 +44,7 @@ contract MockEntrypoint {
 }
 
 /// PP core: deposit / withdraw / ragequit - previously zero test coverage on this fork.
-contract PrivacyPoolSimpleTest is Test {
+contract PrivacyPoolSimpleTest is Test, BlacklistAnchorFixture {
   MockEntrypoint internal entrypoint;
   // BOTH paths are Noir/Honk-proved - withdrawal via ProofLib.WithdrawProof, ragequit via
   // RagequitProof - which is why ONE mock type serves both. State.sol declares each as
@@ -61,18 +62,14 @@ contract PrivacyPoolSimpleTest is Test {
     entrypoint = new MockEntrypoint();
     withdrawalVerifier = new NoirVerifierMock();
     ragequitVerifier = new NoirVerifierMock();
+    _deployBlacklistAnchor(BlacklistRootFixture.read(vm));
     pool = new PrivacyPoolSimple(
       address(entrypoint), address(withdrawalVerifier), address(ragequitVerifier),
       address(entrypoint),
-      address(0) // no aggregation verifier: this suite does not exercise withdrawBatch
+      address(0), // no aggregation verifier: this suite does not exercise withdrawBatch
+      address(blacklistAnchor), BLACKLIST_REGISTRY
     );
 
-    // The pool refuses a ZERO blacklist root: an empty exclusion tree is a valid non-membership
-    // proof for every key, so accepting one would let every withdrawal through the moment the feed
-    // was unset. Publishing a root is therefore a precondition for settling anything, and every
-    // suite has to do it. See PrivacyPool._activeBlacklistRoot.
-    vm.prank(address(entrypoint));
-    pool.setBlacklistRoot(BlacklistRootFixture.read(vm));
 
     vm.deal(address(entrypoint), 0); // deposits are relayed as msg.value from the caller, not the entrypoint's own balance
     vm.deal(depositor, 0);
@@ -306,7 +303,8 @@ contract PrivacyPoolSimpleTest is Test {
       new PrivacyPoolSimple(
         address(entrypoint), address(withdrawalVerifier), address(rejecting),
         address(entrypoint),
-        address(0) // no aggregation verifier: this suite does not exercise withdrawBatch
+        address(0), // no aggregation verifier: this suite does not exercise withdrawBatch
+        address(blacklistAnchor), BLACKLIST_REGISTRY
       );
 
     uint256 value = 1 ether;

@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Test} from 'forge-std/Test.sol';
+import {BlacklistAnchorFixture} from './helpers/BlacklistAnchorFixture.sol';
 import {BlacklistRootFixture} from './helpers/BlacklistRootFixture.sol';
 import {PrivacyPoolSimple} from 'contracts/pool/implementations/PrivacyPoolSimple.sol';
 import {PrivacyPool} from 'contracts/pool/PrivacyPool.sol';
@@ -36,7 +37,7 @@ import {MockEntrypoint} from './PrivacyPoolSimple.t.sol';
  * so the double is answering "what does the contract do when the proof is rejected", not standing
  * in for the cryptography.
  */
-contract WithdrawBatchEntrypointTest is Test {
+contract WithdrawBatchEntrypointTest is Test, BlacklistAnchorFixture {
   uint256 internal constant PUB_LEN = 8;
   uint256 internal constant CONTEXT_SLOT = 6;
   /// BN254 scalar field - the pool rejects a precommitment at or above it.
@@ -49,6 +50,7 @@ contract WithdrawBatchEntrypointTest is Test {
   PrivacyPoolSimple internal poolWithoutAggregation;
 
   function setUp() public {
+    _deployBlacklistAnchor(BlacklistRootFixture.read(vm));
     entrypoint = new MockEntrypoint();
     batchVerifier = new NoirVerifierMock();
     pool = new PrivacyPoolSimple(
@@ -56,25 +58,18 @@ contract WithdrawBatchEntrypointTest is Test {
       address(new NoirVerifierMock()),
       address(new NoirVerifierMock()),
       address(entrypoint),
-      address(batchVerifier)
+      address(batchVerifier),
+      address(blacklistAnchor), BLACKLIST_REGISTRY
     );
     poolWithoutAggregation = new PrivacyPoolSimple(
       address(entrypoint),
       address(new NoirVerifierMock()),
       address(new NoirVerifierMock()),
       address(entrypoint),
-      address(0)
+      address(0),
+      address(blacklistAnchor), BLACKLIST_REGISTRY
     );
 
-    // Both pools need a published root: the pool refuses a ZERO one, because an empty exclusion
-    // tree is a valid non-membership proof for every key and would admit everyone the moment the
-    // feed was unset. `poolWithoutAggregation` gets one too - its rejections must be about the
-    // MISSING AGGREGATION VERIFIER, and an unset root would make them fire earlier for an unrelated
-    // reason, turning a real assertion into a vacuous one.
-    vm.startPrank(address(entrypoint));
-    pool.setBlacklistRoot(BlacklistRootFixture.read(vm));
-    poolWithoutAggregation.setBlacklistRoot(BlacklistRootFixture.read(vm));
-    vm.stopPrank();
   }
 
   // ── helpers ───────────────────────────────────────────────────────────────────────────────
@@ -205,7 +200,10 @@ contract WithdrawBatchEntrypointTest is Test {
       // substitute into - the contract must COMPARE this against its own root, and does. Leaving it
       // at whatever `_matchingSignals` filled in makes every test in this file fail on a root
       // mismatch before reaching the behaviour it means to assert.
-      s_[i][7] = pool.blacklistRoot();
+      // Read from the ANCHOR, the same source the pool reads. The pool deliberately exposes no
+      // settable or readable root - that is the property - so a test must consult the source of
+      // truth rather than the consumer, which is also what a real batcher has to do.
+      s_[i][7] = uint256(blacklistAnchor.latestActiveSmtRoot(BLACKLIST_REGISTRY));
     }
   }
 

@@ -61,16 +61,24 @@ library DeployLib {
    *        rather than calling into an empty address. Passing it HERE rather than through a setter
    *        is what keeps it immutable - a settable verifier could be swapped for one that accepts
    *        anything, which is the whole security of the batch path.
+   * @param _blacklistAnchor the RegistrySourceAnchor the pool PULLS its blacklist root from, and
+   *        `_blacklistRegistryId` the registry within it. Both immutable, and passed here for the
+   *        same reason `_batchVerifier` is: a settable source is a settable root wearing one more
+   *        layer, and whoever can re-point it can choose the value it returns. Changing either means
+   *        deploying a new pool - a decision with a diff, rather than a transaction.
    */
   function deploySimplePool(
     address _entrypoint,
     address _withdrawalVerifier,
     address _ragequitVerifier,
     address _identityRegistry,
-    address _batchVerifier
+    address _batchVerifier,
+    address _blacklistAnchor,
+    bytes32 _blacklistRegistryId
   ) internal returns (PrivacyPoolSimple _pool) {
     _pool = new PrivacyPoolSimple{salt: salt(msg.sender, SIMPLE_POOL_SALT)}(
-      _entrypoint, _withdrawalVerifier, _ragequitVerifier, _identityRegistry, _batchVerifier
+      _entrypoint, _withdrawalVerifier, _ragequitVerifier, _identityRegistry, _batchVerifier,
+      _blacklistAnchor, _blacklistRegistryId
     );
   }
 
@@ -87,10 +95,13 @@ library DeployLib {
     address _ragequitVerifier,
     address _asset,
     address _identityRegistry,
-    address _batchVerifier
+    address _batchVerifier,
+    address _blacklistAnchor,
+    bytes32 _blacklistRegistryId
   ) internal returns (PrivacyPoolComplex _pool) {
     _pool = new PrivacyPoolComplex{salt: salt(msg.sender, COMPLEX_POOL_SALT)}(
-      _entrypoint, _withdrawalVerifier, _ragequitVerifier, _asset, _identityRegistry, _batchVerifier
+      _entrypoint, _withdrawalVerifier, _ragequitVerifier, _asset, _identityRegistry, _batchVerifier,
+      _blacklistAnchor, _blacklistRegistryId
     );
   }
 }

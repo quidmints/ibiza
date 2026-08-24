@@ -2,6 +2,8 @@
 pragma solidity 0.8.28;
 
 import {Test} from 'forge-std/Test.sol';
+import {BlacklistAnchorFixture} from './helpers/BlacklistAnchorFixture.sol';
+import {BlacklistRootFixture} from './helpers/BlacklistRootFixture.sol';
 import {IERC20} from '@oz/token/ERC20/IERC20.sol';
 import {ERC20} from '@oz/token/ERC20/ERC20.sol';
 
@@ -41,7 +43,7 @@ contract MinimalEntrypoint {
  * WithdrawEndToEnd.t.sol. The two behaviours those overrides add over the native pool are:
  * rejecting native value, and moving the asset by transferFrom/transfer rather than by call.
  */
-contract PrivacyPoolComplexTest is Test {
+contract PrivacyPoolComplexTest is Test, BlacklistAnchorFixture {
   TestToken internal token;
   MinimalEntrypoint internal entrypoint;
   PrivacyPoolComplex internal pool;
@@ -50,6 +52,8 @@ contract PrivacyPoolComplexTest is Test {
   uint256 internal constant VALUE = 5 ether;
 
   function setUp() public {
+    // A published root is a precondition for constructing any pool now - see BlacklistAnchorFixture.
+    _deployBlacklistAnchor(BlacklistRootFixture.read(vm));
     token = new TestToken();
     entrypoint = new MinimalEntrypoint();
 
@@ -59,7 +63,8 @@ contract PrivacyPoolComplexTest is Test {
       address(new NoirVerifierMock()),
       address(token),
       address(entrypoint),
-      address(0) // no aggregation verifier: this suite does not exercise withdrawBatch
+      address(0), // no aggregation verifier: this suite does not exercise withdrawBatch
+      address(blacklistAnchor), BLACKLIST_REGISTRY
     );
 
     token.mint(address(entrypoint), VALUE * 10);
@@ -84,7 +89,8 @@ contract PrivacyPoolComplexTest is Test {
       address(new NoirVerifierMock()),
       Constants.NATIVE_ASSET,
       address(entrypoint),
-      address(0) // no aggregation verifier: this test only checks the native-asset guard
+      address(0), // no aggregation verifier: this test only checks the native-asset guard
+      address(blacklistAnchor), BLACKLIST_REGISTRY
     ) {
       fail('an ERC20 pool was constructed with the NATIVE asset');
     } catch {

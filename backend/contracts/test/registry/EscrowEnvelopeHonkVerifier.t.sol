@@ -65,8 +65,13 @@ contract EscrowEnvelopeHonkVerifierTest is Test {
   /// CHANGED WITH THE SECRET'S DERIVATION (sec. 2.18a). The secret used to be a chosen constant;
   /// it is now `Poseidon(sk_identity, "pp:revocation-secret:v1")`, so one identity yields exactly
   /// one commitment and a revoked user cannot come back under a fresh one.
+  ///
+  /// CHANGED AGAIN WHEN THE LEAF BOUND ITS DOCUMENT. It is now
+  /// `Poseidon(revocation_secret, document_identifier(issuing_state, document_number))`, both MRZ
+  /// fields read in-circuit at their TD1 offsets. Binding the document is what stops a withdrawal
+  /// proving "some registered identity" and then naming any document for the sanctions check.
   uint256 internal constant COMMITMENT =
-    17_650_903_678_720_452_054_381_356_126_183_849_406_023_549_141_052_820_066_135_326_546_653_806_493_741;
+    1_033_954_587_113_401_687_578_337_807_612_992_032_577_078_892_099_597_077_696_246_758_189_239_049_656;
   /// The root of `registrationSmt` this witness proves inclusion against, READ FROM THE FILE the
   /// emitter writes rather than pinned as a constant.
   ///
@@ -118,7 +123,7 @@ contract EscrowEnvelopeHonkVerifierTest is Test {
   function test_FixtureIsTheDocumentedWitness() public view {
     bytes32[] memory _inputs = _publicInputs();
     assertEq(uint256(_inputs[0]), CONTROLLER_X, 'slot 0 is not the controller key');
-    assertEq(uint256(_inputs[2]), COMMITMENT, 'slot 2 is not Poseidon(revocation_secret)');
+    assertEq(uint256(_inputs[2]), COMMITMENT, 'slot 2 is not Poseidon(revocation_secret, document_id)');
     assertEq(uint256(_inputs[3]), _registrationRoot(), 'slot 3 is not the emitted registration root');
   }
 

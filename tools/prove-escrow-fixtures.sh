@@ -31,6 +31,11 @@ FIXTURES="${ROOT}/backend/contracts/test/fixtures"
 command -v bb >/dev/null 2>&1 || {
   echo "ERROR: bb is not on PATH. export PATH=\"\$HOME/.bb-v12:\$PATH\"" >&2; exit 1;
 }
+# ⚠️ EXISTENCE IS NOT FRESHNESS. A vk left over from a PREVIOUS version of the circuit is present,
+# non-empty, and wrong: `bb prove -k` uses it happily and the proof fails at the pairing check, which
+# reads as a broken circuit rather than a stale key. If the circuit source changed, regenerate it -
+#   nargo compile && bb write_vk -t evm -b target/<circuit>.json -o target
+# before trusting anything here.
 [ -s "${CIRCUIT}/target/vk" ] || {
   echo "ERROR: no verifying key at ${CIRCUIT}/target/vk - run backend/circuits/codegen-verifiers.sh first." >&2
   exit 1
@@ -52,7 +57,13 @@ for w in "${witnesses[@]}"; do
   nargo execute "escrow${i}" >/dev/null
 
   rm -rf "target/_e${i}"; mkdir -p "target/_e${i}"
-  bb prove --scheme ultra_honk --oracle_hash keccak \
+  # `-t evm` REPLACED `--scheme ultra_honk --oracle_hash keccak` in the bb 5.x CLI, and this script
+  # was left on the old spelling. bb accepted the dead flags, printed a plausible `Scheme is:
+  # ultra_honk` banner, and produced a proof against the DEFAULT (Poseidon2) transcript - which its
+  # own `-t evm` verifier then rejected at the pairing check. Exit codes and banners both looked
+  # right; only verification disagreed. See codegen-verifiers.sh's header, which already says -t evm
+  # must be passed to write_vk, prove, verify AND write_solidity_verifier.
+  bb prove -t evm \
     -b target/escrow_envelope.json -w "target/escrow${i}.gz" -k target/vk -o "target/_e${i}" >/dev/null
 
   # bb EXITS 0 ON SOME FAILURES, so the artifact's existence is the real check - the same trap
@@ -61,7 +72,7 @@ for w in "${witnesses[@]}"; do
 
   # A proof its own verifier rejects has shipped from this toolchain before (bb 1.2.0 + nargo
   # beta.1). `bb prove`'s exit code does not catch it; only verifying does.
-  bb verify --scheme ultra_honk --oracle_hash keccak \
+  bb verify -t evm \
     -k target/vk -p "target/_e${i}/proof" -i "target/_e${i}/public_inputs" >/dev/null 2>&1 || {
     echo "ERROR: escrow${i}: bb generated a proof its OWN verifier rejects. Do not use it." >&2
     exit 1

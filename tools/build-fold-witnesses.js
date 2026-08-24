@@ -36,6 +36,7 @@
  *   cd frontend/identity-wallet && npm run build:pp
  *   forge test --match-test test_EmitIdentityWitnessFixture      # writes identity_witness.json
  */
+const fs = require('fs');
 const path = require('path');
 const common = require('./lib/fixture-common');
 
@@ -68,6 +69,37 @@ const PADDED = padTo(COUNT);
 const { masterKeysFromMnemonic, depositSecrets, commitment, nullifierHash, StateTree,
   buildWithdrawalWitness } = common.loadWallet(BUILD);
 
+const { Poseidon } = common.loadWallet(BUILD);
+
+// ── the blacklist predicate ───────────────────────────────────────────────────────────────────
+// Domains from backend/circuits/pp/src/blacklist.nr. They are not decoration: a passport number and
+// a pool label are both Fields, so without separation a sanctioned document could collide with an
+// innocent label and blacklist it while the tree stayed correct.
+const DOMAIN_LABEL = 1n;
+const DOMAIN_DOCUMENT = 3n;
+const blacklistKey = (domain, identifier) => Poseidon.hash([domain, identifier]);
+
+const FIXTURES = path.join(__dirname, '..', 'backend', 'contracts', 'test', 'fixtures');
+const QUERIES_PATH = path.join(FIXTURES, 'blacklist_queries.json');
+const BL_WITNESS_PATH = path.join(FIXTURES, 'blacklist_witness.json');
+
+/** documentId per identity index, from the only place that has the DG1 to derive it. */
+const DOCUMENT_IDS = JSON.parse(
+  fs.readFileSync(path.join(FIXTURES, 'escrow_documents.json'), 'utf8'),
+).documents.map((d) => BigInt(d.documentId));
+
+/**
+ * The two keys member `i` must prove ABSENT: its deposit label, and its escrowed document.
+ *
+ * ORDER IS THE INTERFACE between this file and BlacklistWitnessFixture.t.sol - the emitter returns
+ * witnesses positionally, so a reordering here silently pairs each member with someone else's
+ * proof. Those proofs would then fail in-circuit for a reason that looks nothing like this.
+ */
+const queriesFor = (m) => [
+  blacklistKey(DOMAIN_LABEL, m.label),
+  blacklistKey(DOMAIN_DOCUMENT, DOCUMENT_IDS[m.identity]),
+];
+
 const { MNEMONIC, skIdentity, deriveRevocationSecret } = common;
 const keys = masterKeysFromMnemonic(MNEMONIC);
 
@@ -96,6 +128,77 @@ const members = Array.from({ length: PADDED }, (_, i) => ({
   // only has to differ, so that two members can never produce the same seven signals.
   context: 42_424_242n + BigInt(i) * 101n,
 }));
+
+// ── phase 1: hand the emitter the keys, then stop ─────────────────────────────────────────────
+//
+// TWO PHASES BECAUSE THE TREE IS BUILT BY THE CONTRACT, NOT HERE. The exclusion witnesses come from
+// a real solarity SparseMerkleTree (BlacklistWitnessFixture.t.sol) for the same reason the identity
+// witnesses do: a JS-built proof would only show that two of our own implementations agree.
+//
+//   node tools/build-fold-witnesses.js --queries --count N
+//   forge test --match-test test_EmitBlacklistWitnessFixture
+//   node tools/build-fold-witnesses.js --count N
+if (process.argv.includes('--queries')) {
+  const hex = (k) => '0x' + k.toString(16).padStart(64, '0');
+  const queries = members.flatMap(queriesFor).map(hex);
+
+  // THE LISTED SET. Written here rather than hand-kept, so it is derived by the SAME functions the
+  // circuit uses - a listed key built by a different construction would be absent from the tree in
+  // the only sense that matters, and every exclusion proof would pass for the wrong reason.
+  //
+  // These are what a published register contributes: a sanctioned passport, a tainted deposit
+  // label, a sanctioned address. Three domains, one tree - which is the claim the design makes.
+  const be = (str) => [...Buffer.from(str, 'ascii')].reduce((v, b) => v * 256n + BigInt(b), 0n);
+  const documentIdentifier = (state, number) => Poseidon.hash([be(state), be(number)]);
+  const DOMAIN_ADDRESS = 2n;
+  const listed = [
+    // A sanctioned GBR passport. Deliberately NOT one of the fixture documents - if it were, the
+    // emitter's `!p.existence` guard fires, which is the check that keeps this honest.
+    blacklistKey(DOMAIN_DOCUMENT, documentIdentifier('GBR', '999999999')),
+    blacklistKey(DOMAIN_LABEL, 999_999_999n),
+    blacklistKey(DOMAIN_ADDRESS, BigInt('0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef')),
+  ].map(hex);
+  fs.writeFileSync(
+    path.join(FIXTURES, 'blacklist_listed.json'), JSON.stringify(listed, null, 2) + '\n');
+  console.log(`Wrote ${listed.length} listed entries (document, label, address).`);
+  fs.writeFileSync(QUERIES_PATH, JSON.stringify(queries, null, 2) + '\n');
+  console.log(`Wrote ${queries.length} blacklist queries (${members.length} members x 2) to`);
+  console.log(`  ${QUERIES_PATH}`);
+  console.log('Next:  forge test --match-test test_EmitBlacklistWitnessFixture');
+  process.exit(0);
+}
+
+// ── phase 2: read them back ───────────────────────────────────────────────────────────────────
+if (!fs.existsSync(BL_WITNESS_PATH)) {
+  console.error(
+    `No blacklist witness at ${BL_WITNESS_PATH}.\n` +
+    `Run:  node ${path.basename(__filename)} --queries --count ${COUNT}\n` +
+    '      forge test --match-test test_EmitBlacklistWitnessFixture\n',
+  );
+  process.exit(1);
+}
+const BL = JSON.parse(fs.readFileSync(BL_WITNESS_PATH, 'utf8'));
+const BL_ROOT = BigInt(BL.root);
+const BL_DEPTH = BL.siblings.length / BL.oldKey.length;
+
+// A stale witness file is the failure mode this guards: it is present, parses, and describes a
+// DIFFERENT set of queries. The proof then fails in-circuit with an exclusion error that says
+// nothing about which side is wrong.
+if (BL.oldKey.length !== members.length * 2) {
+  console.error(
+    `blacklist_witness.json holds ${BL.oldKey.length} witnesses but this batch needs ` +
+    `${members.length * 2}. Re-run phase 1 and the emitter.\n`,
+  );
+  process.exit(1);
+}
+
+/** The i-th emitted witness, in the order `queriesFor` produced. */
+const exclusionAt = (k) => ({
+  siblings: BL.siblings.slice(k * BL_DEPTH, (k + 1) * BL_DEPTH).map(BigInt),
+  oldKey: BigInt(BL.oldKey[k]),
+  oldValue: BigInt(BL.oldValue[k]),
+  isOld0: BigInt(BL.isOld0[k]) !== 0n,
+});
 
 // ── one tree, built before any witness is read out of it ──────────────────────────────────────
 // Filler leaves before and after the batch, for the same reason build-withdrawal-fixture.js uses
@@ -126,6 +229,12 @@ for (const m of members) {
   const revocationSecret = deriveRevocationSecret(skIdentity(m.identity));
 
   const w = buildWithdrawalWitness({
+    documentId: DOCUMENT_IDS[m.identity],
+    blacklist: {
+      root: BL_ROOT,
+      label: exclusionAt(m.index * 2),
+      document: exclusionAt(m.index * 2 + 1),
+    },
     allowZeroForPadding: m.padding,
     note: m.note,
     stateLeafIndex: m.leafIndex,

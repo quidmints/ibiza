@@ -78,23 +78,69 @@ const { deriveRevocationSecret, skIdentity } = require('./lib/fixture-common');
 const CONTROLLER_SK = 1234n;
 const PK = babyJub.mulPointEScalar(G, CONTROLLER_SK);
 
-/** The 95-byte TD1 DG1 for identity `i`. */
+/**
+ * The 95-byte TD1 DG1 for identity `i`: a 5-byte tag header plus a real 90-char TD1 MRZ.
+ *
+ * ⚠️ THE LAYOUT IS LOAD-BEARING NOW, AND IT WAS NOT BEFORE. This used to hold a TD3-shaped
+ * passport MRZ (88 chars, `P<GBR...`) inside the 95-byte TD1 buffer, and nothing minded: the only
+ * consumer was `extract_dg1_commitment`, which hashes the BIT STREAM and never asks what a byte
+ * means. So the mismatch was invisible and harmless.
+ *
+ * It stopped being harmless when the identity leaf began binding
+ * `document_identifier(issuing_state, document_number)`, because that reads the MRZ AT ICAO'S
+ * OFFSETS. Under TD1 the document number is at [5..14) of the MRZ; in the old TD3-shaped string
+ * those bytes were part of the NAME. The predicate would have keyed on `SMITH<<JOH` - consistently
+ * enough that every proof verified, and never matching anything a sanctions list publishes. A
+ * vacuous check that looks like a working one.
+ *
+ * TD1 is three lines of 30:
+ *   line 1  doc type [0..2)  issuing state [2..5)  document number [5..14)  check [14]  opt [15..30)
+ *   line 2  DOB [0..6) check [6]  sex [7]  expiry [8..14) check [14]  nationality [15..18)  opt
+ *   line 3  name [0..30)
+ * Add the 5-byte header and those become dg1[7..10) and dg1[10..19), which is exactly what
+ * `td1_dg1_data_extractor` reads.
+ */
 function buildDg1(i) {
-  // A distinct MRZ per identity, so each has its own dg1Hash and can be registered separately.
-  const mrz =
-    'P<GBRSMITH<<JOHN<ALEXANDER<<<<<<<<<<<<<<<<<<<' +
-    // The passport NUMBER is what varies per identity. Nine digits, and it must land inside the
-    // 88 chars kept below - an earlier version used .slice(0, 9) on a ten-digit string, which
-    // truncated the very digit being varied and gave all three identities the SAME dg1Hash. That
-    // would have surfaced far downstream as a document-hash collision, since a document hash may
-    // bind to exactly one holder.
-    String(123456789 + i) + '7GBR8001019M3001017<<<<<<<<<<<<<<02';
+  // The document NUMBER is what varies per identity - nine digits, at its real TD1 offset, so the
+  // identifier this fixture yields is the one a register would publish for the same document.
+  // An earlier version used .slice(0, 9) on a ten-digit string and truncated the very digit being
+  // varied, giving all three identities the same hash.
+  const docNumber = String(123456789 + i);
+  if (docNumber.length !== 9) throw new Error(`document number must be 9 chars: ${docNumber}`);
+
+  const line1 = 'I<' + 'GBR' + docNumber + '7' + '<'.repeat(15);
+  const line2 = '8001019' + 'M' + '3001017' + 'GBR' + '<'.repeat(11) + '2';
+  const line3 = 'SMITH<<JOHN<ALEXANDER' + '<'.repeat(9);
+  for (const [n, l] of [['1', line1], ['2', line2], ['3', line3]]) {
+    if (l.length !== 30) throw new Error(`TD1 line ${n} is ${l.length} chars, must be 30`);
+  }
+
+  const mrz = line1 + line2 + line3;
   const dg1 = Buffer.alloc(95);
-  Buffer.from(mrz.slice(0, 88), 'ascii').copy(dg1, 5);
+  Buffer.from(mrz, 'ascii').copy(dg1, 5);
   return dg1;
 }
 
-/** Registration's own digest packing: skip digest[0], read the remaining 31 bytes big-endian. */
+/**
+ * `document_identifier(issuing_state, document_number)` for a TD1 DG1 - the value the identity leaf
+ * binds and the blacklist is keyed by.
+ *
+ * ⚠️ THE BYTE ORDER IS COPIED FROM THE CIRCUIT, NOT CHOSEN. `td1_dg1_data_extractor` accumulates
+ * `current * dg1[SHIFT + SIZE - 1 - i]` with `current *= 256`, which walks the range backwards from
+ * its last byte - i.e. a plain BIG-ENDIAN read of dg1[7..10) and dg1[10..19). Getting this backwards
+ * would not error anywhere: it would produce a different-but-valid Field, the proof would verify,
+ * and the key would simply never match a published listing. There is no test that can catch that
+ * from this side alone, which is why the derivation is spelled out rather than inlined.
+ */
+function documentIdOf(dg1) {
+  const be = (from, to) => {
+    let v = 0n;
+    for (let k = from; k < to; k++) v = v * 256n + BigInt(dg1[k]);
+    return v;
+  };
+  return poseidon.hash([be(7, 10), be(10, 19)]);
+}
+
 function dg1HashOf(dg1) {
   const digest = crypto.createHash('sha256').update(dg1).digest();
   let h = 0n, place = 1n;
@@ -169,7 +215,8 @@ function identity(i) {
     skIdentity: sk,
     ephemeral: r,
     revocationSecret: s,
-    commitment: poseidon.hash([s]),
+    commitment: poseidon.hash([s, documentIdOf(dg1)]),
+    documentId: documentIdOf(dg1),
     dg1: [...dg1],
     dg1Hash,
     holderRoot,
@@ -198,6 +245,10 @@ if (DOCUMENTS_MODE) {
   fs.writeFileSync(DOCUMENTS_JSON, JSON.stringify({
     documents: identities.map((id) => ({
       documentKey: '0x' + id.documentKey.toString(16).padStart(64, '0'),
+      // The MRZ-derived identifier the identity leaf binds and the blacklist is keyed by. Written
+      // here because it is the only place that has the DG1; every downstream consumer needs it and
+      // none of them can re-derive it without re-implementing the extractor.
+      documentId: id.documentId.toString(10),
       documentHash: '0x' + id.dg1Hash.toString(16).padStart(64, '0'),
       holderRoot: '0x' + id.holderRoot.toString(16).padStart(64, '0'),
       dgCommit: id.dgCommit.toString(),

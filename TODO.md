@@ -181,6 +181,38 @@ a gap where one used to be.
       sorted list"* is the prerequisite; an SMT gives non-membership by construction, and it keeps
       the dedup that `LeavesNotStrictlySorted` currently provides (one leaf per key, structurally).
       **Do the SMT root first. The pending-claim path is not independently buildable.**
+      ✅ **THE TRANSPORT FOR IT NOW EXISTS AND IS TESTED — the ROOT itself is still uncomputed**
+      (`6aadf74`, 2026-08-24). `RegistrySourceAnchor.onReport` decodes `(registryId, smtRoot,
+      leaves)` and the workflow packs all three; `report_test.go` reads the `.sol` and compares its
+      decode tuple against `snapshotABI`, so the pair cannot drift again.
+      ⛔ **AND IT HAD ALREADY DRIFTED, INVISIBLY, BECAUSE OF A BUILD TAG.** The contract grew the
+      third field while the workflow kept packing two — **every report would have reverted on-chain**
+      — and the host-arch `go test` reported `ok` throughout, because `main.go` is `//go:build
+      wasip1` and was **excluded from compilation entirely**. Same shape as SPV's *"a green suite is
+      what an uncompiled crate produces"*, reached through Go build tags instead of cargo. The ABI
+      now lives in an UNTAGGED `report.go` so a developer-machine test can see it at all.
+      🔴 **WHAT IS PUBLISHED TODAY IS ZERO, AND FOR AN EXCLUSION PREDICATE THAT IS FAIL-OPEN.** An
+      empty tree admits EVERYONE: until a real root lands, the blacklist term in `withdraw_identity`
+      is satisfied by every prover, sanctioned included. It is consistent with the 32 batch witnesses
+      (empty-tree zero witness, valid for any key by construction) and is a bootstrap state, not a
+      design. **Two ways to close it and exactly one must be chosen — do not leave both open:**
+        (a) publish a real root here, or
+        (b) make `PrivacyPool` REJECT a zero `blacklistRoot`, so an unpublished list BLOCKS
+            withdrawals instead of waving them through.
+      ⚠️ **(b) is the safer default and it is NOT free: the 32 batch fixtures carry `blacklist_root =
+      "0"` and would all need a real root.** That is the cost of the choice, not an argument against
+      it. `TestUnpublishedSmtRootIsTheEmptyTree` pins the zero so whichever way this goes is a
+      deliberate edit to an asserted value.
+      ▶️ **REMAINING, AND IT IS THE WHOLE ITEM: a Poseidon SMT builder in Go.** No such dependency is
+      in `sanctions_lists/go.mod` today. It must match the Noir `smt` library's node-hashing
+      convention **exactly**, and per *"don't roll your own"* the Poseidon itself should come from
+      `iden3/go-iden3-crypto` rather than be written here — but check WASM-compatibility first, since
+      the workflow's only real build target is `GOOS=wasip1`.
+      ⛔ **A CONVENTION MISMATCH DOES NOT ERROR. It silently produces proofs that fail to verify**,
+      which reads as a broken circuit or a broken verifier and will be debugged in the wrong language.
+      ⇒ **The conformance test is part of the item, not follow-up work:** build a root in Go over the
+      same fixtures `smt_verifier_full` is tested against, and assert the roots are equal. Without it
+      there is no way to tell a wrong tree from a wrong proof.
       ▶️ **AND WHEN IT IS BUILT, BE HONEST ABOUT WHAT THE CLAIM IS.** A ZK absence proof yields a
       SIGNAL, not evidence: *"some passport-holder asserts the parse dropped them"*, with a nullifier
       and no name. That is still the entire point — **silence becomes a visible, counted alarm**, and

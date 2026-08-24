@@ -52,6 +52,29 @@ pub fn secret_commitment(revocation_secret: Field) -> Field {
     hasher.finish()
 }
 
+/// The registered-identity leaf: a revocation secret bound to the DOCUMENT it was escrowed against.
+///
+/// ⚠️ THE SECOND FIELD IS WHAT MAKES THE SANCTIONS TERM MEAN ANYTHING, AND WITHOUT IT THAT TERM IS
+/// VACUOUS. `escrow_envelope` proves the holder's document is registered, but the leaf used to
+/// commit to `sk_identity` ALONE - so the document was verified and then dropped. A withdrawal could
+/// prove "some registered identity" and then name ANY document number for the blacklist check,
+/// including a stranger's clean one. Binding the document here is what forces the number checked
+/// against the blacklist to be the number that was actually escrowed: change it and the commitment
+/// changes, and the inclusion proof against `identity_root` fails.
+///
+/// ⛔ It does NOT reveal the document. The leaf is a Poseidon hash and the identifier is a private
+/// witness on both sides; what changes is that the prover can no longer CHOOSE it.
+///
+/// `document_id` is `blacklist::document_identifier(issuing_state, document_number)` - the same
+/// construction the published list is keyed by, or the exclusion proof would be against a key
+/// nobody ever inserts. See `blacklist.nr` for why that pairing is the whole predicate.
+pub fn identity_commitment(revocation_secret: Field, document_id: Field) -> Field {
+    let mut hasher = PoseidonHasher::default();
+    hasher.write(revocation_secret);
+    hasher.write(document_id);
+    hasher.finish()
+}
+
 /// The per-index mask derived from a shared secret point.
 ///
 /// INDEXED so that a payload of several fields cannot have its elements PERMUTED or REPLAYED across
@@ -277,4 +300,40 @@ fn test_the_notary_commitment_is_unrelated_to_the_pool_commitment() {
 fn test_the_notary_secret_is_deterministic_and_identity_specific() {
     assert(derive_notary_secret(42) == derive_notary_secret(42));
     assert(derive_notary_secret(42) != derive_notary_secret(43));
+}
+
+// -------------------------------------------------------------------------------------------------
+// THE BINDING PROPERTY, TESTED IN BOTH DIRECTIONS.
+//
+// One test asserts the leaf MOVES when the document does - that is what stops a prover naming a
+// clean document. The other asserts it moves when the SECRET does, which is the property
+// `secret_commitment` already had and which the second field must not have quietly destroyed.
+// -------------------------------------------------------------------------------------------------
+#[test]
+fn test_the_identity_leaf_moves_with_the_document() {
+    let s = 7;
+    assert(
+        identity_commitment(s, 111) != identity_commitment(s, 222),
+        "one secret gives one leaf for two different documents - the sanctions term is vacuous",
+    );
+}
+
+#[test]
+fn test_the_identity_leaf_still_moves_with_the_secret() {
+    let d = 111;
+    assert(
+        identity_commitment(7, d) != identity_commitment(8, d),
+        "two secrets share one leaf",
+    );
+}
+
+/// A two-field Poseidon is not the one-field Poseidon of the same secret. Asserted because the
+/// migration depends on it: if these collided, an OLD leaf would satisfy a NEW inclusion proof and
+/// the binding could be bypassed by simply presenting a pre-binding registration.
+#[test]
+fn test_the_bound_leaf_is_not_the_unbound_leaf() {
+    assert(
+        identity_commitment(7, 0) != secret_commitment(7),
+        "a document-bound leaf collides with an unbound one; pre-binding registrations would pass",
+    );
 }

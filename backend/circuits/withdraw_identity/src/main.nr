@@ -58,6 +58,11 @@ fn main(
     blacklist_old_key: Field,
     blacklist_old_value: Field,
     blacklist_is_old0: bool,
+    document_id: Field,
+    document_siblings: [Field; IDENTITY_TREE_DEPTH],
+    document_old_key: Field,
+    document_old_value: Field,
+    document_is_old0: bool,
 ) {
     verify_withdrawal(
         WithdrawSignals {
@@ -85,6 +90,11 @@ fn main(
             blacklist_old_key,
             blacklist_old_value,
             blacklist_is_old0,
+            document_id,
+            document_siblings,
+            document_old_key,
+            document_old_value,
+            document_is_old0,
         },
     );
 }

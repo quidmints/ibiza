@@ -15,9 +15,9 @@
 //! fixture and committed proof remains valid. If it does not, this extraction is wrong and must be
 //! reverted rather than re-pinned.
 use crate::commitment::commitment_hasher;
-use crate::envelope::secret_commitment;
+use crate::envelope::identity_commitment;
 use crate::lean_imt::lean_imt_inclusion;
-use crate::blacklist::{blacklist_key, DOMAIN_LABEL};
+use crate::blacklist::{blacklist_key, DOMAIN_DOCUMENT, DOMAIN_LABEL};
 use crate::smt::smt_verifier_full;
 
 /// SMT depth of the identity registry. MUST equal IdentityRegistry's constructor `treeHeight_` and
@@ -80,6 +80,16 @@ pub struct WithdrawWitness {
     pub blacklist_old_key: Field,
     pub blacklist_old_value: Field,
     pub blacklist_is_old0: bool,
+    /// `document_identifier(issuing_state, document_number)` for the document this identity was
+    /// escrowed against. NOT free input despite being a witness: it is hashed into the identity leaf
+    /// (step 4), so naming a different document breaks the inclusion proof.
+    pub document_id: Field,
+    /// Exclusion witness for the DOCUMENT key against the SAME `blacklist_root`. Same zero-witness
+    /// bootstrap as the label fields above.
+    pub document_siblings: [Field; IDENTITY_TREE_DEPTH],
+    pub document_old_key: Field,
+    pub document_old_value: Field,
+    pub document_is_old0: bool,
 }
 
 /// Prove one withdrawal. Constraint-for-constraint the body `withdraw_identity/src/main.nr` carried
@@ -125,7 +135,11 @@ pub fn verify_withdrawal(signals: WithdrawSignals, w: WithdrawWitness) {
     // directly would make this vacuous: they would name any clean identity's commitment - all of
     // which are public in the tree - and withdraw as someone else. Knowledge of the preimage is the
     // whole gate.
-    let commitment = secret_commitment(w.revocation_secret);
+    // ⚠️ THE LEAF BINDS THE DOCUMENT, AND THAT IS WHAT MAKES STEP 6 MEAN ANYTHING. Committing to the
+    // secret alone would let this prove "some registered identity" and then name ANY document for
+    // the sanctions check - a stranger's clean passport - because nothing tied the number checked to
+    // the number escrowed. See `envelope::identity_commitment`.
+    let commitment = identity_commitment(w.revocation_secret, w.document_id);
     let cleared = smt_verifier_full::<IDENTITY_TREE_DEPTH>(
         signals.identity_root,
         commitment,
@@ -175,5 +189,32 @@ pub fn verify_withdrawal(signals: WithdrawSignals, w: WithdrawWitness) {
     assert(
         untainted == true,
         "this deposit's label is blacklisted, or the exclusion witness is invalid",
+    );
+
+    // 6. NOT A SANCTIONED DOCUMENT. The escrowed document must be ABSENT from the same set.
+    //
+    // Same primitive, same root, same failure direction - only the DOMAIN differs. That is the whole
+    // content of "one predicate": provenance taint and a sanctions listing are not two systems with
+    // two roots and two activation windows, they are two keys in one tree, and a country's register
+    // joins by being inserted rather than by being coded for.
+    //
+    // ⚠️ WHAT MAKES THIS NON-VACUOUS IS UPSTREAM, NOT HERE. `w.document_id` is a private witness, so
+    // read in isolation this term looks like it checks a number the prover chose. It is bound at
+    // step 4: the identity leaf is `Poseidon(revocation_secret, document_id)`, so a substituted
+    // document produces a leaf that is not in `identity_root` and the withdrawal fails there. The
+    // two terms are load-bearing only as a PAIR - separating them re-opens the hole.
+    let unsanctioned = smt_verifier_full::<IDENTITY_TREE_DEPTH>(
+        signals.blacklist_root,
+        blacklist_key(DOMAIN_DOCUMENT, w.document_id),
+        0,
+        w.document_old_key,
+        w.document_old_value,
+        w.document_is_old0,
+        SMT_EXCLUSION,
+        w.document_siblings,
+    );
+    assert(
+        unsanctioned == true,
+        "this identity's document is blacklisted, or the exclusion witness is invalid",
     );
 }

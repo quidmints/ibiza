@@ -891,6 +891,25 @@ fn td1_dg1_data_extractor
     (birth_date, expiration_date, name, nationality, citizenship, sex, doc_number, personal_number, doc_type)
 }
 
+/// The two MRZ fields a sanctions list is published against: issuing authority and document number.
+///
+/// ⚠️ THIS ADDS NO PARSING. It is a `pub` window onto `td1_dg1_data_extractor`, which already reads
+/// both at the offsets ICAO fixes (citizenship at [7..10), document number at [10..19)) and is
+/// exercised by this file's own tests. Re-deriving the offsets in a caller would be a second MRZ
+/// parser that drifts from this one silently - the reason it is exposed rather than copied.
+///
+/// ⛔ TD1 ONLY, and the caller must not reach for it with a TD3 buffer: the document number sits at
+/// [10..19) on a TD1 card and [49..58) on a TD3 booklet. The `[u8; 95]` type is what enforces that -
+/// a 93-byte TD3 DG1 will not compile against it, which is the whole reason the length is in the
+/// signature instead of being a runtime check.
+pub fn td1_document_fields(dg1: [u8; 95]) -> (Field, Field) {
+    let (
+        _birth_date, _expiration_date, _name, _nationality, citizenship, _sex, doc_number,
+        _personal_number, _doc_type,
+    ) = td1_dg1_data_extractor(dg1);
+    (citizenship, doc_number)
+}
+
 // =================================================================================================
 // THE FIRST TESTS THIS FILE HAS EVER HAD (sec. 2.18ak).
 //

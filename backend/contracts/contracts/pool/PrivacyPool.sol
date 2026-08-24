@@ -268,19 +268,20 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     uint256[8][] memory _signals,
     bytes calldata _batchProof
   ) external {
-    // 🔴 KNOWN GAP, BOOKED NOT HIDDEN (sec. 2.18gz-unify): THIS PATH DOES NOT CARRY THE TAINT PROOF.
+    // ✅ THE GAP THIS BLOCK DESCRIBED IS CLOSED. It read "THIS PATH DOES NOT CARRY THE TAINT PROOF"
+    // and prescribed the remedy exactly: widen the leaf template to EIGHT signals, regenerate every
+    // level and the TreeRoot{8,16,32} verifiers, and widen PUB_LEN in both batch libraries. Done -
+    // the leaf pins `withdraw_identity` and folds 2 x EIGHT signals, and `s[7]` is the blacklist
+    // root. A batched withdrawal now carries the predicate the single path always did.
     //
-    // The single-withdrawal path proves `label ∉ tainted` as an eighth public signal.
-    // THE GAP SURVIVED THE AGGREGATOR'S RETIREMENT, so do not read this as stale. It used to name
-    // `aggregate_withdrawals`, deleted in `aa50335`; the recursion tree that replaced it inherited
-    // the SAME width - `build-recursion-tree.py` generates a leaf that pins `withdraw_identity` and
-    // folds 2 x SEVEN signals. So a BATCHED withdrawal still bypasses non-association.
-    // Closing the path was tried and reverted: it would have deleted the guard coverage below -
-    // nullifier reuse, context binding, proof rejection - and traded a known gap for untested code,
-    // which is the worse of the two.
-    // ⇒ Widen the LEAF template to EIGHT signals, regenerate every level and the TreeRoot{8,16,32}
-    //   verifiers, and widen PUB_LEN in both batch libraries BEFORE enabling batching on a pool
-    //   with a non-empty taint root.
+    // ⚠️ CARRYING IT IS ONLY HALF, AND THE SECOND HALF IS NOT IN THE PROOF. Widening the leaf makes
+    // `s[7]` EXIST; it does not make it TRUE. The batch verifier takes one public input, so unlike
+    // `withdraw` there is nothing to substitute the pool's root into - `s[7]` is whatever the prover
+    // folded in, and an empty tree of their own would satisfy every exclusion term while verifying
+    // perfectly. It is re-anchored to pool state in the settlement loop below, next to the state and
+    // identity roots, for exactly the reason they are.
+    // ⇒ A WIDER PROOF WITHOUT THAT CHECK WOULD HAVE BEEN WORSE THAN THE OPEN GAP: the gap was known
+    //   and written down, where the unchecked signal looks like coverage.
     if (address(BATCH_VERIFIER) == address(0)) revert BatchVerifierNotConfigured();
 
     uint256 n = _withdrawals.length;
@@ -341,6 +342,8 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     uint256 lastIdentityRoot;
 
     uint256 settled;
+    uint256 active_ = _activeBlacklistRoot();
+
     for (uint256 i; i < n; ++i) {
       uint256[8] memory s = _signals[i];
       if (s[2] == 0) continue; // padding - see the loop above
@@ -361,6 +364,19 @@ abstract contract PrivacyPool is State, IPrivacyPool {
         if (!IDENTITY_REGISTRY.isValidRoot(bytes32(s[5]))) revert InvalidIdentityRoot();
         lastIdentityRoot = s[5];
       }
+
+      // ⚠️ THE BATCH MUST *CHECK* THE BLACKLIST ROOT BECAUSE IT CANNOT *SUBSTITUTE* IT.
+      //
+      // `withdraw` feeds the pool's `blacklistRoot` straight into the verifier's public inputs, so a
+      // prover there has no say in it. The aggregation verifier takes ONE public input - the batch
+      // commitment - so there is nothing to substitute into: `s[7]` is whatever the prover folded in.
+      // Without this line a batcher proves non-membership against an EMPTY tree OF THEIR OWN and the
+      // predicate is bypassed completely, on a path whose proof verifies perfectly.
+      //
+      // Same shape as the two checks above, and it is here for the same reason they are: every root
+      // a batch signal carries has to be re-anchored to pool state, because the proof binds the
+      // signals to each OTHER, never to this contract.
+      if (s[7] != active_) revert BlacklistRootMismatch(s[7], active_);
 
       // ── settle, identically to withdraw() ────────────────────────────────────────────────────
       _spend(s[1]);            // existing nullifier hash - reverts if already spent
@@ -388,7 +404,7 @@ abstract contract PrivacyPool is State, IPrivacyPool {
     // comparison means the binding cannot be removed without the compiler objecting.
     if (
       !WITHDRAWAL_VERIFIER.verify(
-        _proof.proof, _proof.publicInputsBytes32(_contextFor(_withdrawal), blacklistRoot)
+        _proof.proof, _proof.publicInputsBytes32(_contextFor(_withdrawal), _activeBlacklistRoot())
       )
     ) {
       revert InvalidProof();
@@ -438,21 +454,70 @@ abstract contract PrivacyPool is State, IPrivacyPool {
   /**
    * @notice Root of the TAINT set - deposits whose provenance disqualifies a withdrawal.
    *
-   * ZERO MEANS EMPTY, AND EMPTY ADMITS EVERYONE. That is the bootstrap and the failure mode in one:
-   * an unset, stalled or unreachable taint feed lets every withdrawal through, because the predicate
-   * is EXCLUSION (`label ∉ tainted`) rather than membership. Upstream PP proved inclusion in an
-   * approved set, where the same silence would have censored everyone (sec. 2.18cu).
+   * ZERO MEANS EMPTY AND EMPTY ADMITS EVERYONE, WHICH IS WHY ZERO IS NOW REFUSED. The predicate is
+   * EXCLUSION (`label ∉ blacklisted`), so an unset, stalled or unreachable feed would let every
+   * withdrawal through while still "passing". Upstream PP proved inclusion in an approved set, where
+   * the same silence censors everyone instead (sec. 2.18cu) - same silence, opposite direction, and
+   * only one of the two is safe to leave unhandled.
    *
-   * ⚠️ The withdrawal circuit is bound to whatever value this holds - `publicInputsBytes32`
-   * SUBSTITUTES it rather than reading it from the proof, so a prover cannot supply an empty tree of
-   * their own and make the check vacuous.
+   * ⇒ Reading this value goes through `_activeBlacklistRoot()`, which reverts on zero. Withdrawals
+   * halt until a root is published rather than proceeding unchecked. Deposits are unaffected.
+   *
+   * ⚠️ Substitution protects only the SINGLE path - `publicInputsBytes32` feeds this value into the
+   * verifier so a prover cannot swap it. The BATCH path has no public input to substitute into and
+   * must compare `s[7]` against this value explicitly.
    */
   uint256 public blacklistRoot;
 
   event BlacklistRootSet(uint256 root);
 
+  error BlacklistRootUnset();
+  error BlacklistRootMismatch(uint256 supplied, uint256 active);
+
+  /**
+   * @notice The blacklist root every withdrawal is proven against, or revert.
+   *
+   * ⛔ ZERO IS REFUSED, AND THAT IS A DELIBERATE CHOICE OF FAILURE DIRECTION. An empty tree is a
+   * valid exclusion root for EVERY key, so a pool that accepted zero would let every withdrawal
+   * through the moment the feed was unset, stalled or unreachable - the predicate would still
+   * "pass", which is the worst kind of hole because nothing looks broken.
+   *
+   * Refusing it converts that silence into a HALT: withdrawals stop until a root is published. A
+   * stalled feed is then loud and reversible; the alternative is quiet and not.
+   *
+   * ⚠️ THIS IS WHY THE POOL IS NOT WITHDRAWABLE BEFORE THE FIRST `setBlacklistRoot`. That is not a
+   * bootstrap oversight to be patched with a zero default - it is the guarantee. Deposits are
+   * unaffected.
+   *
+   * A `private view` rather than a modifier: one routine and two call sites, instead of the body
+   * inlined at each.
+   */
+  function _activeBlacklistRoot() private view returns (uint256 root_) {
+    root_ = blacklistRoot;
+    if (root_ == 0) revert BlacklistRootUnset();
+  }
+
   /// @notice Set the taint root. Entrypoint-gated, like every other pool-level parameter here.
   function setBlacklistRoot(uint256 _root) external onlyEntrypoint {
+    // ⛔ THE ROOT CANNOT BE ZEROED, AND THAT IS A CENSORSHIP CONSTRAINT, NOT A SANITY CHECK.
+    //
+    // Refusing zero at the READ side (`_activeBlacklistRoot`) closes the fail-open. Refusing it here
+    // is the other half: without it the entrypoint could re-empty a live root, and because the read
+    // side halts on zero, that would be a PAUSE FLAG - one address able to stop every withdrawal in
+    // the pool at will. The whole point of `test_NoGovernanceLeverCanBlockAWithdrawal` is that no
+    // such lever exists.
+    //
+    // ⚠️ IT DOES NOT MAKE THE ROOT HARMLESS, AND THE REMAINING EXPOSURE SHOULD BE READ HONESTLY: a
+    // hostile entrypoint can still publish a NON-ZERO root nobody holds an exclusion witness
+    // against, which halts withdrawals just as effectively. That lever arrived with the blacklist
+    // feature itself, not with the fail-closed read - it is inherent in gating withdrawal on a
+    // mutable third-party value. Bounding it properly means sourcing this from the CRE anchor
+    // instead of an entrypoint setter, which is a design change and is booked, not done here.
+    //
+    // What this line buys is that the DEGENERATE halt - the one costing nothing and needing no
+    // fabricated tree - is unavailable, and that a stalled feed keeps the last good root rather than
+    // emptying it. Staleness admits a newly-listed address; it does not admit everyone.
+    if (_root == 0) revert BlacklistRootUnset();
     blacklistRoot = _root;
     emit BlacklistRootSet(_root);
   }

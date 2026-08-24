@@ -407,10 +407,27 @@ contract WithdrawEndToEndTest is EscrowFixtureBase {
    *     FailedToSendNativeAsset  the recipient contract rejected the ETH           -> caller's own
    *                              (the caller chose the recipient)
    *
-   * So exactly ONE revert is a third party's decision - IncorrectASPRoot - and it is bounded by a
-   * non-upgradeable, append-only registry with no owner. MaxTreeDepthReached is not a lever either:
-   * it is a global capacity limit that no one can aim at an individual, and it blocks deposits
-   * before withdrawals. Nothing in the path consults a role, an owner, a pause flag or an upgrade.
+   *     BlacklistRootUnset       no blacklist root has ever been published          -> RULE-BOUND
+   *     BlacklistRootMismatch    batch signal disagrees with the pool's root        -> caller's own
+   *
+   * So TWO reverts are a third party's decision, and this count was wrong before the fail-closed
+   * read existed - it went stale the day `setBlacklistRoot` landed and nobody updated it. Gating a
+   * withdrawal on a mutable third-party root IS a lever, whichever way the zero case is decided:
+   * fail-open let a stalled feed admit everyone, fail-closed lets an unset one halt everyone. The
+   * lever is the gate, not the direction.
+   *
+   * WHAT BOUNDS IT TODAY, stated as exposure rather than as reassurance:
+   *   - the root cannot be ZEROED once set, so the cost-free halt is unavailable and a stalled feed
+   *     keeps the last good root instead of emptying it;
+   *   - a hostile entrypoint CAN still publish a root nobody can prove against, which halts
+   *     withdrawals. That is not closed. Closing it means sourcing the root from the CRE anchor -
+   *     append-only, no owner, the same shape that bounds IncorrectASPRoot - rather than from an
+   *     entrypoint setter. Booked.
+   *
+   * IncorrectASPRoot is bounded by a non-upgradeable, append-only registry with no owner.
+   * MaxTreeDepthReached is not a lever either: it is a global capacity limit that no one can aim at
+   * an individual, and it blocks deposits before withdrawals. Beyond the blacklist root, nothing in
+   * the path consults a role, an owner, a pause flag or an upgrade.
    */
   function test_NoGovernanceLeverCanBlockAWithdrawal() public {
     // The ONLY governance action reachable on a live pool is windDown, via the Entrypoint.

@@ -70,9 +70,10 @@
 // guess but never form one. So the MRZ rides inside the envelope: opaque on-chain, readable only by
 // the controller, and now bound by `dgCommit` to the same bytes registration itself committed to.
 use noir_dl::not_passports_zk_circuits::extract_dg1_commitment;
-use noir_dl::query::identity_state_verifier;
+use noir_dl::query::{identity_state_verifier, td1_document_fields};
 use poseidon::poseidon::PoseidonHasher;
-use pp::envelope::{seal_payload, secret_commitment};
+use pp::blacklist::document_identifier;
+use pp::envelope::{identity_commitment, seal_payload, secret_commitment};
 use std::hash::Hasher;
 
 /// DG1 length. 95 = the ICAO TD1 layout (3 lines x 30 chars, plus a 5-byte tag/length header),
@@ -186,9 +187,25 @@ fn main(
     registration_siblings: [Field; REGISTRATION_TREE_DEPTH],
 ) {
     let revocation_secret = derive_revocation_secret(sk_identity);
+
+    // THE DOCUMENT IS BOUND INTO THE LEAF HERE, WHICH IS THE ONLY PLACE IT CAN BE.
+    //
+    // This circuit is the one that has the DG1 bytes AND proves, just below, that the document they
+    // describe is registered and current. A withdrawal has neither. So if the leaf does not carry
+    // the document out of here, the verified document is DROPPED at the registry boundary and the
+    // withdrawal's sanctions term degrades to "the prover named some number" - it could name a
+    // stranger's clean passport and the whole predicate passes.
+    //
+    // ⚠️ The identifier is read from the MRZ by the vendored extractor, NOT taken as an input. A
+    // caller-supplied identifier would put the choice back in the prover's hands one layer up and
+    // buy nothing: the point is that this value is a FUNCTION of the bytes whose registration is
+    // proven at `identity_state_verifier` below, not an assertion about them.
+    let (issuing_state, document_number) = td1_document_fields(dg1);
+    let document_id = document_identifier(issuing_state, document_number);
+
     assert(
-        secret_commitment(revocation_secret) == commitment,
-        "escrow: commitment is not the one derived from sk_identity",
+        identity_commitment(revocation_secret, document_id) == commitment,
+        "escrow: commitment is not the one derived from sk_identity and this document",
     );
 
     // The document binding. This subsumes BOTH the old `holder_root` proof (the holder root is

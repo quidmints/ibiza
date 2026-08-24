@@ -75,18 +75,38 @@ a gap where one used to be.
       label and blacklist it — a false positive nobody could explain and the holder could not appeal,
       because the tree would be CORRECT. Pinned by `domains_do_not_collide`. The issuing state is
       likewise part of the identifier, not context: numbers are unique only within an issuer.
-      ▶️ **REMAINING WIRING, AND IT MUST RIDE WITH THE BATCH CHANGE ABOVE — DO NOT REGENERATE TWICE:**
-        1. `withdraw.nr`'s taint key becomes `blacklist_key(DOMAIN_LABEL, w.label)`. **This changes
-           the constraint system**, so every verifier, fixture and committed proof is invalidated —
-           exactly what widening `PUB_LEN` 7→8 already forces. **One regeneration, both changes.**
-        2. Rename the signal `taint_root` → `blacklist_root` through `withdraw.nr`, `ProofLib`,
-           `PrivacyPool.taintRoot`/`setTaintRoot` and the wallet. Positional, so no ABI risk; it is
-           the SEMANTICS that changed — "taint" names one domain, and the root now spans three.
-        3. Add the `DOMAIN_DOCUMENT` term. ⚠️ **BLOCKED ON A BOOKED PREREQUISITE**, not on this
-           module: the document key must be BOUND to the identity or a prover names any clean
-           document. That is sec. 4's *"bind the leaf to a document nullifier (trap 6), not to
-           `sk_identity`"*. **Do that first or the term is vacuous.**
-        4. `DOMAIN_ADDRESS` is a free add once (1) lands — same call, different domain.
+      🔴 **THE REMAINING WIRING IS ONE ATOMIC CHANGE — IT CANNOT BE SPLIT, AND IT CANNOT START UNTIL
+      `bb` IS BACK** (owner, 2026-08-24: *"they should be one thing"* — correct, and the blast radius
+      is why).
+      **Everything below moves together or the tree is broken in a way that only shows at proving
+      time:**
+        1. `withdraw.nr`: taint key becomes `blacklist_key(DOMAIN_LABEL, w.label)`. **Changes the
+           constraint system** ⇒ invalidates `WithdrawalHonkVerifier.sol`.
+        2. `build-recursion-tree.py`: `PUB_LEN` **7 → 8** (the leaf folds `2 x 7` and the withdrawal
+           has carried 8 signals since the taint root landed) ⇒ invalidates
+           `TreeRoot8/16/32HonkVerifier.sol`.
+        3. `BatchCommitmentLib.PUB_LEN` **7 → 8** — must equal (2) exactly.
+        4. Rename `taint_root` → `blacklist_root` through `withdraw.nr`, `ProofLib`,
+           `PrivacyPool.taintRoot`/`setTaintRoot`, the wallet and the tests. Positional, so no ABI
+           risk; it is the SEMANTICS that moved — "taint" names one domain and the root now spans
+           three.
+        5. Regenerate **four of the five checked-in verifiers** — `WithdrawalHonkVerifier`,
+           `TreeRoot8`, `TreeRoot16`, `TreeRoot32` (only `RagequitHonkVerifier` is untouched).
+      ⛔ **WHY A PARTIAL LAND IS WORSE THAN NO LAND: THE VERIFIERS ARE CHECKED IN.** They are Solidity
+      files in `contracts/pool/verifiers/`, not build artifacts — so shipping (1)–(4) without (5)
+      leaves the contracts computing a commitment the deployed verifier cannot match. **Nothing
+      reverts at compile time and nothing fails a Solidity test; it fails when someone tries to
+      prove.** That is the exact shape of failure this repo's rules exist to prevent, so **do not
+      land any prefix of this list.**
+      ⚠️ **PREREQUISITE, AND IT IS AN ENVIRONMENT ONE: `bb` IS NOT INSTALLED.** It was removed
+      deliberately earlier (broken binaries: an arm64-macos build that reported "bad CPU type", and a
+      `~/.bb` that silently served 5.1.0 and produced `NUMBER_OF_SUBRELATIONS = 29`). `codegen-verifiers.sh`
+      needs it. **Reinstall the pinned build and confirm it reports 31 subrelations BEFORE touching
+      any of the above** — a wrong `bb` regenerates four verifiers that look fine and verify nothing.
+      ▶️ **AND ONE PART IS BLOCKED BEYOND THE TOOLCHAIN:** the `DOMAIN_DOCUMENT` term needs the
+      identity leaf BOUND to a document nullifier (sec. 4's *"bind the leaf to a document nullifier
+      (trap 6), not to `sk_identity`"*), or a prover names any clean document and the term is
+      vacuous. `DOMAIN_ADDRESS` needs nothing extra once (1) lands — same call, different domain.
 
 - [ ] 🔴 **The BATCH path does not carry it — and the cause moved, so re-read this before acting.**
       The item used to name `aggregate_withdrawals`; that circuit was **deleted in `aa50335`** when the

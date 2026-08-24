@@ -211,42 +211,20 @@ a gap where one used to be.
       reads as coverage where the old gap at least announced itself; and every fixture now proves
       against a POPULATED tree, where all 32 previously carried the empty-tree witness that verifies
       for any key, so the exclusion branch had never once been exercised.
-      🔴 **AND A SECOND HALF NOBODY HAD BOOKED: THE ROOT'S SOURCE IS A CENSORSHIP LEVER.**
-      `PrivacyPool.blacklistRoot` is set by the ENTRYPOINT. Gating a withdrawal on a mutable
-      third-party value is a lever whichever way the zero case is decided — fail-open let a stalled
-      feed admit everyone, fail-closed lets an unset one halt everyone — and
-      `test_NoGovernanceLeverCanBlockAWithdrawal` enumerates exactly one third-party revert, a claim
-      that **went stale the day `setBlacklistRoot` landed** and was corrected only now.
-      ✅ Bounded so far: zero is refused at the setter, so the cost-free halt (re-empty a live root)
-      is gone, and a stalled feed keeps its last good root instead of emptying it.
-      ⛔ **NOT CLOSED: a hostile entrypoint can still publish a root nobody holds a witness against,
-      which halts withdrawals just as well.** The fix is to source the root from the CRE anchor —
-      append-only, no owner, the same shape that already bounds `IncorrectASPRoot` — instead of an
-      entrypoint setter. **Do this with the Go SMT builder, not after it:** the anchor is where the
-      root lands, so wiring the pool to read it is the same change as publishing a real one.
-      ⛔ **"ESCROW IS TD1-ONLY" IS THE DESIGN, NOT A GAP — AND THE ROW THAT SAID OTHERWISE WAS
-      WRONG WITHIN AN HOUR OF BEING WRITTEN (self-corrected 2026-08-24).** It read *"a passport
-      booklet can be registered and then never escrowed"* and asked whether to build TD3 escrow or
-      delete the TD3 registration path. **Both halves were wrong, and the answer was already written
-      in the tree.** `register_identity_td1`'s own header states it: *"Everything else on the live
-      path is TD1 at 95 — `register_identity_light_td1`, `escrow_envelope`, and the wallet, whose
-      vendored rarime circuit registry points exclusively at `.../id_cards/`."* And that circuit was
-      added FOR EXACTLY THE CONDITION THE ROW "FOUND": *"a document registered through the 93-byte
-      circuit produces a `registrationSmt` leaf that `escrow_envelope` can never reproduce … So the
-      permissionless path registered documents that could not reach the pool. **This closes that.**"*
-      ▶️ **Confirmed by call-site grep, not by reading headers:** outside `contracts/passport/
-      verifiers/` the only referenced family is `RegisterIdentityLight**ID***` (the TD1 one). The
-      non-ID TD3 verifiers are present as files and referenced nowhere.
-      ⇒ **TD1 at 95 is the live path end to end. `td1_document_fields` taking `[u8; 95]` is correct,
-      and the TD1 MRZ fixture is the representative one, not a narrowing.**
-      🔎 **THE ONLY RESIDUAL, and it is cleanup rather than correctness:** `register_identity` (TD3,
-      93) still sits in OUR `backend/circuits/`, not under `lib/`, and its verifier family is
-      unreferenced. Whether that is deliberate vendored parity with rarimo's contracts or dead weight
-      is unsettled — and per the standing rule, an unreferenced circuit is NOT automatically litter:
-      `git log -S` it before touching anything.
-      ⚠️ **THE LESSON IS THE ONE THIS FILE KEEPS RE-LEARNING: AN ASYMMETRY IS NOT A DEFECT UNTIL YOU
-      HAVE READ WHY IT IS THERE.** Two circuits differing by one constant looked like an oversight;
-      the constant is the whole point, and the file that explains it was one `sed -n '1,20p'` away.
+      ✅ **THE CENSORSHIP LEVER IS CLOSED — the pool PULLS its root from the anchor** (`8df5855`,
+      2026-08-24). `setBlacklistRoot`, the `blacklistRoot` field and `BlacklistRootSet` are deleted;
+      `PrivacyPool` reads `latestActiveSmtRoot` from an **immutable** `RegistrySourceAnchor`, which is
+      append-only, ownerless and fed by a DON through a timelocked forwarder — the same shape that
+      already bounds `IncorrectASPRoot`. **Refusing zero was never the fix**: it closed the fail-open
+      hole and refusing to re-zero removed the cost-free halt, but ONE ADDRESS STILL CHOSE THE VALUE,
+      and a root nobody holds a witness against halts every withdrawal. The SOURCE is immutable for
+      the same reason — a settable source is a settable root wearing one more layer.
+      ⚠️ **WHAT THIS STILL DOES NOT BUY, and it is inherent rather than fixable here:** liveness now
+      depends on the feed having published once and the activation delay having elapsed. A stalled
+      feed keeps the last ACTIVE root rather than emptying it, so staleness admits a newly-listed key
+      and never everyone. That is a property of gating on a rotating root at all.
+      ⛔ **`test_NoGovernanceLeverCanBlockAWithdrawal`'s enumeration is now true again** — it had been
+      false since `setBlacklistRoot` landed, and nobody noticed until this thread.
       ▶️ **`DOMAIN_ADDRESS` IS DERIVED AND LISTED BUT NEVER PROVEN.** The fixture's listed set
       includes a sanctioned address key, and `blacklist.nr` defines the domain, but no circuit term
       queries it — a withdrawal proves its LABEL and its DOCUMENT are absent, not its recipient.

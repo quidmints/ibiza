@@ -148,11 +148,11 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
   function test_onReport_revertsForNonPostmanWithValidMetadata() public {
     vm.prank(stranger);
     vm.expectRevert();
-    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('leaf'))));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, bytes32(0), _oneLeafSet(keccak256('leaf'))));
   }
 
   function test_onReport_revertsForNonPostman() public {
-    bytes memory report = abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('leaf')));
+    bytes memory report = abi.encode(NOTARY_REGISTRY, bytes32(0), _oneLeafSet(keccak256('leaf')));
     vm.prank(stranger);
     vm.expectRevert();
     anchor.onReport('', report);
@@ -175,9 +175,9 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     internal
     returns (uint256 index_, bytes32 root_)
   {
-    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(registryId_, leaves_));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(registryId_, bytes32(0), leaves_));
     index_ = anchor.snapshotCount(registryId_) - 1;
-    (root_, ) = anchor.snapshots(registryId_, index_);
+    (root_, , ) = anchor.snapshots(registryId_, index_);
   }
 
   // ── snapshot publication (via onReport, the only entrypoint) ────────────────────────────
@@ -207,7 +207,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
   function test_snapshot_revertsOnEmptyLeafSet() public {
     vm.prank(postman);
     vm.expectRevert(RegistrySourceAnchor.EmptyLeafSet.selector);
-    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, new bytes32[](0)));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, bytes32(0), new bytes32[](0)));
   }
 
   function test_snapshot_revertsOnUnsortedLeaves() public {
@@ -220,7 +220,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
 
     vm.prank(postman);
     vm.expectRevert(RegistrySourceAnchor.LeavesNotStrictlySorted.selector);
-    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, badOrder));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, bytes32(0), badOrder));
   }
 
   function test_snapshot_revertsOnDuplicateLeaves() public {
@@ -231,7 +231,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
 
     vm.prank(postman);
     vm.expectRevert(RegistrySourceAnchor.LeavesNotStrictlySorted.selector);
-    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, duplicated));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, bytes32(0), duplicated));
   }
 
   function test_snapshot_emitsFullLeafSet() public {
@@ -240,7 +240,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     vm.expectEmit(true, true, false, true);
     emit RegistrySourceAnchor.SnapshotLeaves(NOTARY_REGISTRY, 0, leaves);
     vm.prank(postman);
-    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, leaves));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, bytes32(0), leaves));
   }
 
   function test_snapshot_neverOverwritesPriorSnapshot() public {
@@ -271,12 +271,12 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
 
   function test_onReport_decodesAndPublishes() public {
     bytes32 leaf = keccak256('c');
-    bytes memory report = abi.encode(NOTARY_REGISTRY, _oneLeafSet(leaf));
+    bytes memory report = abi.encode(NOTARY_REGISTRY, bytes32(0), _oneLeafSet(leaf));
 
     vm.prank(postman);
     anchor.onReport(_metadata(TEST_WORKFLOW), report);
     uint256 index = anchor.snapshotCount(NOTARY_REGISTRY) - 1;
-    (bytes32 root, ) = anchor.snapshots(NOTARY_REGISTRY, index);
+    (bytes32 root, , ) = anchor.snapshots(NOTARY_REGISTRY, index);
 
     assertEq(index, 0);
     assertEq(root, leaf);
@@ -295,7 +295,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
    */
   function test_onReport_revertsForAWorkflowThatIsNotThePinnedOne() public {
     bytes32 rogue = keccak256('notary_registry.wasm@attacker');
-    bytes memory report = abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('c')));
+    bytes memory report = abi.encode(NOTARY_REGISTRY, bytes32(0), _oneLeafSet(keccak256('c')));
 
     vm.prank(postman);
     vm.expectRevert(
@@ -329,7 +329,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
 
     vm.prank(postman);
     vm.expectRevert(); // UnpinnedWorkflow - the window at 45 is not the pinned ID
-    anchor.onReport(shifted, abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('c'))));
+    anchor.onReport(shifted, abi.encode(NOTARY_REGISTRY, bytes32(0), _oneLeafSet(keccak256('c'))));
   }
 
   /*
@@ -366,7 +366,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     vm.expectRevert(
       abi.encodeWithSelector(RegistrySourceAnchor.MalformedReportMetadata.selector, truncated)
     );
-    anchor.onReport(short, abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('c'))));
+    anchor.onReport(short, abi.encode(NOTARY_REGISTRY, bytes32(0), _oneLeafSet(keccak256('c'))));
   }
 
   // ── latestRoot / latestActiveRoot / snapshotCount ──────────────────────────────────────
@@ -379,7 +379,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
   function test_latestActiveRoot_respectsActivationDelay() public {
     bytes32 leaf = keccak256('a');
     vm.prank(postman);
-    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(leaf)));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, bytes32(0), _oneLeafSet(leaf)));
 
     vm.expectRevert(RegistrySourceAnchor.NoActiveSnapshot.selector);
     anchor.latestActiveRoot(NOTARY_REGISTRY);
@@ -392,11 +392,11 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     bytes32 leafA = keccak256('a');
     bytes32 leafB = keccak256('b');
     vm.prank(postman);
-    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(leafA)));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, bytes32(0), _oneLeafSet(leafA)));
     vm.warp(block.timestamp + anchor.ROOT_ACTIVATION_DELAY());
 
     vm.prank(postman);
-    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(leafB)));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, bytes32(0), _oneLeafSet(leafB)));
     assertEq(anchor.latestActiveRoot(NOTARY_REGISTRY), leafA); // leafB's snapshot still pending
 
     vm.warp(block.timestamp + anchor.ROOT_ACTIVATION_DELAY());
@@ -444,7 +444,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     // The stored slot settles on first use, not on a separate call — see
     // test_publishingFoldsAnElapsedRepointIntoStorage.
     vm.prank(address(0xBEEF));
-    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('r'))));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, bytes32(0), _oneLeafSet(keccak256('r'))));
     assertEq(anchor.forwarder(), address(0xBEEF), 'the forwarder was not re-pointed');
     assertEq(anchor.pendingForwarder(), address(0), 'the pending slot was not cleared');
   }
@@ -459,10 +459,10 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
 
     vm.prank(postman); // the ADDRESS THAT USED TO BE the forwarder
     vm.expectRevert(abi.encodeWithSelector(RegistrySourceAnchor.NotForwarder.selector, postman));
-    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('x'))));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, bytes32(0), _oneLeafSet(keccak256('x'))));
 
     vm.prank(address(0xBEEF)); // ...and the new one is accepted
-    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('x'))));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, bytes32(0), _oneLeafSet(keccak256('x'))));
     assertEq(anchor.snapshotCount(NOTARY_REGISTRY), 1, 'the new forwarder could not publish');
   }
 
@@ -528,7 +528,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
 
     vm.prank(stranger);
     vm.expectRevert(abi.encodeWithSelector(RegistrySourceAnchor.NotForwarder.selector, stranger));
-    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, leaves_));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, bytes32(0), leaves_));
   }
 
   function test_publishingIsImpossibleWithNoActiveWorkflow() public {
@@ -552,7 +552,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
 
     vm.prank(postman);
     vm.expectRevert(RegistrySourceAnchor.NoActiveWorkflow.selector);
-    fresh_.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, leaves_));
+    fresh_.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, bytes32(0), leaves_));
   }
 
   /// A pinned version is NOT usable until its delay elapses - the interval in which a malicious
@@ -704,7 +704,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
 
     vm.prank(postman);
     vm.expectRevert(RegistrySourceAnchor.LeavesNotStrictlySorted.selector);
-    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(registryId, leaves));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(registryId, bytes32(0), leaves));
   }
 
   /*
@@ -731,7 +731,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     // Same block: the EOA holds a genuine pin and a well-formed header, and is still refused.
     vm.prank(evilEoa_);
     vm.expectRevert(abi.encodeWithSelector(RegistrySourceAnchor.NotForwarder.selector, evilEoa_));
-    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('fabricated'))));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, bytes32(0), _oneLeafSet(keccak256('fabricated'))));
 
     assertEq(anchor.snapshotCount(NOTARY_REGISTRY), 0, 'a fabricated snapshot landed');
   }
@@ -743,7 +743,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     anchor.setForwarder(address(0xBEEF));
 
     vm.prank(postman);
-    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('y'))));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, bytes32(0), _oneLeafSet(keccak256('y'))));
     assertEq(anchor.snapshotCount(NOTARY_REGISTRY), 1, 'the incumbent was silenced by a proposal');
   }
 
@@ -771,7 +771,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     assertEq(anchor.forwarder(), postman, 'it settled before anyone used it');
 
     vm.prank(address(0xBEEF));
-    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('s'))));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, bytes32(0), _oneLeafSet(keccak256('s'))));
 
     assertEq(anchor.forwarder(), address(0xBEEF), 'the stored slot did not settle');
     assertEq(anchor.pendingForwarder(), address(0), 'the pending slot was not cleared');
@@ -789,7 +789,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     assertEq(anchor.forwarder(), postman, 'the stored slot should still name the predecessor');
 
     vm.prank(address(0xBEEF));
-    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('z'))));
+    anchor.onReport(_metadata(TEST_WORKFLOW), abi.encode(NOTARY_REGISTRY, bytes32(0), _oneLeafSet(keccak256('z'))));
     assertEq(anchor.snapshotCount(NOTARY_REGISTRY), 1, 'an unpromoted forwarder could not publish');
   }
 
@@ -839,8 +839,8 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
     vm.warp(block.timestamp + fresh_.WORKFLOW_ACTIVATION_DELAY() + 1);
 
     vm.startPrank(postman);
-    fresh_.onReport(_metadata(wfA_), abi.encode(NOTARY_REGISTRY, _oneLeafSet(keccak256('a'))));
-    fresh_.onReport(_metadata(wfB_), abi.encode(OTHER_REGISTRY, _oneLeafSet(keccak256('b'))));
+    fresh_.onReport(_metadata(wfA_), abi.encode(NOTARY_REGISTRY, bytes32(0), _oneLeafSet(keccak256('a'))));
+    fresh_.onReport(_metadata(wfB_), abi.encode(OTHER_REGISTRY, bytes32(0), _oneLeafSet(keccak256('b'))));
     vm.stopPrank();
 
     assertEq(fresh_.snapshotCount(NOTARY_REGISTRY), 1, 'registry A could not publish');
@@ -861,7 +861,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
 
     vm.prank(postman);
     vm.expectRevert(abi.encodeWithSelector(RegistrySourceAnchor.UnpinnedWorkflow.selector, wfA_, wfB_));
-    fresh_.onReport(_metadata(wfA_), abi.encode(OTHER_REGISTRY, _oneLeafSet(keccak256('x'))));
+    fresh_.onReport(_metadata(wfA_), abi.encode(OTHER_REGISTRY, bytes32(0), _oneLeafSet(keccak256('x'))));
   }
 
   /// An unpinned registry publishes NOTHING, rather than inheriting some other registry's pin.
@@ -878,7 +878,7 @@ contract RegistrySourceAnchorTest is Test, CreReportMetadata {
 
     vm.prank(postman);
     vm.expectRevert(RegistrySourceAnchor.NoActiveWorkflow.selector);
-    fresh_.onReport(_metadata(wfA_), abi.encode(OTHER_REGISTRY, _oneLeafSet(keccak256('x'))));
+    fresh_.onReport(_metadata(wfA_), abi.encode(OTHER_REGISTRY, bytes32(0), _oneLeafSet(keccak256('x'))));
   }
 
   /// A fresh anchor with its forwarder live and NO workflow pinned anywhere.

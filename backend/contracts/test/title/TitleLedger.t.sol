@@ -146,7 +146,7 @@ contract TitleLedgerTest is Test, CreReportMetadata {
     leaves[1] = leaf1;
 
     vm.prank(postman);
-    registry.onReport(_metadata(keccak256('notary_registry.wasm@test')), abi.encode(REGISTRY_ID, leaves));
+    registry.onReport(_metadata(keccak256('notary_registry.wasm@test')), abi.encode(REGISTRY_ID, bytes32(0), leaves));
     vm.warp(block.timestamp + registry.ROOT_ACTIVATION_DELAY());
 
     notaryProof = new bytes32[](1);
@@ -379,7 +379,7 @@ contract TitleLedgerTest is Test, CreReportMetadata {
 
     vm.prank(registrar);
     vm.expectRevert(); // NotForwarder - publication is an address, not a role
-    registry.onReport(_metadata(keccak256('notary_registry.wasm@test')), abi.encode(REGISTRY_ID, leaves));
+    registry.onReport(_metadata(keccak256('notary_registry.wasm@test')), abi.encode(REGISTRY_ID, bytes32(0), leaves));
   }
 
   /// Zero IS the clean status, so it can never be a revocation predicate - otherwise "revoking"

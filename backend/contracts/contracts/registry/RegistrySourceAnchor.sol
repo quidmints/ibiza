@@ -189,7 +189,33 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
         21888242871839275222246405745257275088548364400416034343698204186575808495617;
 
     struct RegistrySnapshot {
+        /// keccak sorted-pair root, COMPUTED here from the submitted leaves (`_computeRoot`).
         bytes32 root;
+        /**
+         * Poseidon SMT root over the same leaves — **CLAIMED, not computed** (sec. 2.18db, decided
+         * by measurement 2026-08-24).
+         *
+         * 🔴 WHY IT CANNOT BE COMPUTED, AND WHY THAT IS NOT A TRUST CONCESSION.
+         * `test/registry/SanctionsRootHashCost.t.sol` measures a Poseidon pair hash at **29,113
+         * gas** against keccak's **239** — **121×**. A tree over N leaves is N−1 pair hashes, so the
+         * OFAC SDN at ~17,000 entries would cost **494,891,887 gas**: roughly **16.5 whole Ethereum
+         * blocks**. Even 1,000 leaves is a full block. There is no version of computing this on
+         * chain.
+         * ⇒ **SO IT IS ANCHORED AND CHECKED, RATHER THAN DERIVED.** The full leaf set is in this
+         * transaction's calldata and its event, so anyone can rebuild the SMT off-chain and show a
+         * wrong root, and `ROOT_ACTIVATION_DELAY` is the window in which to do it. **Not-computed is
+         * not the same as not-verified**, and conflating those is how this gets reopened as a
+         * trust regression.
+         * ⚠️ It exists because a keccak sorted-pair tree **cannot support non-membership proofs**:
+         * `_hashSortedPair` is commutative, so a path never reveals whether a sibling sat left or
+         * right, and adjacency — the whole content of a sorted-tree absence proof — is unprovable.
+         * The blacklist predicate is EXCLUSION, so it needs a structure that can prove absence.
+         * ⚠️ **ZERO IS LEGAL AND MEANS EMPTY**, matching `taintRoot`'s polarity: an empty exclusion
+         * set admits everyone, so a publisher who goes quiet cannot censor. It is also the bootstrap
+         * state and the fail-open failure mode in one, which is why it is emitted rather than
+         * silently defaulted.
+         */
+        bytes32 smtRoot;
         uint256 timestamp;
     }
 
@@ -254,7 +280,9 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
     /// a Merkle proof against `snapshots[registryId][index].root` using this array directly, with
     /// no external fetch of any kind.
     event SnapshotLeaves(bytes32 indexed registryId, uint256 indexed index, bytes32[] leaves);
-    event SnapshotAnchored(bytes32 indexed registryId, bytes32 root, uint256 index, bytes32 statementKey);
+    event SnapshotAnchored(
+        bytes32 indexed registryId, bytes32 root, bytes32 smtRoot, uint256 index, bytes32 statementKey
+    );
 
     error EmptyLeafSet();
     error LeavesNotStrictlySorted();
@@ -478,20 +506,22 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
         // DECODED BEFORE THE WORKFLOW CHECK, because the pin is per-`registryId` and the registry is
         // in the report rather than the header. Decoding is not a trust step - the authorization is
         // the forwarder comparison above, and the workflow check is still what gates publication.
-        (bytes32 registryId_, bytes32[] memory leavesMem_) = abi.decode(report, (bytes32, bytes32[]));
+        (bytes32 registryId_, bytes32 smtRoot_, bytes32[] memory leavesMem_) =
+            abi.decode(report, (bytes32, bytes32, bytes32[]));
 
         bytes32 reported_ = bytes32(metadata[REPORT_WORKFLOW_ID_OFFSET:REPORT_WORKFLOW_ID_OFFSET + 32]);
         bytes32 active_ = activeWorkflowId(registryId_);
         if (active_ == bytes32(0)) revert NoActiveWorkflow();
         if (reported_ != active_) revert UnpinnedWorkflow(reported_, active_);
 
-        _publishSnapshot(registryId_, leavesMem_);
+        _publishSnapshot(registryId_, smtRoot_, leavesMem_);
     }
 
     /// @dev Kept separate from `onReport` so the authorization and the publication read as distinct
     /// steps. Takes `memory` because `onReport`'s array is already decoded.
     function _publishSnapshot(
         bytes32 registryId_,
+        bytes32 smtRoot_,
         bytes32[] memory leaves_
     ) internal returns (uint256 index_, bytes32 root_) {
         // A PIN NOTHING CHECKS IS DECORATION. The whole point of naming the workflow is that
@@ -502,14 +532,14 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
 
         root_ = _computeRoot(leaves_);
 
-        snapshots[registryId_].push(RegistrySnapshot(root_, block.timestamp));
+        snapshots[registryId_].push(RegistrySnapshot(root_, smtRoot_, block.timestamp));
         index_ = snapshots[registryId_].length - 1;
 
         bytes32 statementKey_ = _statementKey(registryId_, index_);
         EVIDENCE_REGISTRY.addStatement(statementKey_, root_);
 
         emit SnapshotLeaves(registryId_, index_, leaves_);
-        emit SnapshotAnchored(registryId_, root_, index_, statementKey_);
+        emit SnapshotAnchored(registryId_, root_, smtRoot_, index_, statementKey_);
     }
 
     /// @notice Newest snapshot root for `registryId_`, regardless of activation delay
@@ -522,6 +552,27 @@ contract RegistrySourceAnchor is AccessControlUpgradeable, UUPSUpgradeable, IRec
 
     /// @notice The newest snapshot whose activation delay has elapsed - what a verifier should
     /// check membership against. Mirrors Entrypoint.latestActiveRoot exactly.
+    /**
+     * @notice The Poseidon SMT root the blacklist predicate proves NON-MEMBERSHIP against.
+     *
+     * @dev Same activation rule as `latestActiveRoot` deliberately: one window, one staleness story.
+     *      A snapshot's two roots activate together because they describe the SAME leaf set, and
+     *      letting them diverge would mean a proof could be valid against one and not the other.
+     * @dev ⚠️ Returns zero when the active snapshot carries no SMT root — legal, and it means an
+     *      EMPTY exclusion set, which admits everyone. Callers must treat that as fail-open by
+     *      design rather than as an error; see `RegistrySnapshot.smtRoot`.
+     */
+    function latestActiveSmtRoot(bytes32 registryId_) external view returns (bytes32) {
+        RegistrySnapshot[] storage list_ = snapshots[registryId_];
+        uint256 length_ = list_.length;
+        if (length_ == 0) revert NoSnapshotsAvailable();
+        for (uint256 i_ = length_; i_ > 0; --i_) {
+            RegistrySnapshot storage snap_ = list_[i_ - 1];
+            if (snap_.timestamp + ROOT_ACTIVATION_DELAY <= block.timestamp) return snap_.smtRoot;
+        }
+        revert NoActiveSnapshot();
+    }
+
     function latestActiveRoot(bytes32 registryId_) external view returns (bytes32) {
         RegistrySnapshot[] storage list_ = snapshots[registryId_];
         uint256 length_ = list_.length;

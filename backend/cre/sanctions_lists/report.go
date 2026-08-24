@@ -55,8 +55,14 @@ var snapshotABI = abi.Arguments{
 // root here, OR make the pool reject a zero `blacklistRoot` so an unpublished list
 // BLOCKS withdrawals instead of waving them through. Do not leave both open.
 //
-// Computing it needs a Poseidon SMT builder whose node-hashing convention matches
-// the Noir `smt` library EXACTLY - a mismatch does not error, it silently produces
-// proofs that fail to verify, so it needs a cross-language conformance test against
-// the same fixtures `smt_verifier_full` is tested with.
+// ✅ THE BUILDER NOW EXISTS AND IS PROVEN: `smt.go`, with `smt_conformance_test.go`
+// checking its root against one a real solarity SparseMerkleTree produced, and the
+// Go Poseidon checked against a value the Noir circuit accepted.
+//
+// 🔴 WHAT IS STILL MISSING IS THE INPUT, NOT THE TREE. The predicate keys on
+// `document_identifier(issuing_state, document_number)`, and `ListedSubject` carries
+// only a reference, a kind and name parts - no source parser extracts document
+// numbers. Publishing a root over the NAME leaves would be worse than this zero: it
+// would look published while every exclusion proof still succeeded, because the
+// circuit queries keys that tree does not contain.
 var smtRootUnpublished = [32]byte{}

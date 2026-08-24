@@ -243,16 +243,30 @@ a gap where one used to be.
       reproduce n8, n16 and n32. It is left holding the 32-member set, which is what the repo tracks
       — meaning a fresh checkout can rebuild n32 and will silently rebuild n8 WITHOUT padding.
       `test_APaddedBatchReproducesItsRoot` is the only thing that catches that.
-      ▶️ **REMAINING, AND IT IS THE WHOLE ITEM: a Poseidon SMT builder in Go.** No such dependency is
-      in `sanctions_lists/go.mod` today. It must match the Noir `smt` library's node-hashing
-      convention **exactly**, and per *"don't roll your own"* the Poseidon itself should come from
-      `iden3/go-iden3-crypto` rather than be written here — but check WASM-compatibility first, since
-      the workflow's only real build target is `GOOS=wasip1`.
-      ⛔ **A CONVENTION MISMATCH DOES NOT ERROR. It silently produces proofs that fail to verify**,
-      which reads as a broken circuit or a broken verifier and will be debugged in the wrong language.
-      ⇒ **The conformance test is part of the item, not follow-up work:** build a root in Go over the
-      same fixtures `smt_verifier_full` is tested against, and assert the roots are equal. Without it
-      there is no way to tell a wrong tree from a wrong proof.
+      ✅ **THE SMT BUILDER IS DONE AND PROVEN — `sanctions_lists/smt.go`** (2026-08-24). Poseidon from
+      `iden3/go-iden3-crypto` (audited, and it BUILDS FOR `wasip1`, which was the gating question).
+      The convention is copied from `SparseMerkleTree._getNodeHash`, not chosen: leaf =
+      `Poseidon(key, value, 1)`, branch = `Poseidon(left, right)`, empty subtree = 0, bit `depth` of
+      the key LSB-first.
+      ⭐ **THREE LANGUAGES ARE PINNED TO ONE NUMBER, and two independent checks do it:**
+      `TestPoseidonMatchesTheCircuit` compares Go's Poseidon against a value **the Noir circuit
+      accepted** (`document_identifier` for identity 0, as solved by `nargo execute`), and
+      `TestSmtRootMatchesTheSolidityTree` compares a Go-built root against one a **real solarity
+      SparseMerkleTree** emitted over the same entries.
+      ▶️ **Both falsified before being trusted:** changing the leaf's trailing `1` and reversing the
+      bit order each make the conformance test fail. A convention mismatch does not error — it yields
+      a different-but-valid root, every exclusion proof fails, and the search starts in Noir.
+      🔴 **BUT IT IS NOT CALLED, AND THE BLOCKER IS THE INPUT RATHER THAN THE WIRING.** The predicate
+      keys on `blacklist_key(DOMAIN_DOCUMENT, document_identifier(issuing_state, document_number))`,
+      and `ListedSubject` carries **`Reference`, `Kind`, `NameParts` — no document number and no
+      issuing state.** No source parser extracts them; OFAC SDN publishes them in `idList` and each
+      other source has its own schema, so this is per-source parsing work.
+      ⛔ **DO NOT CLOSE IT BY PUBLISHING A ROOT OVER THE NAME LEAVES.** It would compute, anchor, and
+      look published while **every exclusion proof still succeeded** — the circuit queries keys that
+      tree does not contain. That is strictly worse than the zero it replaces: zero HALTS withdrawals
+      loudly (the pool refuses it), whereas a name-keyed root passes silently while listing nobody the
+      predicate can see. This is the §VACUOUS-BOUNDS shape arriving through a data feed.
+      ⇒ **The remaining item is a document-number parser per source, not a tree.**
       ▶️ **AND WHEN IT IS BUILT, BE HONEST ABOUT WHAT THE CLAIM IS.** A ZK absence proof yields a
       SIGNAL, not evidence: *"some passport-holder asserts the parse dropped them"*, with a nullifier
       and no name. That is still the entire point — **silence becomes a visible, counted alarm**, and

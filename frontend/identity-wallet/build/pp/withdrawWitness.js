@@ -58,7 +58,7 @@ function holderRootFromSk(skIdentity) {
 }
 /** Assemble (and self-check) the withdraw_identity witness. */
 function buildWithdrawalWitness(params) {
-    const { note, stateLeafIndex, stateTree, masterKeys, identity, revocationSecret, withdrawnValue, context, withdrawalIndex, allowZeroForPadding = false, } = params;
+    const { note, stateLeafIndex, stateTree, masterKeys, identity, revocationSecret, documentId, blacklist, withdrawnValue, context, withdrawalIndex, allowZeroForPadding = false, } = params;
     if (identity.siblings.length !== identityProof_ts_1.IDENTITY_TREE_DEPTH) {
         throw new Error(`buildWithdrawalWitness: identity witness has ${identity.siblings.length} siblings, ` +
             `but the circuit is fixed at ${identityProof_ts_1.IDENTITY_TREE_DEPTH}. Pad or regenerate both together.`);
@@ -78,11 +78,15 @@ function buildWithdrawalWitness(params) {
     if (context <= 0n || context >= stateTree_ts_1.FIELD) {
         throw new Error("buildWithdrawalWitness: context must be a nonzero BN254 field element");
     }
-    // ── Identity: derive the registry key from the escrowed secret ──────────────────────────────
-    // The key is Poseidon(revocation_secret) - the SAME value escrow_envelope committed to and
-    // IdentityRegistry stored. sk_identity is NOT used here at all any more: identity is proven ONCE,
-    // at escrow. See sec. 2.13k.
-    const commitment = js_crypto_1.Poseidon.hash([revocationSecret]);
+    // ── Identity: derive the registry key from the escrowed secret AND its document ─────────────
+    // The key is Poseidon(revocation_secret, document_id) - the SAME value escrow_envelope committed
+    // to and IdentityRegistry stored. sk_identity is NOT used here at all any more: identity is proven
+    // ONCE, at escrow. See sec. 2.13k.
+    //
+    // ⚠️ THE SECOND FIELD IS WHAT MAKES THE SANCTIONS TERM MEAN ANYTHING. Committing to the secret
+    // alone let a withdrawal prove "some registered identity" and then name any document at all for
+    // the blacklist check. Binding it here is what forces the document checked to be the one escrowed.
+    const commitment = js_crypto_1.Poseidon.hash([revocationSecret, documentId]);
     // ── State-tree membership ───────────────────────────────────────────────────────────────────
     const stateProof = stateTree.proof(stateLeafIndex, stateTree_ts_1.MAX_TREE_DEPTH);
     const leafAtIndex = stateTree.leaves[Number(stateLeafIndex)];
@@ -112,6 +116,7 @@ function buildWithdrawalWitness(params) {
         BigInt(stateProof.depth),
         identity.identityRoot,
         context,
+        blacklist.root,
     ];
     const dec = (v) => v.toString(10);
     const inputs = {
@@ -137,6 +142,19 @@ function buildWithdrawalWitness(params) {
         // inclusion path proving its commitment sits in the registry carrying the CLEAN status.
         revocation_secret: dec(revocationSecret),
         identity_siblings: identity.siblings.map(dec),
+        // public - the one blacklist root both exclusion terms are proven against
+        blacklist_root: dec(blacklist.root),
+        // private - exclusion of the deposit's LABEL
+        blacklist_siblings: blacklist.label.siblings.map(dec),
+        blacklist_old_key: dec(blacklist.label.oldKey),
+        blacklist_old_value: dec(blacklist.label.oldValue),
+        blacklist_is_old0: blacklist.label.isOld0,
+        // private - exclusion of the escrowed DOCUMENT, same root, different domain
+        document_id: dec(documentId),
+        document_siblings: blacklist.document.siblings.map(dec),
+        document_old_key: dec(blacklist.document.oldKey),
+        document_old_value: dec(blacklist.document.oldValue),
+        document_is_old0: blacklist.document.isOld0,
     };
     return { inputs, pubSignals, changeNote, newCommitment };
 }

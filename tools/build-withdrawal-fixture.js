@@ -77,6 +77,20 @@ const { masterKeysFromMnemonic, depositSecrets, commitment, nullifierHash, State
 const { holderRootFromSk } = require(path.join(BUILD, 'pp/withdrawWitness.js'));
 
 const { MNEMONIC, REVOCATION_SECRET } = common;
+
+// ── the blacklist predicate ───────────────────────────────────────────────────────────────────
+// Shared with build-fold-witnesses.js via fixture-common - see the note there on why one
+// definition is the only thing that keeps two generators proving against the same tree.
+const { Poseidon } = require(path.join(BUILD, 'pp/withdrawWitness.js'));
+const { DOMAIN_LABEL, DOMAIN_DOCUMENT, makeBlacklistKey, documentIds, loadBlacklistWitness } = common;
+const blacklistKey = makeBlacklistKey(Poseidon);
+
+const FIXTURES = path.join(__dirname, '..', 'backend', 'contracts', 'test', 'fixtures');
+const QUERIES_PATH = path.join(FIXTURES, 'withdrawal_blacklist_queries.json');
+const BL_WITNESS_PATH = path.join(FIXTURES, 'withdrawal_blacklist_witness.json');
+
+/** Every profile here is identity 0 - the one `loadIdentityWitness()` defaults to. */
+const DOCUMENT_ID = documentIds()[0];
 const keys = masterKeysFromMnemonic(MNEMONIC);
 const identity = common.loadIdentityWitness();
 
@@ -101,13 +115,19 @@ function buildTrees(spentCommitment) {
   return { stateTree, stateLeafIndex };
 }
 
-function emit(name, note, withdrawnValue) {
+function emit(name, note, withdrawnValue, profileIndex) {
   const { stateTree, stateLeafIndex } = buildTrees(note.commitment);
 
   const w = buildWithdrawalWitness({
     note, stateLeafIndex, stateTree,
     masterKeys: keys, identity, revocationSecret: REVOCATION_SECRET,
     withdrawnValue, context: CONTEXT, withdrawalIndex: 0n,
+    documentId: DOCUMENT_ID,
+    blacklist: {
+      root: BL_ROOT,
+      label: exclusionAt(profileIndex * 2),
+      document: exclusionAt(profileIndex * 2 + 1),
+    },
   });
 
   // Independent cross-checks - not "the assembler agrees with itself".
@@ -124,8 +144,11 @@ function emit(name, note, withdrawnValue) {
     throw new Error(`${name}: DEGENERATE - the state tree has depth 0, so no sibling is hashed. Add filler leaves.`);
   }
 
+  // A BOOLEAN MUST NOT BE QUOTED - Noir reads `is_old0 = true` and rejects `is_old0 = "true"`
+  // with a message naming the argument, so it reads as a missing field rather than a quoting bug.
   const toml = Object.entries(w.inputs).map(([k, v]) =>
-    Array.isArray(v) ? `${k} = [${v.map(x => `"${x}"`).join(', ')}]` : `${k} = "${v}"`
+    Array.isArray(v) ? `${k} = [${v.map(x => `"${x}"`).join(', ')}]`
+      : typeof v === 'boolean' ? `${k} = ${v}` : `${k} = "${v}"`
   ).join('\n') + '\n';
   const out = path.join(CIRCUIT_DIR, `Prover.${name}.toml`);
   fs.writeFileSync(out, toml);
@@ -139,19 +162,54 @@ function emit(name, note, withdrawnValue) {
 
 // baseline: independent hand vector from pp/src/commitment.nr's differential test
 const HAND = { value: 10n, label: 20n, nullifier: 30n, secret: 40n };
-emit('baseline', {
-  scope: 0n, label: HAND.label, index: 0, kind: 'deposit',
-  nullifier: HAND.nullifier, secret: HAND.secret, value: HAND.value,
-  commitment: commitment(HAND.value, HAND.label, { nullifier: HAND.nullifier, secret: HAND.secret }),
-  spent: false,
-}, 4n);
-
-// wallet: the client's own seed derivation
+// ── the profiles, as data, so phase 1 can read their labels without emitting anything ────────
 const scope = 12345n, label = 67890n;
 const note0 = depositSecrets(keys, scope, 0n);
-const value = 10n ** 18n;
-emit('wallet', {
-  scope, label, index: 0, kind: 'deposit',
-  nullifier: note0.nullifier, secret: note0.secret, value,
-  commitment: commitment(value, label, note0), spent: false,
-}, 3n * 10n ** 17n);
+const walletValue = 10n ** 18n;
+
+const PROFILES = [
+  {
+    name: 'baseline',
+    note: {
+      scope: 0n, label: HAND.label, index: 0, kind: 'deposit',
+      nullifier: HAND.nullifier, secret: HAND.secret, value: HAND.value,
+      commitment: commitment(HAND.value, HAND.label, { nullifier: HAND.nullifier, secret: HAND.secret }),
+      spent: false,
+    },
+    withdrawnValue: 4n,
+  },
+  {
+    // wallet: the client's own seed derivation
+    name: 'wallet',
+    note: {
+      scope, label, index: 0, kind: 'deposit',
+      nullifier: note0.nullifier, secret: note0.secret, value: walletValue,
+      commitment: commitment(walletValue, label, note0), spent: false,
+    },
+    withdrawnValue: 3n * 10n ** 17n,
+  },
+];
+
+// ── phase 1: hand the emitter this file's keys ───────────────────────────────────────────────
+//
+// SEPARATE FILES FROM THE BATCH GENERATOR'S, BUT THE SAME TREE. Two generators need exclusion
+// proofs for different keys, and they must be proven against ONE root - a withdrawal proven against
+// a different blacklist root than the pool holds cannot settle, whichever root is "right".
+if (process.argv.includes('--queries')) {
+  const hex = (k) => '0x' + k.toString(16).padStart(64, '0');
+  const queries = PROFILES.flatMap((p) => [
+    blacklistKey(DOMAIN_LABEL, p.note.label),
+    blacklistKey(DOMAIN_DOCUMENT, DOCUMENT_ID),
+  ]).map(hex);
+  fs.writeFileSync(QUERIES_PATH, JSON.stringify(queries, null, 2) + '\n');
+  console.log(`Wrote ${queries.length} queries to ${QUERIES_PATH}`);
+  console.log('Next:  BLACKLIST_QUERIES=test/fixtures/withdrawal_blacklist_queries.json \\');
+  console.log('       BLACKLIST_WITNESS=test/fixtures/withdrawal_blacklist_witness.json \\');
+  console.log('       forge test --match-test test_EmitBlacklistWitnessFixture');
+  process.exit(0);
+}
+
+// ── phase 2 ───────────────────────────────────────────────────────────────────────────────────
+const { root: BL_ROOT, exclusionAt } = loadBlacklistWitness(BL_WITNESS_PATH, PROFILES.length * 2);
+
+PROFILES.forEach((p, i) => emit(p.name, p.note, p.withdrawnValue, i));

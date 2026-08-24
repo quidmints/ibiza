@@ -72,21 +72,16 @@ const { masterKeysFromMnemonic, depositSecrets, commitment, nullifierHash, State
 const { Poseidon } = common.loadWallet(BUILD);
 
 // ── the blacklist predicate ───────────────────────────────────────────────────────────────────
-// Domains from backend/circuits/pp/src/blacklist.nr. They are not decoration: a passport number and
-// a pool label are both Fields, so without separation a sanctioned document could collide with an
-// innocent label and blacklist it while the tree stayed correct.
-const DOMAIN_LABEL = 1n;
-const DOMAIN_DOCUMENT = 3n;
-const blacklistKey = (domain, identifier) => Poseidon.hash([domain, identifier]);
+// Definitions live in fixture-common so this generator and build-withdrawal-fixture.js cannot drift:
+// they prove against ONE root, and a key built two ways is absent from the tree in the only sense
+// that matters - every exclusion proof would pass, for the wrong reason.
+const { DOMAIN_LABEL, DOMAIN_DOCUMENT, makeBlacklistKey, documentIds, loadBlacklistWitness } = common;
+const blacklistKey = makeBlacklistKey(Poseidon);
 
 const FIXTURES = path.join(__dirname, '..', 'backend', 'contracts', 'test', 'fixtures');
 const QUERIES_PATH = path.join(FIXTURES, 'blacklist_queries.json');
 const BL_WITNESS_PATH = path.join(FIXTURES, 'blacklist_witness.json');
-
-/** documentId per identity index, from the only place that has the DG1 to derive it. */
-const DOCUMENT_IDS = JSON.parse(
-  fs.readFileSync(path.join(FIXTURES, 'escrow_documents.json'), 'utf8'),
-).documents.map((d) => BigInt(d.documentId));
+const DOCUMENT_IDS = documentIds();
 
 /**
  * The two keys member `i` must prove ABSENT: its deposit label, and its escrowed document.
@@ -169,36 +164,7 @@ if (process.argv.includes('--queries')) {
 }
 
 // ── phase 2: read them back ───────────────────────────────────────────────────────────────────
-if (!fs.existsSync(BL_WITNESS_PATH)) {
-  console.error(
-    `No blacklist witness at ${BL_WITNESS_PATH}.\n` +
-    `Run:  node ${path.basename(__filename)} --queries --count ${COUNT}\n` +
-    '      forge test --match-test test_EmitBlacklistWitnessFixture\n',
-  );
-  process.exit(1);
-}
-const BL = JSON.parse(fs.readFileSync(BL_WITNESS_PATH, 'utf8'));
-const BL_ROOT = BigInt(BL.root);
-const BL_DEPTH = BL.siblings.length / BL.oldKey.length;
-
-// A stale witness file is the failure mode this guards: it is present, parses, and describes a
-// DIFFERENT set of queries. The proof then fails in-circuit with an exclusion error that says
-// nothing about which side is wrong.
-if (BL.oldKey.length !== members.length * 2) {
-  console.error(
-    `blacklist_witness.json holds ${BL.oldKey.length} witnesses but this batch needs ` +
-    `${members.length * 2}. Re-run phase 1 and the emitter.\n`,
-  );
-  process.exit(1);
-}
-
-/** The i-th emitted witness, in the order `queriesFor` produced. */
-const exclusionAt = (k) => ({
-  siblings: BL.siblings.slice(k * BL_DEPTH, (k + 1) * BL_DEPTH).map(BigInt),
-  oldKey: BigInt(BL.oldKey[k]),
-  oldValue: BigInt(BL.oldValue[k]),
-  isOld0: BigInt(BL.isOld0[k]) !== 0n,
-});
+const { root: BL_ROOT, exclusionAt } = loadBlacklistWitness(BL_WITNESS_PATH, members.length * 2);
 
 // ── one tree, built before any witness is read out of it ──────────────────────────────────────
 // Filler leaves before and after the batch, for the same reason build-withdrawal-fixture.js uses

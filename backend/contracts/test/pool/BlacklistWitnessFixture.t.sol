@@ -48,13 +48,18 @@ contract BlacklistWitnessFixtureTest is Test {
   function test_EmitBlacklistWitnessFixture() public {
     // The listed keys. Values are 1 - the circuit only asks whether the key is ABSENT, so the value
     // carries no meaning; a non-zero one makes an accidental read of it visible.
+    // Paths are overridable so the SAME tree can serve more than one generator: the 32-member
+    // batch and the standalone withdrawal fixtures need exclusion proofs for different keys, and
+    // they must be proven against ONE root or they could never settle in the same pool.
     uint256[] memory listed = abi.decode(
-      vm.parseJson(vm.readFile('test/fixtures/blacklist_listed.json')), (uint256[])
+      vm.parseJson(vm.readFile(vm.envOr('BLACKLIST_LISTED', string('test/fixtures/blacklist_listed.json')))),
+      (uint256[])
     );
     for (uint256 i = 0; i < listed.length; i++) _tree.add(bytes32(listed[i]), bytes32(uint256(1)));
 
     uint256[] memory queries = abi.decode(
-      vm.parseJson(vm.readFile('test/fixtures/blacklist_queries.json')), (uint256[])
+      vm.parseJson(vm.readFile(vm.envOr('BLACKLIST_QUERIES', string('test/fixtures/blacklist_queries.json')))),
+      (uint256[])
     );
 
     bytes32 root = _tree.getRoot();
@@ -85,6 +90,6 @@ contract BlacklistWitnessFixtureTest is Test {
     vm.serializeBytes32(json, 'oldValue', oldValue);
     vm.serializeBytes32(json, 'isOld0', isOld0);
     string memory out = vm.serializeBytes32(json, 'siblings', siblings);
-    vm.writeJson(out, 'test/fixtures/blacklist_witness.json');
+    vm.writeJson(out, vm.envOr('BLACKLIST_WITNESS', string('test/fixtures/blacklist_witness.json')));
   }
 }

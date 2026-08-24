@@ -183,9 +183,67 @@ function logPublicSignals(pubSignals) {
   PUBLIC_SIGNAL_NAMES.forEach((n, i) => console.log(`  [${i}] ${n} = ${pubSignals[i]}`));
 }
 
+/* ────────────────────────────────────────────────────────────────────────────────────────────
+ * THE BLACKLIST PREDICATE, SHARED BY BOTH WITNESS GENERATORS.
+ *
+ * Here rather than in either caller because they must agree EXACTLY: the batch generator and the
+ * standalone withdrawal generator prove against ONE root, and a key built two ways is absent from
+ * the tree in the only sense that matters - every exclusion proof would pass, for the wrong reason,
+ * forever. One definition is the only way that stays true.
+ * ──────────────────────────────────────────────────────────────────────────────────────────── */
+
+/** Domains from backend/circuits/pp/src/blacklist.nr. A label and a passport number are both
+ *  Fields; without separation a sanctioned document could collide with an innocent label. */
+const DOMAIN_LABEL = 1n;
+const DOMAIN_ADDRESS = 2n;
+const DOMAIN_DOCUMENT = 3n;
+
+/** `blacklist_key(domain, identifier)`. Poseidon comes from the caller's compiled wallet build. */
+const makeBlacklistKey = (Poseidon) => (domain, identifier) => Poseidon.hash([domain, identifier]);
+
+/** documentId per identity index, from the fixture that owns the DG1. */
+function documentIds() {
+  const p = path.join(__dirname, '..', '..', 'backend', 'contracts', 'test', 'fixtures',
+    'escrow_documents.json');
+  return JSON.parse(fs.readFileSync(p, 'utf8')).documents.map((d) => BigInt(d.documentId));
+}
+
+/**
+ * Read an emitted witness file and index it positionally.
+ *
+ * `expected` is asserted because a STALE file is the failure mode here: it exists, parses, and
+ * describes a different set of queries. The proof then fails in-circuit with an exclusion error
+ * that says nothing about which side is wrong.
+ */
+function loadBlacklistWitness(witnessPath, expected) {
+  if (!fs.existsSync(witnessPath)) {
+    console.error(`No blacklist witness at ${witnessPath}.\nRun the --queries phase, then` +
+      ' forge test --match-test test_EmitBlacklistWitnessFixture\n');
+    process.exit(1);
+  }
+  const raw = JSON.parse(fs.readFileSync(witnessPath, 'utf8'));
+  if (raw.oldKey.length !== expected) {
+    console.error(`${witnessPath} holds ${raw.oldKey.length} witnesses, need ${expected}. ` +
+      'Re-run the --queries phase and the emitter.\n');
+    process.exit(1);
+  }
+  const depth = raw.siblings.length / raw.oldKey.length;
+  return {
+    root: BigInt(raw.root),
+    exclusionAt: (k) => ({
+      siblings: raw.siblings.slice(k * depth, (k + 1) * depth).map(BigInt),
+      oldKey: BigInt(raw.oldKey[k]),
+      oldValue: BigInt(raw.oldValue[k]),
+      isOld0: BigInt(raw.isOld0[k]) !== 0n,
+    }),
+  };
+}
+
 module.exports = {
   MNEMONIC, REVOCATION_SECRET, REVOCATION_SECRET_DOMAIN, SK_IDENTITY_0, skIdentity,
   deriveRevocationSecret, IDENTITY_WITNESS_PATH,
   loadWallet, loadIdentityWitness, identityWitnessCount, writeProverToml, PUBLIC_SIGNAL_NAMES,
+  DOMAIN_LABEL, DOMAIN_ADDRESS, DOMAIN_DOCUMENT, makeBlacklistKey, documentIds,
+  loadBlacklistWitness,
   logPublicSignals,
 };

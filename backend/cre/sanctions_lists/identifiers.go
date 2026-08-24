@@ -50,6 +50,9 @@ type ListedIdentifier struct {
 
 	// Value as published, before normalisation.
 	Value string
+	// Country as published, when the set declares a CountryField. EMPTY IS A REAL STATE, not a
+	// parse failure: the OFAC excerpt carries a passport row with an idNumber and no idCountry.
+	Country string
 }
 
 // IdentifierSet declares where identifier rows live and which of them to keep.
@@ -61,11 +64,34 @@ type IdentifierSet struct {
 	// TypeField and ValueField are DIRECT CHILDREN of that element.
 	TypeField  string
 	ValueField string
+	// CountryField is an OPTIONAL direct child naming the issuing state. Set only where the key needs
+	// it - a digital-currency address has no issuing state, and a passport's key is meaningless
+	// without one.
+	//
+	// ⚠️ OPTIONAL ON THE ROW TOO, and that is not laxity: a missing VALUE is a schema change and
+	// errors below, while a missing COUNTRY is something the real export actually contains. Erroring
+	// on it would fail the whole publication over one malformed listing; keying without it would
+	// produce an entry no MRZ can match. It is dropped and counted instead - see DocumentKeys.
+	CountryField string
 
 	// TypePrefix keeps only rows whose type starts with it. A prefix rather than an exact match
 	// because the currency is part of the type string: "Digital Currency Address - XBT",
 	// "- ETH", "- USDT" and seventeen more.
 	TypePrefix string
+}
+
+// ofacPassports keeps the passport rows, whose key the circuit computes from the MRZ.
+//
+// ⚠️ `TypePrefix: "Passport"` IS EXACT IN PRACTICE and was checked against the real export: the other
+// idTypes are `Secondary sanctions risk:`, `Email Address`, `Gender` and `Digital Currency Address -
+// …`, none of which begins with it. A looser match would key the tree on prose - one of those rows
+// carries `section 1(b) of Executive Order 13224, as amended…` as its idNumber.
+var ofacPassports = IdentifierSet{
+	Path:         "sdnList/sdnEntry/idList/id",
+	TypeField:    "idType",
+	ValueField:   "idNumber",
+	CountryField: "idCountry",
+	TypePrefix:   "Passport",
 }
 
 // ofacDigitalCurrency is the only identifier set declared so far.
@@ -199,7 +225,11 @@ func decodeIdentifiers(body []byte, set IdentifierSet) ([]ListedIdentifier, erro
 					if value == "" {
 						return nil, fmt.Errorf("%q row carries no %s - the schema has changed", idType, set.ValueField)
 					}
-					out = append(out, ListedIdentifier{IDType: idType, Value: value})
+					id := ListedIdentifier{IDType: idType, Value: value}
+					if set.CountryField != "" {
+						id.Country = strings.TrimSpace(row[set.CountryField])
+					}
+					out = append(out, id)
 				}
 				inRow, row = false, nil
 			}

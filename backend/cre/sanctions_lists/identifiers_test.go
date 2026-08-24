@@ -95,13 +95,13 @@ func TestNormaliseIdentifierIsPerChain(t *testing.T) {
 // A Bitcoin address and an Ethereum address that happen to share a string must not collide, because
 // the type is bound into the leaf.
 func TestIdentifierLeafBindsTheChain(t *testing.T) {
-	a := identifierLeafHash("OFAC_SDN_ADDRESSES", ListedIdentifier{"Digital Currency Address - XBT", "0xAB"})
-	b := identifierLeafHash("OFAC_SDN_ADDRESSES", ListedIdentifier{"Digital Currency Address - ETC", "0xAB"})
+	a := identifierLeafHash("OFAC_SDN_ADDRESSES", ListedIdentifier{IDType: "Digital Currency Address - XBT", Value: "0xAB"})
+	b := identifierLeafHash("OFAC_SDN_ADDRESSES", ListedIdentifier{IDType: "Digital Currency Address - ETC", Value: "0xAB"})
 	if a == b {
 		t.Fatal("two chains produced the same leaf for the same string")
 	}
 	// And the registry key is bound too, so the same address under two registries differs.
-	c := identifierLeafHash("SOME_OTHER_LIST", ListedIdentifier{"Digital Currency Address - XBT", "0xAB"})
+	c := identifierLeafHash("SOME_OTHER_LIST", ListedIdentifier{IDType: "Digital Currency Address - XBT", Value: "0xAB"})
 	if a == c {
 		t.Fatal("two registries produced the same leaf")
 	}

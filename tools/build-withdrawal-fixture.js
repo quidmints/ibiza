@@ -155,9 +155,10 @@ function emit(name, note, withdrawnValue, profileIndex) {
 
   console.log(`\n${name}:  state_depth=${w.pubSignals[4]}`);
   ['new_commitment', 'existing_nullifier_hash', 'withdrawn_value', 'state_root',
-   'state_tree_depth', 'identity_root', 'context']
+   'state_tree_depth', 'identity_root', 'context', 'blacklist_root']
     .forEach((n, i) => console.log(`  [${i}] ${n} = 0x${w.pubSignals[i].toString(16).padStart(64, '0')}`));
   console.log(`  -> ${path.relative(path.join(__dirname, '..'), out)}`);
+  return w.pubSignals;
 }
 
 // baseline: independent hand vector from pp/src/commitment.nr's differential test
@@ -212,4 +213,19 @@ if (process.argv.includes('--queries')) {
 // ── phase 2 ───────────────────────────────────────────────────────────────────────────────────
 const { root: BL_ROOT, exclusionAt } = loadBlacklistWitness(BL_WITNESS_PATH, PROFILES.length * 2);
 
-PROFILES.forEach((p, i) => emit(p.name, p.note, p.withdrawnValue, i));
+const EMITTED = {};
+PROFILES.forEach((p, i) => { EMITTED[p.name] = emit(p.name, p.note, p.withdrawnValue, i); });
+
+// ── the public signals, written where a test can read them ───────────────────────────────────
+//
+// PINNED CONSTANTS IN A TEST GO STALE SILENTLY AND FAIL AS `SumcheckFailed`, which names nothing.
+// That is what a stale public input looks like on-chain: not "this number moved" but "the proof is
+// invalid", so the search starts at the circuit and the verifier. Emitting them lets the suite
+// assert its own constants against the fixture and say which number moved instead.
+fs.writeFileSync(
+  path.join(FIXTURES, 'withdraw_identity_pubsignals.json'),
+  // HEX, because forge's parseJson reads a 0x string into a uint256 unambiguously while a decimal
+  // string of 77 digits is a coin toss between a number and a string.
+  JSON.stringify(EMITTED, (_k, v) => (typeof v === 'bigint' ? '0x' + v.toString(16).padStart(64, '0') : v), 2) + '\n',
+);
+console.log('\nWrote public signals for', Object.keys(EMITTED).join(', '));

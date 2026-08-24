@@ -200,6 +200,12 @@ contract WithdrawBatchEntrypointTest is Test {
       s_[i][2] = 1 ether;                                             // withdrawn value
       s_[i][3] = stateRoot_;
       s_[i][5] = identityRoot_;
+      // [7] THE BLACKLIST ROOT, and a settleable signal set is not settleable without it. The batch
+      // verifier takes one public input, so unlike `withdraw` there is nothing for the pool to
+      // substitute into - the contract must COMPARE this against its own root, and does. Leaving it
+      // at whatever `_matchingSignals` filled in makes every test in this file fail on a root
+      // mismatch before reaching the behaviour it means to assert.
+      s_[i][7] = pool.blacklistRoot();
     }
   }
 

@@ -45,34 +45,70 @@ import {ProofLib} from '../../contracts/pool/lib/ProofLib.sol';
  * instruction from when the two were concatenated into one file.
  */
 contract WithdrawalHonkVerifierTest is Test {
-  /// An EMPTY taint set, which is what the committed fixture proves against. Zero is not a
-  /// placeholder here - it is the bootstrap value, and an empty taint set admits everyone, which is
-  /// the fail-open polarity the non-association predicate is built on (sec. 2.18gz-unify).
-  uint256 internal constant EMPTY_TAINT = 0;
-
   using ProofLib for ProofLib.WithdrawProof;
 
   INoirVerifier internal verifier;
 
-  uint256 internal constant NEW_COMMITMENT =
-    18653376712734179938763709399463410120694066225799564842943406163517501924389;
-  uint256 internal constant EXISTING_NULLIFIER_HASH =
-    7532086780038402662674345296860422071861903663404908958571451852914592667893;
-  uint256 internal constant WITHDRAWN_VALUE = 4;
-  uint256 internal constant STATE_ROOT =
-    4344985332480040079471765000069393836362873940320599351794913073184699413871;
-  uint256 internal constant STATE_TREE_DEPTH = 3;
-  /// CHANGED WITH THE COMMITMENT DERIVATION (sec. 2.18a). The identity tree is keyed on
-  /// `Poseidon(revocation_secret)`, and the secret is now DERIVED from `sk_identity` rather than
-  /// chosen - so every leaf key moved, and with them the root. The other five signals are unchanged,
-  /// which is the check that this was a key-derivation change and not something broader.
-  uint256 internal constant IDENTITY_ROOT =
-    2910739936757023150025232640645754432456838469272402593742390097823972605304;
-  uint256 internal constant CONTEXT = 42424242;
-  /// Empty revocation registry: root 0, and an all-zero witness proves absence for every key
+  /* ────────────────────────────────────────────────────────────────────────────────────────────
+   * THE FIXTURE'S PUBLIC SIGNALS, READ FROM THE FIXTURE.
+   *
+   * These were pinned constants, and pinning is what made them dangerous rather than merely
+   * inconvenient. A stale public input does not fail as "this number moved" - it fails as
+   * `SumcheckFailed()`, which names nothing and sends the reader to the circuit and the verifier
+   * first. Two of them moved in one change here (the identity root, when leaves began binding their
+   * document) and a third appeared (the blacklist root, an eighth signal), and the only symptom was
+   * a sumcheck failure on three tests.
+   *
+   * `tools/build-withdrawal-fixture.js` writes them beside the proof it generated them with, so the
+   * pair cannot drift. Same argument as the registration root in IdentityRegistry's tests.
+   * ──────────────────────────────────────────────────────────────────────────────────────────── */
+  uint256 internal NEW_COMMITMENT;
+  uint256 internal EXISTING_NULLIFIER_HASH;
+  uint256 internal WITHDRAWN_VALUE;
+  uint256 internal STATE_ROOT;
+  uint256 internal STATE_TREE_DEPTH;
+  uint256 internal IDENTITY_ROOT;
+  uint256 internal CONTEXT;
+
+  /// The blacklist root the fixture proves against. It was `BLACKLIST_ROOT = 0` and named honestly for
+  /// what it then was; the tree is now populated, so a zero here would be a lie AND unsettleable -
+  /// the pool refuses a zero root.
+  uint256 internal BLACKLIST_ROOT;
+
+  function _loadSignals(string memory profile_) internal view returns (uint256[8] memory out_) {
+    bytes32[] memory raw_ = vm.parseJsonBytes32Array(
+      vm.readFile('test/fixtures/withdraw_identity_pubsignals.json'), string.concat('.', profile_)
+    );
+    require(raw_.length == 8, 'fixture does not carry eight public signals');
+    for (uint256 i = 0; i < 8; i++) out_[i] = uint256(raw_[i]);
+  }
 
   function setUp() public {
     verifier = INoirVerifier(address(new WithdrawalHonkVerifier()));
+
+    uint256[8] memory sig_ = _loadSignals('baseline');
+    NEW_COMMITMENT = sig_[0];
+    EXISTING_NULLIFIER_HASH = sig_[1];
+    WITHDRAWN_VALUE = sig_[2];
+    STATE_ROOT = sig_[3];
+    STATE_TREE_DEPTH = sig_[4];
+    IDENTITY_ROOT = sig_[5];
+    CONTEXT = sig_[6];
+    BLACKLIST_ROOT = sig_[7];
+
+    uint256[8] memory wal_ = _loadSignals('wallet');
+    W_NEW_COMMITMENT = wal_[0];
+    W_EXISTING_NULLIFIER_HASH = wal_[1];
+    W_WITHDRAWN_VALUE = wal_[2];
+    W_STATE_ROOT = wal_[3];
+    W_STATE_TREE_DEPTH = wal_[4];
+    W_IDENTITY_ROOT = wal_[5];
+    W_CONTEXT = wal_[6];
+
+    // Both profiles prove against ONE tree, so one root serves both. Asserted rather than assumed:
+    // if they ever diverged, only one could match the pool and the other's tests would fail as a
+    // sumcheck error naming nothing.
+    require(wal_[7] == BLACKLIST_ROOT, 'the two fixtures disagree on the blacklist root');
   }
 
   function _withdrawProof() internal view returns (ProofLib.WithdrawProof memory _p) {
@@ -85,19 +121,19 @@ contract WithdrawalHonkVerifierTest is Test {
       STATE_TREE_DEPTH,
       IDENTITY_ROOT,
       CONTEXT,
-      0 // taint root - EMPTY set, which admits everyone (2.18gz-unify)
+      BLACKLIST_ROOT // [7] the populated blacklist this fixture proves exclusion against
     ];
   }
 
   /// @notice The baseline: a genuine proof verifies on-chain through the production plumbing.
   function test_VerifiesRealProof() public view {
     ProofLib.WithdrawProof memory _p = _withdrawProof();
-    assertTrue(verifier.verify(_p.proof, _p.publicInputsBytes32(_p.context(), EMPTY_TAINT)));
+    assertTrue(verifier.verify(_p.proof, _p.publicInputsBytes32(_p.context(), BLACKLIST_ROOT)));
 
     // ISOLATED GAS, for the aggregation comparison (sec. 2.4). Measures ONLY the verify call, so it
     // is directly comparable to AggregationProofOnChain's per-withdrawal figure.
     {
-      bytes32[] memory _pubs = _p.publicInputsBytes32(_p.context(), EMPTY_TAINT);
+      bytes32[] memory _pubs = _p.publicInputsBytes32(_p.context(), BLACKLIST_ROOT);
       uint256 _g0 = gasleft();
       verifier.verify(_p.proof, _pubs);
       console.log('single withdrawal verify() gas:', _g0 - gasleft());
@@ -107,7 +143,7 @@ contract WithdrawalHonkVerifierTest is Test {
   /// @notice ProofLib's accessors must agree with the fixture's slot ordering. If an accessor were
   /// mis-indexed, `PrivacyPool.withdraw` would read the wrong field while the proof still verified
   /// - a bug a verifier-only test cannot see.
-  function test_ProofLibAccessorsMatchSlotOrder() public pure {
+  function test_ProofLibAccessorsMatchSlotOrder() public view {
     ProofLib.WithdrawProof memory _p;
     _p.pubSignals = [
       NEW_COMMITMENT,
@@ -117,7 +153,7 @@ contract WithdrawalHonkVerifierTest is Test {
       STATE_TREE_DEPTH,
       IDENTITY_ROOT,
       CONTEXT,
-      EMPTY_TAINT
+      BLACKLIST_ROOT
     ];
     assertEq(_p.newCommitmentHash(), NEW_COMMITMENT);
     assertEq(_p.existingNullifierHash(), EXISTING_NULLIFIER_HASH);
@@ -165,7 +201,7 @@ contract WithdrawalHonkVerifierTest is Test {
 
     // The proof is untouched and genuine - only the context the caller supplies differs, exactly as
     // it would if this proof were lifted and re-submitted against another processooor.
-    bytes32[] memory _inputs = _p.publicInputsBytes32(CONTEXT + 1, EMPTY_TAINT);
+    bytes32[] memory _inputs = _p.publicInputsBytes32(CONTEXT + 1, BLACKLIST_ROOT);
     try verifier.verify(_p.proof, _inputs) returns (bool _ok) {
       assertFalse(_ok, 'a genuine proof verified under a context it was not made for');
     } catch {
@@ -175,7 +211,7 @@ contract WithdrawalHonkVerifierTest is Test {
     // ...and the same call with the correct derivation still passes, so the rejection above is the
     // binding doing its job and not the substitution being broken outright.
     assertTrue(
-      verifier.verify(_p.proof, _p.publicInputsBytes32(CONTEXT, EMPTY_TAINT)), 'the correct context stopped verifying'
+      verifier.verify(_p.proof, _p.publicInputsBytes32(CONTEXT, BLACKLIST_ROOT)), 'the correct context stopped verifying'
     );
   }
 
@@ -217,17 +253,15 @@ contract WithdrawalHonkVerifierTest is Test {
    *
    * Regenerate with tools/build-withdrawal-fixture.js - it emits both fixtures' Prover.*.toml.
    */
-  uint256 internal constant W_NEW_COMMITMENT =
-    19761324528885713390391631165680038172128702826549789957405969105810862789935;
-  uint256 internal constant W_EXISTING_NULLIFIER_HASH =
-    5483191249680064704425129569822560397968224872405526965537704682354244953720;
-  uint256 internal constant W_WITHDRAWN_VALUE = 300000000000000000;
-  uint256 internal constant W_STATE_ROOT =
-    11922358609946525750179191892257841520060631680150773185653959528175536025855;
-  uint256 internal constant W_STATE_TREE_DEPTH = 3;
-  uint256 internal constant W_IDENTITY_ROOT =
-    2910739936757023150025232640645754432456838469272402593742390097823972605304;
-  uint256 internal constant W_CONTEXT = 42424242;
+  /// The wallet profile's signals, read from the same emitted fixture for the same reason - see
+  /// the note on the baseline block above.
+  uint256 internal W_NEW_COMMITMENT;
+  uint256 internal W_EXISTING_NULLIFIER_HASH;
+  uint256 internal W_WITHDRAWN_VALUE;
+  uint256 internal W_STATE_ROOT;
+  uint256 internal W_STATE_TREE_DEPTH;
+  uint256 internal W_IDENTITY_ROOT;
+  uint256 internal W_CONTEXT;
 
   function _walletProof() internal view returns (ProofLib.WithdrawProof memory _p) {
     _p.proof = vm.readFileBinary('test/fixtures/withdraw_identity_wallet.proof');
@@ -239,14 +273,14 @@ contract WithdrawalHonkVerifierTest is Test {
       W_STATE_TREE_DEPTH,
       W_IDENTITY_ROOT,
       W_CONTEXT,
-      EMPTY_TAINT
+      BLACKLIST_ROOT
     ];
   }
 
   /// @notice The end-to-end case: a proof over a WALLET-ASSEMBLED witness verifies on-chain.
   function test_VerifiesWalletAssembledWitness() public view {
     ProofLib.WithdrawProof memory _p = _walletProof();
-    assertTrue(verifier.verify(_p.proof, _p.publicInputsBytes32(_p.context(), EMPTY_TAINT)));
+    assertTrue(verifier.verify(_p.proof, _p.publicInputsBytes32(_p.context(), BLACKLIST_ROOT)));
   }
 
   /// @notice Guards BOTH fixtures against silently regressing to the degenerate size-1 shape this
@@ -263,7 +297,7 @@ contract WithdrawalHonkVerifierTest is Test {
   /// for the fixture's commitment, and IdentityRegistry.t.sol's emitter asserts the same before
   /// writing the witness at all. Recorded explicitly because a silently narrower degeneracy check
   /// is exactly the "green test that stopped testing anything" this function exists to prevent.
-  function test_FixturesAreNotDegenerate() public pure {
+  function test_FixturesAreNotDegenerate() public view {
     assertGt(STATE_TREE_DEPTH, 0, 'baseline state tree is degenerate - no siblings hashed');
     assertGt(W_STATE_TREE_DEPTH, 0, 'wallet state tree is degenerate - no siblings hashed');
   }
@@ -292,7 +326,7 @@ contract WithdrawalHonkVerifierTest is Test {
 
   /// @dev A rejection is either `false` or a revert (SumcheckFailed etc.) - both are correct.
   function _assertRejects(ProofLib.WithdrawProof memory _p) internal view {
-    bytes32[] memory _inputs = _p.publicInputsBytes32(_p.context(), EMPTY_TAINT);
+    bytes32[] memory _inputs = _p.publicInputsBytes32(_p.context(), BLACKLIST_ROOT);
     try verifier.verify(_p.proof, _inputs) returns (bool _ok) {
       assertFalse(_ok);
     } catch {

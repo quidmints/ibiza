@@ -50,6 +50,44 @@ a gap where one used to be.
         failure mode in one. Proven feasible first by
         `smt::test_exclusion_against_an_empty_tree_is_the_zero_witness`, which is what made the
         committed fixtures updatable with zeros instead of needing a taint tree built first.
+- [ ] ⭐ **ONE BLACKLIST, ONE PREDICATE — the tree exists, the wiring rides with the batch
+      regeneration** (owner, 2026-08-24: *"it's one predicate: proof of not on any blacklist of any
+      kind, chainalysis, or identity related (in any country's blacklist, not just OFAC), but we
+      don't have to check every country, just based on the passport"*).
+      ✅ **LANDED: `pp/src/blacklist.nr`**, 4 tests, 93 in the package. Domain-separated keys over ONE
+      tree — `DOMAIN_LABEL` (chainalysis/association taint), `DOMAIN_ADDRESS` (what upstream PP
+      checked, and ONLY that), `DOMAIN_DOCUMENT` (sanctions, keyed by `document_identifier(issuing
+      state, document number)`).
+      🔑 **WHY ONE TREE RATHER THAN THREE.** `withdraw.nr` used to say sanctions would be *"the same
+      call again against a DIFFERENT tree — one proof shape, three predicates"*. Three trees is three
+      roots to anchor, three publication paths, three activation windows, and three ways for one to
+      go stale unnoticed. **One tree is one root, one anchor, one window — and adding a source
+      becomes a DATA change, not a code change.**
+      ⭐ **WHICH IS WHAT MAKES "ANY COUNTRY, NOT JUST OFAC" FREE: the SOURCE IS NOT PART OF THE KEY.**
+      A listing is a listing, whoever published it. OFAC, the UN consolidated list, OFSI and any
+      national register coexist in one tree and no circuit, contract or client learns which.
+      ⭐ **AND THE HOLDER NEVER ENUMERATES.** They prove absence of THEIR OWN key, so a tree holding
+      fifty countries is proven against with exactly the same single witness as an empty one.
+      *"Just based on the passport"* is not a scoping rule to implement — **it is a property of the
+      shape**, and that is the elegance.
+      🔴 **DOMAIN SEPARATION IS LOAD-BEARING.** A passport number and a pool label are both `Field`s;
+      without a domain in the preimage a sanctioned document number could collide with an innocent
+      label and blacklist it — a false positive nobody could explain and the holder could not appeal,
+      because the tree would be CORRECT. Pinned by `domains_do_not_collide`. The issuing state is
+      likewise part of the identifier, not context: numbers are unique only within an issuer.
+      ▶️ **REMAINING WIRING, AND IT MUST RIDE WITH THE BATCH CHANGE ABOVE — DO NOT REGENERATE TWICE:**
+        1. `withdraw.nr`'s taint key becomes `blacklist_key(DOMAIN_LABEL, w.label)`. **This changes
+           the constraint system**, so every verifier, fixture and committed proof is invalidated —
+           exactly what widening `PUB_LEN` 7→8 already forces. **One regeneration, both changes.**
+        2. Rename the signal `taint_root` → `blacklist_root` through `withdraw.nr`, `ProofLib`,
+           `PrivacyPool.taintRoot`/`setTaintRoot` and the wallet. Positional, so no ABI risk; it is
+           the SEMANTICS that changed — "taint" names one domain, and the root now spans three.
+        3. Add the `DOMAIN_DOCUMENT` term. ⚠️ **BLOCKED ON A BOOKED PREREQUISITE**, not on this
+           module: the document key must be BOUND to the identity or a prover names any clean
+           document. That is sec. 4's *"bind the leaf to a document nullifier (trap 6), not to
+           `sk_identity`"*. **Do that first or the term is vacuous.**
+        4. `DOMAIN_ADDRESS` is a free add once (1) lands — same call, different domain.
+
 - [ ] 🔴 **The BATCH path does not carry it — and the cause moved, so re-read this before acting.**
       The item used to name `aggregate_withdrawals`; that circuit was **deleted in `aa50335`** when the
       flat aggregator was retired for the recursion tree. **The gap survived the migration intact**,

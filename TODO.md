@@ -203,6 +203,14 @@ a gap where one used to be.
       "0"` and would all need a real root.** That is the cost of the choice, not an argument against
       it. `TestUnpublishedSmtRootIsTheEmptyTree` pins the zero so whichever way this goes is a
       deliberate edit to an asserted value.
+      ✅ **THE PREDICATE IS NOW WHOLE AND ENFORCED — 484/484 (2026-08-24).** The identity leaf binds
+      its document (`Poseidon(revocation_secret, document_id)`, the identifier read from the MRZ
+      in-circuit), so the sanctions term is no longer satisfiable by naming a stranger's clean
+      passport; the batch path COMPARES `s[7]` against pool state, which it never did — widening the
+      leaf to eight signals made the signal exist without making it true, and an unchecked signal
+      reads as coverage where the old gap at least announced itself; and every fixture now proves
+      against a POPULATED tree, where all 32 previously carried the empty-tree witness that verifies
+      for any key, so the exclusion branch had never once been exercised.
       🔴 **AND A SECOND HALF NOBODY HAD BOOKED: THE ROOT'S SOURCE IS A CENSORSHIP LEVER.**
       `PrivacyPool.blacklistRoot` is set by the ENTRYPOINT. Gating a withdrawal on a mutable
       third-party value is a lever whichever way the zero case is decided — fail-open let a stalled

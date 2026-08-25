@@ -409,10 +409,21 @@ a gap where one used to be.
       ⇒ **So it buys the controller nothing operational and costs every user a credential.** Not fund
       theft on its own — spending still needs the note's nullifier and secret — but it is exactly the
       kind of thing that should not sit encrypted under a single immutable key for no reason.
-      ▶️ **The change is one line (`PAYLOAD_LEN` 2 → 1, drop `payload[0]`) plus the same regeneration
-      that just ran, which was nearly free because identity commitments do not move.** Left for an
-      explicit decision because it narrows what a controller can ever do, and because the owner chose
-      "revocation_secret and document_id" from a menu I wrote before running this trace.
+      ✅ **DONE — `PAYLOAD_LEN` 2 → 1** (`0fbfcb6`). The secret is still PROVEN in-circuit
+      (`identity_commitment(revocation_secret, document_id) == commitment` is what makes knowledge of
+      the preimage mandatory); it is only no longer PUBLISHED. Public inputs 8 → 7, verifier 16 → 15,
+      484/484, and identity commitments did not move again so downstream fixtures survived untouched a
+      second time.
+      ⇒ **WHAT REGISTRATION NOW PUTS ON CHAIN, as a trajectory:** plaintext `holder_root` + `dg1_hash`
+      (removed before this session) → the full packed MRZ encrypted → secret + document id → **the
+      document id alone.** 11 → 8 → 7 public inputs.
+      🔴 **AND THE IRREDUCIBLE REMAINDER, STATED SO IT IS NOT MISTAKEN FOR ZERO:** a
+      `CONTROLLER_SK` holder still learns **which registered commitment corresponds to a given
+      passport** — which links a document to a registration transaction and its funding address. That
+      is not removable while targeted revocation is a requirement AT ALL; removing it means option (a),
+      deleting the escrow and letting the public blacklist be the only enforcement. Still open,
+      alongside thresholding the key (option (c), which now guards a document identifier rather than a
+      passport — a smaller prize, not nothing).
       ⏸️ **AND THE OTHER TWO OPTIONS ARE NOT THEREBY CLOSED.** (c) still applies to whatever remains
       sealed: `CONTROLLER_KEY_X/Y` is a **single immutable pair**, so one key still decrypts every
       envelope — now yielding a document identifier rather than a passport, which is a far smaller

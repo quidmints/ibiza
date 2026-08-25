@@ -346,6 +346,94 @@ a gap where one used to be.
       a rebuild anyone can perform.** ⇒ Two items, one chain: **SMT root → anonymous absence claim.**
       🔗 Prerequisite: the `setForwarder` item above. "No fabrication possible" is the premise this
       design rests on, and it is not currently true.
+- [ ] 🔴🔴 **THE ANONYMITY TRACE: THE DON IS THE SAFEST COMPONENT, AND REGISTRATION PUBLISHES EVERY
+      USER'S PASSPORT** (owner asked for a holistic challenge, 2026-08-25; every claim below was read
+      out of the tree, not reasoned about).
+
+      ⭐ **THE QUESTION WAS "CAN THE DON WIRETAP US" AND THE ANSWER IS NO, BY CONSTRUCTION.** The
+      sanctions workflow has ONE trigger — `cre.Handler(scheduleTrigger, onSchedule)`, a cron — and one
+      outbound call, `SendRequest{Url: spec.PublishedAt, Method: "GET"}` against a public government
+      file. **No HTTP trigger, no user endpoint, no session, no request body.** The names it parses are
+      OFAC's published designations, not users'. Flow is one-way: public list in, public root out, and
+      the user's device proves against it. `document_id` is a PRIVATE witness; the eight public signals
+      are `new_commitment`, `existing_nullifier_hash`, `withdrawn_value`, `state_root`,
+      `state_tree_depth`, `identity_root`, `context`, `blacklist_root` — none identity-bearing.
+      ⇒ **Deleting the CRE workflow would improve privacy by ZERO and would cost the ownerless root
+      (§8df5855). Do not "fix" privacy by removing it.**
+
+      🔴 **#1 — `escrow_envelope` PUBLISHES THE FULL MRZ, ENCRYPTED TO ONE KEY, FOREVER.**
+      `sealed: pub [Field; PAYLOAD_LEN]` (PAYLOAD_LEN = 5) carries `revocation_secret` + the **packed
+      DG1**: name, date of birth, nationality, sex, expiry, document number. Sealed to
+      `CONTROLLER_KEY_X/Y` — a **single immutable pair** on `IdentityRegistry`, no threshold, no MPC,
+      no rotation — and emitted as `event IdentityRegistered(..., uint256[5] sealedPayload)`, so it is
+      permanently indexable rather than merely present in calldata. **One secret key decrypts every
+      registered user's passport, retroactively.** Nothing in this repo decrypts it (the only
+      `decrypt` hits are `CRSASigner`'s unrelated RSA path).
+      ⚠️ **IT IS NOT AN OVERSIGHT — the circuit states its purpose:** *"the one-time, permissionless
+      transaction that makes an identity REVOCABLE … so the controller CAN list that identity later.
+      Without it, a user picks a secret nobody knows and their absence from the blacklist is
+      guaranteed forever."* The controller cannot compute `commitment = Poseidon(revocation_secret,
+      document_id)` without the user's secret, so the secret is escrowed.
+      ⛔ **BUT THE MRZ IS NOT NEEDED FOR THAT, AND THE GAP IT COVERS IS THE ONE THE DESIGN ALREADY
+      CALLS UNSOUND.** Revocation needs `revocation_secret` (to compute the commitment) and at most
+      `document_id` (to know WHICH envelope matches a sanctioned document). The rest — name, DOB,
+      nationality — is only useful for matching a designation **by name**, which is precisely what
+      `identifiers.go` rejects for on-chain use: *"no transliteration, no alias ordering, no
+      similarity matching, no threshold."* So the full-MRZ escrow buys the controller a fuzzy
+      name-match it can run unilaterally off-chain, over everyone, with a master key.
+      ⚠️ **AND IT IS LARGELY REDUNDANT NOW.** Since §79bbabc the identity leaf binds `document_id` and
+      the blacklist carries `blacklist_key(DOMAIN_DOCUMENT, …)`, so a sanctioned passport is ALREADY
+      excluded in-circuit against a public list, with no controller, no escrow and no disclosure. The
+      only case escrow still covers is a designation whose document number is not published — which is
+      exactly the UK/UN coverage gap booked below.
+      ▶️ **THREE OPTIONS, AND THIS IS A PRODUCT DECISION, NOT A BUG FIX:**
+        (a) **Delete the escrow.** Enforcement becomes "the public blacklist only". Removes the largest
+            leak in the system outright, shrinks the circuit, and makes the anonymity claim true as
+            stated. Costs the name-matched revocation path.
+        (b) **Seal less** — `revocation_secret` + `document_id` only, dropping four DG1 words to one
+            field. Keeps targeted revocation for published document numbers; removes name/DOB/
+            nationality from public chain data forever.
+        (c) **Keep it and threshold the key.** Every user is still escrowed; only the single-point
+            risk improves. Users must be told.
+      🔴 **THE SAME REASONING ALREADY REMOVED `holder_root`/`dg1_hash` FROM THIS CIRCUIT** — its own
+      header calls that *"the largest privacy defect in our own code"* — and stopped one step short.
+      **Encrypting an identifier to a key the user does not hold is deferred disclosure, not privacy.**
+
+      🔴 **#2 — `getProof(commitment_)` TELLS YOUR RPC PROVIDER WHICH IDENTITY YOU ARE.** It is an
+      `eth_call` carrying the wallet's own commitment, with its IP and timing, shortly before the
+      withdrawal from the same connection. Same class as #3: **querying for your own key reveals your
+      own key.** Fix is the same — fetch the whole tree and derive the witness locally, or route it
+      somewhere that cannot correlate.
+
+      🔴 **#3 — BLACKLIST WITNESS RETRIEVAL IS UNSPECIFIED, AND IS A DEANONYMISER IF BUILT AS A QUERY.**
+      `withdrawWitness.ts` TAKES a `BlacklistWitness` and never fetches one, so nothing leaks today and
+      nothing is decided either. Asking any service *"the witness for key K"* hands it a deterministic
+      function of the user's passport, correlatable with the withdrawal.
+      ⇒ **REQUIRED SHAPE: download the ENTIRE key set, rebuild the SMT locally, derive the witness.
+      Never query.** Everyone fetches identical bytes, so the fetch says nothing.
+      ⭐ **AND THE SERVER IS UNTRUSTED BY CONSTRUCTION:** the wallet rebuilds and compares its root to
+      `latestActiveSmtRoot` on-chain. A doctored set fails the comparison. No server to trust, and none
+      to talk to about yourself.
+      ⚠️ **BLOCKER: THE KEY SET IS NOT PUBLISHED IN A REBUILDABLE FORM.** The anchored calldata holds
+      NAME leaves, not keys. A `<SOURCE>_KEYS` registry — leaves = keys, ADDED alongside the name
+      registries rather than replacing them (see the reverted collapse at §4312e5a) — gives the wallet
+      a verifiable public preimage without breaking UK/UN.
+      ⚠️ **AND IT NEEDS TS/Go PARITY:** the padding, the alpha-3 table and the domain separation must
+      exist in TypeScript byte-identically, or a locally-built tree silently will not match the root.
+
+      ⚪ **#4 — ORDINARY PP LINKAGE, unchanged and not made worse:** funding address, recipient, timing,
+      anonymity-set size. **And `commitment` is public at registration**, so PARTICIPATION is visible
+      even though ACTIVITY is not — the circuit header draws that distinction itself. Combined with #1
+      it is worse than it looks: decrypting an envelope yields MRZ ↔ commitment ↔ funding address.
+
+      ✅ **JAILBREAKING IS NOT A THREAT TO SOUNDNESS, AND NO ATTESTATION IS NEEDED** (owner's standing
+      rule: *no attestation gates of any kind anywhere*). A modified app cannot skip the blacklist term
+      — the proof would not verify. It cannot choose a friendlier root: `withdraw` SUBSTITUTES the
+      pool's root into the public inputs and `withdrawBatch` COMPARES `s[7]` against the anchor. It
+      cannot borrow a clean document — the leaf binds it to a `revocation_secret` it would have to
+      know. A modified app can only harm **its own** user's privacy, which no attestation would
+      prevent anyway.
+
 - [ ] ⭐ **CONFIDENTIAL HTTP IS THE PLUG-IN — TEE-BACKED FETCH, CHAINLINK'S OWN, NOTHING ROLLED**
       (owner, 2026-08-24: *"find a trustworthy thing we can plug right into the workflow SDK"* and
       *"you can write your own capability for CRE, it is extendable"*).

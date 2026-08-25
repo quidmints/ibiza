@@ -184,12 +184,12 @@ contract WithdrawEndToEndTest is EscrowFixtureBase, BlacklistAnchorFixture {
 
   /// escrow_envelope's public-input layout. `holder_root` (2) and `dg1_hash` (4) are GONE since
   /// sec. 2.18 - both were per-person identifiers published in registration calldata.
-  /// Six fixed signals plus a TWO-field escrow envelope: `revocation_secret` and `document_id`.
+  /// Six fixed signals plus a ONE-field escrow envelope: `revocation_secret` and `document_id`.
   ///
   /// 🔴 IT WAS 11. The envelope carried the packed MRZ - name, date of birth, nationality - sealed to
   /// one controller key and emitted as an event, so it was permanently indexable. Shrinking the
   /// payload to what revocation actually needs moved this count with it.
-  uint256 internal constant ESCROW_PUBLIC_INPUT_COUNT = 8;
+  uint256 internal constant ESCROW_PUBLIC_INPUT_COUNT = 7;
   uint256 internal constant ESCROW_PUB_COMMITMENT = 2;
 
   function _escrowPublicInputs(uint256 _n) internal view returns (bytes32[] memory _inputs) {

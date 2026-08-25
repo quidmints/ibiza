@@ -93,7 +93,7 @@ use std::hash::Hasher;
 /// A TD3/93-byte escrow variant is still needed if the full `register_identity` path is ever wired
 /// up - see.
 global DG1_LEN: u32 = 95;
-/// The escrow payload: the revocation secret, then the document identifier. TWO fields.
+/// The escrow payload: the document identifier. ONE field.
 ///
 /// 🔴 IT USED TO BE FIVE, AND THE OTHER FOUR WERE THE PACKED MRZ - name, date of birth,
 /// nationality, sex, expiry and document number, sealed to ONE immutable controller key and emitted
@@ -111,11 +111,21 @@ global DG1_LEN: u32 = 95;
 /// code". That pass stopped one step short: encrypting an identifier to a key the user does not hold
 /// is deferred disclosure, not privacy.
 ///
-/// ▶️ `document_id` ALONE MAY SUFFICE - `commitment` is a public signal, so an envelope's commitment
-/// is already known and the secret adds nothing to identifying it. Kept because the original design
-/// sealed it and nothing has traced what else may depend on it; dropping it is a separate change
-/// with its own argument to make.
-global PAYLOAD_LEN: u32 = 2;
+/// 🔴 AND THE REVOCATION SECRET IS NO LONGER SEALED EITHER, BECAUSE THE TRACE SAID IT BOUGHT
+/// NOTHING AND COST A CREDENTIAL. Two measurements settled it:
+///
+///   1. `IdentityRegistry.revoke(commitment_, predicate_)` takes ONLY the commitment, and the
+///      commitment is a public signal here, stored in `registered[]`. The sealed secret is read by
+///      nothing, in any language, anywhere in the repo.
+///   2. `withdraw.nr` computes `identity_commitment(revocation_secret, document_id)` - the secret IS
+///      the witness that proves identity in a withdrawal. Sealing it handed whoever holds
+///      CONTROLLER_SK the identity half of every user's withdrawal proof.
+///
+/// Not fund theft on its own - spending still needs the note's own nullifier and secret - but a
+/// credential has no business sitting encrypted under a single immutable key for no operational
+/// reason. What remains is the minimum that makes targeted revocation possible at all: a mapping
+/// from a recomputable document identifier to the commitment that holds it.
+global PAYLOAD_LEN: u32 = 1;
 /// Height of `StateKeeper.registrationSmt`.
 ///
 /// 80, NOT 32. An earlier estimate in sec. 2.18 sized this inclusion at depth 32 - the
@@ -226,8 +236,7 @@ fn main(
     // document - via a value the controller can RECOMPUTE from a published designation, rather than
     // via plaintext nobody needed.
     let mut payload: [Field; PAYLOAD_LEN] = [0; PAYLOAD_LEN];
-    payload[0] = revocation_secret;
-    payload[1] = document_id;
+    payload[0] = document_id;
 
     let envelope = seal_payload(payload, ephemeral, controller_x, controller_y);
 

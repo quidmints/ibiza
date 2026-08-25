@@ -194,11 +194,11 @@ function identity(i) {
 
   const c1 = babyJub.mulPointEScalar(G, r);
   const shared = babyJub.mulPointEScalar(PK, r);
-  // TWO FIELDS: the revocation secret and the document identifier. It used to be the secret plus the
-  // packed MRZ, which published every holder's name and date of birth encrypted to one key. The
-  // controller can still map a sanctioned document to its envelope, because `document_id` is
-  // recomputable from a published designation - see escrow_envelope's PAYLOAD_LEN note.
-  const sealed = [s, documentIdOf(dg1)].map((v, k) =>
+  // ONE FIELD: the document identifier. It was the secret plus the packed MRZ, which published every
+  // holder's name and date of birth encrypted to one key; the secret then went too, because nothing
+  // reads it and `withdraw.nr` uses it as an identity witness. What is left is the minimum that lets
+  // a controller map a sanctioned document to its envelope - see escrow_envelope's PAYLOAD_LEN note.
+  const sealed = [documentIdOf(dg1)].map((v, k) =>
     F.add(v, poseidon.hash([shared[0], shared[1], BigInt(k)])));
 
   return {

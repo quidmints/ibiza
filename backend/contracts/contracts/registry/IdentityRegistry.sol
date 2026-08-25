@@ -90,9 +90,13 @@ contract IdentityRegistry {
   uint256 internal constant PUB_C1_X = 4;
   uint256 internal constant PUB_C1_Y = 5;
   uint256 internal constant PUB_SEALED_0 = 6;
-  /// Fields in the escrow envelope: `revocation_secret` and `document_id`. Must equal the circuit's
+  /// Fields in the escrow envelope: `document_id`, and nothing else. Must equal the circuit's
   /// `PAYLOAD_LEN` - a mismatch reads sealed slots past the end of the envelope, or drops one.
-  uint256 internal constant SEALED_LEN = 2;
+  ///
+  /// 🔴 IT WAS 5 (secret + packed MRZ), THEN 2, NOW 1. The secret went because `revoke` below takes
+  /// only the commitment - which is already public here - while `withdraw.nr` uses that same secret
+  /// as its identity witness, so sealing it gave the controller key a credential for no purpose.
+  uint256 internal constant SEALED_LEN = 1;
   /// Six fixed signals plus the envelope: 6 + SEALED_LEN. Was 11 when the envelope carried the
   /// packed MRZ; the verifier's own NUMBER_OF_PUBLIC_INPUTS moves with it (that figure adds the
   /// pairing-point object, so it is this plus 8).
@@ -142,14 +146,14 @@ contract IdentityRegistry {
    *
    * 🔴 `sealedPayload` WAS `uint256[5]` AND CARRIED THE HOLDER'S PACKED MRZ - name, date of birth,
    * nationality, sex, expiry and document number - encrypted to the single immutable controller key
-   * and emitted here, which made it permanently indexable by anyone. It is now TWO fields: the
-   * revocation secret and the document identifier.
+   * and emitted here, which made it permanently indexable by anyone. It is now ONE field: the
+   * document identifier, which is the minimum that makes targeted revocation possible at all.
    *
    * The escrow's purpose is unchanged - a controller can still map a sanctioned document to the
    * envelope that holds it, because `document_id` is recomputable from a published designation. What
    * is gone is everything that only served matching a designation BY NAME.
    */
-  event IdentityRegistered(bytes32 indexed commitment, bytes32 root, uint256 c1x, uint256 c1y, uint256[2] sealedPayload);
+  event IdentityRegistered(bytes32 indexed commitment, bytes32 root, uint256 c1x, uint256 c1y, uint256[1] sealedPayload);
   event IdentityRevoked(bytes32 indexed commitment, bytes32 indexed predicate, bytes32 root);
 
   error AlreadyRegistered(bytes32 commitment);

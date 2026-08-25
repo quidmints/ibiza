@@ -293,6 +293,32 @@ a gap where one used to be.
       publication over one unmappable country halts every withdrawal instead. Neither is free, so
       omissions are made countable rather than silent. **That count is not yet surfaced anywhere the
       operator sees — booking it here rather than calling the trade-off handled.**
+      ✅ **THE WORKFLOW NOW PUBLISHES A REAL ROOT** (`4312e5a`, 2026-08-25). Passport rows are decoded
+      from the same body as the designations — one fetch, one consensus round — keyed, and the
+      Poseidon root is anchored. Skips are surfaced at WARN every run with a reason per row, which
+      closes the "not surfaced anywhere" item above; a source that declares identifiers and keys NONE
+      of them now fails loudly, because that is a schema change and an empty exclusion tree admits
+      everyone.
+      ⛔ **AND THE OBVIOUS SIMPLIFICATION IS A SILENT REGRESSION — BUILT, MEASURED, REVERTED, AND
+      RECORDED SO IT IS NOT RE-ATTEMPTED.** Making the anchored leaves BE the keys gives one dataset,
+      makes the calldata the SMT's preimage, and deletes a name tree no predicate can consume. It
+      reads as strictly better. **`UK_OFSI_CONSOLIDATED` and `UN_SC_CONSOLIDATED` publish no document
+      numbers at all**, so both registries would have anchored an EMPTY leaf set and a zero root
+      while still reporting success.
+      ⇒ **The two trees cover different POPULATIONS, and that is the whole reason there are two:**
+      `leaves` is every designation (transparency, keccak, derived on-chain); `smtRoot` is only the
+      designations the predicate can key (Poseidon, asserted). A name tree cannot be consumed by a
+      predicate, and a key tree cannot represent a register that publishes no keys — **both are true
+      at once.** The asymmetry is real, not drift.
+      ⚠️ **The SMT root is ASSERTED, not derived, and that is forced rather than lax:** deriving it
+      on-chain is Poseidon at list scale, ~494M gas against a 30M block (measured). Verifying it means
+      rebuilding from the public source — which is what an auditor does to check the leaves are honest
+      anyway, so the marginal loss is small.
+      🔴 **WHAT IS STILL NOT ENFORCED, and it is now the honest gap:** only OFAC declares an identifier
+      set, so **UK and UN designations are anchored and contribute NOTHING to the predicate.** A
+      sanctioned person listed only by those two registers passes the check. Closing it needs a
+      document-number field in each of their schemas, or an explicit statement that those registers
+      are transparency-only.
       🔴 **STILL OPEN — the original wording, kept because these were the hazards:**
         1. **`idCountry` IS A COUNTRY NAME, THE MRZ CARRIES ISO ALPHA-3.** Published: `Egypt`, `Iran`.
            The circuit hashes the MRZ's three bytes — `EGY`, `IRN`. A mapping is required, OFAC's

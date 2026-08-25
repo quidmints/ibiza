@@ -82,17 +82,3 @@ func TestReportRoundTrips(t *testing.T) {
 		t.Errorf("field 2 is not the leaves: %v", got)
 	}
 }
-
-// TestUnpublishedSmtRootIsTheEmptyTree pins the fail-open bootstrap state so that
-// publishing a real root is a DELIBERATE change to a tested value, not a silent one.
-//
-// An empty exclusion tree admits everyone. This test does not endorse that - it makes it
-// visible, so the day someone gates a withdrawal on the predicate, the assertion below is
-// what they have to look at and change.
-func TestUnpublishedSmtRootIsTheEmptyTree(t *testing.T) {
-	if smtRootUnpublished != ([32]byte{}) {
-		t.Fatalf("a non-zero root is published; the blacklist is live. If that is intended, "+
-			"update this test AND confirm the pool no longer treats zero as acceptable: %x",
-			smtRootUnpublished)
-	}
-}

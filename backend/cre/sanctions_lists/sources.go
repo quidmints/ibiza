@@ -183,6 +183,14 @@ type SourceSpec struct {
 	// ReferenceField is the direct-child element holding the source's own identifier for a listing.
 	ReferenceField string
 
+	// Identifiers declares where this source publishes the rows the PREDICATE can key, if it does.
+	//
+	// ⚠️ A ZERO VALUE IS A REAL STATE, NOT AN OVERSIGHT: not every register publishes document
+	// numbers, and a source that does not simply contributes no keys. It must be visible as a
+	// declaration rather than inferred from an empty tree - an empty tree admits everyone, so
+	// "this source publishes nothing keyable" and "this source failed to parse" must not look alike.
+	Identifiers IdentifierSet
+
 	// NameFields are direct-child elements, IN PUBLISHED ORDER. Every one is read for every row,
 	// present or not, so arity is constant within a source - which is what stops a name moving
 	// between slots from producing a colliding leaf.
@@ -261,6 +269,7 @@ var sources = map[string]SourceSpec{
 		Records:        []RecordSet{{Path: "sdnList/sdnEntry", KindField: "sdnType"}},
 		ReferenceField: "uid",
 		NameFields:     []string{"lastName", "firstName"},
+		Identifiers:    ofacPassports,
 		// Measured on all 19,181 rows. `firstName` is deliberately absent from this list: it is on
 		// the 7,473 Individuals only, because an entity, a vessel and an aircraft each have one name.
 		AlwaysPresent:     []string{"uid", "lastName", "sdnType"},

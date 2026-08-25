@@ -113,12 +113,48 @@ func (c *Config) applyDefaults() {
 // itself be total (the version this replaced sorted by uid with `sort.Slice`, which is not stable,
 // so equal keys ordered arbitrarily). The ordering that actually matters is over LEAVES, and
 // `snapshotLeaves` owns it because the CONTRACT requires it.
-func fetchAndDecode(sr *http.SendRequester, registryKey, url string) ([]ListedSubject, error) {
+// Snapshot is everything one fetch yields: the source's own health signals, and the payload.
+//
+// ⚠️ ONE STRUCT BECAUSE IT IS ONE CONSENSUS ROUND. Every DON node must agree on identical bytes, so
+// fetching twice would mean two rounds over two responses that a mid-publish update could make
+// differ - and the second round would fail consensus for a reason having nothing to do with either
+// payload. Decoding both views from ONE body removes that failure mode by construction.
+type Snapshot struct {
+	// Subjects are the designations. NOT anchored any more - see blacklist.go on why a name tree
+	// cannot be consumed - but still decoded, because `AlwaysPresent` and the manifest count are the
+	// only checks that catch a SCHEMA CHANGE upstream. A feed that silently renamed a field would
+	// otherwise publish an empty key set and look healthy.
+	Subjects []ListedSubject
+	// Passports are the rows the predicate can actually key.
+	Passports []PassportRow
+}
+
+func fetchAndDecode(sr *http.SendRequester, registryKey, url string, ids IdentifierSet) (Snapshot, error) {
 	resp, err := sr.SendRequest(&http.Request{Url: url, Method: "GET"}).Await()
 	if err != nil {
-		return nil, fmt.Errorf("%s fetch: %w", registryKey, err)
+		return Snapshot{}, fmt.Errorf("%s fetch: %w", registryKey, err)
 	}
-	return decodeSubjects(registryKey, resp.Body)
+
+	subjects, err := decodeSubjects(registryKey, resp.Body)
+	if err != nil {
+		return Snapshot{}, err
+	}
+
+	// A source with no identifier set declared yields no keys. That is a real state - not every
+	// register publishes document numbers - and it must be visible rather than inferred from an
+	// empty tree, so the caller checks it.
+	var passports []PassportRow
+	if ids.Path != "" {
+		listed, err := decodeIdentifiers(resp.Body, ids)
+		if err != nil {
+			return Snapshot{}, fmt.Errorf("%s identifiers: %w", registryKey, err)
+		}
+		passports = make([]PassportRow, 0, len(listed))
+		for _, l := range listed {
+			passports = append(passports, PassportRow{Number: l.Value, Country: l.Country})
+		}
+	}
+	return Snapshot{Subjects: subjects, Passports: passports}, nil
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -142,36 +178,76 @@ func onSchedule(config *Config, runtime cre.Runtime, _ *cron.Payload) (string, e
 	}
 	httpClient := &http.Client{}
 
-	subjectsPromise := http.SendRequest(config, runtime, httpClient,
-		func(cfg *Config, lg *slog.Logger, sr *http.SendRequester) (*[]ListedSubject, error) {
+	snapshotPromise := http.SendRequest(config, runtime, httpClient,
+		func(cfg *Config, lg *slog.Logger, sr *http.SendRequester) (*Snapshot, error) {
 			// `spec` is captured, not re-resolved: it was already validated above, and a second
 			// lookup would need an error path that cannot be reached.
-			out, err := fetchAndDecode(sr, cfg.RegistryKey, spec.PublishedAt)
+			out, err := fetchAndDecode(sr, cfg.RegistryKey, spec.PublishedAt, spec.Identifiers)
 			if err != nil {
 				return nil, err
 			}
 			return &out, nil
 		},
-		cre.ConsensusIdenticalAggregation[*[]ListedSubject](),
+		cre.ConsensusIdenticalAggregation[*Snapshot](),
 	)
 
-	subjectsPtr, err := subjectsPromise.Await()
-	if err != nil || subjectsPtr == nil {
+	snapshot, err := snapshotPromise.Await()
+	if err != nil || snapshot == nil {
 		logger.Error(fmt.Sprintf("[%s] fetch/consensus failed: %v", spec.Key, err))
 		return "", fmt.Errorf("fetch/consensus failed: %w", err)
 	}
 
-	leaves := snapshotLeaves(spec.Key, *subjectsPtr)
+	// TWO TREES, AND THEY COVER DIFFERENT POPULATIONS - which is why they are not redundant and
+	// must not be collapsed into one. It was tried:
+	//
+	//	leaves   EVERY designation, keyed by name. The transparency artefact, and the only thing
+	//	         UK_OFSI and UN_SC can publish at all - neither register carries document numbers.
+	//	smtRoot  only designations the PREDICATE can key. What the pool enforces.
+	//
+	// ⛔ MAKING THE LEAVES THE KEYS LOOKED LIKE AN ELEGANT COLLAPSE AND WAS A SILENT REGRESSION:
+	// those two registries would have anchored an EMPTY leaf set and a zero root while continuing to
+	// report success. A tree of names cannot be consumed by a predicate, and a tree of keys cannot
+	// represent a register that publishes no keys. Both statements are true at once.
+	bl, err := BuildBlacklist(snapshot.Passports)
+	if err != nil {
+		return "", fmt.Errorf("%s blacklist: %w", spec.Key, err)
+	}
+
+	leaves := snapshotLeaves(spec.Key, snapshot.Subjects)
 	root, err := merkleRoot(leaves)
 	if err != nil {
 		return "", fmt.Errorf("%s root: %w", spec.Key, err)
 	}
 
 	registryID := registryIDFor(spec.Key)
-	logger.Info(fmt.Sprintf("[%s] %d rows, %d leaves, root %s",
-		spec.Key, len(*subjectsPtr), len(leaves), common.BytesToHash(root[:]).Hex()))
+	logger.Info(fmt.Sprintf("[%s] %d designations -> %d leaves, %d keyed -> smt %s, root %s",
+		spec.Key, len(snapshot.Subjects), len(leaves), len(bl.Leaves),
+		common.BytesToHash(bl.SmtRoot[:]).Hex(), common.BytesToHash(root[:]).Hex()))
 
-	payload, err := snapshotABI.Pack(registryID, smtRootUnpublished, leaves)
+	// ⚠️ SKIPS ARE LOGGED AT WARN, EVERY RUN, WITH A REASON. For an EXCLUSION predicate a row that
+	// could not be keyed is a FALSE NEGATIVE - that person's document is absent from the tree, so
+	// their withdrawal passes. The publication proceeds anyway, because failing it over one
+	// unmappable country would halt every withdrawal instead; the trade is only defensible while the
+	// omissions are visible, so this is the one place that makes them so.
+	if len(bl.Skipped) > 0 {
+		logger.Warn(fmt.Sprintf("[%s] %d listed rows could not be keyed and are NOT enforced",
+			spec.Key, len(bl.Skipped)))
+		for _, sk := range bl.Skipped {
+			logger.Warn(fmt.Sprintf("[%s]   %s: %s", spec.Key, sk.Number, sk.Reason))
+		}
+	}
+
+	// A source that declares identifiers and yields none is a schema change wearing a healthy face:
+	// the tree would be empty, and an empty exclusion tree admits EVERYONE. The pool refuses a zero
+	// root, so this would halt withdrawals rather than open them - but it must fail HERE, naming the
+	// cause, rather than downstream as an unexplained halt.
+	if spec.Identifiers.Path != "" && len(bl.Leaves) == 0 {
+		return "", fmt.Errorf(
+			"%s declares identifiers at %q but keyed none of %d designations - the schema has changed",
+			spec.Key, spec.Identifiers.Path, len(snapshot.Subjects))
+	}
+
+	payload, err := snapshotABI.Pack(registryID, bl.SmtRoot, leaves)
 	if err != nil {
 		return "", fmt.Errorf("abi pack: %w", err)
 	}
@@ -204,7 +280,8 @@ func onSchedule(config *Config, runtime cre.Runtime, _ *cron.Payload) (string, e
 		return "", fmt.Errorf("WriteReport: %w", err)
 	}
 
-	return fmt.Sprintf("%s anchored %d leaves, tx %x", spec.Key, len(leaves), writeResp.TxHash), nil
+	return fmt.Sprintf("%s anchored %d leaves, %d enforceable keys (%d unkeyable), tx %x",
+		spec.Key, len(leaves), len(bl.Leaves), len(bl.Skipped), writeResp.TxHash), nil
 }
 
 // activeWorkflowIDSelector is `keccak256("activeWorkflowId()")[:4]` - derived rather than pasted, so

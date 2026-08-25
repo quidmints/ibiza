@@ -28,41 +28,11 @@ var snapshotABI = abi.Arguments{
 	{Type: bytes32ArrayType}, // leaves
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ⚠️ THE SECOND FIELD IS A POSEIDON SMT ROOT, NOT THE KECCAK ONE, AND SWAPPING THEM IS SILENT.
 //
-//	THE POSEIDON SMT ROOT IS NOT COMPUTED YET, AND ZERO IS FAIL-OPEN
+//	smtRoot   Poseidon, sparse, keyed. The ONLY one a circuit can verify, and what the pool
+//	          enforces. Built by BuildBlacklist from the document keys.
+//	leaves    keccak, dense. Hashed on-chain into the transparency root; covers every designation.
 //
-// ═══════════════════════════════════════════════════════════════════
-//
-// The second report field is the root of the POSEIDON sparse Merkle tree that
-// `withdraw_identity` proves NON-MEMBERSHIP against. It is a DIFFERENT TREE from
-// `merkleRoot(leaves)` below, and the two must never be swapped:
-//
-//	merkleRoot(leaves)  keccak, dense, binary. Cheap on-chain, and what the
-//	                    anchor's own inclusion checks use.
-//	smtRoot             Poseidon, sparse, keyed. The ONLY one a circuit can
-//	                    verify - in-circuit the cost relation inverts and
-//	                    keccak becomes the expensive hash.
-//
-// Publishing zero here is the empty tree, and for an EXCLUSION predicate an empty
-// tree admits EVERYONE. That is fail-open: until a real root is published, the
-// blacklist term in `withdraw_identity` is satisfied by every prover, including a
-// sanctioned one. It matches the 32 batch witnesses, which carry the empty-tree
-// zero witness and are valid for ANY key by construction.
-//
-// ⚠️ THIS IS A BOOTSTRAP STATE, NOT A DESIGN. It is safe only while no withdrawal
-// is gated on the predicate. Before the pool relies on it, EITHER publish a real
-// root here, OR make the pool reject a zero `blacklistRoot` so an unpublished list
-// BLOCKS withdrawals instead of waving them through. Do not leave both open.
-//
-// ✅ THE BUILDER NOW EXISTS AND IS PROVEN: `smt.go`, with `smt_conformance_test.go`
-// checking its root against one a real solarity SparseMerkleTree produced, and the
-// Go Poseidon checked against a value the Noir circuit accepted.
-//
-// 🔴 WHAT IS STILL MISSING IS THE INPUT, NOT THE TREE. The predicate keys on
-// `document_identifier(issuing_state, document_number)`, and `ListedSubject` carries
-// only a reference, a kind and name parts - no source parser extracts document
-// numbers. Publishing a root over the NAME leaves would be worse than this zero: it
-// would look published while every exclusion proof still succeeded, because the
-// circuit queries keys that tree does not contain.
-var smtRootUnpublished = [32]byte{}
+// They cover different populations on purpose - see blacklist.go. Passing one where the other
+// belongs type-checks, anchors, and leaves the pool enforcing a root no witness can satisfy.

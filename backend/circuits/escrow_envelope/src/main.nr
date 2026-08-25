@@ -93,12 +93,29 @@ use std::hash::Hasher;
 /// A TD3/93-byte escrow variant is still needed if the full `register_identity` path is ever wired
 /// up - see.
 global DG1_LEN: u32 = 95;
-/// Bytes packed per field element. 31 keeps every packed value below the BN254 modulus.
-global BYTES_PER_FIELD: u32 = 31;
-/// ceil(95 / 31) = 4.
-global DG1_WORDS: u32 = 4;
-/// One slot for the revocation secret, then the packed MRZ.
-global PAYLOAD_LEN: u32 = 5;
+/// The escrow payload: the revocation secret, then the document identifier. TWO fields.
+///
+/// 🔴 IT USED TO BE FIVE, AND THE OTHER FOUR WERE THE PACKED MRZ - name, date of birth,
+/// nationality, sex, expiry and document number, sealed to ONE immutable controller key and emitted
+/// as an event, therefore permanently indexable. One secret key decrypted every registered user's
+/// passport, retroactively.
+///
+/// ⚠️ THE ESCROW'S STATED PURPOSE NEVER NEEDED THEM. This circuit exists so a controller CAN list an
+/// identity later; that requires knowing WHICH envelope corresponds to a sanctioned document, which
+/// `document_id` answers exactly. Name and date of birth are only useful for matching a designation
+/// BY NAME - and `identifiers.go` rejects name matching as unsound ("no transliteration, no alias
+/// ordering, no similarity matching, no threshold"). Those reasons do not stop applying off-chain.
+///
+/// ⛔ AND THE SAME REASONING ALREADY RAN ONCE IN THIS FILE. It used to publish `holder_root` and
+/// `dg1_hash`, and the header below calls removing them "the largest privacy defect in our own
+/// code". That pass stopped one step short: encrypting an identifier to a key the user does not hold
+/// is deferred disclosure, not privacy.
+///
+/// ▶️ `document_id` ALONE MAY SUFFICE - `commitment` is a public signal, so an envelope's commitment
+/// is already known and the secret adds nothing to identifying it. Kept because the original design
+/// sealed it and nothing has traced what else may depend on it; dropping it is a separate change
+/// with its own argument to make.
+global PAYLOAD_LEN: u32 = 2;
 /// Height of `StateKeeper.registrationSmt`.
 ///
 /// 80, NOT 32. An earlier estimate in sec. 2.18 sized this inclusion at depth 32 - the
@@ -132,24 +149,6 @@ pub fn derive_revocation_secret(sk_identity: Field) -> Field {
     hasher.finish()
 }
 
-/// Pack the MRZ bytes into field elements, big-endian, 31 bytes at a time.
-fn pack_dg1(dg1: [u8; DG1_LEN]) -> [Field; DG1_WORDS] {
-    let mut packed: [Field; DG1_WORDS] = [0; DG1_WORDS];
-    for w in 0..DG1_WORDS {
-        let mut acc: Field = 0;
-        for j in 0..BYTES_PER_FIELD {
-            let idx = w * BYTES_PER_FIELD + j;
-            // The final word is short (95 = 3*31 + 2), so pad rather than read out of bounds.
-            if idx < DG1_LEN {
-                acc = acc * 256 + dg1[idx] as Field;
-            } else {
-                acc = acc * 256;
-            }
-        }
-        packed[w] = acc;
-    }
-    packed
-}
 
 fn main(
     // The controller's published sealing key.
@@ -222,12 +221,13 @@ fn main(
         registration_siblings,
     );
 
-    let packed = pack_dg1(dg1);
+    // The document is carried as its IDENTIFIER, not as bytes. `document_id` is derived above from
+    // the same `dg1` whose registration is proven, so the seal still binds to the registered
+    // document - via a value the controller can RECOMPUTE from a published designation, rather than
+    // via plaintext nobody needed.
     let mut payload: [Field; PAYLOAD_LEN] = [0; PAYLOAD_LEN];
     payload[0] = revocation_secret;
-    for w in 0..DG1_WORDS {
-        payload[w + 1] = packed[w];
-    }
+    payload[1] = document_id;
 
     let envelope = seal_payload(payload, ephemeral, controller_x, controller_y);
 

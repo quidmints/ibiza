@@ -90,7 +90,13 @@ contract IdentityRegistry {
   uint256 internal constant PUB_C1_X = 4;
   uint256 internal constant PUB_C1_Y = 5;
   uint256 internal constant PUB_SEALED_0 = 6;
-  uint256 internal constant PUBLIC_INPUT_COUNT = 11;
+  /// Fields in the escrow envelope: `revocation_secret` and `document_id`. Must equal the circuit's
+  /// `PAYLOAD_LEN` - a mismatch reads sealed slots past the end of the envelope, or drops one.
+  uint256 internal constant SEALED_LEN = 2;
+  /// Six fixed signals plus the envelope: 6 + SEALED_LEN. Was 11 when the envelope carried the
+  /// packed MRZ; the verifier's own NUMBER_OF_PUBLIC_INPUTS moves with it (that figure adds the
+  /// pairing-point object, so it is this plus 8).
+  uint256 internal constant PUBLIC_INPUT_COUNT = PUB_SEALED_0 + SEALED_LEN;
 
   INoirVerifier public immutable ESCROW_VERIFIER;
   HolderStateKeeper public immutable STATE_KEEPER;
@@ -131,7 +137,19 @@ contract IdentityRegistry {
   uint256 public registeredCount;
   uint256 public revokedCount;
 
-  event IdentityRegistered(bytes32 indexed commitment, bytes32 root, uint256 c1x, uint256 c1y, uint256[5] sealedPayload);
+  /**
+   * @notice A registration, with its escrow envelope.
+   *
+   * 🔴 `sealedPayload` WAS `uint256[5]` AND CARRIED THE HOLDER'S PACKED MRZ - name, date of birth,
+   * nationality, sex, expiry and document number - encrypted to the single immutable controller key
+   * and emitted here, which made it permanently indexable by anyone. It is now TWO fields: the
+   * revocation secret and the document identifier.
+   *
+   * The escrow's purpose is unchanged - a controller can still map a sanctioned document to the
+   * envelope that holds it, because `document_id` is recomputable from a published designation. What
+   * is gone is everything that only served matching a designation BY NAME.
+   */
+  event IdentityRegistered(bytes32 indexed commitment, bytes32 root, uint256 c1x, uint256 c1y, uint256[2] sealedPayload);
   event IdentityRevoked(bytes32 indexed commitment, bytes32 indexed predicate, bytes32 root);
 
   error AlreadyRegistered(bytes32 commitment);
@@ -301,8 +319,8 @@ contract IdentityRegistry {
 
     root_ = _anchorRoot();
 
-    uint256[5] memory sealed_;
-    for (uint256 i = 0; i < 5; i++) {
+    uint256[SEALED_LEN] memory sealed_;
+    for (uint256 i = 0; i < SEALED_LEN; i++) {
       sealed_[i] = uint256(publicInputs_[PUB_SEALED_0 + i]);
     }
     emit IdentityRegistered(

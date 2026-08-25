@@ -53,7 +53,9 @@ contract EscrowEnvelopeHonkVerifierTest is Test {
   /// WAS 12. `holder_root` (slot 2) and `dg1_hash` (slot 4) were removed in sec. 2.18:
   /// both were per-person identifiers, so registration calldata linked every user's identity to
   /// their pool handle. What replaced them is `registration_root`, which every user shares.
-  uint256 internal constant PUBLIC_INPUT_COUNT = 11;
+  /// Six fixed signals plus a TWO-field envelope. Was 11 while the envelope carried the packed MRZ;
+  /// the fixture length assertion below is what catches a regeneration that disagrees.
+  uint256 internal constant PUBLIC_INPUT_COUNT = 8;
 
   /// babyJub.mulPointEScalar(babyJub.Base8, 1234) - the controller's published sealing key. Pinned
   /// in pp/src/envelope.nr::test_controller_key_matches_babyjub.

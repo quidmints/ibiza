@@ -149,19 +149,6 @@ function dg1HashOf(dg1) {
 }
 
 /** The MRZ packed for the envelope payload: big-endian, 31 bytes per field. */
-function packDg1(dg1) {
-  const packed = [];
-  for (let w = 0; w < 4; w++) {
-    let acc = 0n;
-    for (let j = 0; j < 31; j++) {
-      const idx = w * 31 + j;
-      acc = idx < 95 ? acc * 256n + BigInt(dg1[idx]) : acc * 256n;
-    }
-    packed.push(acc);
-  }
-  return packed;
-}
-
 /**
  * Ask register_identity_light_td1 for `(dgCommit, dg1Hash, skHash)`.
  *
@@ -207,7 +194,11 @@ function identity(i) {
 
   const c1 = babyJub.mulPointEScalar(G, r);
   const shared = babyJub.mulPointEScalar(PK, r);
-  const sealed = [s, ...packDg1(dg1)].map((v, k) =>
+  // TWO FIELDS: the revocation secret and the document identifier. It used to be the secret plus the
+  // packed MRZ, which published every holder's name and date of birth encrypted to one key. The
+  // controller can still map a sanctioned document to its envelope, because `document_id` is
+  // recomputable from a published designation - see escrow_envelope's PAYLOAD_LEN note.
+  const sealed = [s, documentIdOf(dg1)].map((v, k) =>
     F.add(v, poseidon.hash([shared[0], shared[1], BigInt(k)])));
 
   return {

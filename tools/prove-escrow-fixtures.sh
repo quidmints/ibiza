@@ -42,8 +42,28 @@ command -v bb >/dev/null 2>&1 || {
 }
 
 cd "${CIRCUIT}"
-shopt -s nullglob
-witnesses=(Prover.escrow*.toml)
+
+# ⚠️ THE WITNESS LIST COMES FROM THE DOCUMENTS FIXTURE, NOT FROM A GLOB, AND THAT IS A ROOT FIX.
+#
+# It used to be `Prover.escrow*.toml`. A glob picks up witnesses for documents that NO LONGER EXIST:
+# an earlier 16-identity run left `Prover.escrow3..15.toml` tracked in the repo while the fixture
+# carries three documents, so the glob fed the prover a witness with no document behind it. Those
+# files cannot be regenerated either - there is no document 10 to prove against - so they were
+# orphaned BY CONSTRUCTION and every future run would have tripped over them again.
+#
+# It surfaced as a Noir type error about `sealed` having length 5 when the circuit wanted 2, three
+# steps into a regeneration, naming neither the stale file nor the count that produced it.
+DOC_COUNT=$(node -e "console.log(require('${ROOT}/backend/contracts/test/fixtures/escrow_documents.json').documents.length)")
+witnesses=()
+for ((i = 0; i < DOC_COUNT; i++)); do
+  w="Prover.escrow${i}.toml"
+  [ -s "${w}" ] || {
+    echo "ERROR: ${w} is missing but escrow_documents.json declares ${DOC_COUNT} documents." >&2
+    echo "       Run: node tools/build-escrow-fixtures.js ${DOC_COUNT}" >&2
+    exit 1
+  }
+  witnesses+=("${w}")
+done
 [ ${#witnesses[@]} -gt 1 ] || {
   echo "ERROR: found ${#witnesses[@]} witness(es); the identity tree needs more than one leaf." >&2
   echo "       Run: node tools/build-escrow-fixtures.js 3" >&2

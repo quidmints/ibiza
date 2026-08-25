@@ -27,7 +27,12 @@ contract IdentityRegistryTest is EscrowFixtureBase {
   /// escrow_envelope's public-input layout, mirroring IdentityRegistry's own constants. `holder_root`
   /// and `dg1_hash` used to sit at 2 and 4 and are GONE (sec. 2.18) - they linked every
   /// user's identity to their pool handle in registration calldata.
-  uint256 internal constant PUBLIC_INPUT_COUNT = 11;
+  /// Six fixed signals plus a TWO-field escrow envelope: `revocation_secret` and `document_id`.
+  ///
+  /// 🔴 IT WAS 11. The envelope carried the packed MRZ - name, date of birth, nationality - sealed to
+  /// one controller key and emitted as an event, so it was permanently indexable. Shrinking the
+  /// payload to what revocation actually needs moved this count with it.
+  uint256 internal constant PUBLIC_INPUT_COUNT = 8;
   uint256 internal constant PUB_CONTROLLER_X = 0;
   uint256 internal constant PUB_COMMITMENT = 2;
   uint256 internal constant PUB_REGISTRATION_ROOT = 3;

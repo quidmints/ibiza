@@ -396,10 +396,23 @@ a gap where one used to be.
       (`PUB_SEALED_0 + SEALED_LEN`) so the width cannot drift from the circuit silently.
       ⭐ **Identity commitments did not move** (`Poseidon(revocation_secret, document_id)` was already
       the leaf), so every downstream fixture survived without regeneration. 484/484.
-      ▶️ **STILL OPEN, and deliberately not folded into that change: `document_id` ALONE may suffice.**
-      `commitment` is a public signal, so an envelope's commitment is already known and the sealed
-      secret adds nothing to IDENTIFYING it. Dropping `revocation_secret` needs its own trace of what
-      else may depend on it — noted in the circuit rather than acted on.
+      🔴 **THE TRACE IS NOW DONE, AND IT SAYS `revocation_secret` SHOULD NOT BE SEALED AT ALL —
+      OPTION (b) AS I FRAMED IT WAS ONE FIELD TOO GENEROUS** (2026-08-25). Two measurements:
+        1. **`revoke(bytes32 commitment_, bytes32 predicate_)` TAKES ONLY THE COMMITMENT**, and the
+           commitment is a PUBLIC signal at registration, stored in `registered[]`. The sealed secret
+           is used nowhere in the revocation path. Nothing else in the repo reads it either — the only
+           references are the circuit's own derivation and this file.
+        2. **IT IS A LIVE CREDENTIAL, NOT INERT DATA.** `withdraw.nr:142` computes
+           `identity_commitment(w.revocation_secret, w.document_id)` — the secret IS the witness that
+           proves identity in a withdrawal. Sealing it hands whoever holds `CONTROLLER_SK` the
+           identity half of every user's withdrawal proof.
+      ⇒ **So it buys the controller nothing operational and costs every user a credential.** Not fund
+      theft on its own — spending still needs the note's nullifier and secret — but it is exactly the
+      kind of thing that should not sit encrypted under a single immutable key for no reason.
+      ▶️ **The change is one line (`PAYLOAD_LEN` 2 → 1, drop `payload[0]`) plus the same regeneration
+      that just ran, which was nearly free because identity commitments do not move.** Left for an
+      explicit decision because it narrows what a controller can ever do, and because the owner chose
+      "revocation_secret and document_id" from a menu I wrote before running this trace.
       ⏸️ **AND THE OTHER TWO OPTIONS ARE NOT THEREBY CLOSED.** (c) still applies to whatever remains
       sealed: `CONTROLLER_KEY_X/Y` is a **single immutable pair**, so one key still decrypts every
       envelope — now yielding a document identifier rather than a passport, which is a far smaller

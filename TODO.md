@@ -386,7 +386,34 @@ a gap where one used to be.
       excluded in-circuit against a public list, with no controller, no escrow and no disclosure. The
       only case escrow still covers is a designation whose document number is not published — which is
       exactly the UK/UN coverage gap booked below.
-      ▶️ **THREE OPTIONS, AND THIS IS A PRODUCT DECISION, NOT A BUG FIX:**
+      ✅ **DECIDED AND LANDED (owner, 2026-08-25): OPTION (b), SEAL LESS** — `856abb0`. `PAYLOAD_LEN`
+      5 → 2: `revocation_secret` + `document_id`. Name, date of birth, nationality, sex and expiry no
+      longer reach the chain in any form. Revocation is unchanged and still works, because
+      `document_id` is recomputable from a published designation. Soundness unchanged: the DG1 is
+      still a private witness, still proven included in `registrationSmt`, and `document_id` derives
+      from those same bytes. `pack_dg1`/`DG1_WORDS`/`BYTES_PER_FIELD` became unreachable and are
+      deleted; public inputs 11 → 8, verifier 19 → 16, and `PUBLIC_INPUT_COUNT` is now DERIVED
+      (`PUB_SEALED_0 + SEALED_LEN`) so the width cannot drift from the circuit silently.
+      ⭐ **Identity commitments did not move** (`Poseidon(revocation_secret, document_id)` was already
+      the leaf), so every downstream fixture survived without regeneration. 484/484.
+      ▶️ **STILL OPEN, and deliberately not folded into that change: `document_id` ALONE may suffice.**
+      `commitment` is a public signal, so an envelope's commitment is already known and the sealed
+      secret adds nothing to IDENTIFYING it. Dropping `revocation_secret` needs its own trace of what
+      else may depend on it — noted in the circuit rather than acted on.
+      ⏸️ **AND THE OTHER TWO OPTIONS ARE NOT THEREBY CLOSED.** (c) still applies to whatever remains
+      sealed: `CONTROLLER_KEY_X/Y` is a **single immutable pair**, so one key still decrypts every
+      envelope — now yielding a document identifier rather than a passport, which is a far smaller
+      prize but not nothing. Thresholding it is a separate decision.
+      🔴 **ORPHANED FIXTURES, FOUND BY THE REGENERATION AND FIXED AT THE ROOT.**
+      `prove-escrow-fixtures.sh` globbed `Prover.escrow*.toml`, and an earlier 16-identity run had
+      left `escrow3..15` **tracked** while the fixture carries three documents. They cannot be
+      regenerated — there is no document 10 to prove against — so they were orphaned BY CONSTRUCTION
+      and every future run would have tripped over them. It surfaced as a Noir type error about
+      `sealed` having length 5 when the circuit wanted 2, three steps in, naming neither the stale
+      file nor the count behind it. The script now derives its witness list from
+      `escrow_documents.json`; the 13 orphans were deleted in the same commit as that fix.
+
+      ⏸️ **THE ORIGINAL THREE OPTIONS, KEPT AS THE RECORD OF WHAT WAS WEIGHED:**
         (a) **Delete the escrow.** Enforcement becomes "the public blacklist only". Removes the largest
             leak in the system outright, shrinks the circuit, and makes the anonymity claim true as
             stated. Costs the name-matched revocation path.

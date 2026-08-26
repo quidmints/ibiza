@@ -841,6 +841,28 @@ a gap where one used to be.
       wallet's `node_modules` today. ⚠️ Confirm its MuSig2 export surface against the INSTALLED
       package before designing the session flow - this entry cites noble's README, which is evidence
       the package exists and is the sanctioned route, NOT evidence of its API shape.
+      ✅ **CHECK EXECUTED 2026-08-26 against the real package (`npm pack @scure/btc-signer`, v2.3.0).**
+      The route is confirmed: `musig2.js` ships at the package root and is a named entry in the
+      `exports` map (`"./musig2.js"`), so it is importable without deep-pathing into `lib/`. The
+      surface is raw BIP-327: `IndividualPubkey`, `sortKeys`, `keyAggregate`, `keyAggExport`,
+      `nonceGen`, `nonceAggregate`, `Session`, `deterministicSign`.
+      🔴 **AND THE CHECK CHANGED THE DESIGN, WHICH IS WHY IT WAS WORTH EXECUTING.** SPV §E171-r
+      sanctions MuSig2 on the strength of the Rust `musig2` crate the hop uses, *"whose `FirstRound`/
+      `SecondRound` types CONSUME `self` and make reuse a type error rather than a review item."*
+      **`@scure/btc-signer` has no such property.** `nonceGen` returns a plain `Nonces` value; nothing
+      consumes it, nothing invalidates it, and signing twice under one secnonce is an ordinary call
+      that type-checks. The guarantee §E171-r leans on **does not cross the language boundary**, so
+      adopting this library means the nonce-reuse guard is now OURS to build — and the failure it
+      prevents is the one §E171-r calls silent and total: two partials under one secnonce leak the
+      LP's secret key, the fleet recovers it, holds both halves again, and every on-chain byte still
+      looks correct. This tree has already shipped that bug once.
+      ⭐ **USE `deterministicSign`, NOT `nonceGen` + `Session`.** BIP-327's deterministic mode derives
+      the nonce from the secret, the message and `aggOtherNonce`, so there is no secnonce to persist,
+      leak or replay — it removes the failure mode instead of guarding it, which is the standing
+      preference for exactly this class of bug. It requires every OTHER signer's nonce first, so it
+      is only available to the signer who goes last; in our 2-of-2 the fleet's hop presents its nonce
+      and the LP signs second, which is precisely that position. ⚠️ Confirm the hop cannot be made to
+      sign second (that would force the LP into stateful `nonceGen` and put the guard back on us).
       🔑 **The two pieces are independent and only ONE is Bitcoin.** `auth.lp_sig` is an EVM digest
       `ethers` can already sign and needs no new dependency; only the `exits` ladder needs BIP-327.
       Landing `lp_sig` first is real progress that is not blocked on the library question.
